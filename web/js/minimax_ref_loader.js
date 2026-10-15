@@ -9,6 +9,9 @@ const PINK = "#d35fa8";
 const ORANGE = "#e0793c";
 const GREEN = "#43a047";
 const DARK_RED = "#6b2b2b";
+// Rouge vif : vignette marquee "a supprimer" et bouton Delete (le rouge sombre
+// DARK_RED, peu visible sur fond sombre, reste celui des poubelles du noeud).
+const MARK_RED = "#d32f2f";
 const INACTIVE_BG = "#2a2a2a";
 const INACTIVE_FG = "#888";
 
@@ -114,7 +117,11 @@ const HELP_SECTIONS = [
             "can be played) with its folder, size and duration. The " + iconBadge(LEFT_ICON, INACTIVE_BG) +
             " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " arrows move a file one place: number 1 always " +
             "goes out on <b>ref_image_1</b>, number 2 on <b>ref_image_2</b>, and so on (the wires stay " +
-            "on the outputs). A video keeps its sound setting when it moves.</p>",
+            "on the outputs). A video keeps its sound setting when it moves.</p>" +
+            "<p>The " + iconBadge(TRASH_ICON, INACTIVE_BG) + " on a thumbnail marks it for deletion (it turns " +
+            iconBadge(TRASH_ICON, MARK_RED) + "); <b>Delete</b> removes the marked files after a confirmation. " +
+            "The following references move up (ref 4 becomes ref 3...) and the last output, now empty, " +
+            "is removed.</p>",
     },
     {
         title: "Loading",
@@ -828,10 +835,105 @@ function buildSelectionViewer(container, ctx) {
     Object.assign(footer.style, {
         display: "flex", justifyContent: "flex-end", padding: "10px 12px",
     });
+    footer.style.gap = "8px";
+    const deleteBtn = makeTextButton("Delete", MARK_RED);
     const doneBtn = makeTextButton("Done", PINK);
-    footer.appendChild(doneBtn);
+    footer.append(deleteBtn, doneBtn);
 
     card.append(header, grid, infoBox, footer);
+
+    // ------ Marquage pour suppression ------
+    // Cles normalisees (casse, separateurs) des fichiers marques "a supprimer".
+    const marked = new Set();
+    const markKey = (p) => p.replace(/\\/g, "/").toLowerCase();
+
+    function toggleMark(path) {
+        const k = markKey(path);
+        if (marked.has(k)) marked.delete(k);
+        else marked.add(k);
+        render();
+    }
+
+    function updateDeleteBtn() {
+        const n = marked.size;
+        deleteBtn.textContent = n ? "Delete (" + n + ")" : "Delete";
+        deleteBtn.disabled = !n;
+        deleteBtn.style.background = n ? MARK_RED : INACTIVE_BG;
+        deleteBtn.style.color = n ? "white" : INACTIVE_FG;
+        deleteBtn.style.cursor = n ? "pointer" : "default";
+    }
+
+    /**
+     * Retire les fichiers marques. Les suivants remontent (la ref 4 devient
+     * la ref 3...) : comme les liens restent sur les sorties, chaque sortie
+     * recoit simplement le fichier qui porte desormais son numero, et la
+     * derniere sortie devenue vide est retiree par applyLayout() (une
+     * sortie de base par type reste toujours presente).
+     */
+    function deleteMarked() {
+        const s = ctx.getState();
+        const arr = list(s);
+        const kept = arr.filter((it) => !marked.has(markKey(pathOf(it))));
+        arr.splice(0, arr.length, ...kept);
+        marked.clear();
+        ctx.setState(s);
+        render();
+    }
+
+    // Fenetre de confirmation, centree sur la fenetre de selection.
+    const confirmOverlay = document.createElement("div");
+    Object.assign(confirmOverlay.style, {
+        position: "fixed", inset: "0", background: "transparent", zIndex: "10001", display: "none",
+    });
+    const confirmCard = document.createElement("div");
+    Object.assign(confirmCard.style, {
+        position: "fixed", width: "min(360px, 90vw)", background: "#1e1e1e", color: "#ddd",
+        border: "1px solid " + MARK_RED, borderRadius: "10px", boxShadow: "0 8px 28px rgba(0,0,0,0.7)",
+        padding: "14px 16px", fontFamily: "sans-serif", fontSize: "12px", boxSizing: "border-box",
+    });
+    const confirmText = document.createElement("div");
+    confirmText.style.lineHeight = "1.5";
+    const confirmBtns = document.createElement("div");
+    Object.assign(confirmBtns.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const confirmBtn = makeTextButton("Delete", MARK_RED);
+    confirmBtns.append(cancelBtn, confirmBtn);
+    confirmCard.append(confirmText, confirmBtns);
+    confirmCard.addEventListener("mousedown", (e) => e.stopPropagation());
+    confirmOverlay.appendChild(confirmCard);
+    document.body.appendChild(confirmOverlay);
+
+    const confirmOpen = () => confirmOverlay.style.display !== "none";
+    const closeConfirm = () => (confirmOverlay.style.display = "none");
+
+    function askDelete() {
+        if (!marked.size) return;
+        const arr = list();
+        const numbers = arr
+            .map((it, i) => (marked.has(markKey(pathOf(it))) ? i + 1 : null))
+            .filter((v) => v !== null);
+        const prefix = OUTPUT_PREFIX[kind];
+        confirmText.innerHTML =
+            "<b>Delete " + numbers.length + " reference" + (numbers.length > 1 ? "s" : "") + "?</b><br>" +
+            numbers.map((n) => prefix + n + " : " + baseName(pathOf(arr[n - 1]))
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("<br>") +
+            '<div style="color:#999;margin-top:8px">The following references move up and the last ' +
+            "output that becomes empty is removed.</div>";
+        confirmOverlay.style.display = "block";
+        let r = card.getBoundingClientRect();
+        // Fenetre pas encore mesurable : centrer sur l'ecran.
+        if (!r.width) r = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+        confirmCard.style.left = Math.max(8, r.left + (r.width - confirmCard.offsetWidth) / 2) + "px";
+        confirmCard.style.top = Math.max(8, r.top + (r.height - confirmCard.offsetHeight) / 2) + "px";
+    }
+
+    deleteBtn.addEventListener("click", askDelete);
+    cancelBtn.addEventListener("click", closeConfirm);
+    confirmOverlay.addEventListener("mousedown", closeConfirm);
+    confirmBtn.addEventListener("click", () => {
+        closeConfirm();
+        deleteMarked();
+    });
 
     function list(s) {
         s = s || ctx.getState();
@@ -882,16 +984,23 @@ function buildSelectionViewer(container, ctx) {
             grid.appendChild(empty);
         }
         if (current && !arr.some((it) => samePath(pathOf(it), current))) current = null;
+        // Oublier les marques de fichiers qui ne sont plus dans la selection.
+        const present = new Set(arr.map((it) => markKey(pathOf(it))));
+        [...marked].forEach((k) => {
+            if (!present.has(k)) marked.delete(k);
+        });
+        updateDeleteBtn();
 
         arr.forEach((item, i) => {
             const path = pathOf(item);
             const active = current && samePath(path, current);
+            const isMarked = marked.has(markKey(path));
 
             const tile = document.createElement("div");
             tile.title = path;
             Object.assign(tile.style, {
                 position: "relative", background: "#151515", borderRadius: "6px", overflow: "hidden",
-                cursor: "pointer", border: "2px solid " + (active ? VIOLET : PINK),
+                cursor: "pointer", border: "2px solid " + (isMarked ? MARK_RED : active ? VIOLET : PINK),
                 boxShadow: active ? "0 0 8px rgba(106,95,211,0.8)" : "none",
             });
 
@@ -939,7 +1048,20 @@ function buildSelectionViewer(container, ctx) {
                 arrowButton(RIGHT_ICON, i < arr.length - 1, () => move(i, +1), "Move after"),
             );
 
-            tile.append(thumb, badge, name, out, arrows);
+            // Poubelle en haut a droite : grise, rouge quand la vignette est marquee.
+            const bin = makeIconButton(isMarked ? MARK_RED : INACTIVE_BG, TRASH_ICON,
+                isMarked ? "Marked for deletion (click to unmark)" : "Mark for deletion");
+            Object.assign(bin.style, {
+                position: "absolute", right: "4px", top: "4px", width: "22px", height: "22px",
+                opacity: isMarked ? "1" : "0.75", boxShadow: isMarked ? "0 0 6px rgba(211,47,47,0.9)" : "none",
+            });
+            bin.addEventListener("click", (e) => {
+                e.stopPropagation();
+                toggleMark(path);
+            });
+            if (isMarked) thumb.style.opacity = "0.45";
+
+            tile.append(thumb, badge, bin, name, out, arrows);
             tile.addEventListener("click", () => showInfo(path));
             grid.appendChild(tile);
         });
@@ -1002,12 +1124,20 @@ function buildSelectionViewer(container, ctx) {
 
     const onKey = (e) => {
         if (overlay.style.display === "none" || e.key !== "Escape") return;
+        if (confirmOpen()) {
+            // Echap ferme d'abord la confirmation, pas la fenetre.
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            closeConfirm();
+            return;
+        }
         e.preventDefault();
         e.stopImmediatePropagation();
         close();
     };
 
     function close() {
+        closeConfirm();
         overlay.style.display = "none";
         preview.innerHTML = ""; // arrete une lecture video/audio en cours
         window.removeEventListener("keydown", onKey, true);
@@ -1021,6 +1151,7 @@ function buildSelectionViewer(container, ctx) {
         open(newKind) {
             kind = newKind;
             current = null;
+            marked.clear();
             title.textContent = VIEWER_TITLES[kind];
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
@@ -1031,6 +1162,7 @@ function buildSelectionViewer(container, ctx) {
         remove() {
             close();
             overlay.remove();
+            confirmOverlay.remove();
         },
     };
 }
