@@ -1,5 +1,5 @@
 import { app } from "../../scripts/app.js";
-import { formatConfigJson, parseAnyConfig, trimKey } from "./config_format.js";
+import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -208,8 +208,8 @@ const HELP_SECTIONS = [
             "or <code>\"FL2VA\"</code>), then the lists, e.g. <code>\"videos\": [{\"path\": " +
             "\"rush\\\\plan.mp4\", \"trim\": [5, 7]}]</code>. Paths under the root folder are written " +
             "relative to it; an empty group is <code>[]</code> or <code>null</code>.</p>" +
-            "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads a file of the mode shown (.json, or an older " +
-            ".txt) and sets its outputs; a file of the other mode is refused with a warning (switch mode first) " +
+            "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads a .json file of the mode shown " +
+            "and sets its outputs; a file of the other mode is refused with a warning (switch mode first) " +
             "and nothing is changed. It turns " +
             iconBadge(UPLOAD_ICON, ORANGE) + " as soon as the mode shown has a reference (the root folder " +
             "alone does not count) and then asks a confirmation. The other mode and the mode switch are " +
@@ -2166,15 +2166,15 @@ app.registerExtension({
             // Dossier racine, sauvegarde et chargement de la configuration.
             const rootBtn = makeIconButton(VIOLET, GEAR_ICON, "Root folder of the rushes");
             const downloadBtn = makeIconButton(PINK, DOWNLOAD_ICON, "Save the configuration (.json)");
-            const uploadBtn = makeIconButton(PINK, UPLOAD_ICON, "Load a configuration (.json, or an older .txt)");
+            const uploadBtn = makeIconButton(PINK, UPLOAD_ICON, "Load a configuration (.json)");
             [rootBtn, downloadBtn, uploadBtn].forEach((b) => {
                 b.style.width = "22px";
                 b.style.height = "22px";
             });
             const fileInput = document.createElement("input");
             fileInput.type = "file";
-            // JSON (sauvegardes actuelles) ou ancien .txt.
-            fileInput.accept = ".json,application/json,.txt,text/plain";
+            // Configurations JSON uniquement (les anciens .txt ne sont plus lus).
+            fileInput.accept = ".json,application/json";
             fileInput.style.display = "none";
 
             bottom.append(summary, rootBtn, downloadBtn, uploadBtn, helpBtn, fileInput);
@@ -2287,7 +2287,7 @@ app.registerExtension({
                 reader.onload = async () => {
                     let conf;
                     try {
-                        conf = parseAnyConfig(String(reader.result || ""));
+                        conf = parseConfigJson(String(reader.result || ""));
                     } catch (e) {
                         notice = "⚠ " + e.message;
                         refresh();
@@ -2306,7 +2306,7 @@ app.registerExtension({
                         refresh();
                         clearConfirm.ask(
                             "<b>Wrong configuration file</b><br>" + escapeHtml(file.name) + " is a <b>" +
-                            name(conf.mode) + "</b> configuration" + (conf.header ? "" : " (no header, read from its mode line)") +
+                            name(conf.mode) + "</b> configuration" +
                             ", but the node is in <b>" + name(s.mode) + "</b> mode." +
                             '<div style="color:#999;margin-top:8px">Nothing was changed. Switch the node to ' +
                             name(conf.mode) + " first, or load a " + name(s.mode) + " file.</div>",

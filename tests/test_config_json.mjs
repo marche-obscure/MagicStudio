@@ -2,8 +2,7 @@
 //     node --test tests/test_config_format.mjs tests/test_config_json.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatConfigJson, parseConfigJson, parseAnyConfig, formatConfig, trimKey }
-    from "../web/js/config_format.js";
+import { formatConfigJson, parseConfigJson, trimKey } from "../web/js/config_format.js";
 
 const ROOT = "F:\\Rushs\\Projet";
 const V1 = ROOT + "\\rush\\v1.mp4";
@@ -76,10 +75,7 @@ test("JSON : erreurs claires", () => {
         /not a MiniMax H3 Reference Loader/);
 });
 
-test("parseAnyConfig : JSON ou ancien .txt", () => {
-    assert.equal(parseAnyConfig(formatConfigJson({ ...ref, mode: "fl2va" })).mode, "fl2va");
-    const old = parseAnyConfig(formatConfig(ref));
-    assert.equal(old.mode, "ref2va");
-    assert.deepEqual(old.videos, ref.videos);
-    assert.deepEqual(old.trims, ref.trims);
+test("ancien .txt refuse avec un message clair", () => {
+    const old = ["# MiniMax H3 Reference Loader - REF2VA configuration", "mode : Ref2VA", "video 1 : a.mp4"].join("\n");
+    assert.throws(() => parseConfigJson(old), /Only \.json configuration files are supported/);
 });
