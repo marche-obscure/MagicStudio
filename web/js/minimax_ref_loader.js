@@ -161,7 +161,8 @@ const HELP_SECTIONS = [
         title: "Viewing and reordering",
         html: "<p>" + iconBadge(EYE_ICON, VIOLET) + " shows the selected files in their order, " +
             "with their number and output. Click a thumbnail to see it larger (videos and audio " +
-            "can be played) with its folder, size and duration. The " + iconBadge(LEFT_ICON, INACTIVE_BG) +
+            "can be played) with its folder, size and duration; images and videos also open in a " +
+            "preview window of the same size on the right. The " + iconBadge(LEFT_ICON, INACTIVE_BG) +
             " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " arrows move a file one place: number 1 always " +
             "goes out on <b>ref_image_1</b>, number 2 on <b>ref_image_2</b>, and so on (the wires stay " +
             "on the outputs).</p>" +
@@ -1584,6 +1585,98 @@ function buildSelectionViewer(container, ctx) {
     function clearInfo() {
         preview.innerHTML = "";
         details.innerHTML = '<span style="color:#888">Click a thumbnail to see its details.</span>';
+        hideSide();
+    }
+
+    // ------ Fenetre de visualisation (images et videos) ------
+    // Meme taille que la fenetre de selection, placee a sa droite (a gauche
+    // si la place manque). Elle est dans l'overlay de la fenetre : un clic
+    // dedans ne ferme pas la selection.
+    const side = document.createElement("div");
+    Object.assign(side.style, {
+        position: "fixed", display: "none", flexDirection: "column", overflow: "hidden",
+        background: "#1e1e1e", color: "#ddd", border: "1px solid " + VIOLET, borderRadius: "10px",
+        boxShadow: "0 8px 28px rgba(0,0,0,0.6)", fontFamily: "sans-serif", fontSize: "12px",
+        boxSizing: "border-box",
+    });
+    side.addEventListener("mousedown", (e) => e.stopPropagation());
+    side.addEventListener("click", (e) => e.stopPropagation());
+    const sideHeader = document.createElement("div");
+    Object.assign(sideHeader.style, {
+        display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderBottom: "1px solid #333",
+    });
+    const sideTitle = document.createElement("div");
+    Object.assign(sideTitle.style, {
+        fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, flex: "1", whiteSpace: "nowrap",
+        overflow: "hidden", textOverflow: "ellipsis",
+    });
+    const sideCount = document.createElement("div");
+    sideCount.style.color = "#bbb";
+    const sideClose = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close the preview");
+    sideHeader.append(sideTitle, sideCount, sideClose);
+    const sideBody = document.createElement("div");
+    Object.assign(sideBody.style, {
+        flex: "1", minHeight: "0", display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "10px", background: "#111", margin: "10px", borderRadius: "6px", overflow: "hidden",
+    });
+    side.append(sideHeader, sideBody);
+    overlay.appendChild(side);
+    sideClose.addEventListener("click", hideSide);
+
+    /**
+     * Meme taille que la fenetre de selection, a sa droite. Ecran trop etroit :
+     * retrecie a la place libre (360 px au moins) a droite, sinon a gauche ;
+     * en dernier recours seulement, elle recouvre la fenetre de selection.
+     */
+    function placeSide() {
+        const r = card.getBoundingClientRect();
+        const margin = 12;
+        const minW = 360;
+        const w = r.width || 720;
+        const h = r.height || 560;
+        const roomRight = window.innerWidth - 8 - (r.right + margin);
+        const roomLeft = r.left - margin - 8;
+        let width = w;
+        let left = r.right + margin;
+        if (roomRight < w) {
+            if (roomRight >= minW || roomRight >= roomLeft) {
+                width = Math.max(Math.min(w, roomRight), minW);
+            } else {
+                width = Math.max(Math.min(w, roomLeft), minW);
+                left = r.left - margin - width;
+            }
+            left = Math.max(8, Math.min(left, window.innerWidth - 8 - width));
+        }
+        side.style.width = width + "px";
+        side.style.height = h + "px";
+        side.style.left = left + "px";
+        side.style.top = r.top + "px";
+    }
+
+    function showSide(path, idx) {
+        const url = "/mmrefloader/media?file=" + encodeURIComponent(path);
+        sideBody.innerHTML = "";
+        let el;
+        if (fileKind(kind) === "image") {
+            el = document.createElement("img");
+        } else {
+            el = document.createElement("video");
+            el.controls = true;
+            el.preload = "metadata";
+        }
+        el.src = url;
+        Object.assign(el.style, { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
+        sideBody.appendChild(el);
+        sideTitle.textContent = baseName(path);
+        sideTitle.title = path;
+        sideCount.textContent = outputName(kind, idx);
+        side.style.display = "flex";
+        placeSide();
+    }
+
+    function hideSide() {
+        side.style.display = "none";
+        sideBody.innerHTML = ""; // arrete une lecture video en cours
     }
 
     function row(label, value) {
@@ -1597,24 +1690,26 @@ function buildSelectionViewer(container, ctx) {
     async function showInfo(path) {
         current = path;
         render();
-        const url = "/mmrefloader/media?file=" + encodeURIComponent(path);
         preview.innerHTML = "";
-        // Lecteur choisi d'apres le type de FICHIER de la liste (first_frame /
-        // last_frame sont des images, video_audio des videos).
+        // D'apres le type de FICHIER de la liste (first_frame / last_frame sont
+        // des images, video_audio des videos) : image ou video = simple
+        // vignette ici + grande vue dans la fenetre de droite ; audio = lecteur.
         const fk = fileKind(kind);
         let el;
-        if (fk === "image") {
-            el = document.createElement("img");
-            el.src = url;
-        } else {
-            el = document.createElement(fk === "video" ? "video" : "audio");
-            el.src = url;
+        if (fk === "audio") {
+            el = document.createElement("audio");
+            el.src = "/mmrefloader/media?file=" + encodeURIComponent(path);
             el.controls = true;
             el.preload = "metadata";
+            el.style.width = "95%";
+            hideSide();
+        } else {
+            el = document.createElement("img");
+            el.src = "/mmrefloader/thumb?path=" + encodeURIComponent(dirName(path)) +
+                "&file=" + encodeURIComponent(baseName(path));
+            Object.assign(el.style, { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
+            showSide(path, list().findIndex((it) => samePath(pathOf(it), path)));
         }
-        Object.assign(el.style, fk === "audio"
-            ? { width: "95%" }
-            : { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
         preview.appendChild(el);
 
         details.innerHTML = '<span style="color:#888">Loading...</span>';
@@ -1654,7 +1749,8 @@ function buildSelectionViewer(container, ctx) {
     function close() {
         closeConfirm();
         overlay.style.display = "none";
-        preview.innerHTML = ""; // arrete une lecture video/audio en cours
+        preview.innerHTML = ""; // arrete une lecture audio en cours
+        hideSide();
         window.removeEventListener("keydown", onKey, true);
     }
 
