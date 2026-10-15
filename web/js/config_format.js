@@ -3,11 +3,14 @@
 // dependance a ComfyUI, teste par tests/test_config_format.mjs.
 //
 // Une ligne par sortie, dans l'ordre des sorties :
+//   mode : Ref2VA                (ou FL2VA : mode F2VA/FL2VA)
 //   root : F:\Rushs\Projet
 //   image 1 : images\a.png
 //   video 1 : videos\v1.mp4
 //   video_audio 1 : videos2.mp4 (bande-son extraite de cette video : piste audio)
 //   audio 1 : NaN                (groupe vide : premier numero + NaN)
+//   first_frame : images\a.png   (mode F2VA/FL2VA ; NaN si vide)
+//   last_frame : NaN
 // Les chemins situes sous la racine sont ecrits relativement a elle.
 
 export const CONFIG_LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3 };
@@ -38,7 +41,7 @@ export function toAbsolute(root, path) {
 export function formatConfig(state) {
     const root = state.root || "";
     const rel = (p) => toRelative(root, p);
-    const lines = ["root : " + (root || EMPTY)];
+    const lines = ["mode : " + (state.mode === "fl2va" ? "FL2VA" : "Ref2VA"), "root : " + (root || EMPTY)];
     const group = (name, values) => {
         if (!values.length) values = [EMPTY];
         values.forEach((v, i) => lines.push(name + " " + (i + 1) + " : " + (v || EMPTY)));
@@ -47,12 +50,17 @@ export function formatConfig(state) {
     group("video", state.videos.map(rel));
     group("video_audio", (state.video_audios || []).map(rel));
     group("audio", state.audios.map(rel));
+    for (const key of ["first_frame", "last_frame"]) {
+        const v = (state[key] || [])[0];
+        lines.push(key + " : " + (v ? rel(v) : EMPTY));
+    }
     return lines.join(EOL) + EOL;
 }
 
 /**
- * Texte du fichier -> { root, images, videos, video_audios, audios } (chemins
- * absolus). video_audio est une liste independante des videos.
+ * Texte du fichier -> { mode, root, images, videos, video_audios, audios,
+ * first_frame, last_frame } (chemins absolus). video_audio est une liste
+ * independante des videos ; sans ligne mode, le mode est Ref2VA.
  * Tolerant : ordre des lignes, casse, espaces, numeros manquants (la liste
  * est resserree), lignes inconnues ignorees. Leve une erreur si aucune
  * ligne n'est reconnue.
@@ -63,10 +71,25 @@ export function parseConfig(text) {
         return !t || t.toLowerCase() === EMPTY.toLowerCase() ? "" : t;
     };
     let root = "";
+    let mode = "ref2va";
+    const frames = { first_frame: "", last_frame: "" };
     let found = false;
     const groups = { image: {}, video: {}, video_audio: {}, audio: {} };
 
     for (const raw of String(text).split(/\r?\n/)) {
+        const mm = raw.match(/^\s*mode\s*:(.*)$/i);
+        if (mm) {
+            // "FL2VA", "F2VA/FL2VA", "fl2va"... = mode F2VA/FL2VA ; le reste = Ref2VA.
+            mode = /fl2va/i.test(mm[1]) ? "fl2va" : "ref2va";
+            found = true;
+            continue;
+        }
+        const mf = raw.match(/^\s*(first_frame|last_frame)(?:\s+1)?\s*:(.*)$/i);
+        if (mf) {
+            frames[mf[1].toLowerCase()] = value(mf[2]);
+            found = true;
+            continue;
+        }
         const mr = raw.match(/^\s*root\s*:(.*)$/i);
         if (mr) {
             root = value(mr[1]);
@@ -85,10 +108,13 @@ export function parseConfig(text) {
     const list = (g) => ordered(g).map((k) => g[k]).filter(Boolean).map(abs);
 
     return {
+        mode,
         root,
         images: list(groups.image).slice(0, CONFIG_LIMITS.image),
         videos: list(groups.video).slice(0, CONFIG_LIMITS.video),
         video_audios: list(groups.video_audio).slice(0, CONFIG_LIMITS.video_audio),
         audios: list(groups.audio).slice(0, CONFIG_LIMITS.audio),
+        first_frame: frames.first_frame ? [abs(frames.first_frame)] : [],
+        last_frame: frames.last_frame ? [abs(frames.last_frame)] : [],
     };
 }

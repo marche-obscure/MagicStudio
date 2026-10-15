@@ -137,6 +137,53 @@ class StateTests(unittest.TestCase):
         self.assertEqual(s["video_audios"], ["a.mp4"])
 
 
+class ModeTests(TmpDirTest):
+    def test_default_mode_is_ref2va(self):
+        s = media.parse_state("{}")
+        self.assertEqual(s["mode"], "ref2va")
+        self.assertEqual(s["first_frame"], [])
+        self.assertEqual(s["last_frame"], [])
+        self.assertEqual(media.state_layout(s)[0], "ref_image_1")
+
+    def test_fl2va_layout_has_two_frame_outputs(self):
+        s = media.parse_state(json.dumps({"mode": "fl2va", "images": ["a.png"]}))
+        self.assertEqual(media.state_layout(s), ["first_frame", "last_frame"])
+
+    def test_frames_accept_string_or_list_and_keep_one(self):
+        s = media.parse_state(json.dumps({"mode": "fl2va", "first_frame": "a.png",
+                                          "last_frame": ["b.png", "c.png"]}))
+        self.assertEqual(s["first_frame"], ["a.png"])
+        self.assertEqual(s["last_frame"], ["b.png"])
+
+    def test_unknown_mode_falls_back_to_ref2va(self):
+        self.assertEqual(media.parse_state(json.dumps({"mode": "xyz"}))["mode"], "ref2va")
+
+    def test_fl2va_outputs_first_and_last_frames(self):
+        Image.new("RGB", (16, 8)).save(self.p("debut.png"))
+        state = media.parse_state(json.dumps({
+            "mode": "fl2va", "folders": {"image": self.dir}, "first_frame": ["debut.png"],
+            "images": ["absent_mais_ignore.png"],
+        }))
+        out = media.build_outputs(state)
+        self.assertEqual(len(out), media.TOTAL_OUTPUTS)
+        self.assertEqual(tuple(out[0].shape), (1, 8, 16, 3))
+        self.assertIsNone(out[1])  # pas de last_frame : F2VA
+        self.assertTrue(all(v is None for v in out[2:]))
+
+    def test_fl2va_missing_frame_raises_clear_error(self):
+        state = media.parse_state(json.dumps({
+            "mode": "fl2va", "folders": {"image": self.dir}, "last_frame": ["gone.png"]}))
+        with self.assertRaises(FileNotFoundError) as ctx:
+            media.build_outputs(state)
+        self.assertIn("last_frame", str(ctx.exception))
+
+    def test_signature_follows_the_active_mode(self):
+        Image.new("RGB", (8, 8)).save(self.p("f.png"))
+        a = media.state_signature(media.parse_state(json.dumps({"mode": "fl2va", "folders": {"image": self.dir}, "first_frame": ["f.png"]})))
+        b = media.state_signature(media.parse_state(json.dumps({"mode": "ref2va", "folders": {"image": self.dir}, "first_frame": ["f.png"]})))
+        self.assertNotEqual(a, b)
+
+
 class ListFolderTests(TmpDirTest):
     def test_lists_only_files_of_the_requested_kind_sorted(self):
         Image.new("RGB", (8, 8)).save(self.p("b.png"))

@@ -34,6 +34,11 @@ MAX_VIDEO_AUDIOS = 3
 MAX_AUDIOS = 3
 TOTAL_OUTPUTS = MAX_IMAGES + MAX_VIDEOS + MAX_VIDEO_AUDIOS + MAX_AUDIOS
 
+# Modes du noeud : Ref2VA (MiniMax H3 Reference to Video) ou F2VA/FL2VA
+# (MiniMax H3 Image to Video : premiere image, et derniere en option).
+MODES = ("ref2va", "fl2va")
+FRAME_KEYS = ["first_frame", "last_frame"]
+
 KIND_EXTS = {
     "image": (".png", ".jpg", ".jpeg", ".webp", ".bmp"),
     "video": (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"),
@@ -101,7 +106,12 @@ def parse_state(raw):
     if not video_audios:
         video_audios = old_sounds
 
+    mode = data.get("mode") if data.get("mode") in MODES else "ref2va"
+
     return {
+        "mode": mode,
+        "first_frame": _frame(data.get("first_frame")),
+        "last_frame": _frame(data.get("last_frame")),
         "folders": folders,
         "images": images[:MAX_IMAGES],
         "videos": videos[:MAX_VIDEOS],
@@ -114,12 +124,29 @@ def _as_list(value):
     return value if isinstance(value, list) else []
 
 
+def _frame(value):
+    """Image de debut / de fin : chaine ou liste, une seule image gardee."""
+    items = value if isinstance(value, list) else [value]
+    names = [n for n in (_clean_name(v) for v in items) if n]
+    return names[:1]
+
+
+def state_layout(state):
+    """Sorties visibles selon le mode (doit rester identique au JS)."""
+    if state["mode"] == "fl2va":
+        return list(FRAME_KEYS)
+    return layout_keys(len(state["images"]), len(state["videos"]), len(state["video_audios"]),
+                       len(state["audios"]))
+
+
 def _resolve(state, kind, name):
     return os.path.join(state["folders"].get(kind, ""), name)
 
 
 def selected_paths(state):
-    """Chemins complets de tous les fichiers selectionnes."""
+    """Chemins complets des fichiers selectionnes du mode actif."""
+    if state["mode"] == "fl2va":
+        return [_resolve(state, "image", n) for n in state["first_frame"] + state["last_frame"]]
     paths = [_resolve(state, "image", n) for n in state["images"]]
     paths += [_resolve(state, "video", n) for n in state["videos"] + state["video_audios"]]
     paths += [_resolve(state, "audio", n) for n in state["audios"]]
@@ -421,6 +448,14 @@ def build_outputs(state):
     puis None pour les sorties inutilisees.
     """
     values = {}
+    if state["mode"] == "fl2va":
+        # F2VA / FL2VA : premiere image, et derniere en option (None sinon).
+        for key in FRAME_KEYS:
+            if state[key]:
+                values[key] = load_image(_checked(state, "image", state[key][0], key))
+        out = [values.get(k) for k in FRAME_KEYS]
+        return tuple(out + [None] * (TOTAL_OUTPUTS - len(out)))
+
     for i, name in enumerate(state["images"], 1):
         key = "ref_image_%d" % i
         values[key] = load_image(_checked(state, "image", name, key))
@@ -440,8 +475,6 @@ def build_outputs(state):
         key = "ref_audio_%d" % i
         values[key] = load_audio(_checked(state, "audio", name, key))
 
-    keys = layout_keys(len(state["images"]), len(state["videos"]), len(state["video_audios"]),
-                       len(state["audios"]))
-    out = [values.get(k) for k in keys]
+    out = [values.get(k) for k in state_layout(state)]
     out += [None] * (TOTAL_OUTPUTS - len(out))
     return tuple(out)

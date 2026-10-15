@@ -17,17 +17,22 @@ const INACTIVE_BG = "#2a2a2a";
 const INACTIVE_FG = "#888";
 
 // Plafonds des entrees de MiniMaxH3ReferenceToVideo (identiques a media.py).
-const LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3 };
+const LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3, first_frame: 1, last_frame: 1 };
 
 // Les 4 listes de references. video_audio : bandes-son extraites de videos
 // (pistes audio ref_video_audio_N), liste independante des videos.
-const LIST_KEYS = { image: "images", video: "videos", video_audio: "video_audios", audio: "audios" };
+const LIST_KEYS = {
+    image: "images", video: "videos", video_audio: "video_audios", audio: "audios",
+    first_frame: "first_frame", last_frame: "last_frame",
+};
 const listOf = (s, kind) => s[LIST_KEYS[kind]];
-/** Type de fichier selectionnable pour une liste (video_audio : des videos). */
-const fileKind = (kind) => (kind === "video_audio" ? "video" : kind);
+/** Type de fichier selectionnable pour une liste (video_audio : des videos ; frames : des images). */
+const fileKind = (kind) =>
+    kind === "video_audio" ? "video" : kind === "first_frame" || kind === "last_frame" ? "image" : kind;
 
-// Hauteur de l'interface DOM (4 boutons + barre du bas).
-const UI_HEIGHT = 196;
+// Hauteur de l'interface DOM : interrupteur de mode + lignes + barre du bas
+// (4 lignes en Ref2VA, 2 en F2VA/FL2VA).
+const UI_HEIGHT = { ref2va: 232, fl2va: 156 };
 const MIN_WIDTH = 340;
 
 const svg = (body, size) =>
@@ -84,9 +89,16 @@ const BUTTONS = [
     { id: "audio", kind: "audio", label: "Audio", icon: AUDIO_ICON, color: TITLE_COLOR },
 ];
 
+// Lignes du mode F2VA/FL2VA (MiniMax H3 Image to Video).
+const FRAME_BUTTONS = [
+    { id: "first_frame", kind: "first_frame", label: "First frame", icon: IMAGE_ICON, color: VIOLET },
+    { id: "last_frame", kind: "last_frame", label: "Last frame", icon: IMAGE_ICON, color: TITLE_COLOR },
+];
+
 const KIND_TITLES = {
     image: "Reference images", video: "Reference videos",
     video_audio: "Video soundtracks (ref_video_audio)", audio: "Reference audio",
+    first_frame: "First frame (F2VA / FL2VA)", last_frame: "Last frame (FL2VA, optional)",
 };
 
 function iconBadge(icon, bg) {
@@ -96,6 +108,17 @@ function iconBadge(icon, bg) {
 }
 
 const HELP_SECTIONS = [
+    {
+        title: "Two modes",
+        html: "<p>The switch at the top chooses the mode. <b>Ref2VA</b> loads the references of " +
+            "<b>MiniMax H3 Reference to Video</b> (four rows below). <b>F2VA / FL2VA</b> loads the " +
+            "frames of <b>MiniMax H3 Image to Video</b>: a <b>First frame</b> and, optionally, a " +
+            "<b>Last frame</b> (images), on the outputs <b>first_frame</b> and <b>last_frame</b>. " +
+            "Without a last frame, MiniMax does F2VA; with both, FL2VA.</p>" +
+            "<p>Each mode keeps its own selection and its outputs: switching back restores them, and " +
+            "the wires of that mode are reconnected when their target is still there and free. In the " +
+            "gallery of a frame, clicking an image replaces the current one.</p>",
+    },
     {
         title: "What this node does",
         html: "<p>Loads the references of <b>MiniMax H3 Reference to Video</b>: " +
@@ -188,6 +211,8 @@ function emptyState() {
     return {
         root: "", folders: { image: "", video: "", audio: "" }, subs: { image: "", video: "", audio: "" },
         images: [], videos: [], video_audios: [], audios: [],
+        // Mode F2VA/FL2VA : une image au plus dans chaque liste.
+        mode: "ref2va", first_frame: [], last_frame: [],
     };
 }
 
@@ -222,6 +247,11 @@ function parseState(raw) {
         .slice(0, LIMITS.video);
     const va = (Array.isArray(data.video_audios) ? data.video_audios : []).filter((v) => typeof v === "string" && v);
     s.video_audios = (va.length ? va : oldSounds).slice(0, LIMITS.video_audio);
+    s.mode = data.mode === "fl2va" ? "fl2va" : "ref2va";
+    for (const k of ["first_frame", "last_frame"]) {
+        const v = data[k];
+        s[k] = (Array.isArray(v) ? v : [v]).filter((x) => typeof x === "string" && x).slice(0, 1);
+    }
     return s;
 }
 
@@ -245,6 +275,12 @@ function layoutKeys(ni, nv, nva, na) {
     for (let i = 1; i <= clamp(nva, LIMITS.video_audio); i++) keys.push("ref_video_audio_" + i);
     for (let i = 1; i <= clamp(na, LIMITS.audio); i++) keys.push("ref_audio_" + i);
     return keys;
+}
+
+/** Sorties visibles selon le mode (identique a media.state_layout cote Python). */
+function stateLayout(state) {
+    if (state.mode === "fl2va") return ["first_frame", "last_frame"];
+    return layoutKeys(state.images.length, state.videos.length, state.video_audios.length, state.audios.length);
 }
 
 function slotType(key) {
@@ -273,7 +309,7 @@ function outputLinksOf(node, slot) {
 }
 
 function applyLayout(node, state) {
-    const keys = layoutKeys(state.images.length, state.videos.length, state.video_audios.length, state.audios.length);
+    const keys = stateLayout(state);
     const same = node.outputs.length === keys.length && node.outputs.every((o, i) => o.name === keys[i]);
     if (!same) {
         for (let i = node.outputs.length - 1; i >= 0; i--) {
@@ -781,6 +817,7 @@ function buildGallery(container, ctx) {
         const idx = indexOf(path, s);
         if (idx >= 0) arr.splice(idx, 1);
         else if (arr.length < LIMITS[kind]) arr.push(path);
+        else if (LIMITS[kind] === 1) arr[0] = path; // une seule image : elle est remplacee
         else return;
         ctx.setState(s);
         render();
@@ -895,7 +932,8 @@ function buildGallery(container, ctx) {
         updateCounters();
         grid.innerHTML = "";
         const folder = currentFolder();
-        const full = list().length >= LIMITS[kind];
+        // Liste d'une seule image : jamais "pleine", un clic remplace l'image.
+        const full = LIMITS[kind] > 1 && list().length >= LIMITS[kind];
         const present = SECTIONS.filter((sec) => files.some((f) => f.kind === sec.kind));
         for (const sec of present) {
             const group = files.filter((f) => f.kind === sec.kind);
@@ -1262,6 +1300,13 @@ const VIEWER_TITLES = {
     video_audio: "Selected video soundtracks", audio: "Selected audio",
 };
 const OUTPUT_PREFIX = { image: "ref_image_", video: "ref_video_", video_audio: "ref_video_audio_", audio: "ref_audio_" };
+VIEWER_TITLES.first_frame = "First frame";
+VIEWER_TITLES.last_frame = "Last frame";
+
+/** Nom de la sortie de l'element i (index 0) d'une liste. */
+function outputName(kind, i) {
+    return kind === "first_frame" || kind === "last_frame" ? kind : OUTPUT_PREFIX[kind] + (i + 1);
+}
 
 function buildSelectionViewer(container, ctx) {
     const { overlay, card } = makeOverlay();
@@ -1369,10 +1414,9 @@ function buildSelectionViewer(container, ctx) {
         const numbers = arr
             .map((it, i) => (marked.has(markKey(pathOf(it))) ? i + 1 : null))
             .filter((v) => v !== null);
-        const prefix = OUTPUT_PREFIX[kind];
         confirm.ask(
             "<b>Delete " + numbers.length + " reference" + (numbers.length > 1 ? "s" : "") + "?</b><br>" +
-            numbers.map((n) => prefix + n + " : " + escapeHtml(baseName(pathOf(arr[n - 1])))).join("<br>") +
+            numbers.map((n) => outputName(kind, n - 1) + " : " + escapeHtml(baseName(pathOf(arr[n - 1])))).join("<br>") +
             '<div style="color:#999;margin-top:8px">The following references move up and the last ' +
             "output that becomes empty is removed.</div>",
             "Delete", deleteMarked, card);
@@ -1481,7 +1525,7 @@ function buildSelectionViewer(container, ctx) {
                 textOverflow: "ellipsis", color: "#fff",
             });
             const out = document.createElement("div");
-            out.textContent = "→ " + OUTPUT_PREFIX[kind] + (i + 1) + (kind === "video_audio" ? "  (sound)" : "");
+            out.textContent = "→ " + outputName(kind, i) + (kind === "video_audio" ? "  (sound)" : "");
             Object.assign(out.style, { padding: "0 5px", fontSize: "10px", color: "#9fd6cf" });
 
             // Fleches : la premiere vignette n'a que ▶ actif, la derniere que ◀.
@@ -1552,7 +1596,7 @@ function buildSelectionViewer(container, ctx) {
             if (current !== path) return;
             const idx = list().findIndex((it) => samePath(pathOf(it), path));
             details.innerHTML =
-                row("Number:", idx + 1 + "  →  " + OUTPUT_PREFIX[kind] + (idx + 1)) +
+                row("Number:", idx + 1 + "  →  " + outputName(kind, idx)) +
                 row("File:", info.name) +
                 row("Folder:", info.folder) +
                 (info.width ? row("Size:", info.width + " × " + info.height + " px") : "") +
@@ -1648,8 +1692,33 @@ app.registerExtension({
                 boxSizing: "border-box", width: "100%", fontFamily: "sans-serif", fontSize: "12px",
             });
 
+            // Interrupteur de mode (pilule) : Ref2VA (orange) | F2VA/FL2VA (vert).
+            const modeToggle = document.createElement("div");
+            Object.assign(modeToggle.style, {
+                display: "flex", borderRadius: "999px", overflow: "hidden", flex: "0 0 auto",
+                border: "1px solid #0c3833", height: "24px",
+            });
+            const modeBtns = {};
+            for (const [m, text, tip] of [
+                ["ref2va", "Ref2VA", "References for MiniMax H3 Reference to Video"],
+                ["fl2va", "F2VA / FL2VA", "First (and last) frame for MiniMax H3 Image to Video"],
+            ]) {
+                const mb = document.createElement("button");
+                mb.type = "button";
+                mb.textContent = text;
+                mb.title = tip;
+                Object.assign(mb.style, {
+                    flex: "1", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold",
+                    fontSize: "11px", padding: "0",
+                });
+                mb.addEventListener("click", () => setMode(m));
+                modeToggle.appendChild(mb);
+                modeBtns[m] = mb;
+            }
+            container.appendChild(modeToggle);
+
             const rows = {};
-            for (const b of BUTTONS) {
+            for (const b of BUTTONS.concat(FRAME_BUTTONS)) {
                 const row = document.createElement("div");
                 Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center", flex: "0 0 auto" });
 
@@ -1691,12 +1760,11 @@ app.registerExtension({
                 trash.addEventListener("click", () => {
                     const items = listOf(getState(), b.kind);
                     if (!items.length) return;
-                    const prefix = OUTPUT_PREFIX[b.kind];
                     clearConfirm.ask(
                         "<b>Delete all " + items.length + " " + b.label + " reference" +
                         (items.length > 1 ? "s" : "") + "?</b><br>" +
-                        items.map((it, i) => prefix + (i + 1) + " : " + escapeHtml(baseName(it))).join("<br>") +
-                        '<div style="color:#999;margin-top:8px">Only ' + prefix + "1 stays, empty.</div>",
+                        items.map((it, i) => outputName(b.kind, i) + " : " + escapeHtml(baseName(it))).join("<br>") +
+                        '<div style="color:#999;margin-top:8px">Only ' + outputName(b.kind, 0) + " stays, empty.</div>",
                         "Delete all", () => {
                             const s = getState();
                             s[LIST_KEYS[b.kind]] = [];
@@ -1706,7 +1774,7 @@ app.registerExtension({
                 row.appendChild(trash);
 
                 container.appendChild(row);
-                rows[b.id] = { btn, count, trash };
+                rows[b.id] = { row, btn, count, trash };
             }
 
             const bottom = document.createElement("div");
@@ -1750,7 +1818,52 @@ app.registerExtension({
 
             // Une configuration "existe" des qu'une reference est selectionnee ;
             // le dossier racine seul ne compte pas.
-            const totalRefs = (s) => s.images.length + s.videos.length + s.video_audios.length + s.audios.length;
+            const totalRefs = (s) => s.images.length + s.videos.length + s.video_audios.length + s.audios.length +
+                s.first_frame.length + s.last_frame.length;
+
+            /**
+             * Liens et noms renommes des sorties d'un mode, memorises dans
+             * node.properties.modeLinks : en revenant a ce mode, les liens sont
+             * rebranches si le noeud cible et son entree existent encore et sont libres.
+             */
+            function saveModeLinks(mode) {
+                const saved = [];
+                node.outputs.forEach((o, i) => {
+                    const links = outputLinksOf(node, i).map((l) => {
+                        const target = node.graph && node.graph.getNodeById(l.target_id);
+                        const input = target && target.inputs && target.inputs[l.target_slot];
+                        return input ? { targetId: l.target_id, input: input.name } : null;
+                    }).filter(Boolean);
+                    saved.push({ key: o.name, label: o.label || null, links });
+                });
+                node.properties.modeLinks = Object.assign({}, node.properties.modeLinks, { [mode]: saved });
+            }
+
+            function restoreModeLinks(mode) {
+                const saved = (node.properties.modeLinks || {})[mode] || [];
+                for (const entry of saved) {
+                    const outIdx = node.outputs.findIndex((o) => o.name === entry.key);
+                    if (outIdx < 0) continue;
+                    if (entry.label) node.outputs[outIdx].label = entry.label;
+                    for (const l of entry.links) {
+                        const target = node.graph && node.graph.getNodeById(l.targetId);
+                        if (!target || !target.inputs) continue;
+                        const inIdx = target.inputs.findIndex((inp) => inp.name === l.input);
+                        if (inIdx >= 0 && target.inputs[inIdx].link == null) node.connect(outIdx, target, inIdx);
+                    }
+                }
+                node.setDirtyCanvas(true, true);
+            }
+
+            /** Bascule Ref2VA <-> F2VA/FL2VA ; chaque mode garde sa configuration. */
+            function setMode(mode, s) {
+                s = s || getState();
+                if (s.mode === mode) return;
+                saveModeLinks(s.mode);
+                s.mode = mode;
+                setState(s);
+                restoreModeLinks(mode);
+            }
             const hasConfig = (s) => totalRefs(s) > 0;
 
             // Download : fichier texte genere dans le navigateur.
@@ -1803,9 +1916,17 @@ app.registerExtension({
                     s.videos = conf.videos;
                     s.video_audios = conf.video_audios;
                     s.audios = conf.audios;
-                    setState(s);
+                    s.first_frame = conf.first_frame;
+                    s.last_frame = conf.last_frame;
+                    if (s.mode !== conf.mode) {
+                        // Le fichier change de mode : memes regles que l'interrupteur.
+                        setMode(conf.mode, s);
+                    } else {
+                        setState(s);
+                    }
                     // Fichiers absents du disque : charges quand meme, signales.
-                    const paths = conf.images.concat(conf.videos, conf.video_audios, conf.audios);
+                    const paths = conf.images.concat(conf.videos, conf.video_audios, conf.audios,
+                        conf.first_frame, conf.last_frame);
                     const missing = [];
                     await Promise.all(paths.map(async (p) => {
                         const res = await fetch("/mmrefloader/info?file=" + encodeURIComponent(p)).catch(() => null);
@@ -1827,6 +1948,20 @@ app.registerExtension({
 
             function refresh() {
                 const s = getState();
+                const fl = s.mode === "fl2va";
+                // Interrupteur et lignes du mode actif.
+                modeBtns.ref2va.style.background = fl ? INACTIVE_BG : ORANGE;
+                modeBtns.ref2va.style.color = fl ? INACTIVE_FG : "white";
+                modeBtns.fl2va.style.background = fl ? GREEN : INACTIVE_BG;
+                modeBtns.fl2va.style.color = fl ? "white" : INACTIVE_FG;
+                BUTTONS.forEach((b) => (rows[b.id].row.style.display = fl ? "none" : "flex"));
+                FRAME_BUTTONS.forEach((b) => (rows[b.id].row.style.display = fl ? "flex" : "none"));
+                for (const b of FRAME_BUTTONS) {
+                    const v = s[b.kind][0];
+                    rows[b.id].count.textContent = v ? baseName(v) : b.id === "last_frame" ? "none (F2VA)" : "empty";
+                    rows[b.id].btn.title = v || (b.id === "last_frame"
+                        ? "Optional: without a last frame, MiniMax does F2VA" : "Pick the first frame");
+                }
                 rows.image.count.textContent = s.images.length + " / " + LIMITS.image;
                 rows.video.count.textContent = s.videos.length + " / " + LIMITS.video;
                 // Video/Audio : des pistes audio (bande-son extraite des videos).
@@ -1834,7 +1969,7 @@ app.registerExtension({
                 rows.audio.count.textContent = s.audios.length + " / " + LIMITS.audio;
 
                 // Poubelles : grises et inactives sans reference, rouges sinon.
-                for (const b of BUTTONS) {
+                for (const b of BUTTONS.concat(FRAME_BUTTONS)) {
                     const t = rows[b.id].trash;
                     const on = listOf(s, b.kind).length > 0;
                     t.disabled = !on;
@@ -1851,10 +1986,14 @@ app.registerExtension({
                 rows.audio.btn.title = listTitle(s.audios);
 
                 const total = totalRefs(s);
-                summary.textContent = notice || (total
-                    ? s.images.length + " image(s), " + s.videos.length + " video(s), " +
-                      (s.video_audios.length + s.audios.length) + " audio"
-                    : "Click a button to pick references");
+                const refText = fl
+                    ? (s.first_frame.length ? (s.last_frame.length ? "FL2VA: first + last frame" : "F2VA: first frame")
+                        : "Pick a first frame")
+                    : s.images.length + s.videos.length + s.video_audios.length + s.audios.length
+                        ? s.images.length + " image(s), " + s.videos.length + " video(s), " +
+                          (s.video_audios.length + s.audios.length) + " audio"
+                        : "Click a button to pick references";
+                summary.textContent = notice || refText;
                 summary.style.color = notice ? ORANGE : "#9fd6cf";
                 summary.title = notice ? noticeTitle : "";
 
@@ -1868,8 +2007,8 @@ app.registerExtension({
             node.addDOMWidget("mmrefloader_ui", "mmrefloader", container, {
                 serialize: false,
                 hideOnZoom: false,
-                getMinHeight: () => UI_HEIGHT,
-                getHeight: () => UI_HEIGHT,
+                getMinHeight: () => UI_HEIGHT[getState().mode],
+                getHeight: () => UI_HEIGHT[getState().mode],
             });
 
             const onResize = node.onResize;

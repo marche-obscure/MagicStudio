@@ -2,6 +2,7 @@
 
 ComfyUI custom node that loads the references of the native **MiniMax H3 Reference to Video** node, picked in thumbnail galleries.
 
+- A switch at the top chooses the mode: **Ref2VA** (references for MiniMax H3 Reference to Video, the rows below) or **F2VA / FL2VA** (a **First frame** and an optional **Last frame**, images only, on the outputs `first_frame` and `last_frame` for MiniMax H3 Image to Video; without a last frame MiniMax does F2VA). Each mode keeps its own selection and outputs; switching back reconnects the wires of that mode when their target is still there and free.
 - **Images** (up to 9), **Video** (up to 3), **Video/Audio** (up to 3 video soundtracks), **Audio** (up to 3).
 - Click order sets the number: the first image clicked is `ref_image_1`, i.e. `<Picture 1>` in the prompt.
 - **Video** gives the video frames on `ref_video_N`. **Video/Audio** picks videos too, but only their **soundtrack** is extracted: it is an **audio track** on `ref_video_audio_N`, counted with the audio tracks. The two lists are independent (pick the same video in both to get its frames and its sound).
@@ -13,11 +14,14 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
 - The download button saves the whole configuration (root folder, images, videos, video soundtracks, audio) in a `.txt` file, one line per output:
 
   ```
+  mode : Ref2VA
   root : F:\Rushs\Project
   image 1 : images\a.png
   video 1 : videos\shot.mp4
   video_audio 1 : videos\shot.mp4
   audio 1 : NaN
+  first_frame : NaN
+  last_frame : NaN
   ```
 
   Paths under the root folder are written relative to it; an empty group is written with its first number and `NaN`.

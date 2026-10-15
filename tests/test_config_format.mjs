@@ -7,11 +7,14 @@ import { formatConfig, parseConfig, toRelative, toAbsolute } from "../web/js/con
 const ROOT = "F:\\Rushs\\Projet";
 
 const state = {
+    mode: "ref2va",
     root: ROOT,
     images: [ROOT + "\\images\\a.png", "D:\\ailleurs\\b.png"],
     videos: [ROOT + "\\videos\\v1.mp4", ROOT + "\\videos\\v2.mp4"],
     video_audios: [ROOT + "\\videos\\v2.mp4"],
     audios: [],
+    first_frame: [ROOT + "\\images\\debut.png"],
+    last_frame: [],
 };
 
 test("chemin sous la racine ecrit en relatif, ailleurs en absolu", () => {
@@ -31,6 +34,7 @@ test("chemin relatif rejoint la racine, absolu garde tel quel", () => {
 
 test("format : une ligne par sortie, NaN pour un groupe vide", () => {
     assert.equal(formatConfig(state), [
+        "mode : Ref2VA",
         "root : F:\\Rushs\\Projet",
         "image 1 : images\\a.png",
         "image 2 : D:\\ailleurs\\b.png",
@@ -38,13 +42,17 @@ test("format : une ligne par sortie, NaN pour un groupe vide", () => {
         "video 2 : videos\\v2.mp4",
         "video_audio 1 : videos\\v2.mp4",
         "audio 1 : NaN",
+        "first_frame : images\\debut.png",
+        "last_frame : NaN",
         "",
     ].join("\r\n"));
 });
 
 test("format d'une configuration vide", () => {
-    const text = formatConfig({ root: "", images: [], videos: [], video_audios: [], audios: [] });
-    assert.equal(text, "root : NaN\r\nimage 1 : NaN\r\nvideo 1 : NaN\r\nvideo_audio 1 : NaN\r\naudio 1 : NaN\r\n");
+    const text = formatConfig({ mode: "fl2va", root: "", images: [], videos: [], video_audios: [], audios: [],
+        first_frame: [], last_frame: [] });
+    assert.equal(text, "mode : FL2VA\r\nroot : NaN\r\nimage 1 : NaN\r\nvideo 1 : NaN\r\nvideo_audio 1 : NaN\r\n" +
+        "audio 1 : NaN\r\nfirst_frame : NaN\r\nlast_frame : NaN\r\n");
 });
 
 test("aller-retour format -> lecture", () => {
@@ -64,11 +72,14 @@ test("lecture tolerante : ordre, casse, espaces, trous de numerotation, NaN", ()
         "audio 1 : nan",
     ].join("\n");
     assert.deepEqual(parseConfig(text), {
+        mode: "ref2va",
         root: "F:/r",
         images: ["F:/r/a.png", "F:/r/c.png"],
         videos: [],
         video_audios: ["F:/r/x.mp4"],
         audios: ["F:/r/voix.wav"],
+        first_frame: [],
+        last_frame: [],
     });
 });
 
@@ -81,7 +92,8 @@ test("ancien fichier : video_audio N = NaN ou meme chemin que video N", () => {
         "video_audio 2 : C:\\b.mp4",
     ].join("\n");
     assert.deepEqual(parseConfig(text), {
-        root: "", images: [], videos: ["C:\\a.mp4", "C:\\b.mp4"], video_audios: ["C:\\b.mp4"], audios: [],
+        mode: "ref2va", root: "", images: [], videos: ["C:\\a.mp4", "C:\\b.mp4"], video_audios: ["C:\\b.mp4"],
+        audios: [], first_frame: [], last_frame: [],
     });
 });
 
@@ -99,4 +111,14 @@ test("lecture : plafonds MiniMax respectes", () => {
 
 test("lecture : fichier sans aucune ligne reconnue refuse", () => {
     assert.throws(() => parseConfig("bonjour\nrien a voir"), /No configuration line/);
+});
+
+test("mode et images de debut / fin", () => {
+    const text = "mode : fl2va\nroot : F:/r\nfirst_frame : a.png\nlast_frame 1 : D:\\b.png\n";
+    const c = parseConfig(text);
+    assert.equal(c.mode, "fl2va");
+    assert.deepEqual(c.first_frame, ["F:/r/a.png"]);
+    assert.deepEqual(c.last_frame, ["D:\\b.png"]);
+    assert.equal(parseConfig("mode : F2VA/FL2VA\nfirst_frame : x.png").mode, "fl2va");
+    assert.equal(parseConfig("mode : n'importe quoi\nimage 1 : x.png").mode, "ref2va");
 });
