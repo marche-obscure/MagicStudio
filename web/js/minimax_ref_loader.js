@@ -182,7 +182,9 @@ const HELP_SECTIONS = [
             "list and shows the root folder content, the one of <b>Subfolder</b> shows the content of " +
             "the chosen subfolder. A folder with one kind of files shows a single grid; a mixed folder " +
             "shows a section per kind (Images, Video or Video/Audio, Audio). Only the files of the button " +
-            "that opened the gallery can be selected, the others are shown for information. Without a root folder " +
+            "that opened the gallery can be selected, the others are shown for information. Clicking an image " +
+            "or a video also shows it (image, or video with its player) in a preview window on the right. " +
+            "Without a root folder " +
             "they are greyed out; Browse and Reload stay available; Reload goes back to the root folder of the gear button when the gallery shows another folder.</p>" +
             "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the whole configuration (root folder, " +
             "images, videos, video soundtracks, audio) in a .txt file, one line per output, e.g. " +
@@ -607,6 +609,101 @@ function buildHelpOverlay(container) {
 }
 
 // --------------------------------------------------------------------
+// Fenetre de visualisation d'une image ou d'une video (galerie et fenetre oeil)
+// --------------------------------------------------------------------
+/**
+ * Fenetre de meme taille que card, placee a sa droite. Ecran trop etroit :
+ * retrecie a la place libre (360 px au moins) a droite, sinon a gauche ; en
+ * dernier recours seulement, elle recouvre card. Elle est mise dans l'overlay
+ * de la fenetre parente : un clic dedans ne ferme pas cette fenetre.
+ * show(path, fileKind, sousTitre) : image, ou video avec son lecteur.
+ */
+function buildSidePreview(card, overlay) {
+    const side = document.createElement("div");
+    Object.assign(side.style, {
+        position: "fixed", display: "none", flexDirection: "column", overflow: "hidden",
+        background: "#1e1e1e", color: "#ddd", border: "1px solid " + VIOLET, borderRadius: "10px",
+        boxShadow: "0 8px 28px rgba(0,0,0,0.6)", fontFamily: "sans-serif", fontSize: "12px",
+        boxSizing: "border-box",
+    });
+    side.addEventListener("mousedown", (e) => e.stopPropagation());
+    side.addEventListener("click", (e) => e.stopPropagation());
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+        display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderBottom: "1px solid #333",
+    });
+    const title = document.createElement("div");
+    Object.assign(title.style, {
+        fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, flex: "1", whiteSpace: "nowrap",
+        overflow: "hidden", textOverflow: "ellipsis",
+    });
+    const subtitle = document.createElement("div");
+    subtitle.style.color = "#bbb";
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close the preview");
+    header.append(title, subtitle, closeBtn);
+    const body = document.createElement("div");
+    Object.assign(body.style, {
+        flex: "1", minHeight: "0", display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "10px", background: "#111", margin: "10px", borderRadius: "6px", overflow: "hidden",
+    });
+    side.append(header, body);
+    overlay.appendChild(side);
+
+    function place() {
+        const r = card.getBoundingClientRect();
+        const margin = 12;
+        const minW = 360;
+        const w = r.width || 720;
+        const h = r.height || 560;
+        const roomRight = window.innerWidth - 8 - (r.right + margin);
+        const roomLeft = r.left - margin - 8;
+        let width = w;
+        let left = r.right + margin;
+        if (roomRight < w) {
+            if (roomRight >= minW || roomRight >= roomLeft) {
+                width = Math.max(Math.min(w, roomRight), minW);
+            } else {
+                width = Math.max(Math.min(w, roomLeft), minW);
+                left = r.left - margin - width;
+            }
+            left = Math.max(8, Math.min(left, window.innerWidth - 8 - width));
+        }
+        side.style.width = width + "px";
+        side.style.height = h + "px";
+        side.style.left = left + "px";
+        side.style.top = r.top + "px";
+    }
+
+    function show(path, fk, sub) {
+        body.innerHTML = "";
+        let el;
+        if (fk === "image") {
+            el = document.createElement("img");
+        } else {
+            el = document.createElement("video");
+            el.controls = true;
+            el.preload = "metadata";
+        }
+        el.src = "/mmrefloader/media?file=" + encodeURIComponent(path);
+        Object.assign(el.style, { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
+        body.appendChild(el);
+        title.textContent = baseName(path);
+        title.title = path;
+        subtitle.textContent = sub || "";
+        side.style.display = "flex";
+        place();
+    }
+
+    function hide() {
+        side.style.display = "none";
+        body.innerHTML = ""; // arrete une lecture video en cours
+    }
+
+    closeBtn.addEventListener("click", hide);
+    return { show, hide, isOpen: () => side.style.display !== "none" };
+}
+
+// --------------------------------------------------------------------
 // Galerie de selection (une seule fenetre, reutilisee pour les 3 types)
 // --------------------------------------------------------------------
 function buildGallery(container, ctx) {
@@ -707,6 +804,24 @@ function buildGallery(container, ctx) {
     footer.append(clearBtn, footerInfo, doneBtn);
 
     card.append(header, baseRow, subRow, status, grid, footer);
+
+    // Apercu d'une image / video cliquee (lecteur seul, pas de vignettes).
+    const sidePreview = buildSidePreview(card, overlay);
+    function previewFile(f, path) {
+        // Audio : pas d'apercu (et on ferme celui d'un fichier precedent).
+        if (f.kind === "audio") {
+            sidePreview.hide();
+            return;
+        }
+        let sub;
+        if (f.kind !== fileKind(kind)) {
+            sub = "for information";
+        } else {
+            const idx = indexOf(path);
+            sub = idx >= 0 ? outputName(kind, idx) : "not selected";
+        }
+        sidePreview.show(path, f.kind, sub);
+    }
 
     /**
      * Dossier dont on affiche les miniatures : le sous-dossier choisi, ou
@@ -935,7 +1050,10 @@ function buildGallery(container, ctx) {
 
         }
 
-        if (own) tile.addEventListener("click", () => toggle(path));
+        tile.addEventListener("click", () => {
+            if (own) toggle(path);
+            previewFile(f, path);
+        });
         return tile;
     }
 
@@ -1046,6 +1164,7 @@ function buildGallery(container, ctx) {
     };
 
     function close() {
+        sidePreview.hide();
         overlay.style.display = "none";
         window.removeEventListener("keydown", onKey, true);
     }
@@ -1589,94 +1708,14 @@ function buildSelectionViewer(container, ctx) {
     }
 
     // ------ Fenetre de visualisation (images et videos) ------
-    // Meme taille que la fenetre de selection, placee a sa droite (a gauche
-    // si la place manque). Elle est dans l'overlay de la fenetre : un clic
-    // dedans ne ferme pas la selection.
-    const side = document.createElement("div");
-    Object.assign(side.style, {
-        position: "fixed", display: "none", flexDirection: "column", overflow: "hidden",
-        background: "#1e1e1e", color: "#ddd", border: "1px solid " + VIOLET, borderRadius: "10px",
-        boxShadow: "0 8px 28px rgba(0,0,0,0.6)", fontFamily: "sans-serif", fontSize: "12px",
-        boxSizing: "border-box",
-    });
-    side.addEventListener("mousedown", (e) => e.stopPropagation());
-    side.addEventListener("click", (e) => e.stopPropagation());
-    const sideHeader = document.createElement("div");
-    Object.assign(sideHeader.style, {
-        display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderBottom: "1px solid #333",
-    });
-    const sideTitle = document.createElement("div");
-    Object.assign(sideTitle.style, {
-        fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, flex: "1", whiteSpace: "nowrap",
-        overflow: "hidden", textOverflow: "ellipsis",
-    });
-    const sideCount = document.createElement("div");
-    sideCount.style.color = "#bbb";
-    const sideClose = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close the preview");
-    sideHeader.append(sideTitle, sideCount, sideClose);
-    const sideBody = document.createElement("div");
-    Object.assign(sideBody.style, {
-        flex: "1", minHeight: "0", display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "10px", background: "#111", margin: "10px", borderRadius: "6px", overflow: "hidden",
-    });
-    side.append(sideHeader, sideBody);
-    overlay.appendChild(side);
-    sideClose.addEventListener("click", hideSide);
-
-    /**
-     * Meme taille que la fenetre de selection, a sa droite. Ecran trop etroit :
-     * retrecie a la place libre (360 px au moins) a droite, sinon a gauche ;
-     * en dernier recours seulement, elle recouvre la fenetre de selection.
-     */
-    function placeSide() {
-        const r = card.getBoundingClientRect();
-        const margin = 12;
-        const minW = 360;
-        const w = r.width || 720;
-        const h = r.height || 560;
-        const roomRight = window.innerWidth - 8 - (r.right + margin);
-        const roomLeft = r.left - margin - 8;
-        let width = w;
-        let left = r.right + margin;
-        if (roomRight < w) {
-            if (roomRight >= minW || roomRight >= roomLeft) {
-                width = Math.max(Math.min(w, roomRight), minW);
-            } else {
-                width = Math.max(Math.min(w, roomLeft), minW);
-                left = r.left - margin - width;
-            }
-            left = Math.max(8, Math.min(left, window.innerWidth - 8 - width));
-        }
-        side.style.width = width + "px";
-        side.style.height = h + "px";
-        side.style.left = left + "px";
-        side.style.top = r.top + "px";
-    }
+    const sidePreview = buildSidePreview(card, overlay);
 
     function showSide(path, idx) {
-        const url = "/mmrefloader/media?file=" + encodeURIComponent(path);
-        sideBody.innerHTML = "";
-        let el;
-        if (fileKind(kind) === "image") {
-            el = document.createElement("img");
-        } else {
-            el = document.createElement("video");
-            el.controls = true;
-            el.preload = "metadata";
-        }
-        el.src = url;
-        Object.assign(el.style, { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
-        sideBody.appendChild(el);
-        sideTitle.textContent = baseName(path);
-        sideTitle.title = path;
-        sideCount.textContent = outputName(kind, idx);
-        side.style.display = "flex";
-        placeSide();
+        sidePreview.show(path, fileKind(kind), outputName(kind, idx));
     }
 
     function hideSide() {
-        side.style.display = "none";
-        sideBody.innerHTML = ""; // arrete une lecture video en cours
+        sidePreview.hide();
     }
 
     function row(label, value) {
