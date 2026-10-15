@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
+import { filterSections } from "./help_search.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -122,125 +123,185 @@ function iconBadge(icon, bg) {
         "background:" + bg + '">' + icon + "</span>";
 }
 
+// ------ Aide : petits blocs de mise en page ------
+const START_ICON = svg('<polygon points="6 4 20 12 6 20 6 4"></polygon>', 13);
+const MODE_ICON = svg('<rect x="2" y="7" width="20" height="10" rx="5"></rect><circle cx="16" cy="12" r="3"></circle>', 13);
+const SCISSORS_ICON = svg(
+    '<circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle>' +
+    '<line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line>' +
+    '<line x1="8.12" y1="8.12" x2="12" y2="12"></line>', 13);
+const OUTPUT_ICON = svg('<path d="M3 12h11"></path><polyline points="10 8 14 12 10 16"></polyline><circle cx="19" cy="12" r="2.5"></circle>', 13);
+const INFO_ICON = svg('<circle cx="12" cy="12" r="9"></circle><line x1="12" y1="11" x2="12" y2="16"></line><line x1="12" y1="8" x2="12" y2="8"></line>', 13);
+
+const hList = (items) =>
+    '<ul style="margin:4px 0 10px;padding-left:18px">' +
+    items.map((t) => '<li style="margin:4px 0">' + t + "</li>").join("") + "</ul>";
+const hSteps = (items) => items.map((t, i) =>
+    '<div style="display:flex;gap:10px;align-items:flex-start;margin:0 0 8px">' +
+    '<span style="flex:0 0 auto;min-width:20px;height:20px;border-radius:50%;background:' + VIOLET +
+    ';color:white;font-weight:bold;font-size:11px;display:flex;align-items:center;justify-content:center">' +
+    (i + 1) + "</span><span>" + t + "</span></div>").join("");
+const hTip = (t) =>
+    '<div style="border-left:3px solid ' + ORANGE + ';background:#241b15;color:#efcfb6;padding:6px 10px;' +
+    'margin:10px 0">💡 <b>Tip:</b> ' + t + "</div>";
+const hNote = (t) =>
+    '<div style="border-left:3px solid ' + VIOLET + ';background:#1c1a2b;color:#cfcaf2;padding:6px 10px;' +
+    'margin:10px 0"><b>Note:</b> ' + t + "</div>";
+/** Carte memo : rows = [[iconeHtml, texte], ...]. */
+const hCard = (title, rows) =>
+    '<div style="border:1px solid #2c2c2c;border-radius:8px;background:#161616;padding:8px 10px;margin:8px 0">' +
+    '<div style="color:#9fd6cf;font-weight:bold;margin-bottom:6px">' + title + "</div>" +
+    '<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center">' +
+    rows.map(([icon, text]) => "<span>" + icon + "</span><span>" + text + "</span>").join("") +
+    "</div></div>";
+const hCode = (t) =>
+    '<pre style="background:#111;border:1px solid #2c2c2c;border-radius:6px;padding:8px;margin:6px 0 10px;' +
+    'font-size:11px;white-space:pre-wrap;color:#cfe">' + t + "</pre>";
+
+// Rubriques de l'aide : menu a gauche, une rubrique affichee a la fois.
 const HELP_SECTIONS = [
     {
-        title: "Two modes",
-        html: "<p>The switch at the top chooses the mode. <b>Ref2VA</b> loads the references of " +
-            "<b>MiniMax H3 Reference to Video</b> (four rows below). <b>F2VA / FL2VA</b> loads the " +
-            "frames of <b>MiniMax H3 Image to Video</b>: a <b>First frame</b> and, optionally, a " +
-            "<b>Last frame</b> (images), on the outputs <b>first_frame</b> and <b>last_frame</b>. " +
-            "Without a last frame, MiniMax does F2VA; with both, FL2VA.</p>" +
-            "<p>Each mode keeps its own selection and its outputs: switching back restores them, and " +
-            "the wires of that mode are reconnected when their target is still there and free. In the " +
-            "gallery of a frame, clicking an image replaces the current one.</p>",
+        id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
+        html: hSteps([
+            "Choose the mode with the switch at the top: <b>Ref2VA</b> (references for MiniMax H3 " +
+            "Reference to Video) or <b>F2VA / FL2VA</b> (frames for MiniMax H3 Image to Video).",
+            "Click a row button (" + iconBadge(IMAGE_ICON, VIOLET) + " Images, " + iconBadge(VIDEO_ICON, ORANGE) +
+            " Video...) and click files in the gallery. Click order sets the number.",
+            "Wire the outputs in order to MiniMax: <b>ref_image_1</b> goes to <b>ref_image_0</b>, and so on.",
+        ]) +
+        hCard("Buttons of the node", [
+            [iconBadge(EYE_ICON, VIOLET), "View, reorder, delete and trim the files of a row"],
+            [iconBadge(TRASH_ICON, MARK_RED), "Clear all the files of a row"],
+            [iconBadge(OVERVIEW_ICON, VIOLET), "Overview of the whole selection"],
+            [iconBadge(GEAR_ICON, VIOLET), "Root folder of your rushes"],
+            [iconBadge(DOWNLOAD_ICON, PINK), "Save the configuration (.json)"],
+            [iconBadge(UPLOAD_ICON, PINK), "Load a configuration (.json)"],
+        ]) +
+        hTip("<b>ref_image_1</b> is <b>&lt;Picture 1&gt;</b> in the prompt."),
     },
     {
-        title: "What this node does",
-        html: "<p>Loads the references of <b>MiniMax H3 Reference to Video</b>: " +
-            "up to 9 images, 3 videos, 3 video soundtracks and 3 audio files. " +
-            "Wire the outputs in order: <b>ref_image_1</b> goes to the first image input of " +
-            "MiniMax (named <b>ref_image_0</b> there), <b>ref_image_2</b> to the next one, and so on.</p>",
+        id: "modes", title: "Modes", icon: MODE_ICON, color: ORANGE,
+        html: hList([
+            "<b>Ref2VA</b>: four rows for MiniMax H3 Reference to Video, up to 9 images, 3 videos, " +
+            "3 video soundtracks and 3 audio files.",
+            "<b>F2VA / FL2VA</b>: a <b>First frame</b> and an optional <b>Last frame</b> (images) on the " +
+            "outputs <b>first_frame</b> and <b>last_frame</b>, for MiniMax H3 Image to Video.",
+            "Without a last frame MiniMax does F2VA; with both, FL2VA.",
+            "Each mode keeps its own selection and outputs. Switching back restores them and reconnects " +
+            "the wires of that mode when their target is still there and free.",
+        ]) +
+        hTip("In the gallery of a frame, clicking an image replaces the current one."),
     },
     {
-        title: "The four buttons",
-        html: "<p>" + iconBadge(IMAGE_ICON, VIOLET) + " <b>Images</b>, " +
-            iconBadge(VIDEO_ICON, ORANGE) + " <b>Video</b>, " +
-            iconBadge(VIDEO_AUDIO_ICON, GREEN) + " <b>Video/Audio</b>, " +
-            iconBadge(AUDIO_ICON, TITLE_COLOR) + " <b>Audio</b>: each opens a gallery of the " +
-            "chosen folder and fills its own list.</p>" +
-            "<p><b>Video</b> gives the video frames (<b>ref_video_N</b>). <b>Video/Audio</b> picks " +
-            "videos too, but only their <b>soundtrack</b> is extracted: it is an <b>audio track</b> " +
-            "that goes out on <b>ref_video_audio_N</b>. The two lists are independent; pick the same " +
-            "video in both to have its frames and its sound.</p>" +
-            "<p><b>Note:</b> MiniMax uses the audio track wired to <b>ref_video_audio_N</b> together " +
-            "with the reference video wired to <b>ref_video_N</b>. When both <b>ref_video_N</b> and " +
-            "<b>ref_video_audio_N</b> have a file, their output dots share a colour (1 orange, 2 pink, " +
-            "3 green).</p>" +
-            "<p>The " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
-            " deletes <b>all</b> the references of its row, after a confirmation.</p>",
+        id: "pick", title: "Picking files", icon: IMAGE_ICON, color: VIOLET,
+        html: hCard("The four rows", [
+            [iconBadge(IMAGE_ICON, VIOLET), "<b>Images</b>: up to 9, on <b>ref_image_N</b>"],
+            [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b>: the video frames, on <b>ref_video_N</b>"],
+            [iconBadge(VIDEO_AUDIO_ICON, GREEN), "<b>Video/Audio</b>: videos too, but only their " +
+                "<b>soundtrack</b> is extracted: an audio track on <b>ref_video_audio_N</b>"],
+            [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b>: up to 3, on <b>ref_audio_N</b>"],
+        ]) +
+        hList([
+            "<b>Root folder</b> is prefilled with the folder of " + iconBadge(GEAR_ICON, VIOLET) +
+            " and its content is shown.",
+            "<b>Subfolder</b> is a drop-down list of all its subfolders, with the number of files of that " +
+            "type after each name; <b>(root folder)</b> shows the root folder itself. The choice is kept per type.",
+            iconBadge(SEARCH_ICON, VIOLET) + " of <b>Root folder</b> finds the subfolders again and shows the " +
+            "root folder; the one of <b>Subfolder</b> shows the chosen subfolder. Greyed out without a root folder.",
+            "A mixed folder shows a section per kind. Only the files of the button that opened the gallery " +
+            "can be picked; the others are shown for information.",
+            "Clicking an image or a video also shows it larger in a preview window on the right.",
+            "<b>Browse</b> opens the Windows folder dialog; <b>Reload</b> goes back to the root folder.",
+        ]) +
+        hTip("Pick the same video in <b>Video</b> and <b>Video/Audio</b> to have its frames and its sound."),
     },
     {
-        title: "Numbering",
-        html: "<p>Click order sets the number: the first image clicked is <b>ref_image_1</b>, " +
-            "that is <b>&lt;Picture 1&gt;</b> in the prompt. Click again to remove it; the " +
-            "others move up.</p>" +
-            "<p>MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks " +
-            "(<b>ref_video_audio</b>) first, then the audio files: with 2 video soundtracks, " +
-            "<b>ref_audio_1</b> is <b>&lt;Audio 3&gt;</b>.</p>",
+        id: "selection", title: "Selection", icon: EYE_ICON, color: VIOLET,
+        html: hList([
+            iconBadge(EYE_ICON, VIOLET) + " shows the files of a row in their order, with their number and output.",
+            "Click a thumbnail to see its details (folder, size, duration) and to open it larger on the right.",
+            iconBadge(LEFT_ICON, INACTIVE_BG) + " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " move a file one " +
+            "place: number 1 always goes out on <b>ref_image_1</b> (the wires stay on the outputs).",
+            iconBadge(TRASH_ICON, INACTIVE_BG) + " on a thumbnail marks it (it turns " +
+            iconBadge(TRASH_ICON, MARK_RED) + "); <b>Delete</b> removes the marked files after a confirmation.",
+            "The following files move up (ref 4 becomes ref 3...) and the last output, now empty, is removed.",
+        ]) +
+        hNote("the " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
+            " on the node deletes <b>all</b> the files of its row, after a confirmation."),
     },
     {
-        title: "Viewing and reordering",
-        html: "<p>" + iconBadge(EYE_ICON, VIOLET) + " shows the selected files in their order, " +
-            "with their number and output. Click a thumbnail to see it larger (videos and audio " +
-            "can be played) with its folder, size and duration; images and videos also open in a " +
-            "preview window of the same size on the right. The " + iconBadge(LEFT_ICON, INACTIVE_BG) +
-            " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " arrows move a file one place: number 1 always " +
-            "goes out on <b>ref_image_1</b>, number 2 on <b>ref_image_2</b>, and so on (the wires stay " +
-            "on the outputs).</p>" +
-            "<p><b>Trim</b> (videos, video soundtracks and audio): in the preview window, set the " +
-            "<b>Start</b> and <b>End</b> of the part to keep (fields, or the current playback position " +
-            "with <b>Set start</b> / <b>Set end</b>), check it with <b>Play trim</b>, or <b>Reset</b> to " +
-            "keep the whole file. The file itself is never changed; only that part goes to the output " +
-            "(frames and sound). A trimmed file shows a ✂ badge, and the trim is kept in the saved " +
-            "configuration (<code>\"trim\": [2.5, 8]</code>).</p>" +
-            "<p>The " + iconBadge(TRASH_ICON, INACTIVE_BG) + " on a thumbnail marks it for deletion (it turns " +
-            iconBadge(TRASH_ICON, MARK_RED) + "); <b>Delete</b> removes the marked files after a confirmation. " +
-            "The following references move up (ref 4 becomes ref 3...) and the last output, now empty, " +
-            "is removed.</p>",
+        id: "trim", title: "Trim", icon: SCISSORS_ICON, color: ORANGE,
+        html: hSteps([
+            "Open " + iconBadge(EYE_ICON, VIOLET) + " of <b>Video</b>, <b>Video/Audio</b> or <b>Audio</b> " +
+            "and click a thumbnail.",
+            "In the preview window, set <b>Start</b> and <b>End</b>: type them, or use <b>Set start</b> / " +
+            "<b>Set end</b> at the current playback position.",
+            "Check with <b>Play trim</b>, or <b>Reset</b> to keep the whole file.",
+        ]) +
+        hList([
+            "The file itself is never changed: only that part goes to the output (frames and sound).",
+            "A trimmed file shows a <b>✂</b> badge; the trim is saved in the configuration " +
+            "(<code>\"trim\": [2.5, 8]</code>).",
+            "A warning shows when a video part is shorter than 2 s or a part is longer than 15 s.",
+        ]),
     },
     {
-        title: "Project overview",
-        html: "<p>" + iconBadge(OVERVIEW_ICON, VIOLET) + " shows the whole selection of the mode shown in " +
-            "one window, a section per row (Images, Video, Video/Audio, Audio; or First frame and Last " +
-            "frame), with the number, the output and the ✂ badge of each file. Clicking a thumbnail opens " +
-            "it in the preview window on the right (image, video or audio with its player). The trim is " +
-            "shown and can be played with <b>Play trim</b>, but not changed there: reorder, delete and " +
-            "trim with the " + iconBadge(EYE_ICON, VIOLET) + " of each row. Greyed out while the mode " +
-            "shown has no reference.</p>",
+        id: "overview", title: "Overview", icon: OVERVIEW_ICON, color: VIOLET,
+        html: hList([
+            iconBadge(OVERVIEW_ICON, VIOLET) + " shows the whole selection of the mode shown in one window, " +
+            "a section per row.",
+            "Each file shows its number, its output and its <b>✂</b> badge.",
+            "Click a thumbnail to open it on the right (image, video or audio with its player).",
+            "The trim is shown and can be played with <b>Play trim</b>, but not changed there.",
+            "Greyed out while the mode shown has no reference.",
+        ]) +
+        hTip("Reorder, delete and trim with the " + iconBadge(EYE_ICON, VIOLET) + " of each row."),
     },
     {
-        title: "Root folder and configuration",
-        html: "<p>" + iconBadge(GEAR_ICON, VIOLET) + " sets the <b>root folder</b> of your rushes: " +
-            "galleries open on it.</p>" +
-            "<p>In a gallery, <b>Root folder</b> is prefilled with it and its content is shown. " +
-            "<b>Subfolder</b> is a drop-down list of all its subfolders, with the number of files of " +
-            "that type after each name; <b>(root folder)</b> shows the root folder itself. The " +
-            iconBadge(SEARCH_ICON, VIOLET) + " of <b>Root folder</b> finds the subfolders again for the " +
-            "list and shows the root folder content, the one of <b>Subfolder</b> shows the content of " +
-            "the chosen subfolder. A folder with one kind of files shows a single grid; a mixed folder " +
-            "shows a section per kind (Images, Video or Video/Audio, Audio). Only the files of the button " +
-            "that opened the gallery can be selected, the others are shown for information. Clicking an image " +
-            "or a video also shows it (image, or video with its player) in a preview window on the right. " +
-            "Without a root folder " +
-            "they are greyed out; Browse and Reload stay available; Reload goes back to the root folder of the gear button when the gallery shows another folder.</p>" +
-            "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the configuration of the mode shown in its " +
-            "own .json file (one file per mode, never mixed): <b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b> " +
-            "with the root folder and the four lists, or <b>FL2VA_minimax_config_yyyyMMdd-HHmmss.json</b> with " +
-            "the root folder and the two frames (date and time in the name: a new save never overwrites " +
-            "an older one; greyed out while the mode shown has no reference, the root folder alone does not " +
-            "count). The file gives its type (<code>\"format\"</code> and <code>\"mode\": \"REF2VA\"</code> " +
-            "or <code>\"FL2VA\"</code>), then the lists, e.g. <code>\"videos\": [{\"path\": " +
-            "\"rush\\\\plan.mp4\", \"trim\": [5, 7]}]</code>. Paths under the root folder are written " +
-            "relative to it; an empty group is <code>[]</code> or <code>null</code>.</p>" +
-            "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads a .json file of the mode shown " +
-            "and sets its outputs; a file of the other mode is refused with a warning (switch mode first) " +
-            "and nothing is changed. It turns " +
-            iconBadge(UPLOAD_ICON, ORANGE) + " as soon as the mode shown has a reference (the root folder " +
-            "alone does not count) and then asks a confirmation. The other mode and the mode switch are " +
-            "never changed; the root folder is taken from the file. " +
-            "Files missing on " +
-            "disk are still loaded and reported under the buttons.</p>",
+        id: "config", title: "Save and load", icon: DOWNLOAD_ICON, color: PINK,
+        html: hCard("Configuration files", [
+            [iconBadge(DOWNLOAD_ICON, PINK), "Saves the mode shown in its own .json file: " +
+                "<b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b> or <b>FL2VA_...json</b>. Greyed out " +
+                "while the mode has no reference (the root folder alone does not count)."],
+            [iconBadge(UPLOAD_ICON, PINK), "Loads a .json file of the mode shown and sets its outputs. " +
+                "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " when the mode already has references, " +
+                "and then asks a confirmation."],
+        ]) +
+        hList([
+            "A file of the other mode is refused with a warning; nothing is changed.",
+            "The other mode and the mode switch are never changed; the root folder is taken from the file.",
+            "The date and time in the name keep a new save from overwriting an older one.",
+            "Files missing on disk are still loaded and reported under the buttons.",
+            "Paths under the root folder are written relative to it; an empty group is <code>[]</code> " +
+            "or <code>null</code>.",
+        ]) +
+        hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 1,\n  "mode": "REF2VA",\n' +
+            '  "root": "F:\\\\Rushs\\\\Project",\n  "images": ["images\\\\a.png"],\n' +
+            '  "videos": [{ "path": "rush\\\\shot.mp4", "trim": [5, 7] }],\n  "video_audios": [],\n' +
+            '  "audios": []\n}'),
     },
     {
-        title: "Loading",
-        html: "<p>Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most " +
-            "(MiniMax would reduce them anyway). Audio files are cut to 15 s.</p>",
+        id: "outputs", title: "Outputs", icon: OUTPUT_ICON, color: GREEN,
+        html: hList([
+            "An output appears for each selected file (at least one per type).",
+            "Double-click an output name to rename it (empty = default name), or use the right-click menu.",
+            "MiniMax numbers its inputs from 0: <b>ref_image_1</b> goes to <b>ref_image_0</b>.",
+            "MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks first, then the audio files: " +
+            "with 2 video soundtracks, <b>ref_audio_1</b> is <b>&lt;Audio 3&gt;</b>.",
+            "When <b>ref_video_N</b> and <b>ref_video_audio_N</b> both have a file, their output dots share " +
+            "a colour (1 orange, 2 pink, 3 green).",
+        ]) +
+        hNote("MiniMax uses the audio track wired to <b>ref_video_audio_N</b> together with the reference " +
+            "video wired to <b>ref_video_N</b>."),
     },
     {
-        title: "Outputs",
-        html: "<p>An output appears for each selected file (at least one per type). " +
-            "Double-click an output name to rename it (empty = default name), or use the " +
-            "right-click menu.</p>",
+        id: "limits", title: "Limits", icon: INFO_ICON, color: TITLE_COLOR,
+        html: hList([
+            "Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most " +
+            "(MiniMax would reduce them anyway).",
+            "Audio files are cut to 15 s.",
+            "<b>Browse</b> uses the Windows folder dialog; on other systems type or paste the folder path.",
+        ]),
     },
 ];
 
@@ -629,28 +690,245 @@ function hideWidget(widget) {
 // --------------------------------------------------------------------
 function buildHelpOverlay(container) {
     const { overlay, card } = makeOverlay();
-    card.style.width = "min(520px, 92vw)";
-    card.style.maxHeight = "80vh";
-    card.style.overflowX = "hidden";
-    card.style.overflowY = "auto";
-    card.style.padding = "14px 18px";
-    let html = '<div style="font-size:14px;font-weight:bold;color:' + TITLE_COLOR +
-        ';margin-bottom:8px">MiniMax H3 Reference Loader</div>';
-    for (const s of HELP_SECTIONS) {
-        html += '<div style="font-weight:bold;color:' + PINK + ';margin:10px 0 4px">' + s.title +
-            '</div><div style="line-height:1.5">' + s.html + "</div>";
+    Object.assign(card.style, {
+        width: "min(760px, 94vw)", height: "min(560px, 84vh)", display: "flex", flexDirection: "column",
+        overflow: "hidden", padding: "0", borderColor: PINK,
+    });
+
+    // En-tete : titre, recherche, fermeture.
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+        display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", borderBottom: "1px solid #333",
+    });
+    const badge = document.createElement("span");
+    badge.textContent = "?";
+    Object.assign(badge.style, {
+        width: "20px", height: "20px", borderRadius: "50%", background: PINK, color: "white",
+        fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+    });
+    const title = document.createElement("div");
+    title.textContent = "MiniMax H3 Reference Loader — Help";
+    Object.assign(title.style, {
+        fontWeight: "bold", fontSize: "14px", color: TITLE_COLOR, flex: "1", whiteSpace: "nowrap",
+        overflow: "hidden", textOverflow: "ellipsis",
+    });
+    const search = document.createElement("input");
+    search.type = "search";
+    search.placeholder = "Search help...";
+    Object.assign(search.style, {
+        width: "170px", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "8px",
+        padding: "4px 8px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+    });
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close (Esc)");
+    header.append(badge, title, search, closeBtn);
+
+    // Menu des rubriques a gauche, rubrique affichee a droite.
+    const main = document.createElement("div");
+    Object.assign(main.style, { flex: "1", minHeight: "0", display: "flex" });
+    const nav = document.createElement("div");
+    Object.assign(nav.style, {
+        flex: "0 0 180px", borderRight: "1px solid #333", background: "#181818", padding: "8px 6px",
+        overflowY: "auto", boxSizing: "border-box",
+    });
+    const content = document.createElement("div");
+    Object.assign(content.style, {
+        flex: "1", minWidth: "0", overflowY: "auto", padding: "14px 18px", lineHeight: "1.55",
+        boxSizing: "border-box",
+    });
+    main.append(nav, content);
+
+    // Pied : precedente / position / suivante.
+    const footer = document.createElement("div");
+    Object.assign(footer.style, {
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px",
+        padding: "8px 14px", borderTop: "1px solid #333",
+    });
+    const navLink = () => {
+        const b = document.createElement("button");
+        b.type = "button";
+        Object.assign(b.style, {
+            background: "none", border: "none", color: TITLE_COLOR, cursor: "pointer", fontSize: "12px",
+            padding: "2px 4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        });
+        return b;
+    };
+    const prevBtn = navLink();
+    const nextBtn = navLink();
+    const position = document.createElement("span");
+    position.style.color = "#888";
+    footer.append(prevBtn, position, nextBtn);
+    card.append(header, main, footer);
+
+    const byId = Object.fromEntries(HELP_SECTIONS.map((sec) => [sec.id, sec]));
+    let visible = HELP_SECTIONS.map((sec) => sec.id);
+    let currentId = loadHelpSection();
+
+    /** Surligne les mots de la recherche dans les textes de root. */
+    function highlight(root, words) {
+        if (!words.length) return;
+        const re = new RegExp("(" + words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi");
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        for (const node of nodes) {
+            const text = node.nodeValue;
+            re.lastIndex = 0;
+            if (!re.test(text)) continue;
+            const frag = document.createDocumentFragment();
+            text.split(re).forEach((part, i) => {
+                if (!part) return;
+                if (i % 2) {
+                    const mark = document.createElement("mark");
+                    mark.textContent = part;
+                    Object.assign(mark.style, { background: ORANGE, color: "white", borderRadius: "3px", padding: "0 1px" });
+                    frag.appendChild(mark);
+                } else {
+                    frag.appendChild(document.createTextNode(part));
+                }
+            });
+            node.parentNode.replaceChild(frag, node);
+        }
     }
-    card.innerHTML = html;
-    overlay.addEventListener("mousedown", () => (overlay.style.display = "none"));
+
+    function renderNav() {
+        nav.innerHTML = "";
+        if (!visible.length) {
+            const none = document.createElement("div");
+            none.textContent = "No result";
+            Object.assign(none.style, { color: "#888", padding: "6px 8px" });
+            nav.appendChild(none);
+        }
+        for (const id of visible) {
+            const sec = byId[id];
+            const active = id === currentId;
+            const item = document.createElement("button");
+            item.type = "button";
+            Object.assign(item.style, {
+                display: "flex", alignItems: "center", gap: "8px", width: "100%", textAlign: "left",
+                border: "none", borderRadius: "6px", padding: "5px 8px", margin: "0 0 2px", cursor: "pointer",
+                fontSize: "12px", background: active ? TITLE_COLOR : "transparent",
+                color: active ? "white" : "#ccc", fontWeight: active ? "bold" : "normal",
+            });
+            item.innerHTML = iconBadge(sec.icon, sec.color) + "<span>" + sec.title + "</span>";
+            item.addEventListener("mouseenter", () => {
+                if (id !== currentId) item.style.background = "#262626";
+            });
+            item.addEventListener("mouseleave", () => {
+                if (id !== currentId) item.style.background = "transparent";
+            });
+            item.addEventListener("click", () => select(id));
+            nav.appendChild(item);
+        }
+    }
+
+    function renderContent() {
+        const sec = byId[currentId];
+        content.scrollTop = 0;
+        if (!visible.length) {
+            content.innerHTML = '<div style="color:#888">No section contains "' + escapeHtml(search.value.trim()) +
+                '". Try another word.</div>';
+        } else {
+            content.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:bold;' +
+                "color:" + PINK + ';margin-bottom:10px">' + iconBadge(sec.icon, sec.color) + sec.title + "</div>" +
+                sec.html;
+            highlight(content, search.value.toLowerCase().split(/\s+/).filter(Boolean));
+        }
+        const i = visible.indexOf(currentId);
+        const prev = i > 0 ? byId[visible[i - 1]] : null;
+        const next = i >= 0 && i < visible.length - 1 ? byId[visible[i + 1]] : null;
+        prevBtn.textContent = prev ? "‹ " + prev.title : "";
+        prevBtn.style.visibility = prev ? "visible" : "hidden";
+        nextBtn.textContent = next ? "Next: " + next.title + " ›" : "";
+        nextBtn.style.visibility = next ? "visible" : "hidden";
+        position.textContent = visible.length ? i + 1 + " / " + visible.length : "";
+    }
+
+    function select(id) {
+        currentId = id;
+        saveHelpSection(id);
+        renderNav();
+        renderContent();
+    }
+
+    function step(delta) {
+        const i = visible.indexOf(currentId);
+        const j = i + delta;
+        if (i >= 0 && j >= 0 && j < visible.length) select(visible[j]);
+    }
+
+    prevBtn.addEventListener("click", () => step(-1));
+    nextBtn.addEventListener("click", () => step(+1));
+    search.addEventListener("input", () => {
+        visible = filterSections(HELP_SECTIONS, search.value);
+        if (visible.length && !visible.includes(currentId)) currentId = visible[0];
+        renderNav();
+        renderContent();
+    });
+
+    // Echap ferme ; fleches = rubrique precedente / suivante (hors champ de
+    // recherche) ; les touches ne vont pas au canvas (Suppr...).
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            close();
+            return;
+        }
+        if (e.target !== search && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            step(e.key === "ArrowLeft" ? -1 : +1);
+            return;
+        }
+        if (card.contains(e.target)) e.stopImmediatePropagation();
+    };
+
+    function close() {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+
+    closeBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
     return {
         open() {
+            search.value = "";
+            visible = HELP_SECTIONS.map((sec) => sec.id);
+            if (!byId[currentId]) currentId = HELP_SECTIONS[0].id;
+            renderNav();
+            renderContent();
             overlay.style.display = "block";
-            positionCardNextToNode(card, container, 520);
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 760);
         },
+        close,
         remove() {
+            close();
             overlay.remove();
         },
     };
+}
+
+// Derniere rubrique consultee (memoire du navigateur, facultative).
+const HELP_SECTION_KEY = "mmrefloader.helpSection";
+let helpSection = null;
+function loadHelpSection() {
+    if (helpSection) return helpSection;
+    try {
+        helpSection = localStorage.getItem(HELP_SECTION_KEY);
+    } catch (e) {
+        helpSection = null;
+    }
+    return helpSection || HELP_SECTIONS[0].id;
+}
+function saveHelpSection(id) {
+    helpSection = id;
+    try {
+        localStorage.setItem(HELP_SECTION_KEY, id);
+    } catch (e) {
+        // Stockage indisponible : la rubrique est gardee pour cette session.
+    }
 }
 
 // --------------------------------------------------------------------

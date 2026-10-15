@@ -1,5 +1,5 @@
 // Tests du format de configuration JSON (sans ComfyUI) :
-//     node --test tests/test_config_format.mjs tests/test_config_json.mjs
+//     node --test tests/test_config_format.mjs tests/test_config_json.mjs tests/test_help_search.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import { formatConfigJson, parseConfigJson, trimKey } from "../web/js/config_format.js";
