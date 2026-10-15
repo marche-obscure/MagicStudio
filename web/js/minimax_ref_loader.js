@@ -88,6 +88,10 @@ const GEAR_ICON = svg(
     '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>', 13);
 const DOWNLOAD_ICON = svg('<path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path>', 13);
 const UPLOAD_ICON = svg('<path d="M12 21V9"></path><path d="M7 14l5-5 5 5"></path><path d="M5 3h14"></path>', 13);
+// Mosaique (4 carres) : bouton de la vue d'ensemble.
+const OVERVIEW_ICON = svg(
+    '<rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect>' +
+    '<rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect>', 13);
 const LEFT_ICON = svg('<polyline points="15 18 9 12 15 6"></polyline>', 12);
 const RIGHT_ICON = svg('<polyline points="9 18 15 12 9 6"></polyline>', 12);
 
@@ -183,6 +187,16 @@ const HELP_SECTIONS = [
             iconBadge(TRASH_ICON, MARK_RED) + "); <b>Delete</b> removes the marked files after a confirmation. " +
             "The following references move up (ref 4 becomes ref 3...) and the last output, now empty, " +
             "is removed.</p>",
+    },
+    {
+        title: "Project overview",
+        html: "<p>" + iconBadge(OVERVIEW_ICON, VIOLET) + " shows the whole selection of the mode shown in " +
+            "one window, a section per row (Images, Video, Video/Audio, Audio; or First frame and Last " +
+            "frame), with the number, the output and the ✂ badge of each file. Clicking a thumbnail opens " +
+            "it in the preview window on the right (image, video or audio with its player). The trim is " +
+            "shown and can be played with <b>Play trim</b>, but not changed there: reorder, delete and " +
+            "trim with the " + iconBadge(EYE_ICON, VIOLET) + " of each row. Greyed out while the mode " +
+            "shown has no reference.</p>",
     },
     {
         title: "Root folder and configuration",
@@ -778,7 +792,8 @@ function buildSidePreview(card, overlay) {
         let warn = "";
         if (kept > 15) warn = "only the first 15 s are used";
         else if (trimCtx.isVideo && kept < 2) warn = "MiniMax expects 2 to 15 s";
-        trimInfo.textContent = text + (warn ? "  —  ⚠ " + warn : "");
+        trimInfo.textContent = text + (warn ? "  —  ⚠ " + warn : "") +
+            (trimCtx.readOnly ? "  (view only)" : "");
         trimInfo.style.color = warn ? ORANGE : "#bbb";
     }
 
@@ -824,8 +839,9 @@ function buildSidePreview(card, overlay) {
 
     /**
      * show(path, fileKind, sousTitre, trim) : image, video ou audio avec son
-     * lecteur. trim = { range: [debut, fin] | null, onChange(range | null) }
-     * affiche la barre de rognage (videos et audios seulement).
+     * lecteur. trim = { range: [debut, fin] | null, onChange(range | null),
+     * readOnly } affiche la barre de rognage (videos et audios seulement) ;
+     * readOnly : valeurs non modifiables, seul Play trim reste.
      */
     function show(path, fk, sub, trim) {
         body.innerHTML = "";
@@ -844,8 +860,15 @@ function buildSidePreview(card, overlay) {
             : { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
         body.appendChild(el);
         media = fk === "image" ? null : el;
-        trimCtx = trim && media ? { range: trim.range, onChange: trim.onChange, isVideo: fk === "video" } : null;
+        trimCtx = trim && media
+            ? { range: trim.range, onChange: trim.onChange, isVideo: fk === "video", readOnly: !!trim.readOnly }
+            : null;
         trimBar.style.display = trimCtx ? "flex" : "none";
+        // Lecture seule (vue d'ensemble) : rognage affiche, seul Play trim reste.
+        const ro = !!(trimCtx && trimCtx.readOnly);
+        startField.disabled = ro;
+        endField.disabled = ro;
+        [setStartBtn, setEndBtn, resetTrimBtn].forEach((b) => (b.style.display = ro ? "none" : ""));
         if (media) {
             media.addEventListener("loadedmetadata", () => {
                 updateTrimUI();
@@ -2028,6 +2051,179 @@ function buildSelectionViewer(container, ctx) {
 }
 
 // --------------------------------------------------------------------
+// Vue d'ensemble : toutes les rubriques du mode affiche, en lecture seule
+// --------------------------------------------------------------------
+function buildOverview(container, ctx) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, {
+        width: "min(720px, 92vw)", height: "min(620px, 86vh)", display: "flex",
+        flexDirection: "column", overflow: "hidden", borderColor: VIOLET,
+    });
+
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+        display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderBottom: "1px solid #333",
+    });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, flex: "1" });
+    const counter = document.createElement("div");
+    counter.style.color = "#bbb";
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
+    header.append(title, counter, closeBtn);
+
+    const body = document.createElement("div");
+    Object.assign(body.style, { flex: "1", overflowX: "hidden", overflowY: "auto", padding: "4px 12px 10px" });
+
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px",
+        padding: "10px 12px" });
+    const hint = document.createElement("div");
+    hint.textContent = "View only: reorder, delete and trim with the eye button of each row.";
+    Object.assign(hint.style, { flex: "1", color: "#888", fontSize: "11px" });
+    const doneBtn = makeTextButton("Done", PINK);
+    footer.append(hint, doneBtn);
+    card.append(header, body, footer);
+
+    // Fenetre de visualisation a droite ; rognage affiche mais non modifiable.
+    const sidePreview = buildSidePreview(card, overlay);
+    let current = null; // { kind, path } de la vignette affichee
+
+    function showSide(kind, path, idx) {
+        current = { kind, path };
+        const trim = TRIM_KINDS.includes(kind)
+            ? { range: trimOf(ctx.getState(), kind, path), onChange: () => {}, readOnly: true } : null;
+        sidePreview.show(path, fileKind(kind), outputName(kind, idx), trim);
+        render();
+    }
+
+    function makeTile(kind, path, i, color) {
+        const active = current && current.kind === kind && samePath(current.path, path);
+        const tile = document.createElement("div");
+        tile.title = path;
+        Object.assign(tile.style, {
+            position: "relative", background: "#151515", borderRadius: "6px", overflow: "hidden",
+            cursor: "pointer", border: "2px solid " + (active ? VIOLET : color),
+            boxShadow: active ? "0 0 8px rgba(106,95,211,0.8)" : "none",
+        });
+        const thumb = document.createElement("div");
+        Object.assign(thumb.style, {
+            height: "80px", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d0d0d",
+        });
+        if (fileKind(kind) === "audio") {
+            thumb.innerHTML = AUDIO_ICON.replace(/width="15" height="15"/, 'width="32" height="32"');
+            thumb.style.opacity = "0.7";
+        } else {
+            const img = document.createElement("img");
+            img.loading = "lazy";
+            img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(dirName(path)) +
+                "&file=" + encodeURIComponent(baseName(path));
+            Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
+            thumb.appendChild(img);
+        }
+        const badge = document.createElement("div");
+        badge.textContent = String(i + 1);
+        Object.assign(badge.style, {
+            position: "absolute", left: "4px", top: "4px", minWidth: "20px", height: "20px",
+            borderRadius: "10px", background: color, color: "white", fontWeight: "bold",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px",
+        });
+        const name = document.createElement("div");
+        name.textContent = baseName(path);
+        Object.assign(name.style, {
+            padding: "3px 5px 0", fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden",
+            textOverflow: "ellipsis", color: "#fff",
+        });
+        const out = document.createElement("div");
+        out.textContent = "→ " + outputName(kind, i) + (kind === "video_audio" ? "  (sound)" : "");
+        Object.assign(out.style, { padding: "0 5px 5px", fontSize: "10px", color: "#9fd6cf" });
+        tile.append(thumb, badge);
+        const tr = TRIM_KINDS.includes(kind) ? trimOf(ctx.getState(), kind, path) : null;
+        if (tr) {
+            const cut = document.createElement("div");
+            cut.textContent = "✂ " + fmtTrim(tr);
+            cut.title = "Trimmed: " + fmtTrim(tr);
+            Object.assign(cut.style, {
+                position: "absolute", left: "4px", top: "58px", background: "rgba(0,0,0,0.75)",
+                color: ORANGE, padding: "1px 5px", borderRadius: "4px", fontSize: "10px",
+            });
+            tile.appendChild(cut);
+        }
+        tile.append(name, out);
+        tile.addEventListener("click", () => showSide(kind, path, i));
+        return tile;
+    }
+
+    function render() {
+        const s = ctx.getState();
+        const fl = s.mode === "fl2va";
+        const rows = fl ? FRAME_BUTTONS : BUTTONS;
+        title.textContent = "Project overview — " + (fl ? "F2VA / FL2VA" : "Ref2VA");
+        let total = 0;
+        body.innerHTML = "";
+        for (const b of rows) {
+            const arr = listOf(s, b.kind);
+            total += arr.length;
+            const head = document.createElement("div");
+            Object.assign(head.style, {
+                display: "flex", alignItems: "center", gap: "8px", margin: "10px 0 6px",
+                paddingBottom: "4px", borderBottom: "1px solid #2c2c2c", fontWeight: "bold", color: "#ddd",
+            });
+            head.innerHTML = iconBadge(b.icon, b.color) + "<span>" + b.label + "</span>" +
+                '<span style="color:#888;font-weight:normal">' + arr.length + " / " + LIMITS[b.kind] +
+                (b.kind === "video_audio" ? " · audio" : "") + "</span>";
+            body.appendChild(head);
+            if (!arr.length) {
+                const empty = document.createElement("div");
+                empty.textContent = "No reference";
+                Object.assign(empty.style, { color: "#777", padding: "2px 0 4px" });
+                body.appendChild(empty);
+                continue;
+            }
+            const grid = document.createElement("div");
+            Object.assign(grid.style, {
+                display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gap: "8px",
+            });
+            arr.forEach((path, i) => grid.appendChild(makeTile(b.kind, path, i, b.color)));
+            body.appendChild(grid);
+        }
+        counter.textContent = total + " reference" + (total > 1 ? "s" : "");
+    }
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close();
+    };
+
+    function close() {
+        overlay.style.display = "none";
+        sidePreview.hide(); // arrete une lecture en cours
+        current = null;
+        window.removeEventListener("keydown", onKey, true);
+    }
+
+    closeBtn.addEventListener("click", close);
+    doneBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        open() {
+            current = null;
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            render();
+            positionCardNextToNode(card, container, 720);
+        },
+        close,
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
 // Extension
 // --------------------------------------------------------------------
 app.registerExtension({
@@ -2164,10 +2360,11 @@ app.registerExtension({
                 color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
             });
             // Dossier racine, sauvegarde et chargement de la configuration.
+            const overviewBtn = makeIconButton(VIOLET, OVERVIEW_ICON, "Project overview (all the references)");
             const rootBtn = makeIconButton(VIOLET, GEAR_ICON, "Root folder of the rushes");
             const downloadBtn = makeIconButton(PINK, DOWNLOAD_ICON, "Save the configuration (.json)");
             const uploadBtn = makeIconButton(PINK, UPLOAD_ICON, "Load a configuration (.json)");
-            [rootBtn, downloadBtn, uploadBtn].forEach((b) => {
+            [overviewBtn, rootBtn, downloadBtn, uploadBtn].forEach((b) => {
                 b.style.width = "22px";
                 b.style.height = "22px";
             });
@@ -2177,7 +2374,7 @@ app.registerExtension({
             fileInput.accept = ".json,application/json";
             fileInput.style.display = "none";
 
-            bottom.append(summary, rootBtn, downloadBtn, uploadBtn, helpBtn, fileInput);
+            bottom.append(summary, overviewBtn, rootBtn, downloadBtn, uploadBtn, helpBtn, fileInput);
             container.appendChild(bottom);
 
             const gallery = buildGallery(container, { getState, setState });
@@ -2185,9 +2382,11 @@ app.registerExtension({
             const clearConfirm = buildConfirmDialog(container);
             const rootDialog = buildRootDialog(container, { getState, setState });
             const help = buildHelpOverlay(container);
+            const overview = buildOverview(container, { getState });
             helpBtn.addEventListener("click", () => help.open());
+            overviewBtn.addEventListener("click", () => overview.open());
             rootBtn.addEventListener("click", () => rootDialog.open());
-            node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help];
+            node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview];
 
             // Une configuration "existe" des qu'une reference est selectionnee ;
             // le dossier racine seul ne compte pas.
@@ -2417,6 +2616,11 @@ app.registerExtension({
                 downloadBtn.style.cursor = canSave ? "pointer" : "default";
                 downloadBtn.title = canSave ? "Save the configuration (.json)"
                     : "Save the configuration (.json) - nothing to save in this mode";
+                // Vue d'ensemble grisee tant que le mode affiche est vide.
+                overviewBtn.disabled = !canSave;
+                overviewBtn.style.background = canSave ? VIOLET : INACTIVE_BG;
+                overviewBtn.style.opacity = canSave ? "1" : "0.45";
+                overviewBtn.style.cursor = canSave ? "pointer" : "default";
                 rootBtn.title = s.root ? "Root folder: " + s.root : "Root folder of the rushes (not set)";
 
                 applyLayout(node, s);
