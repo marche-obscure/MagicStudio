@@ -9,8 +9,8 @@ const PINK = "#d35fa8";
 const ORANGE = "#e0793c";
 const GREEN = "#43a047";
 const DARK_RED = "#6b2b2b";
-// Rouge vif : vignette marquee "a supprimer" et bouton Delete (le rouge sombre
-// DARK_RED, peu visible sur fond sombre, reste celui des poubelles du noeud).
+// Rouge vif : vignette marquee "a supprimer", bouton Delete et poubelles du
+// noeud quand leur ligne contient au moins une reference (grises sinon).
 const MARK_RED = "#d32f2f";
 const INACTIVE_BG = "#2a2a2a";
 const INACTIVE_FG = "#888";
@@ -99,7 +99,7 @@ const HELP_SECTIONS = [
             "share the same 3 slots: a video picked from <b>Video/Audio</b> keeps its sound, one " +
             "picked from <b>Video</b> is muted. The " + iconBadge(SPEAKER_ICON, GREEN) +
             " switch on a selected video changes it at any time.</p>" +
-            "<p>The " + iconBadge(TRASH_ICON, DARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
+            "<p>The " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
             " deletes <b>all</b> the references of its row, after a confirmation. On the " +
             "<b>Video/Audio</b> row it mutes all the videos instead (they stay selected).</p>",
     },
@@ -1294,7 +1294,7 @@ app.registerExtension({
                 row.appendChild(eye);
 
                 // Poubelle : vide le type (Video/Audio : coupe le son de toutes les videos).
-                const trash = makeIconButton(DARK_RED, TRASH_ICON,
+                const trash = makeIconButton(INACTIVE_BG, TRASH_ICON,
                     b.id === "video_audio" ? "Mute all videos" : "Clear the " + b.label.toLowerCase() + " selection");
                 // Confirmation avant d'agir ; rien a faire = pas de question.
                 trash.addEventListener("click", () => {
@@ -1330,7 +1330,7 @@ app.registerExtension({
                 row.appendChild(trash);
 
                 container.appendChild(row);
-                rows[b.id] = { btn, count };
+                rows[b.id] = { btn, count, trash };
             }
 
             const bottom = document.createElement("div");
@@ -1370,6 +1370,19 @@ app.registerExtension({
                     (withSound.length ? " · " + withSound.length + " 🔊" : "");
                 rows.video_audio.count.textContent = withSound.length + " 🔊 = video";
                 rows.audio.count.textContent = s.audios.length + " / " + LIMITS.audio;
+
+                // Poubelles : grises et inactives sans reference, rouges sinon
+                // (Video/Audio : selon les videos dont le son est garde).
+                const counts = { image: s.images.length, video: s.videos.length,
+                    video_audio: withSound.length, audio: s.audios.length };
+                for (const id in counts) {
+                    const t = rows[id].trash;
+                    const on = counts[id] > 0;
+                    t.disabled = !on;
+                    t.style.background = on ? MARK_RED : INACTIVE_BG;
+                    t.style.opacity = on ? "1" : "0.45";
+                    t.style.cursor = on ? "pointer" : "default";
+                }
 
                 rows.image.btn.title = listTitle(s.images);
                 rows.video.btn.title = s.videos.length
