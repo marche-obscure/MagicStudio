@@ -1521,7 +1521,7 @@ function buildSelectionViewer(container, ctx) {
             Object.assign(thumb.style, {
                 height: "80px", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d0d0d",
             });
-            if (kind === "audio") {
+            if (fileKind(kind) === "audio") {
                 thumb.innerHTML = AUDIO_ICON.replace(/width="15" height="15"/, 'width="32" height="32"');
                 thumb.style.opacity = "0.7";
             } else {
@@ -1599,17 +1599,20 @@ function buildSelectionViewer(container, ctx) {
         render();
         const url = "/mmrefloader/media?file=" + encodeURIComponent(path);
         preview.innerHTML = "";
+        // Lecteur choisi d'apres le type de FICHIER de la liste (first_frame /
+        // last_frame sont des images, video_audio des videos).
+        const fk = fileKind(kind);
         let el;
-        if (kind === "image") {
+        if (fk === "image") {
             el = document.createElement("img");
             el.src = url;
         } else {
-            el = document.createElement(fileKind(kind) === "video" ? "video" : "audio");
+            el = document.createElement(fk === "video" ? "video" : "audio");
             el.src = url;
             el.controls = true;
             el.preload = "metadata";
         }
-        Object.assign(el.style, kind === "audio"
+        Object.assign(el.style, fk === "audio"
             ? { width: "95%" }
             : { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
         preview.appendChild(el);
