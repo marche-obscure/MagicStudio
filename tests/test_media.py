@@ -441,6 +441,26 @@ class BuildOutputsTests(TmpDirTest):
             media.build_outputs(state)
         self.assertIn("ref_video_audio_1", str(ctx.exception))
 
+    def test_video_in_audio_list_outputs_only_its_sound(self):
+        # Option "son seul" : une video choisie dans Audio sort sa bande-son
+        # sur ref_audio_N, rognage compris.
+        make_video(self.p("v.mp4"), 2.0, 24, sr=16000)
+        make_video(self.p("w.mp4"), 0.5, 24, with_audio=False)
+        v = self.p("v.mp4")
+        state = media.parse_state(json.dumps({
+            "audios": [v], "trims": {"audio": {media.trim_key(v): [0.5, 1.5]}},
+        }))
+        out = media.build_outputs(state)
+        # ref_image_1, ref_video_1, ref_video_audio_1, ref_audio_1
+        self.assertIsNone(out[2])
+        self.assertEqual(out[3]["sample_rate"], 16000)
+        self.assertAlmostEqual(out[3]["waveform"].shape[2], 16000, delta=400)
+        # une video sans bande-son : erreur explicite qui nomme la sortie
+        state = media.parse_state(json.dumps({"audios": [self.p("w.mp4")]}))
+        with self.assertRaises(ValueError) as ctx:
+            media.build_outputs(state)
+        self.assertIn("ref_audio_1", str(ctx.exception))
+
     def test_absolute_paths_from_other_folders_are_used_as_is(self):
         # Le JS stocke des chemins complets : une selection peut venir de
         # plusieurs dossiers, le dossier courant ne sert qu'a la navigation.

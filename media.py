@@ -522,10 +522,15 @@ def build_outputs(state):
             values[key] = load_audio(path, start=start, end=end)
         except ValueError:
             raise ValueError("%s: no soundtrack in %s" % (key, path))
+    # ref_audio : fichiers audio, ou videos dont seul le son est pris ("son seul").
     for i, name in enumerate(state["audios"], 1):
         key = "ref_audio_%d" % i
+        path = _checked(state, "audio", name, key)
         start, end = _trim(state, "audio", name)
-        values[key] = load_audio(_checked(state, "audio", name, key), start=start, end=end)
+        try:
+            values[key] = load_audio(path, start=start, end=end)
+        except ValueError:
+            raise ValueError("%s: no soundtrack in %s" % (key, path))
 
     out = [values.get(k) for k in state_layout(state)]
     out += [None] * (TOTAL_OUTPUTS - len(out))

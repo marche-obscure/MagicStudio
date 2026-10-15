@@ -42,6 +42,26 @@ const fmtTrim = (t) => fmtSec(t[0]) + "–" + fmtSec(t[1]) + " s";
 const fileKind = (kind) =>
     kind === "video_audio" ? "video" : kind === "first_frame" || kind === "last_frame" ? "image" : kind;
 
+// Extensions video (identiques a media.KIND_EXTS["video"]).
+const VIDEO_EXTS = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"];
+const isVideoPath = (p) => VIDEO_EXTS.some((e) => String(p).toLowerCase().endsWith(e));
+/** Fichiers de type fk selectionnables dans la liste kind : Audio accepte aussi les videos ("son seul"). */
+const canPick = (kind, fk) => fk === fileKind(kind) || (kind === "audio" && fk === "video");
+/** Video choisie dans la liste Audio : seule sa bande-son sort, sur ref_audio_N. */
+const soundOnly = (kind, path) => kind === "audio" && isVideoPath(path);
+
+/** Badge "son seul" pose sur la vignette d'une video de la liste Audio. */
+function soundOnlyBadge(pos) {
+    const b = document.createElement("div");
+    b.textContent = "🔊 sound only";
+    b.title = "Only the soundtrack of this video goes out (as an audio track)";
+    Object.assign(b.style, {
+        position: "absolute", background: "rgba(0,0,0,0.75)", color: GREEN, padding: "1px 5px",
+        borderRadius: "4px", fontSize: "10px", whiteSpace: "nowrap",
+    }, pos);
+    return b;
+}
+
 // Hauteur de l'interface DOM : interrupteur de mode + lignes + barre du bas
 // (4 lignes en Ref2VA, 2 en F2VA/FL2VA).
 const UI_HEIGHT = { ref2va: 232, fl2va: 156 };
@@ -202,7 +222,8 @@ const HELP_SECTIONS = [
             [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b>: the video frames, on <b>ref_video_N</b>"],
             [iconBadge(VIDEO_AUDIO_ICON, GREEN), "<b>Video/Audio</b>: videos too, but only their " +
                 "<b>soundtrack</b> is extracted: an audio track on <b>ref_video_audio_N</b>"],
-            [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b>: up to 3, on <b>ref_audio_N</b>"],
+            [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b>: up to 3, on <b>ref_audio_N</b>: audio files, " +
+                "or videos used for their sound only (🔊 sound only)"],
         ]) +
         hList([
             "<b>Root folder</b> is prefilled with the folder of " + iconBadge(GEAR_ICON, VIOLET) +
@@ -216,7 +237,10 @@ const HELP_SECTIONS = [
             "Clicking an image or a video also shows it larger in a preview window on the right.",
             "<b>Browse</b> opens the Windows folder dialog; <b>Reload</b> goes back to the root folder.",
         ]) +
-        hTip("Pick the same video in <b>Video</b> and <b>Video/Audio</b> to have its frames and its sound."),
+        hTip("Pick the same video in <b>Video</b> and <b>Video/Audio</b> to have its frames and its sound.") +
+        hNote("in the <b>Audio</b> gallery, videos can be picked too: only their soundtrack goes out on " +
+            "<b>ref_audio_N</b>, as an independent audio track (not tied to <b>ref_video_N</b>). They show a " +
+            "<b>🔊 sound only</b> badge and can be trimmed like any audio file. A video without soundtrack is refused."),
     },
     {
         id: "selection", title: "Selection", icon: EYE_ICON, color: VIOLET,
@@ -353,7 +377,8 @@ const HELP_SECTIONS_FR = [
             [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b> : les images de la vidéo, sur <b>ref_video_N</b>"],
             [iconBadge(VIDEO_AUDIO_ICON, GREEN), "<b>Video/Audio</b> : des vidéos aussi, mais seule leur " +
                 "<b>bande-son</b> est extraite : une piste audio sur <b>ref_video_audio_N</b>"],
-            [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b> : jusqu'à 3, sur <b>ref_audio_N</b>"],
+            [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b> : jusqu'à 3, sur <b>ref_audio_N</b> : des " +
+                "fichiers audio, ou des vidéos utilisées pour leur son seul (🔊 sound only)"],
         ]) +
         hList([
             "<b>Root folder</b> est prérempli avec le dossier de " + iconBadge(GEAR_ICON, VIOLET) +
@@ -370,7 +395,11 @@ const HELP_SECTIONS_FR = [
             "<b>Browse</b> ouvre la fenêtre de dossiers de Windows ; <b>Reload</b> revient au dossier racine.",
         ]) +
         hTip("Choisissez la même vidéo dans <b>Video</b> et <b>Video/Audio</b> pour avoir ses images et son son.",
-            TIP_FR),
+            TIP_FR) +
+        hNote("dans la galerie <b>Audio</b>, les vidéos sont aussi sélectionnables : seule leur bande-son sort " +
+            "sur <b>ref_audio_N</b>, comme une piste audio indépendante (sans lien avec <b>ref_video_N</b>). " +
+            "Elles portent un badge <b>🔊 sound only</b> et se rognent comme un fichier audio. Une vidéo sans " +
+            "bande-son est refusée.", NOTE_FR),
     },
     {
         id: "selection", title: "Sélection",
@@ -1604,7 +1633,7 @@ function buildGallery(container, ctx) {
             return;
         }
         let sub;
-        if (f.kind !== fileKind(kind)) {
+        if (!canPick(kind, f.kind)) {
             sub = "for information";
         } else {
             const idx = indexOf(path);
@@ -1657,7 +1686,7 @@ function buildGallery(container, ctx) {
         subSelect.style.opacity = usable ? "1" : "0.45";
         subSelect.style.cursor = usable ? "pointer" : "default";
         subSelect.title = !base ? "Set a root folder first"
-            : usable ? "Subfolders of the root folder (number of " + fileKind(kind) + " files after the name)"
+            : usable ? "Subfolders of the root folder (number of " + (kind === "audio" ? "audio or video" : fileKind(kind)) + " files after the name)"
             : "No subfolder: the root folder itself is shown";
     }
 
@@ -1684,11 +1713,19 @@ function buildGallery(container, ctx) {
                 "&kind=" + fileKind(kind) + "&all=1");
             if (id !== scanId || scanned !== base) return;
             subfolders = data.subfolders || [];
+            // Galerie Audio : les videos comptent aussi (son seul).
+            if (kind === "audio") {
+                const vids = await apiGet("/mmrefloader/subfolders?path=" + encodeURIComponent(scanned) +
+                    "&kind=video&all=1");
+                if (id !== scanId || scanned !== base) return;
+                const byPath = new Map((vids.subfolders || []).map((e) => [e.path, e.count || 0]));
+                subfolders = subfolders.map((e) => ({ path: e.path, count: (e.count || 0) + (byPath.get(e.path) || 0) }));
+            }
             if (announce === true) {
                 const n = subfolders.filter((e) => e.path).length;
                 const withFiles = subfolders.filter((e) => e.path && e.count).length;
                 status.textContent = n
-                    ? n + " subfolder" + (n > 1 ? "s" : "") + " found, " + withFiles + " with " + fileKind(kind) + " files."
+                    ? n + " subfolder" + (n > 1 ? "s" : "") + " found, " + withFiles + " with " + (kind === "audio" ? "audio or video" : fileKind(kind)) + " files."
                     : "No subfolder in the root folder.";
             }
         } catch (e) {
@@ -1731,7 +1768,21 @@ function buildGallery(container, ctx) {
     }
     const indexOf = (path, s) => list(s).findIndex((it) => samePath(it, path));
 
-    function toggle(path) {
+    async function toggle(path) {
+        // Son seul : une video sans bande-son est refusee des la galerie.
+        const s0 = ctx.getState();
+        if (soundOnly(kind, path) && indexOf(path, s0) < 0 && list(s0).length < LIMITS[kind]) {
+            try {
+                const info = await apiGet("/mmrefloader/info?file=" + encodeURIComponent(path));
+                if (!info.has_audio) {
+                    status.textContent = "No soundtrack in this video: " + baseName(path);
+                    return;
+                }
+            } catch (e) {
+                status.textContent = e.message;
+                return;
+            }
+        }
         const s = ctx.getState();
         const arr = list(s);
         const idx = indexOf(path, s);
@@ -1748,7 +1799,7 @@ function buildGallery(container, ctx) {
         const arr = list();
         counter.textContent = arr.length + " / " + LIMITS[kind] + " selected";
         const folder = currentFolder();
-        const elsewhere = folder ? arr.filter((it) => !files.some((f) => f.kind === fileKind(kind) && samePath(joinPath(folder, f.name), it))).length : arr.length;
+        const elsewhere = folder ? arr.filter((it) => !files.some((f) => canPick(kind, f.kind) && samePath(joinPath(folder, f.name), it))).length : arr.length;
         footerInfo.textContent = elsewhere ? "+" + elsewhere + " selected in another folder" : "";
     }
 
@@ -1776,13 +1827,14 @@ function buildGallery(container, ctx) {
      */
     function makeTile(f, folder, full) {
         const path = joinPath(folder, f.name);
-        const own = f.kind === fileKind(kind);
+        const own = canPick(kind, f.kind);
         const idx = own ? indexOf(path) : -1;
         const selected = idx >= 0;
         const selectable = own && (selected || !full);
 
         const tile = document.createElement("div");
-        tile.title = own ? f.name : f.name + "\n(" + f.kind + ": not selectable here, use the " +
+        tile.title = own ? f.name + (soundOnly(kind, path) ? "\n(sound only: its soundtrack goes out on ref_audio)" : "")
+            : f.name + "\n(" + f.kind + ": not selectable here, use the " +
             (f.kind === "image" ? "Images" : f.kind === "video" ? "Video or Video/Audio" : "Audio") + " button)";
         Object.assign(tile.style, {
             position: "relative", background: "#151515", borderRadius: "6px", overflow: "hidden",
@@ -1816,6 +1868,7 @@ function buildGallery(container, ctx) {
             textOverflow: "ellipsis", color: selected ? "#fff" : "#bbb",
         });
         tile.append(thumb, name);
+        if (own && soundOnly(kind, path)) tile.appendChild(soundOnlyBadge({ right: "4px", top: "4px" }));
 
         if (f.duration != null) {
             const dur = document.createElement("div");
@@ -1840,8 +1893,9 @@ function buildGallery(container, ctx) {
 
         }
 
-        tile.addEventListener("click", () => {
-            if (own) toggle(path);
+        tile.addEventListener("click", async () => {
+            // Attendre la selection (verification de la bande-son) avant l'apercu.
+            if (own) await toggle(path);
             previewFile(f, path);
         });
         return tile;
@@ -1861,8 +1915,9 @@ function buildGallery(container, ctx) {
         for (const sec of present) {
             const group = files.filter((f) => f.kind === sec.kind);
             if (present.length > 1) {
-                grid.appendChild(sectionHeader(sec.title + "  ·  " + group.length +
-                    (sec.kind === fileKind(kind) ? "" : "  (for information)")));
+                const note = !canPick(kind, sec.kind) ? "  (for information)"
+                    : sec.kind !== fileKind(kind) ? "  (sound only)" : "";
+                grid.appendChild(sectionHeader(sec.title + "  ·  " + group.length + note));
             }
             group.forEach((f) => grid.appendChild(makeTile(f, folder, full)));
         }
@@ -1874,7 +1929,7 @@ function buildGallery(container, ctx) {
             const n = files.filter((f) => f.kind === sec.kind).length;
             return n ? n + " " + sec.kind + (n > 1 && sec.kind !== "audio" ? "s" : "") : null;
         }).filter(Boolean);
-        const own = files.filter((f) => f.kind === fileKind(kind)).length;
+        const own = files.filter((f) => canPick(kind, f.kind)).length;
         return parts.join(", ") + (own ? "" : "  (no " + fileKind(kind) + " file to select here)");
     }
 
@@ -2442,7 +2497,7 @@ function buildSelectionViewer(container, ctx) {
             Object.assign(thumb.style, {
                 height: "80px", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d0d0d",
             });
-            if (fileKind(kind) === "audio") {
+            if (fileKind(kind) === "audio" && !soundOnly(kind, path)) {
                 thumb.innerHTML = AUDIO_ICON.replace(/width="15" height="15"/, 'width="32" height="32"');
                 thumb.style.opacity = "0.7";
             } else {
@@ -2472,6 +2527,7 @@ function buildSelectionViewer(container, ctx) {
             const out = document.createElement("div");
             out.textContent = "→ " + outputName(kind, i) + (kind === "video_audio" ? "  (sound)" : "");
             Object.assign(out.style, { padding: "0 5px", fontSize: "10px", color: "#9fd6cf" });
+            const soundTag = soundOnly(kind, path) ? soundOnlyBadge({ right: "4px", top: "58px" }) : null;
 
             // Fleches : la premiere vignette n'a que ▶ actif, la derniere que ◀.
             const arrows = document.createElement("div");
@@ -2509,6 +2565,7 @@ function buildSelectionViewer(container, ctx) {
             } else {
                 tile.append(thumb, badge, bin, name, out, arrows);
             }
+            if (soundTag) tile.appendChild(soundTag);
             tile.addEventListener("click", () => showInfo(path));
             grid.appendChild(tile);
         });
@@ -2560,7 +2617,7 @@ function buildSelectionViewer(container, ctx) {
         // vignette ici + grande vue dans la fenetre de droite ; audio = lecteur.
         const fk = fileKind(kind);
         let el;
-        if (fk === "audio") {
+        if (fk === "audio" && !soundOnly(kind, path)) {
             // Audio : icone ici, lecteur + rognage dans la fenetre de droite.
             el = document.createElement("div");
             el.innerHTML = AUDIO_ICON.replace(/width="15" height="15"/, 'width="40" height="40"');
@@ -2588,7 +2645,9 @@ function buildSelectionViewer(container, ctx) {
                 row("Weight:", formatSize(info.size)) +
                 row("Duration:", info.duration != null ? formatDuration(info.duration) : "") +
                 row("Frame rate:", info.fps ? info.fps.toFixed(2) + " fps" : "") +
-                (fileKind(kind) === "video" ? row("Soundtrack:", info.has_audio ? "yes" : "none in the file") : "") +
+                (fileKind(kind) === "video" || soundOnly(kind, path)
+                    ? row("Soundtrack:", info.has_audio ? "yes" : "none in the file") : "") +
+                (soundOnly(kind, path) ? row("Used as:", "sound only (audio track)") : "") +
                 row("Audio:", info.sample_rate ? info.sample_rate + " Hz, " + info.channels + " ch" : "");
         } catch (e) {
             if (current === path) details.textContent = e.message;
@@ -2700,7 +2759,7 @@ function buildOverview(container, ctx) {
         Object.assign(thumb.style, {
             height: "80px", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d0d0d",
         });
-        if (fileKind(kind) === "audio") {
+        if (fileKind(kind) === "audio" && !soundOnly(kind, path)) {
             thumb.innerHTML = AUDIO_ICON.replace(/width="15" height="15"/, 'width="32" height="32"');
             thumb.style.opacity = "0.7";
         } else {
@@ -2739,6 +2798,7 @@ function buildOverview(container, ctx) {
             });
             tile.appendChild(cut);
         }
+        if (soundOnly(kind, path)) tile.appendChild(soundOnlyBadge({ right: "4px", top: "58px" }));
         tile.append(name, out);
         tile.addEventListener("click", () => showSide(kind, path, i));
         return tile;
