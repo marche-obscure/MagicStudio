@@ -139,8 +139,8 @@ const HELP_SECTIONS = [
         html: "<p>" + iconBadge(GEAR_ICON, VIOLET) + " sets the <b>root folder</b> of your rushes: " +
             "galleries open on it.</p>" +
             "<p>In a gallery, <b>Root folder</b> is prefilled with it and its content is shown. " +
-            "<b>Subfolder</b> is a drop-down list of the subfolders holding files of that type (file " +
-            "count after the name); <b>(root folder)</b> shows the root folder itself. The " +
+            "<b>Subfolder</b> is a drop-down list of all its subfolders, with the number of files of " +
+            "that type after each name; <b>(root folder)</b> shows the root folder itself. The " +
             iconBadge(SEARCH_ICON, VIOLET) + " of <b>Root folder</b> finds the subfolders again for the " +
             "list, the one of <b>Subfolder</b> filters the thumbnails by name. Without a root folder " +
             "they are greyed out; Browse and Reload stay available.</p>" +
@@ -615,9 +615,8 @@ function buildGallery(container, ctx) {
     subSpacer.style.flex = "0 0 54px";
     subRow.append(subSelect, filterBtn, subSpacer);
 
-    const filterRow = makeRow("");
+    const filterRow = makeRow("Filter");
     filterRow.style.display = "none";
-    filterRow.style.paddingLeft = "88px";
     const filterInput = makeField("Filter the thumbnails by name");
     const filterClear = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Clear the filter");
     filterRow.append(filterInput, filterClear);
@@ -680,6 +679,7 @@ function buildGallery(container, ctx) {
         };
         const rootEntry = subfolders.find((e) => !e.path);
         add("", "(root folder)" + (rootEntry ? "  ·  " + rootEntry.count : ""));
+        // Tous les sous-dossiers ; le nombre est celui des fichiers du type de la galerie.
         const list = subfolders.filter((e) => e.path);
         if (sub && !list.some((e) => e.path === sub)) list.unshift({ path: sub, count: null });
         list.forEach((e) => add(e.path, e.path + (e.count != null ? "  ·  " + e.count : "")));
@@ -689,8 +689,8 @@ function buildGallery(container, ctx) {
         subSelect.style.opacity = usable ? "1" : "0.45";
         subSelect.style.cursor = usable ? "pointer" : "default";
         subSelect.title = !base ? "Set a root folder first"
-            : usable ? "Subfolders holding " + kind + " files (count after the name)"
-            : "No subfolder with " + kind + " files: the root folder itself is shown";
+            : usable ? "Subfolders of the root folder (number of " + kind + " files after the name)"
+            : "No subfolder: the root folder itself is shown";
     }
 
     function updateNav() {
@@ -701,16 +701,29 @@ function buildGallery(container, ctx) {
         if (filterBtn.disabled) showFilter(false);
     }
 
-    /** Loupe du Root folder : repere les sous-dossiers pour la liste deroulante. */
-    async function scanSubfolders() {
+    /**
+     * Repere tous les sous-dossiers du Root folder (comme l'Explorateur, avec
+     * le nombre de fichiers du type de la galerie) pour la liste deroulante.
+     * announce : message dans la ligne d'etat (clic sur la loupe).
+     */
+    async function scanSubfolders(announce) {
         if (!base) return;
+        if (announce === true) status.textContent = "Looking for subfolders...";
         const id = ++scanId;
         const scanned = base;
         pickBtn.disabled = true;
         try {
-            const data = await apiGet("/mmrefloader/subfolders?path=" + encodeURIComponent(scanned) + "&kind=" + kind);
+            const data = await apiGet("/mmrefloader/subfolders?path=" + encodeURIComponent(scanned) +
+                "&kind=" + kind + "&all=1");
             if (id !== scanId || scanned !== base) return;
             subfolders = data.subfolders || [];
+            if (announce === true) {
+                const n = subfolders.filter((e) => e.path).length;
+                const withFiles = subfolders.filter((e) => e.path && e.count).length;
+                status.textContent = n
+                    ? n + " subfolder" + (n > 1 ? "s" : "") + " found, " + withFiles + " with " + kind + " files."
+                    : "No subfolder in the root folder.";
+            }
         } catch (e) {
             if (id !== scanId) return;
             subfolders = [];
@@ -956,7 +969,7 @@ function buildGallery(container, ctx) {
     overlay.addEventListener("mousedown", close);
     browseBtn.addEventListener("click", browse);
     refreshBtn.addEventListener("click", reload);
-    pickBtn.addEventListener("click", scanSubfolders);
+    pickBtn.addEventListener("click", () => scanSubfolders(true));
     // Choix dans la liste : memorise et affiche ce sous-dossier ("" = Root folder).
     subSelect.addEventListener("change", () => {
         sub = subSelect.value;

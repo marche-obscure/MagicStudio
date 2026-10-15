@@ -53,11 +53,12 @@ try:
 
     @routes.get("/mmrefloader/subfolders")
     async def mmrefloader_subfolders(request):
-        """Sous-dossiers de 'path' contenant des fichiers du type 'kind' (fenetre de choix)."""
+        """Sous-dossiers de 'path' et leur nombre de fichiers 'kind' ; all=1 : tous les sous-dossiers."""
         folder = request.rel_url.query.get("path", "").strip()
         kind = request.rel_url.query.get("kind", "").strip()
+        every = request.rel_url.query.get("all", "") == "1"
         try:
-            subs = await _in_executor(media.list_subfolders, folder, kind)
+            subs = await _in_executor(media.list_subfolders, folder, kind, every)
         except FileNotFoundError as e:
             return web.json_response({"error": str(e)}, status=400)
         except Exception as e:

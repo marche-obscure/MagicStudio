@@ -144,6 +144,19 @@ class ListFolderTests(TmpDirTest):
 
 
 class SubfoldersTests(TmpDirTest):
+    def test_lists_every_subfolder_with_its_count_of_the_kind(self):
+        # Comme l'Explorateur : tous les sous-dossiers (caches exclus), meme
+        # sans fichier du type ; la racine "" est toujours en tete.
+        os.makedirs(self.p("rush"))
+        os.makedirs(self.p("Prompt"))
+        os.makedirs(self.p(".git"))
+        make_video(self.p("rush/v.mp4"), 0.3, 24, with_audio=False)
+        open(self.p("Prompt/p.txt"), "w").close()
+        self.assertEqual(media.list_subfolders(self.dir, "image", every=True), [
+            {"path": "", "count": 0}, {"path": "Prompt", "count": 0}, {"path": "rush", "count": 0}])
+        self.assertEqual(media.list_subfolders(self.dir, "video", every=True), [
+            {"path": "", "count": 0}, {"path": "Prompt", "count": 0}, {"path": "rush", "count": 1}])
+
     def test_lists_subfolders_with_files_of_the_kind(self):
         os.makedirs(self.p("images/sdb"))
         os.makedirs(self.p("images/vide"))

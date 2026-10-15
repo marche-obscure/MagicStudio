@@ -217,11 +217,13 @@ def media_info(path):
 MAX_SCAN_DIRS = 5000
 
 
-def list_subfolders(root, kind):
+def list_subfolders(root, kind, every=False):
     """
-    Sous-dossiers de root (tous niveaux) contenant directement au moins un
-    fichier du type demande, chemins relatifs avec "/" ; "" = la racine
-    elle-meme si elle contient de tels fichiers. Les dossiers caches
+    Sous-dossiers de root (tous niveaux), chemins relatifs avec "/", avec
+    le nombre de fichiers du type demande qu'ils contiennent directement.
+    every=False : seulement ceux qui en contiennent ("" = la racine si elle
+    en contient). every=True : tous, comme l'Explorateur, la racine "" en
+    tete (la liste deroulante de la galerie). Les dossiers caches
     (commencant par ".") et __pycache__ sont ignores.
     """
     if kind not in KIND_EXTS:
@@ -236,7 +238,7 @@ def list_subfolders(root, kind):
             break
         dirs[:] = sorted((d for d in dirs if not d.startswith(".") and d != "__pycache__"), key=str.lower)
         count = sum(1 for f in files if f.lower().endswith(exts))
-        if count:
+        if count or every:
             rel = os.path.relpath(cur, root)
             out.append({"path": "" if rel == "." else rel.replace(os.sep, "/"), "count": count})
     out.sort(key=lambda e: e["path"].lower())
