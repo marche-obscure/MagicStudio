@@ -115,10 +115,12 @@ try:
         # Lancee seule, la boite de dialogue s'ouvre derriere le navigateur :
         # on affiche d'abord une fenetre invisible "toujours au premier plan"
         # et on ouvre la boite dans son evenement Shown, avec elle comme
-        # proprietaire, pour qu'elle herite du premier plan (meme methode que
-        # Pixaroma). Le dossier de depart passe par une variable
+        # proprietaire, pour qu'elle herite du premier plan. Le dossier de
+        # depart passe par une variable
         # d'environnement (pas de probleme de guillemets) et la sortie est
         # forcee en UTF-8 (chemins avec accents).
+        # Script adapte de ComfyUI-Pixaroma (https://github.com/pixaroma/ComfyUI-Pixaroma),
+        # Copyright (c) 2026 pixaroma, licence MIT (voir LICENSE, "Third-party code").
         script = (
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
             "Add-Type -AssemblyName System.Windows.Forms;"

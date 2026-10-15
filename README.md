@@ -59,6 +59,11 @@ python -m unittest discover -s tests -v
 node --test tests/test_config_format.mjs tests/test_config_json.mjs tests/test_help_search.mjs
 ```
 
+## Credits
+
+- Thanks to **pixaroma** for [ComfyUI-Pixaroma](https://github.com/pixaroma/ComfyUI-Pixaroma): the interface of this node (buttons on the left, thumbnail gallery) is inspired by its *Load Images Folder* node, and the Windows folder dialog script is adapted from it (MIT License, see [LICENSE](LICENSE)).
+- Built for the native **MiniMax H3** nodes of ComfyUI.
+
 ## License
 
-Code and documentation: MIT, © 2026 marche-obscure. Images in `assets/` (if any) are all rights reserved, see [LICENSE](LICENSE).
+Code and documentation: MIT, © 2026 marche-obscure. Images in `assets/` (if any) are all rights reserved. Third-party code: see the end of [LICENSE](LICENSE).
