@@ -190,7 +190,8 @@ const HELP_SECTIONS = [
             "own .txt file (one file per mode, never mixed): <b>REF2VA_minimax_config_yyyyMMdd-HHmmss.txt</b> " +
             "with the root folder and the four lists, or <b>FL2VA_minimax_config_yyyyMMdd-HHmmss.txt</b> with " +
             "the root folder and the two frames (date and time in the name: a new save never overwrites " +
-            "an older one). The first line is a header with the file type " +
+            "an older one; greyed out while the mode shown has no reference, the root folder alone does not " +
+            "count). The first line is a header with the file type " +
             "(<code># MiniMax H3 Reference Loader - REF2VA configuration</code>), then one line per output, e.g. " +
             "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
             "to it; an empty group is written with its first number and NaN, e.g. " +
@@ -2052,6 +2053,7 @@ app.registerExtension({
             // Download : fichier du mode affiche seulement (un fichier par mode).
             downloadBtn.addEventListener("click", () => {
                 const s = getState();
+                if (!hasConfig(s)) return; // mode vide : rien a sauvegarder (bouton grise)
                 const blob = new Blob([formatConfig(s)], { type: "text/plain" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
@@ -2209,6 +2211,15 @@ app.registerExtension({
 
                 // Upload orange s'il ecrasera des references, couleur standard sinon.
                 uploadBtn.style.background = hasConfig(s) ? ORANGE : PINK;
+                // Download grise et inactif si le mode affiche n'a aucune reference
+                // (le dossier racine seul ne compte pas).
+                const canSave = hasConfig(s);
+                downloadBtn.disabled = !canSave;
+                downloadBtn.style.background = canSave ? PINK : INACTIVE_BG;
+                downloadBtn.style.opacity = canSave ? "1" : "0.45";
+                downloadBtn.style.cursor = canSave ? "pointer" : "default";
+                downloadBtn.title = canSave ? "Save the configuration (.txt)"
+                    : "Save the configuration (.txt) - nothing to save in this mode";
                 rootBtn.title = s.root ? "Root folder: " + s.root : "Root folder of the rushes (not set)";
 
                 applyLayout(node, s);
