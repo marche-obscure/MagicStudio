@@ -34,6 +34,7 @@ test("chemin relatif rejoint la racine, absolu garde tel quel", () => {
 
 test("format Ref2VA : une ligne par sortie, NaN pour un groupe vide, sans les frames", () => {
     assert.equal(formatConfig(state), [
+        "# MiniMax H3 Reference Loader - REF2VA configuration",
         "mode : Ref2VA",
         "root : F:\\Rushs\\Projet",
         "image 1 : images\\a.png",
@@ -48,6 +49,7 @@ test("format Ref2VA : une ligne par sortie, NaN pour un groupe vide, sans les fr
 
 test("format F2VA/FL2VA : seulement les frames, sans les listes Ref2VA", () => {
     assert.equal(formatConfig({ ...state, mode: "fl2va" }), [
+        "# MiniMax H3 Reference Loader - FL2VA configuration",
         "mode : FL2VA",
         "root : F:\\Rushs\\Projet",
         "first_frame : images\\debut.png",
@@ -59,18 +61,20 @@ test("format F2VA/FL2VA : seulement les frames, sans les listes Ref2VA", () => {
 test("format d'une configuration vide", () => {
     const text = formatConfig({ mode: "fl2va", root: "", images: [], videos: [], video_audios: [], audios: [],
         first_frame: [], last_frame: [] });
-    assert.equal(text, "mode : FL2VA\r\nroot : NaN\r\nfirst_frame : NaN\r\nlast_frame : NaN\r\n");
+    assert.equal(text, "# MiniMax H3 Reference Loader - FL2VA configuration\r\n" +
+        "mode : FL2VA\r\nroot : NaN\r\nfirst_frame : NaN\r\nlast_frame : NaN\r\n");
     const ref = formatConfig({ mode: "ref2va", root: "", images: [], videos: [], video_audios: [], audios: [],
         first_frame: [], last_frame: [] });
-    assert.equal(ref, "mode : Ref2VA\r\nroot : NaN\r\nimage 1 : NaN\r\nvideo 1 : NaN\r\nvideo_audio 1 : NaN\r\n" +
+    assert.equal(ref, "# MiniMax H3 Reference Loader - REF2VA configuration\r\n" +
+        "mode : Ref2VA\r\nroot : NaN\r\nimage 1 : NaN\r\nvideo 1 : NaN\r\nvideo_audio 1 : NaN\r\n" +
         "audio 1 : NaN\r\n");
 });
 
 test("aller-retour format -> lecture, chaque mode ne garde que sa partie", () => {
-    assert.deepEqual(parseConfig(formatConfig(state)), { ...state, first_frame: [], last_frame: [] });
+    assert.deepEqual(parseConfig(formatConfig(state)), { ...state, header: true, first_frame: [], last_frame: [] });
     const fl = { ...state, mode: "fl2va" };
     assert.deepEqual(parseConfig(formatConfig(fl)),
-        { ...fl, images: [], videos: [], video_audios: [], audios: [] });
+        { ...fl, header: true, images: [], videos: [], video_audios: [], audios: [] });
 });
 
 test("lecture tolerante : ordre, casse, espaces, trous de numerotation, NaN", () => {
@@ -86,6 +90,7 @@ test("lecture tolerante : ordre, casse, espaces, trous de numerotation, NaN", ()
     ].join("\n");
     assert.deepEqual(parseConfig(text), {
         mode: "ref2va",
+        header: false,
         root: "F:/r",
         images: ["F:/r/a.png", "F:/r/c.png"],
         videos: [],
@@ -105,7 +110,7 @@ test("ancien fichier : video_audio N = NaN ou meme chemin que video N", () => {
         "video_audio 2 : C:\\b.mp4",
     ].join("\n");
     assert.deepEqual(parseConfig(text), {
-        mode: "ref2va", root: "", images: [], videos: ["C:\\a.mp4", "C:\\b.mp4"], video_audios: ["C:\\b.mp4"],
+        mode: "ref2va", header: false, root: "", images: [], videos: ["C:\\a.mp4", "C:\\b.mp4"], video_audios: ["C:\\b.mp4"],
         audios: [], first_frame: [], last_frame: [],
     });
 });
@@ -134,4 +139,18 @@ test("mode et images de debut / fin", () => {
     assert.deepEqual(c.last_frame, ["D:\\b.png"]);
     assert.equal(parseConfig("mode : F2VA/FL2VA\nfirst_frame : x.png").mode, "fl2va");
     assert.equal(parseConfig("mode : n'importe quoi\nimage 1 : x.png").mode, "ref2va");
+});
+
+test("en-tete : il donne le mode du fichier (prioritaire sur la ligne mode)", () => {
+    const fl = parseConfig("# MiniMax H3 Reference Loader - FL2VA configuration\nfirst_frame : a.png\n");
+    assert.equal(fl.mode, "fl2va");
+    assert.equal(fl.header, true);
+    const ref = parseConfig("# MiniMax H3 Reference Loader - REF2VA configuration\nmode : FL2VA\nimage 1 : a.png\n");
+    assert.equal(ref.mode, "ref2va");
+    // ancien fichier sans en-tete : ligne mode, et header = false
+    const old = parseConfig("mode : FL2VA\nfirst_frame : a.png\n");
+    assert.equal(old.mode, "fl2va");
+    assert.equal(old.header, false);
+    // un commentaire quelconque n'est pas un en-tete
+    assert.equal(parseConfig("# notes\nimage 1 : a.png").header, false);
 });

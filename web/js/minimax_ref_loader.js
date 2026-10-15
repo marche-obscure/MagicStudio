@@ -187,14 +187,16 @@ const HELP_SECTIONS = [
             "Without a root folder " +
             "they are greyed out; Browse and Reload stay available; Reload goes back to the root folder of the gear button when the gallery shows another folder.</p>" +
             "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the configuration of the mode shown in its " +
-            "own .txt file (one file per mode, never mixed): <b>minimax_ref2va_config.txt</b> with the " +
-            "root folder and the four lists, or <b>minimax_fl2va_config.txt</b> with the root folder and " +
-            "the two frames. One line per output, e.g. " +
+            "own .txt file (one file per mode, never mixed): <b>REF2VA_minimax_config.txt</b> with the " +
+            "root folder and the four lists, or <b>FL2VA_minimax_config.txt</b> with the root folder and " +
+            "the two frames. The first line is a header with the file type " +
+            "(<code># MiniMax H3 Reference Loader - REF2VA configuration</code>), then one line per output, e.g. " +
             "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
             "to it; an empty group is written with its first number and NaN, e.g. " +
             "<code>audio 1 : NaN</code>.</p>" +
             "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads a file of the mode shown and sets its outputs; " +
-            "a file of the other mode is refused (switch mode first) and nothing is changed. It turns " +
+            "a file of the other mode (read from its header) is refused with a warning (switch mode first) " +
+            "and nothing is changed. It turns " +
             iconBadge(UPLOAD_ICON, ORANGE) + " as soon as the mode shown has a reference (the root folder " +
             "alone does not count) and then asks a confirmation. The other mode and the mode switch are " +
             "never changed; the root folder is taken from the file. " +
@@ -1288,9 +1290,12 @@ function buildConfirmDialog(container) {
         window.removeEventListener("keydown", onKey, true);
     }
 
-    function ask(html, label, callback, anchor) {
+    /** info = simple avertissement : un seul bouton (label), sans Cancel. */
+    function ask(html, label, callback, anchor, info) {
         text.innerHTML = html;
         okBtn.textContent = label;
+        cancelBtn.style.display = info ? "none" : "";
+        okBtn.style.background = info ? PINK : MARK_RED;
         onConfirm = callback;
         overlay.style.display = "block";
         window.addEventListener("keydown", onKey, true);
@@ -2042,7 +2047,8 @@ app.registerExtension({
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = s.mode === "fl2va" ? "minimax_fl2va_config.txt" : "minimax_ref2va_config.txt";
+                // Nom prefixe par le mode : REF2VA_... ou FL2VA_...
+                a.download = (s.mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config.txt";
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
@@ -2087,11 +2093,20 @@ app.registerExtension({
                     // viderait la partie du mode affiche).
                     const s = getState();
                     if (conf.mode !== s.mode) {
-                        const name = (m) => (m === "fl2va" ? "F2VA / FL2VA" : "Ref2VA");
+                        // Type lu dans l'en-tete du fichier (ou sa ligne mode pour
+                        // un ancien fichier) : avertissement visible + message.
+                        const name = (m) => (m === "fl2va" ? "FL2VA" : "REF2VA");
                         notice = "⚠ " + name(conf.mode) + " file: switch to " + name(conf.mode) + " to load it";
                         noticeTitle = "This configuration file was saved in " + name(conf.mode) +
                             " mode; the node is in " + name(s.mode) + " mode. Nothing was changed.";
                         refresh();
+                        clearConfirm.ask(
+                            "<b>Wrong configuration file</b><br>" + escapeHtml(file.name) + " is a <b>" +
+                            name(conf.mode) + "</b> configuration" + (conf.header ? "" : " (no header, read from its mode line)") +
+                            ", but the node is in <b>" + name(s.mode) + "</b> mode." +
+                            '<div style="color:#999;margin-top:8px">Nothing was changed. Switch the node to ' +
+                            name(conf.mode) + " first, or load a " + name(s.mode) + " file.</div>",
+                            "OK", () => {}, null, true);
                         return;
                     }
                     // Seule la partie du mode affiche est remplacee ; le mode du

@@ -2,7 +2,9 @@
 // Loader : sauvegarde (Download) et chargement (Upload). Module sans
 // dependance a ComfyUI, teste par tests/test_config_format.mjs.
 //
-// Une ligne par sortie, dans l'ordre des sorties :
+// Une ligne d'en-tete (type du fichier, verifie a l'Upload), puis une ligne
+// par sortie, dans l'ordre des sorties :
+//   # MiniMax H3 Reference Loader - REF2VA configuration   (ou FL2VA)
 //   mode : Ref2VA                (ou FL2VA : mode F2VA/FL2VA)
 //   root : F:\Rushs\Projet
 //   image 1 : images\a.png
@@ -15,6 +17,8 @@
 
 export const CONFIG_LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3 };
 const EMPTY = "NaN";
+const HEADER = "# MiniMax H3 Reference Loader - ";
+const HEADER_RE = /^\s*#\s*MiniMax H3 Reference Loader\s*-\s*(REF2VA|FL2VA)\b/i;
 const EOL = "\r\n";
 
 const norm = (p) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
@@ -46,7 +50,11 @@ export function formatConfig(state) {
     const root = state.root || "";
     const rel = (p) => toRelative(root, p);
     const fl = state.mode === "fl2va";
-    const lines = ["mode : " + (fl ? "FL2VA" : "Ref2VA"), "root : " + (root || EMPTY)];
+    const lines = [
+        HEADER + (fl ? "FL2VA" : "REF2VA") + " configuration",
+        "mode : " + (fl ? "FL2VA" : "Ref2VA"),
+        "root : " + (root || EMPTY),
+    ];
     if (fl) {
         for (const key of ["first_frame", "last_frame"]) {
             const v = (state[key] || [])[0];
@@ -67,8 +75,9 @@ export function formatConfig(state) {
 
 /**
  * Texte du fichier -> { mode, root, images, videos, video_audios, audios,
- * first_frame, last_frame } (chemins absolus). video_audio est une liste
- * independante des videos ; sans ligne mode, le mode est Ref2VA.
+ * first_frame, last_frame, header } (chemins absolus). video_audio est une
+ * liste independante des videos. Le mode vient de l'en-tete s'il existe
+ * (header = true), sinon de la ligne mode, sinon Ref2VA.
  * Tolerant : ordre des lignes, casse, espaces, numeros manquants (la liste
  * est resserree), lignes inconnues ignorees. Leve une erreur si aucune
  * ligne n'est reconnue.
@@ -80,11 +89,18 @@ export function parseConfig(text) {
     };
     let root = "";
     let mode = "ref2va";
+    let headerMode = null;
     const frames = { first_frame: "", last_frame: "" };
     let found = false;
     const groups = { image: {}, video: {}, video_audio: {}, audio: {} };
 
     for (const raw of String(text).split(/\r?\n/)) {
+        const mh = raw.match(HEADER_RE);
+        if (mh) {
+            headerMode = mh[1].toLowerCase() === "fl2va" ? "fl2va" : "ref2va";
+            found = true;
+            continue;
+        }
         const mm = raw.match(/^\s*mode\s*:(.*)$/i);
         if (mm) {
             // "FL2VA", "F2VA/FL2VA", "fl2va"... = mode F2VA/FL2VA ; le reste = Ref2VA.
@@ -116,7 +132,8 @@ export function parseConfig(text) {
     const list = (g) => ordered(g).map((k) => g[k]).filter(Boolean).map(abs);
 
     return {
-        mode,
+        mode: headerMode || mode,
+        header: headerMode !== null,
         root,
         images: list(groups.image).slice(0, CONFIG_LIMITS.image),
         videos: list(groups.video).slice(0, CONFIG_LIMITS.video),

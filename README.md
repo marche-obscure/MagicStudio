@@ -11,9 +11,10 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
 - The eye button next to each row shows the selection in order (clicking an image or a video also opens it in a preview window of the same size on the right): arrows move a reference, the trash on a thumbnail marks it, and **Delete** removes the marked ones (the following references move up, the last empty output is removed).
 - The trash button next to the eye deletes **all** the references of its row, after a confirmation.
 - The gear button sets a **root folder** for your rushes. In a gallery, **Root folder** is prefilled with it and its content is shown. **Subfolder** is a drop-down list of all the subfolders of the root folder, with the number of files of that type after each name; **(root folder)**, the default, shows the root folder itself. The magnifier of **Root folder** shows the root folder content and finds its subfolders again for the list; the magnifier of **Subfolder** shows the content of the chosen subfolder. A folder with one kind of files shows a single grid; a mixed folder shows a section per kind (Images, Video or Video/Audio, Audio). Only the files of the button that opened the gallery can be selected; the others are shown for information. Clicking an image or a video also shows it in a preview window on the right (image, or video with its player). Both magnifiers are greyed out without a root folder; Browse and Reload stay available. Reload goes back to the root folder when the gallery shows another folder (picked with Browse or typed). The chosen subfolder is remembered per type.
-- The download button saves the configuration of the mode shown in its own `.txt` file (one file per mode, never mixed): `minimax_ref2va_config.txt` (root folder + the four lists) or `minimax_fl2va_config.txt` (root folder + the two frames), one line per output:
+- The download button saves the configuration of the mode shown in its own `.txt` file (one file per mode, never mixed): `REF2VA_minimax_config.txt` (root folder + the four lists) or `FL2VA_minimax_config.txt` (root folder + the two frames). The first line is a header giving the file type, then one line per output:
 
   ```
+  # MiniMax H3 Reference Loader - REF2VA configuration
   mode : Ref2VA
   root : F:\Rushs\Project
   image 1 : images\a.png
@@ -23,6 +24,7 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
   ```
 
   ```
+  # MiniMax H3 Reference Loader - FL2VA configuration
   mode : FL2VA
   root : F:\Rushs\Project
   first_frame : images\start.png
@@ -30,7 +32,7 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
   ```
 
   Paths under the root folder are written relative to it; an empty group is written with its first number and `NaN`.
-- The upload button loads a file of the mode shown and sets its outputs; a file saved in the other mode is refused (switch mode first) and nothing is changed. It keeps its standard color while the mode shown has no reference and turns orange as soon as it has one (the root folder alone does not count), and then asks for a confirmation. The other mode and the mode switch are never changed; the root folder is taken from the file. Files missing on disk are still loaded and reported on the node.
+- The upload button loads a file of the mode shown and sets its outputs; a file saved in the other mode (read from its header, or its mode line for older files) is refused with a warning (switch mode first) and nothing is changed. It keeps its standard color while the mode shown has no reference and turns orange as soon as it has one (the root folder alone does not count), and then asks for a confirmation. The other mode and the mode switch are never changed; the root folder is taken from the file. Files missing on disk are still loaded and reported on the node.
 - Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most; audio is cut to 15 s.
 
 ## Install
