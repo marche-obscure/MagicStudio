@@ -1,5 +1,5 @@
 import { app } from "../../scripts/app.js";
-import { formatConfig, parseConfig, trimKey } from "./config_format.js";
+import { formatConfigJson, parseAnyConfig, trimKey } from "./config_format.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -178,7 +178,7 @@ const HELP_SECTIONS = [
             "with <b>Set start</b> / <b>Set end</b>), check it with <b>Play trim</b>, or <b>Reset</b> to " +
             "keep the whole file. The file itself is never changed; only that part goes to the output " +
             "(frames and sound). A trimmed file shows a ✂ badge, and the trim is kept in the saved " +
-            ".txt file (<code>video 1 : rush\plan.mp4 | 2.5-8</code>).</p>" +
+            "configuration (<code>\"trim\": [2.5, 8]</code>).</p>" +
             "<p>The " + iconBadge(TRASH_ICON, INACTIVE_BG) + " on a thumbnail marks it for deletion (it turns " +
             iconBadge(TRASH_ICON, MARK_RED) + "); <b>Delete</b> removes the marked files after a confirmation. " +
             "The following references move up (ref 4 becomes ref 3...) and the last output, now empty, " +
@@ -200,17 +200,16 @@ const HELP_SECTIONS = [
             "Without a root folder " +
             "they are greyed out; Browse and Reload stay available; Reload goes back to the root folder of the gear button when the gallery shows another folder.</p>" +
             "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the configuration of the mode shown in its " +
-            "own .txt file (one file per mode, never mixed): <b>REF2VA_minimax_config_yyyyMMdd-HHmmss.txt</b> " +
-            "with the root folder and the four lists, or <b>FL2VA_minimax_config_yyyyMMdd-HHmmss.txt</b> with " +
+            "own .json file (one file per mode, never mixed): <b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b> " +
+            "with the root folder and the four lists, or <b>FL2VA_minimax_config_yyyyMMdd-HHmmss.json</b> with " +
             "the root folder and the two frames (date and time in the name: a new save never overwrites " +
             "an older one; greyed out while the mode shown has no reference, the root folder alone does not " +
-            "count). The first line is a header with the file type " +
-            "(<code># MiniMax H3 Reference Loader - REF2VA configuration</code>), then one line per output, e.g. " +
-            "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
-            "to it; an empty group is written with its first number and NaN, e.g. " +
-            "<code>audio 1 : NaN</code>.</p>" +
-            "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads a file of the mode shown and sets its outputs; " +
-            "a file of the other mode (read from its header) is refused with a warning (switch mode first) " +
+            "count). The file gives its type (<code>\"format\"</code> and <code>\"mode\": \"REF2VA\"</code> " +
+            "or <code>\"FL2VA\"</code>), then the lists, e.g. <code>\"videos\": [{\"path\": " +
+            "\"rush\\\\plan.mp4\", \"trim\": [5, 7]}]</code>. Paths under the root folder are written " +
+            "relative to it; an empty group is <code>[]</code> or <code>null</code>.</p>" +
+            "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads a file of the mode shown (.json, or an older " +
+            ".txt) and sets its outputs; a file of the other mode is refused with a warning (switch mode first) " +
             "and nothing is changed. It turns " +
             iconBadge(UPLOAD_ICON, ORANGE) + " as soon as the mode shown has a reference (the root folder " +
             "alone does not count) and then asks a confirmation. The other mode and the mode switch are " +
@@ -2166,15 +2165,16 @@ app.registerExtension({
             });
             // Dossier racine, sauvegarde et chargement de la configuration.
             const rootBtn = makeIconButton(VIOLET, GEAR_ICON, "Root folder of the rushes");
-            const downloadBtn = makeIconButton(PINK, DOWNLOAD_ICON, "Save the configuration (.txt)");
-            const uploadBtn = makeIconButton(PINK, UPLOAD_ICON, "Load a configuration (.txt)");
+            const downloadBtn = makeIconButton(PINK, DOWNLOAD_ICON, "Save the configuration (.json)");
+            const uploadBtn = makeIconButton(PINK, UPLOAD_ICON, "Load a configuration (.json, or an older .txt)");
             [rootBtn, downloadBtn, uploadBtn].forEach((b) => {
                 b.style.width = "22px";
                 b.style.height = "22px";
             });
             const fileInput = document.createElement("input");
             fileInput.type = "file";
-            fileInput.accept = ".txt,text/plain";
+            // JSON (sauvegardes actuelles) ou ancien .txt.
+            fileInput.accept = ".json,application/json,.txt,text/plain";
             fileInput.style.display = "none";
 
             bottom.append(summary, rootBtn, downloadBtn, uploadBtn, helpBtn, fileInput);
@@ -2246,13 +2246,13 @@ app.registerExtension({
             downloadBtn.addEventListener("click", () => {
                 const s = getState();
                 if (!hasConfig(s)) return; // mode vide : rien a sauvegarder (bouton grise)
-                const blob = new Blob([formatConfig(s)], { type: "text/plain" });
+                const blob = new Blob([formatConfigJson(s)], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
                 // Nom prefixe par le mode et suffixe par la date / heure locales
                 // (yyyyMMdd-HHmmss) : une nouvelle sauvegarde n'ecrase pas la precedente.
-                a.download = (s.mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config_" + timestamp() + ".txt";
+                a.download = (s.mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config_" + timestamp() + ".json";
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
@@ -2287,7 +2287,7 @@ app.registerExtension({
                 reader.onload = async () => {
                     let conf;
                     try {
-                        conf = parseConfig(String(reader.result || ""));
+                        conf = parseAnyConfig(String(reader.result || ""));
                     } catch (e) {
                         notice = "⚠ " + e.message;
                         refresh();
@@ -2415,8 +2415,8 @@ app.registerExtension({
                 downloadBtn.style.background = canSave ? PINK : INACTIVE_BG;
                 downloadBtn.style.opacity = canSave ? "1" : "0.45";
                 downloadBtn.style.cursor = canSave ? "pointer" : "default";
-                downloadBtn.title = canSave ? "Save the configuration (.txt)"
-                    : "Save the configuration (.txt) - nothing to save in this mode";
+                downloadBtn.title = canSave ? "Save the configuration (.json)"
+                    : "Save the configuration (.json) - nothing to save in this mode";
                 rootBtn.title = s.root ? "Root folder: " + s.root : "Root folder of the rushes (not set)";
 
                 applyLayout(node, s);
