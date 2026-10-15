@@ -193,8 +193,10 @@ const HELP_SECTIONS = [
             "<code>audio 1 : NaN</code>.</p>" +
             "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads such a file and sets the outputs from it. " +
             "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " as soon as the mode shown has a reference (the " +
-            "root folder alone does not count). Loading replaces both modes, so it asks a confirmation " +
-            "whenever a reference exists in either mode. Files missing on " +
+            "root folder alone does not count). Loading only replaces the part of the mode shown " +
+            "(Ref2VA: the four lists; F2VA / FL2VA: the two frames) and the root folder; the other mode " +
+            "and the mode switch are not changed. It asks a confirmation when the button is orange. " +
+            "Files missing on " +
             "disk are still loaded and reported under the buttons.</p>",
     },
     {
@@ -1982,7 +1984,6 @@ app.registerExtension({
             // le dossier racine seul ne compte pas.
             const ref2vaRefs = (s) => s.images.length + s.videos.length + s.video_audios.length + s.audios.length;
             const frameRefs = (s) => s.first_frame.length + s.last_frame.length;
-            const totalRefs = (s) => ref2vaRefs(s) + frameRefs(s);
             /** References du mode affiche (couleur du bouton Upload). */
             const modeRefs = (s) => (s.mode === "fl2va" ? frameRefs(s) : ref2vaRefs(s));
 
@@ -2045,21 +2046,21 @@ app.registerExtension({
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
             });
 
-            // Upload : un fichier remplace la configuration des DEUX modes, donc
-            // confirmation des qu'une reference existe, meme dans l'autre mode
-            // (bouton rose dans ce cas, puisque le mode affiche est vide).
+            // Upload : ne remplace que la partie du mode affiche (Ref2VA : les 4
+            // listes ; F2VA/FL2VA : les deux frames). Confirmation seulement si
+            // cette partie a deja des references (bouton orange).
             uploadBtn.addEventListener("click", () => {
                 const s = getState();
-                if (!totalRefs(s)) {
+                if (!hasConfig(s)) {
                     fileInput.click();
                     return;
                 }
-                const parts = [];
-                if (ref2vaRefs(s)) parts.push(ref2vaRefs(s) + " in Ref2VA");
-                if (frameRefs(s)) parts.push(frameRefs(s) + " in F2VA / FL2VA");
+                const fl = s.mode === "fl2va";
                 clearConfirm.ask(
-                    "<b>Overwrite the current configuration?</b><br>Loading a file replaces the root " +
-                    "folder and the references of both modes (" + parts.join(", ") + ")." +
+                    "<b>Overwrite the " + (fl ? "F2VA / FL2VA" : "Ref2VA") + " configuration?</b><br>" +
+                    "Loading a file replaces the " + modeRefs(s) + " " + (fl ? "frame" : "reference") +
+                    (modeRefs(s) > 1 ? "s" : "") + " of this mode and the root folder; the other mode " +
+                    "is not changed." +
                     '<div style="color:#999;margin-top:8px">Save it first with the download button ' +
                     "if you want to keep it.</div>",
                     "Overwrite", () => fileInput.click());
@@ -2079,24 +2080,25 @@ app.registerExtension({
                         refresh();
                         return;
                     }
+                    // Seule la partie du mode affiche est remplacee ; le mode du
+                    // noeud ne change pas. Le dossier racine (commun) est repris.
                     const s = getState();
                     if (s.root !== conf.root) resetRootSubs(s);
                     s.root = conf.root;
-                    s.images = conf.images;
-                    s.videos = conf.videos;
-                    s.video_audios = conf.video_audios;
-                    s.audios = conf.audios;
-                    s.first_frame = conf.first_frame;
-                    s.last_frame = conf.last_frame;
-                    if (s.mode !== conf.mode) {
-                        // Le fichier change de mode : memes regles que l'interrupteur.
-                        setMode(conf.mode, s);
+                    let paths;
+                    if (s.mode === "fl2va") {
+                        s.first_frame = conf.first_frame;
+                        s.last_frame = conf.last_frame;
+                        paths = conf.first_frame.concat(conf.last_frame);
                     } else {
-                        setState(s);
+                        s.images = conf.images;
+                        s.videos = conf.videos;
+                        s.video_audios = conf.video_audios;
+                        s.audios = conf.audios;
+                        paths = conf.images.concat(conf.videos, conf.video_audios, conf.audios);
                     }
+                    setState(s);
                     // Fichiers absents du disque : charges quand meme, signales.
-                    const paths = conf.images.concat(conf.videos, conf.video_audios, conf.audios,
-                        conf.first_frame, conf.last_frame);
                     const missing = [];
                     await Promise.all(paths.map(async (p) => {
                         const res = await fetch("/mmrefloader/info?file=" + encodeURIComponent(p)).catch(() => null);

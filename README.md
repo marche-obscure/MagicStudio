@@ -25,7 +25,7 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
   ```
 
   Paths under the root folder are written relative to it; an empty group is written with its first number and `NaN`.
-- The upload button loads such a file and sets the outputs from it. It keeps its standard color while the mode shown has no reference and turns orange as soon as it has one (the root folder alone does not count). Loading replaces the configuration of both modes, so it asks for a confirmation whenever either mode has references. Files missing on disk are still loaded and reported on the node.
+- The upload button loads such a file and sets the outputs from it. It keeps its standard color while the mode shown has no reference and turns orange as soon as it has one (the root folder alone does not count). Loading only replaces the part of the mode shown (Ref2VA: the four lists; F2VA / FL2VA: the two frames) and the root folder; the other mode and the mode switch are not changed. It asks for a confirmation when the button is orange. Download always saves both parts. Files missing on disk are still loaded and reported on the node.
 - Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most; audio is cut to 15 s.
 
 ## Install
