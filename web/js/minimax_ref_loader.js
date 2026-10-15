@@ -1985,14 +1985,14 @@ app.registerExtension({
                     : "No video soundtrack selected";
                 rows.audio.btn.title = listTitle(s.audios);
 
-                const total = totalRefs(s);
                 const refText = fl
                     ? (s.first_frame.length ? (s.last_frame.length ? "FL2VA: first + last frame" : "F2VA: first frame")
                         : "Pick a first frame")
-                    : s.images.length + s.videos.length + s.video_audios.length + s.audios.length
-                        ? s.images.length + " image(s), " + s.videos.length + " video(s), " +
-                          (s.video_audios.length + s.audios.length) + " audio"
-                        : "Click a button to pick references";
+                    // Ref2VA : nombre / plafond par groupe (les bandes-son Video/Audio
+                    // ont leurs propres places, affichees sur leur ligne).
+                    : s.images.length + "/" + LIMITS.image + " image(s), " +
+                      s.videos.length + "/" + LIMITS.video + " video(s), " +
+                      s.audios.length + "/" + LIMITS.audio + " audio(s)";
                 summary.textContent = notice || refText;
                 summary.style.color = notice ? ORANGE : "#9fd6cf";
                 summary.title = notice ? noticeTitle : "";
