@@ -167,6 +167,52 @@ def list_folder(folder, kind):
     return files
 
 
+def kind_of(path):
+    """Type de media d'apres l'extension ("image", "video", "audio"), sinon None."""
+    ext = os.path.splitext(path)[1].lower()
+    for kind, exts in KIND_EXTS.items():
+        if ext in exts:
+            return kind
+    return None
+
+
+def media_info(path):
+    """
+    Informations affichees dans l'encadre de la fenetre de selection :
+    dossier, nom, poids, et selon le type taille en pixels, duree,
+    cadence, presence de son, frequence et nombre de canaux.
+    """
+    kind = kind_of(path)
+    if kind is None:
+        raise ValueError("Unsupported file type: %s" % path)
+    if not os.path.isfile(path):
+        raise FileNotFoundError("File not found: %s" % path)
+
+    info = {
+        "kind": kind,
+        "name": os.path.basename(path),
+        "folder": os.path.dirname(os.path.abspath(path)),
+        "size": os.path.getsize(path),
+    }
+    if kind == "image":
+        with Image.open(path) as img:
+            w, h = ImageOps.exif_transpose(img).size
+        info.update(width=w, height=h)
+        return info
+
+    info["duration"] = media_duration(path)
+    with av.open(path) as c:
+        if kind == "video" and c.streams.video:
+            vs = c.streams.video[0]
+            rate = vs.average_rate or vs.guessed_rate
+            info.update(width=vs.codec_context.width, height=vs.codec_context.height,
+                        fps=float(rate) if rate else None, has_audio=bool(c.streams.audio))
+        if kind == "audio" and c.streams.audio:
+            st = c.streams.audio[0]
+            info.update(sample_rate=st.codec_context.sample_rate or st.rate, channels=st.channels)
+    return info
+
+
 def _jpeg_bytes(img, size):
     img = img.convert("RGB")
     img.thumbnail((size, size))

@@ -69,6 +69,26 @@ try:
         return web.Response(body=data, content_type="image/jpeg",
                             headers={"Cache-Control": "max-age=86400"})
 
+    @routes.get("/mmrefloader/info")
+    async def mmrefloader_info(request):
+        """Infos d'un fichier selectionne (chemin complet) pour l'encadre de la fenetre de selection."""
+        full = request.rel_url.query.get("file", "").strip()
+        try:
+            info = await _in_executor(media.media_info, full)
+        except FileNotFoundError as e:
+            return web.json_response({"error": str(e)}, status=404)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=400)
+        return web.json_response(info)
+
+    @routes.get("/mmrefloader/media")
+    async def mmrefloader_media(request):
+        """Sert le fichier lui-meme (apercu image, lecteur video/audio) ; types supportes uniquement."""
+        full = request.rel_url.query.get("file", "").strip()
+        if media.kind_of(full) is None or not os.path.isfile(full):
+            return web.json_response({"error": "File not found."}, status=404)
+        return web.FileResponse(full)
+
     @routes.get("/mmrefloader/browse_dir")
     async def mmrefloader_browse_dir(request):
         """Ouvre l'explorateur de dossiers Windows (cote serveur) et renvoie le chemin choisi."""

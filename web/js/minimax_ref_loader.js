@@ -56,6 +56,10 @@ const TRASH_ICON = svg(
     '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>', 12);
 const CLOSE_ICON = svg(
     '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>', 14);
+const EYE_ICON = svg(
+    '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>', 13);
+const LEFT_ICON = svg('<polyline points="15 18 9 12 15 6"></polyline>', 12);
+const RIGHT_ICON = svg('<polyline points="9 18 15 12 9 6"></polyline>', 12);
 
 // Une ligne par bouton : type de galerie ouverte, son par defaut d'une
 // nouvelle video selectionnee depuis ce bouton.
@@ -102,6 +106,15 @@ const HELP_SECTIONS = [
             "<p>MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks first, then " +
             "the audio files: with 2 videos with sound, <b>ref_audio_1</b> is " +
             "<b>&lt;Audio 3&gt;</b>.</p>",
+    },
+    {
+        title: "Viewing and reordering",
+        html: "<p>" + iconBadge(EYE_ICON, VIOLET) + " shows the selected files in their order, " +
+            "with their number and output. Click a thumbnail to see it larger (videos and audio " +
+            "can be played) with its folder, size and duration. The " + iconBadge(LEFT_ICON, INACTIVE_BG) +
+            " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " arrows move a file one place: number 1 always " +
+            "goes out on <b>ref_image_1</b>, number 2 on <b>ref_image_2</b>, and so on (the wires stay " +
+            "on the outputs). A video keeps its sound setting when it moves.</p>",
     },
     {
         title: "Loading",
@@ -404,6 +417,18 @@ function baseName(path) {
 
 function samePath(a, b) {
     return a.replace(/\\/g, "/").toLowerCase() === b.replace(/\\/g, "/").toLowerCase();
+}
+
+function dirName(path) {
+    const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    return i >= 0 ? path.slice(0, i) : "";
+}
+
+function formatSize(bytes) {
+    if (bytes == null) return "";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
 function formatDuration(sec) {
@@ -748,6 +773,269 @@ function buildGallery(container, ctx) {
 }
 
 // --------------------------------------------------------------------
+// Fenetre de la selection : ordre, reorganisation et infos d'un fichier
+// --------------------------------------------------------------------
+const VIEWER_TITLES = { image: "Selected images", video: "Selected videos", audio: "Selected audio" };
+const OUTPUT_PREFIX = { image: "ref_image_", video: "ref_video_", audio: "ref_audio_" };
+
+function buildSelectionViewer(container, ctx) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, {
+        width: "min(720px, 92vw)", height: "min(620px, 86vh)", display: "flex",
+        flexDirection: "column", overflow: "hidden", borderColor: VIOLET,
+    });
+
+    let kind = "image";
+    let current = null; // chemin du fichier affiche dans l'encadre
+
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+        display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderBottom: "1px solid #333",
+    });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, flex: "1" });
+    const counter = document.createElement("div");
+    counter.style.color = "#bbb";
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
+    header.append(title, counter, closeBtn);
+
+    const grid = document.createElement("div");
+    Object.assign(grid.style, {
+        flex: "1", overflowX: "hidden", overflowY: "auto", padding: "10px 12px",
+        display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))",
+        gap: "8px", alignContent: "start",
+    });
+
+    // Encadre d'infos : apercu a gauche, details a droite.
+    const infoBox = document.createElement("div");
+    Object.assign(infoBox.style, {
+        flex: "0 0 190px", margin: "0 12px", border: "1px solid " + VIOLET, borderRadius: "8px",
+        background: "#161616", display: "flex", gap: "12px", padding: "8px", boxSizing: "border-box",
+        overflow: "hidden",
+    });
+    const preview = document.createElement("div");
+    Object.assign(preview.style, {
+        flex: "0 0 260px", display: "flex", alignItems: "center", justifyContent: "center",
+        background: "#0d0d0d", borderRadius: "6px", overflow: "hidden",
+    });
+    const details = document.createElement("div");
+    Object.assign(details.style, {
+        flex: "1", minWidth: "0", overflowX: "hidden", overflowY: "auto", lineHeight: "1.6",
+    });
+    infoBox.append(preview, details);
+
+    const footer = document.createElement("div");
+    Object.assign(footer.style, {
+        display: "flex", justifyContent: "flex-end", padding: "10px 12px",
+    });
+    const doneBtn = makeTextButton("Done", PINK);
+    footer.appendChild(doneBtn);
+
+    card.append(header, grid, infoBox, footer);
+
+    function list(s) {
+        s = s || ctx.getState();
+        return kind === "image" ? s.images : kind === "audio" ? s.audios : s.videos;
+    }
+    const pathOf = (item) => (kind === "video" ? item.file : item);
+
+    /**
+     * Deplace l'element i d'une place (delta = -1 ou +1). L'element n de la
+     * liste sort toujours sur la sortie n : les liens restant sur les
+     * sorties, c'est le contenu qui change de sortie. Une video garde son
+     * reglage de son (il fait partie de l'element deplace).
+     */
+    function move(i, delta) {
+        const s = ctx.getState();
+        const arr = list(s);
+        const j = i + delta;
+        if (j < 0 || j >= arr.length) return;
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+        ctx.setState(s);
+        render();
+    }
+
+    function arrowButton(icon, enabled, onClick, tip) {
+        const b = makeIconButton(enabled ? INACTIVE_BG : "#1a1a1a", icon, tip);
+        b.disabled = !enabled;
+        Object.assign(b.style, {
+            width: "26px", height: "20px", cursor: enabled ? "pointer" : "default",
+            opacity: enabled ? "1" : "0.3", border: "1px solid " + (enabled ? "#444" : "#262626"),
+        });
+        if (enabled) {
+            b.addEventListener("click", (e) => {
+                e.stopPropagation();
+                onClick();
+            });
+        }
+        return b;
+    }
+
+    function render() {
+        const arr = list();
+        counter.textContent = arr.length + " / " + LIMITS[kind];
+        grid.innerHTML = "";
+        if (!arr.length) {
+            const empty = document.createElement("div");
+            empty.textContent = "Nothing selected yet: use the button of the node to pick files.";
+            Object.assign(empty.style, { color: "#999", gridColumn: "1 / -1", padding: "20px 0" });
+            grid.appendChild(empty);
+        }
+        if (current && !arr.some((it) => samePath(pathOf(it), current))) current = null;
+
+        arr.forEach((item, i) => {
+            const path = pathOf(item);
+            const active = current && samePath(path, current);
+
+            const tile = document.createElement("div");
+            tile.title = path;
+            Object.assign(tile.style, {
+                position: "relative", background: "#151515", borderRadius: "6px", overflow: "hidden",
+                cursor: "pointer", border: "2px solid " + (active ? VIOLET : PINK),
+                boxShadow: active ? "0 0 8px rgba(106,95,211,0.8)" : "none",
+            });
+
+            const thumb = document.createElement("div");
+            Object.assign(thumb.style, {
+                height: "80px", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d0d0d",
+            });
+            if (kind === "audio") {
+                thumb.innerHTML = AUDIO_ICON.replace(/width="15" height="15"/, 'width="32" height="32"');
+                thumb.style.opacity = "0.7";
+            } else {
+                const img = document.createElement("img");
+                img.loading = "lazy";
+                img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(dirName(path)) +
+                    "&file=" + encodeURIComponent(baseName(path));
+                Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
+                thumb.appendChild(img);
+            }
+
+            const badge = document.createElement("div");
+            badge.textContent = String(i + 1);
+            Object.assign(badge.style, {
+                position: "absolute", left: "4px", top: "4px", minWidth: "20px", height: "20px",
+                borderRadius: "10px", background: PINK, color: "white", fontWeight: "bold",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px",
+                boxShadow: "0 0 6px rgba(211,95,168,0.8)",
+            });
+
+            const name = document.createElement("div");
+            name.textContent = baseName(path);
+            Object.assign(name.style, {
+                padding: "3px 5px 0", fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden",
+                textOverflow: "ellipsis", color: "#fff",
+            });
+            const out = document.createElement("div");
+            out.textContent = "→ " + OUTPUT_PREFIX[kind] + (i + 1) +
+                (kind === "video" ? (item.sound ? "  🔊" : "  (muted)") : "");
+            Object.assign(out.style, { padding: "0 5px", fontSize: "10px", color: "#9fd6cf" });
+
+            // Fleches : la premiere vignette n'a que ▶ actif, la derniere que ◀.
+            const arrows = document.createElement("div");
+            Object.assign(arrows.style, { display: "flex", justifyContent: "center", gap: "8px", padding: "4px 0 6px" });
+            arrows.append(
+                arrowButton(LEFT_ICON, i > 0, () => move(i, -1), "Move before"),
+                arrowButton(RIGHT_ICON, i < arr.length - 1, () => move(i, +1), "Move after"),
+            );
+
+            tile.append(thumb, badge, name, out, arrows);
+            tile.addEventListener("click", () => showInfo(path));
+            grid.appendChild(tile);
+        });
+
+        if (!current) clearInfo();
+    }
+
+    function clearInfo() {
+        preview.innerHTML = "";
+        details.innerHTML = '<span style="color:#888">Click a thumbnail to see its details.</span>';
+    }
+
+    function row(label, value) {
+        if (value == null || value === "") return "";
+        const safe = String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        return '<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' +
+            safe.replace(/"/g, "&quot;") + '"><span style="color:' + PINK + '">' + label +
+            "</span> " + safe + "</div>";
+    }
+
+    async function showInfo(path) {
+        current = path;
+        render();
+        const url = "/mmrefloader/media?file=" + encodeURIComponent(path);
+        preview.innerHTML = "";
+        let el;
+        if (kind === "image") {
+            el = document.createElement("img");
+            el.src = url;
+        } else {
+            el = document.createElement(kind === "video" ? "video" : "audio");
+            el.src = url;
+            el.controls = true;
+            el.preload = "metadata";
+        }
+        Object.assign(el.style, kind === "audio"
+            ? { width: "95%" }
+            : { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
+        preview.appendChild(el);
+
+        details.innerHTML = '<span style="color:#888">Loading...</span>';
+        try {
+            const info = await apiGet("/mmrefloader/info?file=" + encodeURIComponent(path));
+            if (current !== path) return;
+            const idx = list().findIndex((it) => samePath(pathOf(it), path));
+            details.innerHTML =
+                row("Number:", idx + 1 + "  →  " + OUTPUT_PREFIX[kind] + (idx + 1)) +
+                row("File:", info.name) +
+                row("Folder:", info.folder) +
+                (info.width ? row("Size:", info.width + " × " + info.height + " px") : "") +
+                row("Weight:", formatSize(info.size)) +
+                row("Duration:", info.duration != null ? formatDuration(info.duration) : "") +
+                row("Frame rate:", info.fps ? info.fps.toFixed(2) + " fps" : "") +
+                (kind === "video" ? row("Soundtrack:", info.has_audio ? "yes" : "none in the file") : "") +
+                row("Audio:", info.sample_rate ? info.sample_rate + " Hz, " + info.channels + " ch" : "");
+        } catch (e) {
+            if (current === path) details.textContent = e.message;
+        }
+    }
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close();
+    };
+
+    function close() {
+        overlay.style.display = "none";
+        preview.innerHTML = ""; // arrete une lecture video/audio en cours
+        window.removeEventListener("keydown", onKey, true);
+    }
+
+    closeBtn.addEventListener("click", close);
+    doneBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        open(newKind) {
+            kind = newKind;
+            current = null;
+            title.textContent = VIEWER_TITLES[kind];
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            render();
+            positionCardNextToNode(card, container, 720);
+        },
+        close,
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
 // Extension
 // --------------------------------------------------------------------
 app.registerExtension({
@@ -810,6 +1098,11 @@ app.registerExtension({
                 btn.addEventListener("click", () => gallery.open(b.kind, b.sound));
                 row.appendChild(btn);
 
+                // Oeil : fenetre de la selection (ordre, infos, reorganisation).
+                const eye = makeIconButton(VIOLET, EYE_ICON, "View and reorder the selection");
+                eye.addEventListener("click", () => viewer.open(b.kind));
+                row.appendChild(eye);
+
                 // Poubelle : vide le type (Video/Audio : coupe le son de toutes les videos).
                 const trash = makeIconButton(DARK_RED, TRASH_ICON,
                     b.id === "video_audio" ? "Mute all videos" : "Clear the " + b.label.toLowerCase() + " selection");
@@ -845,9 +1138,10 @@ app.registerExtension({
             container.appendChild(bottom);
 
             const gallery = buildGallery(container, { getState, setState });
+            const viewer = buildSelectionViewer(container, { getState, setState });
             const help = buildHelpOverlay(container);
             helpBtn.addEventListener("click", () => help.open());
-            node.__mmrefOverlays = [gallery, help];
+            node.__mmrefOverlays = [gallery, viewer, help];
 
             // ---- Rafraichissement (compteurs, info-bulles, sorties) ----
             function listTitle(paths) {

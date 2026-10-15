@@ -216,6 +216,41 @@ class ThumbTests(TmpDirTest):
             self.assertTrue(data.startswith(b"\xff\xd8"))
 
 
+class MediaInfoTests(TmpDirTest):
+    def test_image_info(self):
+        Image.new("RGB", (40, 30)).save(self.p("i.png"))
+        info = media.media_info(self.p("i.png"))
+        self.assertEqual(info["kind"], "image")
+        self.assertEqual(info["name"], "i.png")
+        self.assertEqual(os.path.normcase(info["folder"]), os.path.normcase(self.dir))
+        self.assertEqual((info["width"], info["height"]), (40, 30))
+        self.assertGreater(info["size"], 0)
+
+    def test_video_info(self):
+        make_video(self.p("v.mp4"), 1.0, 30, width=64, height=48, with_audio=True)
+        info = media.media_info(self.p("v.mp4"))
+        self.assertEqual(info["kind"], "video")
+        self.assertEqual((info["width"], info["height"]), (64, 48))
+        self.assertAlmostEqual(info["fps"], 30, delta=0.5)
+        self.assertAlmostEqual(info["duration"], 1.0, delta=0.15)
+        self.assertTrue(info["has_audio"])
+
+    def test_audio_info(self):
+        make_audio(self.p("s.wav"), 1.0, sr=22050)
+        info = media.media_info(self.p("s.wav"))
+        self.assertEqual(info["kind"], "audio")
+        self.assertEqual(info["sample_rate"], 22050)
+        self.assertEqual(info["channels"], 2)
+        self.assertAlmostEqual(info["duration"], 1.0, delta=0.1)
+
+    def test_unknown_or_missing_file_raises(self):
+        open(self.p("x.txt"), "w").close()
+        with self.assertRaises(ValueError):
+            media.media_info(self.p("x.txt"))
+        with self.assertRaises(FileNotFoundError):
+            media.media_info(self.p("gone.png"))
+
+
 class BuildOutputsTests(TmpDirTest):
     def test_outputs_follow_layout_and_are_padded(self):
         Image.new("RGB", (8, 8)).save(self.p("a.png"))
