@@ -2,7 +2,7 @@
 //     node --test tests/test_config_format.mjs tests/test_config_json.mjs tests/test_help_search.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { stripTags, filterSections } from "../web/js/help_search.js";
+import { stripTags, filterSections, foldText, findMatches, pickLanguage } from "../web/js/help_search.js";
 
 const SECTIONS = [
     { id: "start", title: "Quick start", html: "<p>Pick <b>files</b> in the gallery.</p>" },
@@ -32,4 +32,25 @@ test("plusieurs mots : tous doivent etre presents", () => {
 
 test("les balises ne sont pas trouvees", () => {
     assert.deepEqual(filterSections(SECTIONS, "code"), []);
+});
+
+test("accents et casse ignores", () => {
+    assert.equal(foldText("Résumé ÉTÉ"), "resume ete");
+    const fr = [{ id: "a", title: "Rognage", html: "<p>Le fichier n'est jamais modifié.</p>" }];
+    assert.deepEqual(filterSections(fr, "modifie"), ["a"]);
+    assert.deepEqual(filterSections(fr, "RÔGNAGE"), ["a"]);
+});
+
+test("positions des mots trouves dans le texte d'origine", () => {
+    assert.deepEqual(findMatches("Le fichier modifié, Modifié.", ["modifie"]), [[11, 18], [20, 27]]);
+    assert.deepEqual(findMatches("trim and Trim", ["trim", "and"]), [[0, 4], [5, 8], [9, 13]]);
+    assert.deepEqual(findMatches("rien", []), []);
+});
+
+test("langue : choix memorise, puis ComfyUI, puis navigateur, sinon anglais", () => {
+    assert.equal(pickLanguage("fr", "en", "en-US"), "fr");
+    assert.equal(pickLanguage(null, "fr", "en-US"), "fr");
+    assert.equal(pickLanguage(null, null, "fr-FR"), "fr");
+    assert.equal(pickLanguage(null, "zh", "de-DE"), "en");
+    assert.equal(pickLanguage("xx", null, null), "en");
 });

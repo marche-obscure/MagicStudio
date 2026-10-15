@@ -41,7 +41,7 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
 
   Paths under the root folder are written relative to it; an empty group is `[]` or `null`.
 - The upload button loads a `.json` file of the mode shown and sets its outputs (older `.txt` saves are no longer read); a file saved in the other mode is refused with a warning (switch mode first) and nothing is changed. It keeps its standard color while the mode shown has no reference and turns orange as soon as it has one (the root folder alone does not count), and then asks for a confirmation. The other mode and the mode switch are never changed; the root folder is taken from the file. Files missing on disk are still loaded and reported on the node.
-- The **?** button opens the help: a menu of sections on the left (Quick start, Modes, Picking files, Selection, Trim, Overview, Save and load, Outputs, Limits), one section at a time on the right, a search field that filters the sections and highlights the words, and Previous / Next links (or the ← → keys). It reopens on the last section viewed.
+- The **?** button opens the help: a menu of sections on the left (Quick start, Modes, Picking files, Selection, Trim, Overview, Save and load, Outputs, Limits), one section at a time on the right, a search field that filters the sections and highlights the words, and Previous / Next links (or the ← → keys). It reopens on the last section viewed. The help is in English or French: the globe button in its header opens the language list; by default it follows the ComfyUI language (then the browser's), and the choice is remembered. The search ignores accents and case.
 - Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most; audio is cut to 15 s.
 
 ## Install

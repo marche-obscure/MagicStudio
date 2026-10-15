@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
-import { filterSections } from "./help_search.js";
+import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -84,6 +84,9 @@ const EYE_ICON = svg(
     '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>', 13);
 const SEARCH_ICON = svg(
     '<circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>', 13);
+const GLOBE_ICON = svg(
+    '<circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path>' +
+    '<path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"></path>', 14);
 const GEAR_ICON = svg(
     '<circle cx="12" cy="12" r="3"></circle>' +
     '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>', 13);
@@ -141,12 +144,12 @@ const hSteps = (items) => items.map((t, i) =>
     '<span style="flex:0 0 auto;min-width:20px;height:20px;border-radius:50%;background:' + VIOLET +
     ';color:white;font-weight:bold;font-size:11px;display:flex;align-items:center;justify-content:center">' +
     (i + 1) + "</span><span>" + t + "</span></div>").join("");
-const hTip = (t) =>
+const hTip = (t, label) =>
     '<div style="border-left:3px solid ' + ORANGE + ';background:#241b15;color:#efcfb6;padding:6px 10px;' +
-    'margin:10px 0">💡 <b>Tip:</b> ' + t + "</div>";
-const hNote = (t) =>
+    'margin:10px 0">💡 <b>' + (label || "Tip:") + "</b> " + t + "</div>";
+const hNote = (t, label) =>
     '<div style="border-left:3px solid ' + VIOLET + ';background:#1c1a2b;color:#cfcaf2;padding:6px 10px;' +
-    'margin:10px 0"><b>Note:</b> ' + t + "</div>";
+    'margin:10px 0"><b>' + (label || "Note:") + "</b> " + t + "</div>";
 /** Carte memo : rows = [[iconeHtml, texte], ...]. */
 const hCard = (title, rows) =>
     '<div style="border:1px solid #2c2c2c;border-radius:8px;background:#161616;padding:8px 10px;margin:8px 0">' +
@@ -304,6 +307,186 @@ const HELP_SECTIONS = [
         ]),
     },
 ];
+
+// Rubriques en francais : memes id que HELP_SECTIONS (icone et couleur
+// reprises de la version anglaise ; une rubrique absente s'affiche en anglais).
+const TIP_FR = "Astuce :";
+const NOTE_FR = "Remarque :";
+const HELP_SECTIONS_FR = [
+    {
+        id: "start", title: "Démarrage rapide",
+        html: hSteps([
+            "Choisissez le mode avec l'interrupteur en haut : <b>Ref2VA</b> (références pour MiniMax H3 " +
+            "Reference to Video) ou <b>F2VA / FL2VA</b> (images de début et de fin pour MiniMax H3 Image to Video).",
+            "Cliquez sur le bouton d'une ligne (" + iconBadge(IMAGE_ICON, VIOLET) + " Images, " +
+            iconBadge(VIDEO_ICON, ORANGE) + " Video...) puis sur des fichiers dans la galerie. L'ordre des " +
+            "clics donne le numéro.",
+            "Branchez les sorties dans l'ordre sur MiniMax : <b>ref_image_1</b> va sur <b>ref_image_0</b>, etc.",
+        ]) +
+        hCard("Boutons du nœud", [
+            [iconBadge(EYE_ICON, VIOLET), "Voir, réordonner, supprimer et rogner les fichiers d'une ligne"],
+            [iconBadge(TRASH_ICON, MARK_RED), "Vider tous les fichiers d'une ligne"],
+            [iconBadge(OVERVIEW_ICON, VIOLET), "Vue d'ensemble de toute la sélection"],
+            [iconBadge(GEAR_ICON, VIOLET), "Dossier racine de vos rushs"],
+            [iconBadge(DOWNLOAD_ICON, PINK), "Sauvegarder la configuration (.json)"],
+            [iconBadge(UPLOAD_ICON, PINK), "Charger une configuration (.json)"],
+        ]) +
+        hTip("<b>ref_image_1</b> correspond à <b>&lt;Picture 1&gt;</b> dans le prompt.", TIP_FR),
+    },
+    {
+        id: "modes", title: "Modes",
+        html: hList([
+            "<b>Ref2VA</b> : quatre lignes pour MiniMax H3 Reference to Video, jusqu'à 9 images, 3 vidéos, " +
+            "3 bandes-son de vidéo et 3 fichiers audio.",
+            "<b>F2VA / FL2VA</b> : une <b>First frame</b> et une <b>Last frame</b> facultative (images) sur " +
+            "les sorties <b>first_frame</b> et <b>last_frame</b>, pour MiniMax H3 Image to Video.",
+            "Sans last frame, MiniMax fait du F2VA ; avec les deux, du FL2VA.",
+            "Chaque mode garde sa sélection et ses sorties. En y revenant, elles sont restaurées et les " +
+            "câbles de ce mode sont rebranchés si leur cible existe encore et est libre.",
+        ]) +
+        hTip("Dans la galerie d'une frame, cliquer sur une image remplace l'image actuelle.", TIP_FR),
+    },
+    {
+        id: "pick", title: "Choisir les fichiers",
+        html: hCard("Les quatre lignes", [
+            [iconBadge(IMAGE_ICON, VIOLET), "<b>Images</b> : jusqu'à 9, sur <b>ref_image_N</b>"],
+            [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b> : les images de la vidéo, sur <b>ref_video_N</b>"],
+            [iconBadge(VIDEO_AUDIO_ICON, GREEN), "<b>Video/Audio</b> : des vidéos aussi, mais seule leur " +
+                "<b>bande-son</b> est extraite : une piste audio sur <b>ref_video_audio_N</b>"],
+            [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b> : jusqu'à 3, sur <b>ref_audio_N</b>"],
+        ]) +
+        hList([
+            "<b>Root folder</b> est prérempli avec le dossier de " + iconBadge(GEAR_ICON, VIOLET) +
+            " et son contenu est affiché.",
+            "<b>Subfolder</b> est une liste déroulante de tous ses sous-dossiers, avec le nombre de fichiers " +
+            "du type après chaque nom ; <b>(root folder)</b> affiche le dossier racine lui-même. Le choix est " +
+            "gardé par type.",
+            "La " + iconBadge(SEARCH_ICON, VIOLET) + " de <b>Root folder</b> retrouve les sous-dossiers et " +
+            "affiche le dossier racine ; celle de <b>Subfolder</b> affiche le sous-dossier choisi. Grisées " +
+            "sans dossier racine.",
+            "Un dossier mixte affiche une section par type. Seuls les fichiers du bouton qui a ouvert la " +
+            "galerie peuvent être choisis ; les autres sont affichés pour information.",
+            "Cliquer sur une image ou une vidéo l'affiche aussi en grand dans une fenêtre à droite.",
+            "<b>Browse</b> ouvre la fenêtre de dossiers de Windows ; <b>Reload</b> revient au dossier racine.",
+        ]) +
+        hTip("Choisissez la même vidéo dans <b>Video</b> et <b>Video/Audio</b> pour avoir ses images et son son.",
+            TIP_FR),
+    },
+    {
+        id: "selection", title: "Sélection",
+        html: hList([
+            iconBadge(EYE_ICON, VIOLET) + " affiche les fichiers d'une ligne dans leur ordre, avec leur numéro " +
+            "et leur sortie.",
+            "Cliquez sur une vignette pour voir ses détails (dossier, taille, durée) et l'ouvrir en grand à droite.",
+            iconBadge(LEFT_ICON, INACTIVE_BG) + " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " déplacent un " +
+            "fichier d'une place : le numéro 1 sort toujours sur <b>ref_image_1</b> (les câbles restent sur les sorties).",
+            iconBadge(TRASH_ICON, INACTIVE_BG) + " sur une vignette la marque (elle devient " +
+            iconBadge(TRASH_ICON, MARK_RED) + ") ; <b>Delete</b> retire les fichiers marqués après confirmation.",
+            "Les fichiers suivants remontent (la réf 4 devient la réf 3...) et la dernière sortie, devenue " +
+            "vide, est retirée.",
+        ]) +
+        hNote("la " + iconBadge(TRASH_ICON, MARK_RED) + " à côté de " + iconBadge(EYE_ICON, VIOLET) +
+            " sur le nœud supprime <b>tous</b> les fichiers de sa ligne, après confirmation.", NOTE_FR),
+    },
+    {
+        id: "trim", title: "Rognage",
+        html: hSteps([
+            "Ouvrez " + iconBadge(EYE_ICON, VIOLET) + " de <b>Video</b>, <b>Video/Audio</b> ou <b>Audio</b> " +
+            "et cliquez sur une vignette.",
+            "Dans la fenêtre de visualisation, réglez <b>Start</b> et <b>End</b> : tapez-les, ou utilisez " +
+            "<b>Set start</b> / <b>Set end</b> à la position de lecture.",
+            "Vérifiez avec <b>Play trim</b>, ou <b>Reset</b> pour garder tout le fichier.",
+        ]) +
+        hList([
+            "Le fichier lui-même n'est jamais modifié : seule cette partie va à la sortie (images et son).",
+            "Un fichier rogné porte un badge <b>✂</b> ; le rognage est enregistré dans la configuration " +
+            "(<code>\"trim\": [2.5, 8]</code>).",
+            "Un avertissement s'affiche si une partie de vidéo dure moins de 2 s, ou si une partie dépasse 15 s.",
+        ]),
+    },
+    {
+        id: "overview", title: "Vue d'ensemble",
+        html: hList([
+            iconBadge(OVERVIEW_ICON, VIOLET) + " affiche toute la sélection du mode affiché dans une seule " +
+            "fenêtre, une section par ligne.",
+            "Chaque fichier montre son numéro, sa sortie et son badge <b>✂</b>.",
+            "Cliquez sur une vignette pour l'ouvrir à droite (image, vidéo ou audio avec son lecteur).",
+            "Le rognage est affiché et peut être écouté avec <b>Play trim</b>, mais pas modifié ici.",
+            "Grisé tant que le mode affiché n'a aucune référence.",
+        ]) +
+        hTip("Réordonnez, supprimez et rognez avec l'" + iconBadge(EYE_ICON, VIOLET) + " de chaque ligne.", TIP_FR),
+    },
+    {
+        id: "config", title: "Sauvegarder et charger",
+        html: hCard("Fichiers de configuration", [
+            [iconBadge(DOWNLOAD_ICON, PINK), "Sauvegarde le mode affiché dans son propre fichier .json : " +
+                "<b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b> ou <b>FL2VA_...json</b>. Grisé tant que " +
+                "le mode n'a aucune référence (le dossier racine seul ne compte pas)."],
+            [iconBadge(UPLOAD_ICON, PINK), "Charge un fichier .json du mode affiché et règle ses sorties. " +
+                "Il devient " + iconBadge(UPLOAD_ICON, ORANGE) + " quand le mode a déjà des références, " +
+                "et demande alors une confirmation."],
+        ]) +
+        hList([
+            "Un fichier de l'autre mode est refusé avec un avertissement ; rien n'est modifié.",
+            "L'autre mode et l'interrupteur ne changent jamais ; le dossier racine est repris du fichier.",
+            "La date et l'heure dans le nom évitent d'écraser une sauvegarde précédente.",
+            "Les fichiers absents du disque sont quand même chargés et signalés sous les boutons.",
+            "Les chemins sous le dossier racine sont écrits en relatif ; un groupe vide vaut <code>[]</code> " +
+            "ou <code>null</code>.",
+        ]) +
+        hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 1,\n  "mode": "REF2VA",\n' +
+            '  "root": "F:\\\\Rushs\\\\Project",\n  "images": ["images\\\\a.png"],\n' +
+            '  "videos": [{ "path": "rush\\\\shot.mp4", "trim": [5, 7] }],\n  "video_audios": [],\n' +
+            '  "audios": []\n}'),
+    },
+    {
+        id: "outputs", title: "Sorties",
+        html: hList([
+            "Une sortie apparaît pour chaque fichier choisi (au moins une par type).",
+            "Double-cliquez sur le nom d'une sortie pour la renommer (vide = nom par défaut), ou utilisez le " +
+            "menu du clic droit.",
+            "MiniMax numérote ses entrées à partir de 0 : <b>ref_image_1</b> va sur <b>ref_image_0</b>.",
+            "MiniMax numérote <b>&lt;Audio j&gt;</b> avec d'abord les bandes-son de vidéo, puis les fichiers " +
+            "audio : avec 2 bandes-son, <b>ref_audio_1</b> est <b>&lt;Audio 3&gt;</b>.",
+            "Quand <b>ref_video_N</b> et <b>ref_video_audio_N</b> ont tous deux un fichier, leurs points de " +
+            "sortie ont la même couleur (1 orange, 2 rose, 3 vert).",
+        ]) +
+        hNote("MiniMax utilise la piste audio branchée sur <b>ref_video_audio_N</b> avec la vidéo de " +
+            "référence branchée sur <b>ref_video_N</b>.", NOTE_FR),
+    },
+    {
+        id: "limits", title: "Limites",
+        html: hList([
+            "Les vidéos sont lues à 24 i/s, coupées à 15 s et réduites à 768×1344 pixels au plus " +
+            "(MiniMax les réduirait de toute façon).",
+            "Les fichiers audio sont coupés à 15 s.",
+            "<b>Browse</b> utilise la fenêtre de dossiers de Windows ; sur un autre système, tapez ou collez " +
+            "le chemin du dossier.",
+        ]),
+    },
+];
+
+// Textes de la fenetre d'aide et du choix de langue.
+const HELP_UI = {
+    en: {
+        name: "English", title: "Help", search: "Search help...", close: "Close (Esc)", next: "Next: ",
+        none: "No result", noneText: (q) => 'No section contains "' + q + '". Try another word.',
+        choose: "Select your language", language: "Language",
+    },
+    fr: {
+        name: "français", title: "Aide", search: "Rechercher dans l'aide...", close: "Fermer (Échap)",
+        next: "Suivant : ", none: "Aucun résultat",
+        noneText: (q) => "Aucune rubrique ne contient « " + q + " ». Essayez un autre mot.",
+        choose: "Choisissez votre langue", language: "Langue",
+    },
+};
+
+/** Rubriques dans une langue : version anglaise si la traduction manque. */
+function helpSectionsFor(lang) {
+    if (lang !== "fr") return HELP_SECTIONS;
+    const fr = Object.fromEntries(HELP_SECTIONS_FR.map((sec) => [sec.id, sec]));
+    return HELP_SECTIONS.map((sec) => (fr[sec.id] ? Object.assign({}, sec, fr[sec.id]) : sec));
+}
 
 // --------------------------------------------------------------------
 // Etat et disposition des sorties
@@ -707,20 +890,50 @@ function buildHelpOverlay(container) {
         fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
     });
     const title = document.createElement("div");
-    title.textContent = "MiniMax H3 Reference Loader — Help";
     Object.assign(title.style, {
         fontWeight: "bold", fontSize: "14px", color: TITLE_COLOR, flex: "1", whiteSpace: "nowrap",
         overflow: "hidden", textOverflow: "ellipsis",
     });
     const search = document.createElement("input");
     search.type = "search";
-    search.placeholder = "Search help...";
     Object.assign(search.style, {
         width: "170px", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "8px",
         padding: "4px 8px", fontSize: "12px", outline: "none", boxSizing: "border-box",
     });
     const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close (Esc)");
-    header.append(badge, title, search, closeBtn);
+
+    // Bouton de langue (globe + code) et sa fenetre de choix.
+    const langBtn = document.createElement("button");
+    langBtn.type = "button";
+    Object.assign(langBtn.style, {
+        display: "flex", alignItems: "center", gap: "6px", background: "#111", color: "#ddd",
+        border: "1px solid #0c3833", borderRadius: "8px", padding: "3px 9px", cursor: "pointer",
+        fontSize: "12px", fontWeight: "bold", flex: "0 0 auto",
+    });
+    header.append(badge, title, langBtn, search, closeBtn);
+
+    const langPop = document.createElement("div");
+    Object.assign(langPop.style, {
+        position: "absolute", display: "none", zIndex: "2", background: "#202020", color: "#ddd",
+        border: "1px solid #3a3a3a", borderRadius: "8px", boxShadow: "0 10px 28px rgba(0,0,0,0.6)",
+        padding: "16px 20px 18px", width: "320px", boxSizing: "border-box",
+    });
+    const langArrow = document.createElement("div");
+    Object.assign(langArrow.style, {
+        position: "absolute", top: "-7px", width: "12px", height: "12px", background: "#202020",
+        borderLeft: "1px solid #3a3a3a", borderTop: "1px solid #3a3a3a", transform: "rotate(45deg)",
+    });
+    const langHead = document.createElement("div");
+    Object.assign(langHead.style, { display: "flex", alignItems: "center", marginBottom: "12px" });
+    const langTitle = document.createElement("div");
+    Object.assign(langTitle.style, { flex: "1", fontSize: "16px", color: "#eee" });
+    const langClose = makeIconButton("transparent", CLOSE_ICON, "Close");
+    langHead.append(langTitle, langClose);
+    const langGrid = document.createElement("div");
+    Object.assign(langGrid.style, { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" });
+    langPop.append(langArrow, langHead, langGrid);
+    card.style.position = card.style.position || "fixed";
+    card.appendChild(langPop);
 
     // Menu des rubriques a gauche, rubrique affichee a droite.
     const main = document.createElement("div");
@@ -759,33 +972,106 @@ function buildHelpOverlay(container) {
     footer.append(prevBtn, position, nextBtn);
     card.append(header, main, footer);
 
-    const byId = Object.fromEntries(HELP_SECTIONS.map((sec) => [sec.id, sec]));
-    let visible = HELP_SECTIONS.map((sec) => sec.id);
+    let lang = loadHelpLanguage();
+    let sections = helpSectionsFor(lang);
+    let byId = Object.fromEntries(sections.map((sec) => [sec.id, sec]));
+    let visible = sections.map((sec) => sec.id);
     let currentId = loadHelpSection();
+
+    /** Textes de la fenetre dans la langue choisie. */
+    function applyLanguage() {
+        const ui = HELP_UI[lang];
+        sections = helpSectionsFor(lang);
+        byId = Object.fromEntries(sections.map((sec) => [sec.id, sec]));
+        visible = filterSections(sections, search.value);
+        if (visible.length && !visible.includes(currentId)) currentId = visible[0];
+        title.textContent = "MiniMax H3 Reference Loader — " + ui.title;
+        search.placeholder = ui.search;
+        closeBtn.title = ui.close;
+        langBtn.innerHTML = GLOBE_ICON + "<span>" + lang.toUpperCase() + "</span>";
+        langBtn.title = ui.language;
+        langTitle.textContent = ui.choose;
+        langClose.title = ui.close;
+        langGrid.innerHTML = "";
+        for (const code of HELP_LANGUAGES) {
+            const active = code === lang;
+            const item = document.createElement("button");
+            item.type = "button";
+            Object.assign(item.style, {
+                display: "flex", alignItems: "center", gap: "10px", textAlign: "left", border: "none",
+                borderLeft: "3px solid " + (active ? TITLE_COLOR : "transparent"), borderRadius: "0",
+                padding: "7px 10px", cursor: active ? "default" : "pointer", fontSize: "14px",
+                background: active ? "#173a37" : "transparent",
+            });
+            item.innerHTML = '<span style="color:#eee;font-weight:' + (active ? "bold" : "normal") +
+                ';min-width:22px">' + code.toUpperCase() + '</span><span style="color:' +
+                (active ? "#eee" : "#7fb8ff") + '">' + HELP_UI[code].name + "</span>";
+            item.addEventListener("mouseenter", () => {
+                if (!active) item.style.background = "#2a2a2a";
+            });
+            item.addEventListener("mouseleave", () => {
+                if (!active) item.style.background = "transparent";
+            });
+            item.addEventListener("click", () => {
+                closeLangPop();
+                if (active) return;
+                lang = code;
+                saveHelpLanguage(code);
+                applyLanguage();
+                renderNav();
+                renderContent();
+            });
+            langGrid.appendChild(item);
+        }
+    }
+
+    // Fenetre de langue sous le bouton, fleche pointee sur lui.
+    function openLangPop() {
+        langPop.style.display = "block";
+        const c = card.getBoundingClientRect();
+        const b = langBtn.getBoundingClientRect();
+        const w = langPop.offsetWidth;
+        const left = Math.max(8, Math.min(b.left + b.width / 2 - w / 2 - c.left, c.width - w - 8));
+        langPop.style.left = left + "px";
+        langPop.style.top = (b.bottom - c.top + 10) + "px";
+        langArrow.style.left = (b.left + b.width / 2 - c.left - left - 6) + "px";
+    }
+    function closeLangPop() {
+        langPop.style.display = "none";
+    }
+    const langOpen = () => langPop.style.display !== "none";
+    langBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (langOpen()) closeLangPop();
+        else openLangPop();
+    });
+    langClose.addEventListener("click", closeLangPop);
+    langPop.addEventListener("mousedown", (e) => e.stopPropagation());
+    card.addEventListener("mousedown", (e) => {
+        if (langOpen() && !langPop.contains(e.target) && !langBtn.contains(e.target)) closeLangPop();
+    });
 
     /** Surligne les mots de la recherche dans les textes de root. */
     function highlight(root, words) {
         if (!words.length) return;
-        const re = new RegExp("(" + words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi");
         const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
         const nodes = [];
         while (walker.nextNode()) nodes.push(walker.currentNode);
         for (const node of nodes) {
             const text = node.nodeValue;
-            re.lastIndex = 0;
-            if (!re.test(text)) continue;
+            const matches = findMatches(text, words); // sans casse ni accents
+            if (!matches.length) continue;
             const frag = document.createDocumentFragment();
-            text.split(re).forEach((part, i) => {
-                if (!part) return;
-                if (i % 2) {
-                    const mark = document.createElement("mark");
-                    mark.textContent = part;
-                    Object.assign(mark.style, { background: ORANGE, color: "white", borderRadius: "3px", padding: "0 1px" });
-                    frag.appendChild(mark);
-                } else {
-                    frag.appendChild(document.createTextNode(part));
-                }
-            });
+            let pos = 0;
+            for (const [a, b] of matches) {
+                if (a > pos) frag.appendChild(document.createTextNode(text.slice(pos, a)));
+                const mark = document.createElement("mark");
+                mark.textContent = text.slice(a, b);
+                Object.assign(mark.style, { background: ORANGE, color: "white", borderRadius: "3px", padding: "0 1px" });
+                frag.appendChild(mark);
+                pos = b;
+            }
+            if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
             node.parentNode.replaceChild(frag, node);
         }
     }
@@ -794,7 +1080,7 @@ function buildHelpOverlay(container) {
         nav.innerHTML = "";
         if (!visible.length) {
             const none = document.createElement("div");
-            none.textContent = "No result";
+            none.textContent = HELP_UI[lang].none;
             Object.assign(none.style, { color: "#888", padding: "6px 8px" });
             nav.appendChild(none);
         }
@@ -825,20 +1111,20 @@ function buildHelpOverlay(container) {
         const sec = byId[currentId];
         content.scrollTop = 0;
         if (!visible.length) {
-            content.innerHTML = '<div style="color:#888">No section contains "' + escapeHtml(search.value.trim()) +
-                '". Try another word.</div>';
+            content.innerHTML = '<div style="color:#888">' + HELP_UI[lang].noneText(escapeHtml(search.value.trim())) +
+                "</div>";
         } else {
             content.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:bold;' +
                 "color:" + PINK + ';margin-bottom:10px">' + iconBadge(sec.icon, sec.color) + sec.title + "</div>" +
                 sec.html;
-            highlight(content, search.value.toLowerCase().split(/\s+/).filter(Boolean));
+            highlight(content, queryWords(search.value));
         }
         const i = visible.indexOf(currentId);
         const prev = i > 0 ? byId[visible[i - 1]] : null;
         const next = i >= 0 && i < visible.length - 1 ? byId[visible[i + 1]] : null;
         prevBtn.textContent = prev ? "‹ " + prev.title : "";
         prevBtn.style.visibility = prev ? "visible" : "hidden";
-        nextBtn.textContent = next ? "Next: " + next.title + " ›" : "";
+        nextBtn.textContent = next ? HELP_UI[lang].next + next.title + " ›" : "";
         nextBtn.style.visibility = next ? "visible" : "hidden";
         position.textContent = visible.length ? i + 1 + " / " + visible.length : "";
     }
@@ -859,7 +1145,7 @@ function buildHelpOverlay(container) {
     prevBtn.addEventListener("click", () => step(-1));
     nextBtn.addEventListener("click", () => step(+1));
     search.addEventListener("input", () => {
-        visible = filterSections(HELP_SECTIONS, search.value);
+        visible = filterSections(sections, search.value);
         if (visible.length && !visible.includes(currentId)) currentId = visible[0];
         renderNav();
         renderContent();
@@ -872,7 +1158,8 @@ function buildHelpOverlay(container) {
         if (e.key === "Escape") {
             e.preventDefault();
             e.stopImmediatePropagation();
-            close();
+            if (langOpen()) closeLangPop();
+            else close();
             return;
         }
         if (e.target !== search && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
@@ -885,6 +1172,7 @@ function buildHelpOverlay(container) {
     };
 
     function close() {
+        closeLangPop();
         overlay.style.display = "none";
         window.removeEventListener("keydown", onKey, true);
     }
@@ -894,8 +1182,8 @@ function buildHelpOverlay(container) {
     return {
         open() {
             search.value = "";
-            visible = HELP_SECTIONS.map((sec) => sec.id);
             if (!byId[currentId]) currentId = HELP_SECTIONS[0].id;
+            applyLanguage();
             renderNav();
             renderContent();
             overlay.style.display = "block";
@@ -908,6 +1196,31 @@ function buildHelpOverlay(container) {
             overlay.remove();
         },
     };
+}
+
+// Langue de l'aide : choix memorise, sinon langue de ComfyUI, sinon navigateur.
+const HELP_LANG_KEY = "mmrefloader.helpLanguage";
+function loadHelpLanguage() {
+    let saved = null;
+    let comfy = null;
+    try {
+        saved = localStorage.getItem(HELP_LANG_KEY);
+    } catch (e) {
+        saved = null;
+    }
+    try {
+        comfy = app.ui.settings.getSettingValue("Comfy.Locale");
+    } catch (e) {
+        comfy = null;
+    }
+    return pickLanguage(saved, comfy, navigator.language);
+}
+function saveHelpLanguage(code) {
+    try {
+        localStorage.setItem(HELP_LANG_KEY, code);
+    } catch (e) {
+        // Stockage indisponible : la langue revient au choix par defaut.
+    }
 }
 
 // Derniere rubrique consultee (memoire du navigateur, facultative).
