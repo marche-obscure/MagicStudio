@@ -192,9 +192,9 @@ const HELP_SECTIONS = [
             "to it; an empty group is written with its first number and NaN, e.g. " +
             "<code>audio 1 : NaN</code>.</p>" +
             "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads such a file and sets the outputs from it. " +
-            "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " as soon as a reference is selected (the " +
-            "root folder alone does not count): loading then asks a confirmation, since it overwrites " +
-            "the current configuration. Files missing on " +
+            "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " as soon as the mode shown has a reference (the " +
+            "root folder alone does not count). Loading replaces both modes, so it asks a confirmation " +
+            "whenever a reference exists in either mode. Files missing on " +
             "disk are still loaded and reported under the buttons.</p>",
     },
     {
@@ -1980,8 +1980,11 @@ app.registerExtension({
 
             // Une configuration "existe" des qu'une reference est selectionnee ;
             // le dossier racine seul ne compte pas.
-            const totalRefs = (s) => s.images.length + s.videos.length + s.video_audios.length + s.audios.length +
-                s.first_frame.length + s.last_frame.length;
+            const ref2vaRefs = (s) => s.images.length + s.videos.length + s.video_audios.length + s.audios.length;
+            const frameRefs = (s) => s.first_frame.length + s.last_frame.length;
+            const totalRefs = (s) => ref2vaRefs(s) + frameRefs(s);
+            /** References du mode affiche (couleur du bouton Upload). */
+            const modeRefs = (s) => (s.mode === "fl2va" ? frameRefs(s) : ref2vaRefs(s));
 
             /**
              * Liens et noms renommes des sorties d'un mode, memorises dans
@@ -2026,7 +2029,8 @@ app.registerExtension({
                 setState(s);
                 restoreModeLinks(mode);
             }
-            const hasConfig = (s) => totalRefs(s) > 0;
+            // Orange = le mode affiche a deja des references.
+            const hasConfig = (s) => modeRefs(s) > 0;
 
             // Download : fichier texte genere dans le navigateur.
             downloadBtn.addEventListener("click", () => {
@@ -2041,17 +2045,21 @@ app.registerExtension({
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
             });
 
-            // Upload : confirmation seulement s'il y a deja une configuration.
+            // Upload : un fichier remplace la configuration des DEUX modes, donc
+            // confirmation des qu'une reference existe, meme dans l'autre mode
+            // (bouton rose dans ce cas, puisque le mode affiche est vide).
             uploadBtn.addEventListener("click", () => {
                 const s = getState();
-                if (!hasConfig(s)) {
+                if (!totalRefs(s)) {
                     fileInput.click();
                     return;
                 }
-                const n = totalRefs(s);
+                const parts = [];
+                if (ref2vaRefs(s)) parts.push(ref2vaRefs(s) + " in Ref2VA");
+                if (frameRefs(s)) parts.push(frameRefs(s) + " in F2VA / FL2VA");
                 clearConfirm.ask(
                     "<b>Overwrite the current configuration?</b><br>Loading a file replaces the root " +
-                    "folder and all the references (" + n + " selected now)." +
+                    "folder and the references of both modes (" + parts.join(", ") + ")." +
                     '<div style="color:#999;margin-top:8px">Save it first with the download button ' +
                     "if you want to keep it.</div>",
                     "Overwrite", () => fileInput.click());
