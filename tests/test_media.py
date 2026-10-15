@@ -82,21 +82,22 @@ class TmpDirTest(unittest.TestCase):
 class LayoutTests(unittest.TestCase):
     def test_empty_selection_gives_four_base_outputs(self):
         self.assertEqual(
-            media.layout_keys(0, 0, 0),
+            media.layout_keys(0, 0, 0, 0),
             ["ref_image_1", "ref_video_1", "ref_video_audio_1", "ref_audio_1"],
         )
 
-    def test_counts_grow_each_group_and_video_audio_mirrors_videos(self):
+    def test_each_group_grows_independently(self):
+        # ref_video_audio a sa propre liste (pistes son), independante des videos.
         self.assertEqual(
-            media.layout_keys(3, 2, 1),
+            media.layout_keys(3, 1, 2, 1),
             ["ref_image_1", "ref_image_2", "ref_image_3",
-             "ref_video_1", "ref_video_2",
+             "ref_video_1",
              "ref_video_audio_1", "ref_video_audio_2",
              "ref_audio_1"],
         )
 
     def test_counts_are_clamped_to_minimax_limits(self):
-        keys = media.layout_keys(20, 9, 9)
+        keys = media.layout_keys(20, 9, 9, 9)
         self.assertEqual(len(keys), media.TOTAL_OUTPUTS)
         self.assertEqual(media.TOTAL_OUTPUTS, 18)
         self.assertIn("ref_image_9", keys)
@@ -109,21 +110,31 @@ class StateTests(unittest.TestCase):
         s = media.parse_state("not json")
         self.assertEqual(s["images"], [])
         self.assertEqual(s["videos"], [])
+        self.assertEqual(s["video_audios"], [])
         self.assertEqual(s["audios"], [])
 
     def test_state_is_normalized_and_clamped(self):
         raw = json.dumps({
             "folders": {"image": "C:/img", "video": "C:/vid", "audio": 5},
             "images": ["a.png"] * 12 + [3, ""],
-            "videos": [{"file": "v.mp4", "sound": True}, "w.mp4", {"file": ""}],
+            "videos": ["v.mp4", "w.mp4", "", 4, "x.mp4", "y.mp4"],
+            "video_audios": ["v.mp4", "z.mp4"],
             "audios": ["x.wav"],
         })
         s = media.parse_state(raw)
         self.assertEqual(len(s["images"]), 9)
         self.assertEqual(s["folders"]["audio"], "")
-        self.assertEqual(s["videos"], [{"file": "v.mp4", "sound": True},
-                                       {"file": "w.mp4", "sound": False}])
+        self.assertEqual(s["videos"], ["v.mp4", "w.mp4", "x.mp4"])
+        self.assertEqual(s["video_audios"], ["v.mp4", "z.mp4"])
         self.assertEqual(s["audios"], ["x.wav"])
+
+    def test_old_sound_switch_is_converted(self):
+        # Ancien etat : video {"file", "sound": true} -> reste en video ET
+        # devient une piste son ref_video_audio.
+        raw = json.dumps({"videos": [{"file": "a.mp4", "sound": True}, {"file": "b.mp4", "sound": False}]})
+        s = media.parse_state(raw)
+        self.assertEqual(s["videos"], ["a.mp4", "b.mp4"])
+        self.assertEqual(s["video_audios"], ["a.mp4"])
 
 
 class ListFolderTests(TmpDirTest):
@@ -306,7 +317,7 @@ class BuildOutputsTests(TmpDirTest):
         state = media.parse_state(json.dumps({
             "folders": {"image": self.dir, "video": self.dir, "audio": self.dir},
             "images": ["b.png", "a.png"],
-            "videos": [{"file": "v.mp4", "sound": False}],
+            "videos": ["v.mp4"],
             "audios": ["s.wav"],
         }))
         out = media.build_outputs(state)
@@ -314,9 +325,27 @@ class BuildOutputsTests(TmpDirTest):
         # ref_image_1, ref_image_2, ref_video_1, ref_video_audio_1, ref_audio_1
         self.assertEqual(out[0].shape[0], 1)
         self.assertEqual(out[2].shape[0], 12)
-        self.assertIsNone(out[3])  # son coupe
+        self.assertIsNone(out[3])  # aucune piste son choisie
         self.assertIn("waveform", out[4])
         self.assertTrue(all(v is None for v in out[5:]))
+
+    def test_video_audio_outputs_only_the_soundtrack(self):
+        make_video(self.p("v.mp4"), 1.0, 24, sr=16000)
+        make_video(self.p("w.mp4"), 0.5, 24, with_audio=False)
+        state = media.parse_state(json.dumps({
+            "folders": {"video": self.dir}, "video_audios": ["v.mp4"],
+        }))
+        out = media.build_outputs(state)
+        # ref_image_1, ref_video_1, ref_video_audio_1, ref_audio_1
+        self.assertIsNone(out[0])
+        self.assertIsNone(out[1])
+        self.assertEqual(out[2]["sample_rate"], 16000)
+        self.assertEqual(out[2]["waveform"].ndim, 3)
+        # une video sans bande-son en Video/Audio : erreur explicite
+        state = media.parse_state(json.dumps({"folders": {"video": self.dir}, "video_audios": ["w.mp4"]}))
+        with self.assertRaises(ValueError) as ctx:
+            media.build_outputs(state)
+        self.assertIn("ref_video_audio_1", str(ctx.exception))
 
     def test_absolute_paths_from_other_folders_are_used_as_is(self):
         # Le JS stocke des chemins complets : une selection peut venir de

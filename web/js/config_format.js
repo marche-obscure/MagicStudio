@@ -6,11 +6,11 @@
 //   root : F:\Rushs\Projet
 //   image 1 : images\a.png
 //   video 1 : videos\v1.mp4
-//   video_audio 1 : NaN          (son coupe : NaN, sinon le chemin de la video)
+//   video_audio 1 : videos2.mp4 (bande-son extraite de cette video : piste audio)
 //   audio 1 : NaN                (groupe vide : premier numero + NaN)
 // Les chemins situes sous la racine sont ecrits relativement a elle.
 
-export const CONFIG_LIMITS = { image: 9, video: 3, audio: 3 };
+export const CONFIG_LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3 };
 const EMPTY = "NaN";
 const EOL = "\r\n";
 
@@ -44,14 +44,15 @@ export function formatConfig(state) {
         values.forEach((v, i) => lines.push(name + " " + (i + 1) + " : " + (v || EMPTY)));
     };
     group("image", state.images.map(rel));
-    group("video", state.videos.map((v) => rel(v.file)));
-    group("video_audio", state.videos.map((v) => (v.sound ? rel(v.file) : EMPTY)));
+    group("video", state.videos.map(rel));
+    group("video_audio", (state.video_audios || []).map(rel));
     group("audio", state.audios.map(rel));
     return lines.join(EOL) + EOL;
 }
 
 /**
- * Texte du fichier -> { root, images, videos, audios } (chemins absolus).
+ * Texte du fichier -> { root, images, videos, video_audios, audios } (chemins
+ * absolus). video_audio est une liste independante des videos.
  * Tolerant : ordre des lignes, casse, espaces, numeros manquants (la liste
  * est resserree), lignes inconnues ignorees. Leve une erreur si aucune
  * ligne n'est reconnue.
@@ -83,15 +84,11 @@ export function parseConfig(text) {
     const ordered = (g) => Object.keys(g).map(Number).sort((a, b) => a - b);
     const list = (g) => ordered(g).map((k) => g[k]).filter(Boolean).map(abs);
 
-    // video_audio N va avec video N (avant de resserrer la numerotation).
-    const videos = ordered(groups.video)
-        .filter((k) => groups.video[k])
-        .map((k) => ({ file: abs(groups.video[k]), sound: !!groups.video_audio[k] }));
-
     return {
         root,
         images: list(groups.image).slice(0, CONFIG_LIMITS.image),
-        videos: videos.slice(0, CONFIG_LIMITS.video),
+        videos: list(groups.video).slice(0, CONFIG_LIMITS.video),
+        video_audios: list(groups.video_audio).slice(0, CONFIG_LIMITS.video_audio),
         audios: list(groups.audio).slice(0, CONFIG_LIMITS.audio),
     };
 }

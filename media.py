@@ -30,8 +30,9 @@ MAX_PIXELS = 768 * 1344
 # Plafonds des entrees du noeud MiniMaxH3ReferenceToVideo.
 MAX_IMAGES = 9
 MAX_VIDEOS = 3
+MAX_VIDEO_AUDIOS = 3
 MAX_AUDIOS = 3
-TOTAL_OUTPUTS = MAX_IMAGES + MAX_VIDEOS * 2 + MAX_AUDIOS
+TOTAL_OUTPUTS = MAX_IMAGES + MAX_VIDEOS + MAX_VIDEO_AUDIOS + MAX_AUDIOS
 
 KIND_EXTS = {
     "image": (".png", ".jpg", ".jpeg", ".webp", ".bmp"),
@@ -43,19 +44,20 @@ KIND_EXTS = {
 # ----------------------------------------------------------------------
 # Disposition des sorties
 # ----------------------------------------------------------------------
-def layout_keys(n_images, n_videos, n_audios):
+def layout_keys(n_images, n_videos, n_video_audios, n_audios):
     """
     Noms des sorties visibles, dans l'ordre : images, videos, pistes son
-    des videos, audios. Chaque groupe garde au moins une sortie ; les
-    pistes son suivent toujours le nombre de videos (ref_video_audio_N va
-    avec ref_video_N). Doit rester identique a layoutKeys() du JS.
+    extraites de videos (ref_video_audio), audios. Chaque groupe a sa
+    propre liste et garde au moins une sortie. Doit rester identique a
+    layoutKeys() du JS.
     """
     ni = min(max(1, n_images), MAX_IMAGES)
     nv = min(max(1, n_videos), MAX_VIDEOS)
+    nva = min(max(1, n_video_audios), MAX_VIDEO_AUDIOS)
     na = min(max(1, n_audios), MAX_AUDIOS)
     keys = ["ref_image_%d" % i for i in range(1, ni + 1)]
     keys += ["ref_video_%d" % i for i in range(1, nv + 1)]
-    keys += ["ref_video_audio_%d" % i for i in range(1, nv + 1)]
+    keys += ["ref_video_audio_%d" % i for i in range(1, nva + 1)]
     keys += ["ref_audio_%d" % i for i in range(1, na + 1)]
     return keys
 
@@ -82,19 +84,28 @@ def parse_state(raw):
     images = [n for n in (_clean_name(v) for v in _as_list(data.get("images"))) if n]
     audios = [n for n in (_clean_name(v) for v in _as_list(data.get("audios"))) if n]
 
+    # Videos : chemins simples. Ancien format {"file", "sound"} : la video
+    # reste une video et, si "sound", devient aussi une piste ref_video_audio.
     videos = []
+    old_sounds = []
     for v in _as_list(data.get("videos")):
         if isinstance(v, dict):
-            name, sound = _clean_name(v.get("file")), bool(v.get("sound"))
+            name = _clean_name(v.get("file"))
+            if name and v.get("sound"):
+                old_sounds.append(name)
         else:
-            name, sound = _clean_name(v), False
+            name = _clean_name(v)
         if name:
-            videos.append({"file": name, "sound": sound})
+            videos.append(name)
+    video_audios = [n for n in (_clean_name(v) for v in _as_list(data.get("video_audios"))) if n]
+    if not video_audios:
+        video_audios = old_sounds
 
     return {
         "folders": folders,
         "images": images[:MAX_IMAGES],
         "videos": videos[:MAX_VIDEOS],
+        "video_audios": video_audios[:MAX_VIDEO_AUDIOS],
         "audios": audios[:MAX_AUDIOS],
     }
 
@@ -110,7 +121,7 @@ def _resolve(state, kind, name):
 def selected_paths(state):
     """Chemins complets de tous les fichiers selectionnes."""
     paths = [_resolve(state, "image", n) for n in state["images"]]
-    paths += [_resolve(state, "video", v["file"]) for v in state["videos"]]
+    paths += [_resolve(state, "video", n) for n in state["videos"] + state["video_audios"]]
     paths += [_resolve(state, "audio", n) for n in state["audios"]]
     return paths
 
@@ -413,16 +424,24 @@ def build_outputs(state):
     for i, name in enumerate(state["images"], 1):
         key = "ref_image_%d" % i
         values[key] = load_image(_checked(state, "image", name, key))
-    for i, v in enumerate(state["videos"], 1):
+    for i, name in enumerate(state["videos"], 1):
         key = "ref_video_%d" % i
-        frames, audio = load_video(_checked(state, "video", v["file"], key), with_audio=v["sound"])
+        frames, _ = load_video(_checked(state, "video", name, key))
         values[key] = frames
-        values["ref_video_audio_%d" % i] = audio
+    # ref_video_audio : seulement la bande-son de la video (une piste audio).
+    for i, name in enumerate(state["video_audios"], 1):
+        key = "ref_video_audio_%d" % i
+        path = _checked(state, "video", name, key)
+        try:
+            values[key] = load_audio(path)
+        except ValueError:
+            raise ValueError("%s: no soundtrack in %s" % (key, path))
     for i, name in enumerate(state["audios"], 1):
         key = "ref_audio_%d" % i
         values[key] = load_audio(_checked(state, "audio", name, key))
 
-    keys = layout_keys(len(state["images"]), len(state["videos"]), len(state["audios"]))
+    keys = layout_keys(len(state["images"]), len(state["videos"]), len(state["video_audios"]),
+                       len(state["audios"]))
     out = [values.get(k) for k in keys]
     out += [None] * (TOTAL_OUTPUTS - len(out))
     return tuple(out)

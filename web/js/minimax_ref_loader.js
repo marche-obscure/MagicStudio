@@ -17,7 +17,14 @@ const INACTIVE_BG = "#2a2a2a";
 const INACTIVE_FG = "#888";
 
 // Plafonds des entrees de MiniMaxH3ReferenceToVideo (identiques a media.py).
-const LIMITS = { image: 9, video: 3, audio: 3 };
+const LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3 };
+
+// Les 4 listes de references. video_audio : bandes-son extraites de videos
+// (pistes audio ref_video_audio_N), liste independante des videos.
+const LIST_KEYS = { image: "images", video: "videos", video_audio: "video_audios", audio: "audios" };
+const listOf = (s, kind) => s[LIST_KEYS[kind]];
+/** Type de fichier selectionnable pour une liste (video_audio : des videos). */
+const fileKind = (kind) => (kind === "video_audio" ? "video" : kind);
 
 // Hauteur de l'interface DOM (4 boutons + barre du bas).
 const UI_HEIGHT = 196;
@@ -37,10 +44,6 @@ const VIDEO_ICON = svg(
 const SPEAKER_BODY =
     '<path d="M11 5L6 9H2v6h4l5 4V5z"></path>' +
     '<path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M19 5a10 10 0 0 1 0 14"></path>';
-const SPEAKER_ICON = svg(SPEAKER_BODY);
-const MUTE_ICON = svg(
-    '<path d="M11 5L6 9H2v6h4l5 4V5z"></path>' +
-    '<line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line>');
 const VIDEO_AUDIO_ICON =
     '<span style="display:flex;gap:1px">' + svg(
         '<rect x="2" y="6" width="14" height="12" rx="2"></rect>' +
@@ -76,12 +79,15 @@ const RIGHT_ICON = svg('<polyline points="9 18 15 12 9 6"></polyline>', 12);
 // nouvelle video selectionnee depuis ce bouton.
 const BUTTONS = [
     { id: "image", kind: "image", label: "Images", icon: IMAGE_ICON, color: VIOLET },
-    { id: "video", kind: "video", label: "Video", icon: VIDEO_ICON, color: ORANGE, sound: false },
-    { id: "video_audio", kind: "video", label: "Video/Audio", icon: VIDEO_AUDIO_ICON, color: GREEN, sound: true },
+    { id: "video", kind: "video", label: "Video", icon: VIDEO_ICON, color: ORANGE },
+    { id: "video_audio", kind: "video_audio", label: "Video/Audio", icon: VIDEO_AUDIO_ICON, color: GREEN },
     { id: "audio", kind: "audio", label: "Audio", icon: AUDIO_ICON, color: TITLE_COLOR },
 ];
 
-const KIND_TITLES = { image: "Reference images", video: "Reference videos", audio: "Reference audio" };
+const KIND_TITLES = {
+    image: "Reference images", video: "Reference videos",
+    video_audio: "Video soundtracks (ref_video_audio)", audio: "Reference audio",
+};
 
 function iconBadge(icon, bg) {
     return '<span style="display:inline-flex;align-items:center;justify-content:center;' +
@@ -93,7 +99,7 @@ const HELP_SECTIONS = [
     {
         title: "What this node does",
         html: "<p>Loads the references of <b>MiniMax H3 Reference to Video</b>: " +
-            "up to 9 images, 3 videos (each with or without its soundtrack) and 3 audio files. " +
+            "up to 9 images, 3 videos, 3 video soundtracks and 3 audio files. " +
             "Wire the outputs in order: <b>ref_image_1</b> goes to the first image input of " +
             "MiniMax (named <b>ref_image_0</b> there), <b>ref_image_2</b> to the next one, and so on.</p>",
     },
@@ -103,23 +109,24 @@ const HELP_SECTIONS = [
             iconBadge(VIDEO_ICON, ORANGE) + " <b>Video</b>, " +
             iconBadge(VIDEO_AUDIO_ICON, GREEN) + " <b>Video/Audio</b>, " +
             iconBadge(AUDIO_ICON, TITLE_COLOR) + " <b>Audio</b>: each opens a gallery of the " +
-            "chosen folder. <b>Video</b> and <b>Video/Audio</b> open the same video gallery and " +
-            "share the same 3 slots: a video picked from <b>Video/Audio</b> keeps its sound, one " +
-            "picked from <b>Video</b> is muted. The " + iconBadge(SPEAKER_ICON, GREEN) +
-            " switch on a selected video changes it at any time.</p>" +
+            "chosen folder and fills its own list.</p>" +
+            "<p><b>Video</b> gives the video frames (<b>ref_video_N</b>). <b>Video/Audio</b> picks " +
+            "videos too, but only their <b>soundtrack</b> is extracted: it is an <b>audio track</b> " +
+            "that goes out on <b>ref_video_audio_N</b>. The two lists are independent; pick the same " +
+            "video in both to have its frames and its sound.</p>" +
+            "<p><b>Note:</b> MiniMax uses the audio track wired to <b>ref_video_audio_N</b> together " +
+            "with the reference video wired to <b>ref_video_N</b>.</p>" +
             "<p>The " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
-            " deletes <b>all</b> the references of its row, after a confirmation. On the " +
-            "<b>Video/Audio</b> row it mutes all the videos instead (they stay selected).</p>",
+            " deletes <b>all</b> the references of its row, after a confirmation.</p>",
     },
     {
         title: "Numbering",
         html: "<p>Click order sets the number: the first image clicked is <b>ref_image_1</b>, " +
             "that is <b>&lt;Picture 1&gt;</b> in the prompt. Click again to remove it; the " +
-            "others move up. <b>ref_video_audio_N</b> is the soundtrack of <b>ref_video_N</b> " +
-            "(empty when muted).</p>" +
-            "<p>MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks first, then " +
-            "the audio files: with 2 videos with sound, <b>ref_audio_1</b> is " +
-            "<b>&lt;Audio 3&gt;</b>.</p>",
+            "others move up.</p>" +
+            "<p>MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks " +
+            "(<b>ref_video_audio</b>) first, then the audio files: with 2 video soundtracks, " +
+            "<b>ref_audio_1</b> is <b>&lt;Audio 3&gt;</b>.</p>",
     },
     {
         title: "Viewing and reordering",
@@ -128,7 +135,7 @@ const HELP_SECTIONS = [
             "can be played) with its folder, size and duration. The " + iconBadge(LEFT_ICON, INACTIVE_BG) +
             " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " arrows move a file one place: number 1 always " +
             "goes out on <b>ref_image_1</b>, number 2 on <b>ref_image_2</b>, and so on (the wires stay " +
-            "on the outputs). A video keeps its sound setting when it moves.</p>" +
+            "on the outputs).</p>" +
             "<p>The " + iconBadge(TRASH_ICON, INACTIVE_BG) + " on a thumbnail marks it for deletion (it turns " +
             iconBadge(TRASH_ICON, MARK_RED) + "); <b>Delete</b> removes the marked files after a confirmation. " +
             "The following references move up (ref 4 becomes ref 3...) and the last output, now empty, " +
@@ -148,10 +155,10 @@ const HELP_SECTIONS = [
             "that opened the gallery can be selected, the others are shown for information. Without a root folder " +
             "they are greyed out; Browse and Reload stay available.</p>" +
             "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the whole configuration (root folder, " +
-            "images, videos, video sound, audio) in a .txt file, one line per output, e.g. " +
+            "images, videos, video soundtracks, audio) in a .txt file, one line per output, e.g. " +
             "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
-            "to it; an empty group is written <code>audio 1 : NaN</code>, a muted video " +
-            "<code>video_audio 1 : NaN</code>.</p>" +
+            "to it; an empty group is written with its first number and NaN, e.g. " +
+            "<code>audio 1 : NaN</code>.</p>" +
             "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads such a file and sets the outputs from it. " +
             "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " as soon as a reference is selected (the " +
             "root folder alone does not count): loading then asks a confirmation, since it overwrites " +
@@ -180,7 +187,7 @@ function emptyState() {
     // conserve par type ; sans choix, la galerie affiche la base).
     return {
         root: "", folders: { image: "", video: "", audio: "" }, subs: { image: "", video: "", audio: "" },
-        images: [], videos: [], audios: [],
+        images: [], videos: [], video_audios: [], audios: [],
     };
 }
 
@@ -200,10 +207,21 @@ function parseState(raw) {
     for (const k of ["image", "video", "audio"]) s.subs[k] = typeof sb[k] === "string" ? sb[k] : "";
     s.images = (Array.isArray(data.images) ? data.images : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.image);
     s.audios = (Array.isArray(data.audios) ? data.audios : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.audio);
+    // Videos : chemins simples. Ancien format {file, sound} : la video reste
+    // une video et, si sound, devient aussi une piste ref_video_audio.
+    const oldSounds = [];
     s.videos = (Array.isArray(data.videos) ? data.videos : [])
-        .filter((v) => v && typeof v.file === "string" && v.file)
-        .map((v) => ({ file: v.file, sound: !!v.sound }))
+        .map((v) => {
+            if (v && typeof v === "object") {
+                if (v.sound && typeof v.file === "string" && v.file) oldSounds.push(v.file);
+                return v.file;
+            }
+            return v;
+        })
+        .filter((v) => typeof v === "string" && v)
         .slice(0, LIMITS.video);
+    const va = (Array.isArray(data.video_audios) ? data.video_audios : []).filter((v) => typeof v === "string" && v);
+    s.video_audios = (va.length ? va : oldSounds).slice(0, LIMITS.video_audio);
     return s;
 }
 
@@ -219,13 +237,12 @@ function resetRootSubs(s) {
 }
 
 /** Doit rester identique a media.layout_keys() cote Python. */
-function layoutKeys(ni, nv, na) {
+function layoutKeys(ni, nv, nva, na) {
     const clamp = (n, max) => Math.min(Math.max(1, n), max);
     const keys = [];
     for (let i = 1; i <= clamp(ni, LIMITS.image); i++) keys.push("ref_image_" + i);
-    const v = clamp(nv, LIMITS.video);
-    for (let i = 1; i <= v; i++) keys.push("ref_video_" + i);
-    for (let i = 1; i <= v; i++) keys.push("ref_video_audio_" + i);
+    for (let i = 1; i <= clamp(nv, LIMITS.video); i++) keys.push("ref_video_" + i);
+    for (let i = 1; i <= clamp(nva, LIMITS.video_audio); i++) keys.push("ref_video_audio_" + i);
     for (let i = 1; i <= clamp(na, LIMITS.audio); i++) keys.push("ref_audio_" + i);
     return keys;
 }
@@ -256,7 +273,7 @@ function outputLinksOf(node, slot) {
 }
 
 function applyLayout(node, state) {
-    const keys = layoutKeys(state.images.length, state.videos.length, state.audios.length);
+    const keys = layoutKeys(state.images.length, state.videos.length, state.video_audios.length, state.audios.length);
     const same = node.outputs.length === keys.length && node.outputs.every((o, i) => o.name === keys[i]);
     if (!same) {
         for (let i = node.outputs.length - 1; i >= 0; i--) {
@@ -550,7 +567,6 @@ function buildGallery(container, ctx) {
     });
 
     let kind = "image";
-    let defaultSound = false;
     let files = [];
     let base = "";     // champ Root folder (dossier racine, ou dossier propre a la galerie)
     let sub = "";      // sous-dossier relatif a base ; "" = base elle-meme
@@ -685,7 +701,7 @@ function buildGallery(container, ctx) {
         subSelect.style.opacity = usable ? "1" : "0.45";
         subSelect.style.cursor = usable ? "pointer" : "default";
         subSelect.title = !base ? "Set a root folder first"
-            : usable ? "Subfolders of the root folder (number of " + kind + " files after the name)"
+            : usable ? "Subfolders of the root folder (number of " + fileKind(kind) + " files after the name)"
             : "No subfolder: the root folder itself is shown";
     }
 
@@ -709,14 +725,14 @@ function buildGallery(container, ctx) {
         pickBtn.disabled = true;
         try {
             const data = await apiGet("/mmrefloader/subfolders?path=" + encodeURIComponent(scanned) +
-                "&kind=" + kind + "&all=1");
+                "&kind=" + fileKind(kind) + "&all=1");
             if (id !== scanId || scanned !== base) return;
             subfolders = data.subfolders || [];
             if (announce === true) {
                 const n = subfolders.filter((e) => e.path).length;
                 const withFiles = subfolders.filter((e) => e.path && e.count).length;
                 status.textContent = n
-                    ? n + " subfolder" + (n > 1 ? "s" : "") + " found, " + withFiles + " with " + kind + " files."
+                    ? n + " subfolder" + (n > 1 ? "s" : "") + " found, " + withFiles + " with " + fileKind(kind) + " files."
                     : "No subfolder in the root folder.";
             }
         } catch (e) {
@@ -734,8 +750,9 @@ function buildGallery(container, ctx) {
     /** Memorise base et sous-dossier pour ce type (base = racine : stocke ""). */
     function saveNav() {
         const s = ctx.getState();
-        s.folders[kind] = base && base !== s.root ? base : "";
-        s.subs[kind] = sub;
+        // Video et Video/Audio partagent la memoire de navigation des videos.
+        s.folders[fileKind(kind)] = base && base !== s.root ? base : "";
+        s.subs[fileKind(kind)] = sub;
         ctx.setState(s);
     }
 
@@ -754,28 +771,17 @@ function buildGallery(container, ctx) {
     // getState() renvoie une copie neuve a chaque appel : toujours modifier
     // la liste de l'objet s que l'on renvoie ensuite a setState().
     function list(s) {
-        s = s || ctx.getState();
-        return kind === "image" ? s.images : kind === "audio" ? s.audios : s.videos;
+        return listOf(s || ctx.getState(), kind);
     }
-    const pathOf = (item) => (kind === "video" ? item.file : item);
-    const indexOf = (path, s) => list(s).findIndex((it) => samePath(pathOf(it), path));
+    const indexOf = (path, s) => list(s).findIndex((it) => samePath(it, path));
 
     function toggle(path) {
         const s = ctx.getState();
         const arr = list(s);
         const idx = indexOf(path, s);
         if (idx >= 0) arr.splice(idx, 1);
-        else if (arr.length < LIMITS[kind]) arr.push(kind === "video" ? { file: path, sound: defaultSound } : path);
+        else if (arr.length < LIMITS[kind]) arr.push(path);
         else return;
-        ctx.setState(s);
-        render();
-    }
-
-    function toggleSound(path) {
-        const s = ctx.getState();
-        const item = s.videos[indexOf(path, s)];
-        if (!item) return;
-        item.sound = !item.sound;
         ctx.setState(s);
         render();
     }
@@ -783,11 +789,9 @@ function buildGallery(container, ctx) {
     // ------ Affichage ------
     function updateCounters() {
         const arr = list();
-        let text = arr.length + " / " + LIMITS[kind] + " selected";
-        if (kind === "video") text += " · " + arr.filter((v) => v.sound).length + " 🔊";
-        counter.textContent = text;
+        counter.textContent = arr.length + " / " + LIMITS[kind] + " selected";
         const folder = currentFolder();
-        const elsewhere = folder ? arr.filter((it) => !files.some((f) => f.kind === kind && samePath(joinPath(folder, f.name), pathOf(it)))).length : arr.length;
+        const elsewhere = folder ? arr.filter((it) => !files.some((f) => f.kind === fileKind(kind) && samePath(joinPath(folder, f.name), it))).length : arr.length;
         footerInfo.textContent = elsewhere ? "+" + elsewhere + " selected in another folder" : "";
     }
 
@@ -815,7 +819,7 @@ function buildGallery(container, ctx) {
      */
     function makeTile(f, folder, full) {
         const path = joinPath(folder, f.name);
-        const own = f.kind === kind;
+        const own = f.kind === fileKind(kind);
         const idx = own ? indexOf(path) : -1;
         const selected = idx >= 0;
         const selectable = own && (selected || !full);
@@ -877,17 +881,6 @@ function buildGallery(container, ctx) {
             });
             tile.appendChild(badge);
 
-            if (kind === "video") {
-                const on = list()[idx].sound;
-                const snd = makeIconButton(on ? GREEN : INACTIVE_BG, on ? SPEAKER_ICON : MUTE_ICON,
-                    on ? "Soundtrack kept (click to mute)" : "Muted (click to keep the soundtrack)");
-                Object.assign(snd.style, { position: "absolute", right: "4px", top: "4px" });
-                snd.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    toggleSound(path);
-                });
-                tile.appendChild(snd);
-            }
         }
 
         if (own) tile.addEventListener("click", () => toggle(path));
@@ -908,7 +901,7 @@ function buildGallery(container, ctx) {
             const group = files.filter((f) => f.kind === sec.kind);
             if (present.length > 1) {
                 grid.appendChild(sectionHeader(sec.title + "  ·  " + group.length +
-                    (sec.kind === kind ? "" : "  (for information)")));
+                    (sec.kind === fileKind(kind) ? "" : "  (for information)")));
             }
             group.forEach((f) => grid.appendChild(makeTile(f, folder, full)));
         }
@@ -920,8 +913,8 @@ function buildGallery(container, ctx) {
             const n = files.filter((f) => f.kind === sec.kind).length;
             return n ? n + " " + sec.kind + (n > 1 && sec.kind !== "audio" ? "s" : "") : null;
         }).filter(Boolean);
-        const own = files.filter((f) => f.kind === kind).length;
-        return parts.join(", ") + (own ? "" : "  (no " + kind + " file to select here)");
+        const own = files.filter((f) => f.kind === fileKind(kind)).length;
+        return parts.join(", ") + (own ? "" : "  (no " + fileKind(kind) + " file to select here)");
     }
 
     async function loadFolder() {
@@ -1025,26 +1018,21 @@ function buildGallery(container, ctx) {
     });
     clearBtn.addEventListener("click", () => {
         const s = ctx.getState();
-        if (kind === "image") s.images = [];
-        else if (kind === "audio") s.audios = [];
-        else s.videos = [];
+        s[LIST_KEYS[kind]] = [];
         ctx.setState(s);
         render();
     });
 
     return {
-        open(newKind, sound) {
+        open(newKind) {
             kind = newKind;
-            defaultSound = !!sound;
-            title.textContent = KIND_TITLES[kind] + (kind === "video"
-                ? (defaultSound ? " — new picks keep their sound" : " — new picks are muted")
-                : "");
+            title.textContent = KIND_TITLES[kind];
             // Champ prerempli avec le dossier propre a ce type, sinon le dossier
             // racine ; on affiche le sous-dossier memorise (ou le Root folder
             // lui-meme) et on repere les sous-dossiers pour la liste deroulante.
             const st = ctx.getState();
-            base = st.folders[kind] || st.root || "";
-            sub = base ? st.subs[kind] || "" : "";
+            base = st.folders[fileKind(kind)] || st.root || "";
+            sub = base ? st.subs[fileKind(kind)] || "" : "";
             subfolders = [];
             files = [];
             updateNav();
@@ -1269,8 +1257,11 @@ function buildRootDialog(container, ctx) {
 // --------------------------------------------------------------------
 // Fenetre de la selection : ordre, reorganisation et infos d'un fichier
 // --------------------------------------------------------------------
-const VIEWER_TITLES = { image: "Selected images", video: "Selected videos", audio: "Selected audio" };
-const OUTPUT_PREFIX = { image: "ref_image_", video: "ref_video_", audio: "ref_audio_" };
+const VIEWER_TITLES = {
+    image: "Selected images", video: "Selected videos",
+    video_audio: "Selected video soundtracks", audio: "Selected audio",
+};
+const OUTPUT_PREFIX = { image: "ref_image_", video: "ref_video_", video_audio: "ref_video_audio_", audio: "ref_audio_" };
 
 function buildSelectionViewer(container, ctx) {
     const { overlay, card } = makeOverlay();
@@ -1391,9 +1382,9 @@ function buildSelectionViewer(container, ctx) {
 
     function list(s) {
         s = s || ctx.getState();
-        return kind === "image" ? s.images : kind === "audio" ? s.audios : s.videos;
+        return listOf(s, kind);
     }
-    const pathOf = (item) => (kind === "video" ? item.file : item);
+    const pathOf = (item) => item;
 
     /**
      * Deplace l'element i d'une place (delta = -1 ou +1). L'element n de la
@@ -1490,8 +1481,7 @@ function buildSelectionViewer(container, ctx) {
                 textOverflow: "ellipsis", color: "#fff",
             });
             const out = document.createElement("div");
-            out.textContent = "→ " + OUTPUT_PREFIX[kind] + (i + 1) +
-                (kind === "video" ? (item.sound ? "  🔊" : "  (muted)") : "");
+            out.textContent = "→ " + OUTPUT_PREFIX[kind] + (i + 1) + (kind === "video_audio" ? "  (sound)" : "");
             Object.assign(out.style, { padding: "0 5px", fontSize: "10px", color: "#9fd6cf" });
 
             // Fleches : la premiere vignette n'a que ▶ actif, la derniere que ◀.
@@ -1546,7 +1536,7 @@ function buildSelectionViewer(container, ctx) {
             el = document.createElement("img");
             el.src = url;
         } else {
-            el = document.createElement(kind === "video" ? "video" : "audio");
+            el = document.createElement(fileKind(kind) === "video" ? "video" : "audio");
             el.src = url;
             el.controls = true;
             el.preload = "metadata";
@@ -1569,7 +1559,7 @@ function buildSelectionViewer(container, ctx) {
                 row("Weight:", formatSize(info.size)) +
                 row("Duration:", info.duration != null ? formatDuration(info.duration) : "") +
                 row("Frame rate:", info.fps ? info.fps.toFixed(2) + " fps" : "") +
-                (kind === "video" ? row("Soundtrack:", info.has_audio ? "yes" : "none in the file") : "") +
+                (fileKind(kind) === "video" ? row("Soundtrack:", info.has_audio ? "yes" : "none in the file") : "") +
                 row("Audio:", info.sample_rate ? info.sample_rate + " Hz, " + info.channels + " ch" : "");
         } catch (e) {
             if (current === path) details.textContent = e.message;
@@ -1687,7 +1677,7 @@ app.registerExtension({
                     overflow: "hidden", textOverflow: "ellipsis",
                 });
                 btn.append(icon, label, count);
-                btn.addEventListener("click", () => gallery.open(b.kind, b.sound));
+                btn.addEventListener("click", () => gallery.open(b.kind));
                 row.appendChild(btn);
 
                 // Oeil : fenetre de la selection (ordre, infos, reorganisation).
@@ -1695,39 +1685,23 @@ app.registerExtension({
                 eye.addEventListener("click", () => viewer.open(b.kind));
                 row.appendChild(eye);
 
-                // Poubelle : vide le type (Video/Audio : coupe le son de toutes les videos).
-                const trash = makeIconButton(INACTIVE_BG, TRASH_ICON,
-                    b.id === "video_audio" ? "Mute all videos" : "Clear the " + b.label.toLowerCase() + " selection");
-                // Confirmation avant d'agir ; rien a faire = pas de question.
+                // Poubelle : vide toute la liste de la ligne, apres confirmation
+                // (rien a vider = pas de question).
+                const trash = makeIconButton(INACTIVE_BG, TRASH_ICON, "Clear the " + b.label + " selection");
                 trash.addEventListener("click", () => {
-                    const s0 = getState();
-                    let count, html, label;
-                    if (b.id === "video_audio") {
-                        count = s0.videos.filter((v) => v.sound).length;
-                        html = "<b>Mute all videos?</b><br>" + count + " video" + (count > 1 ? "s" : "") +
-                            " will lose " + (count > 1 ? "their" : "its") + " soundtrack " +
-                            '(the videos stay selected).<div style="color:#999;margin-top:8px">' +
-                            "The ref_video_audio outputs become empty.</div>";
-                        label = "Mute all";
-                    } else {
-                        const items = b.id === "image" ? s0.images : b.id === "video" ? s0.videos : s0.audios;
-                        count = items.length;
-                        html = "<b>Delete all " + count + " " + b.kind + " reference" +
-                            (count > 1 ? "s" : "") + "?</b><br>" +
-                            items.map((it, i) => i + 1 + ". " + escapeHtml(baseName(it.file || it))).join("<br>") +
-                            '<div style="color:#999;margin-top:8px">Only the first ' +
-                            b.kind + " output stays, empty.</div>";
-                        label = "Delete all";
-                    }
-                    if (!count) return;
-                    clearConfirm.ask(html, label, () => {
-                        const s = getState();
-                        if (b.id === "image") s.images = [];
-                        else if (b.id === "video") s.videos = [];
-                        else if (b.id === "video_audio") s.videos.forEach((v) => (v.sound = false));
-                        else s.audios = [];
-                        setState(s);
-                    });
+                    const items = listOf(getState(), b.kind);
+                    if (!items.length) return;
+                    const prefix = OUTPUT_PREFIX[b.kind];
+                    clearConfirm.ask(
+                        "<b>Delete all " + items.length + " " + b.label + " reference" +
+                        (items.length > 1 ? "s" : "") + "?</b><br>" +
+                        items.map((it, i) => prefix + (i + 1) + " : " + escapeHtml(baseName(it))).join("<br>") +
+                        '<div style="color:#999;margin-top:8px">Only ' + prefix + "1 stays, empty.</div>",
+                        "Delete all", () => {
+                            const s = getState();
+                            s[LIST_KEYS[b.kind]] = [];
+                            setState(s);
+                        });
                 });
                 row.appendChild(trash);
 
@@ -1776,7 +1750,8 @@ app.registerExtension({
 
             // Une configuration "existe" des qu'une reference est selectionnee ;
             // le dossier racine seul ne compte pas.
-            const hasConfig = (s) => !!(s.images.length || s.videos.length || s.audios.length);
+            const totalRefs = (s) => s.images.length + s.videos.length + s.video_audios.length + s.audios.length;
+            const hasConfig = (s) => totalRefs(s) > 0;
 
             // Download : fichier texte genere dans le navigateur.
             downloadBtn.addEventListener("click", () => {
@@ -1798,7 +1773,7 @@ app.registerExtension({
                     fileInput.click();
                     return;
                 }
-                const n = s.images.length + s.videos.length + s.audios.length;
+                const n = totalRefs(s);
                 clearConfirm.ask(
                     "<b>Overwrite the current configuration?</b><br>Loading a file replaces the root " +
                     "folder and all the references (" + n + " selected now)." +
@@ -1826,10 +1801,11 @@ app.registerExtension({
                     s.root = conf.root;
                     s.images = conf.images;
                     s.videos = conf.videos;
+                    s.video_audios = conf.video_audios;
                     s.audios = conf.audios;
                     setState(s);
                     // Fichiers absents du disque : charges quand meme, signales.
-                    const paths = conf.images.concat(conf.videos.map((v) => v.file), conf.audios);
+                    const paths = conf.images.concat(conf.videos, conf.video_audios, conf.audios);
                     const missing = [];
                     await Promise.all(paths.map(async (p) => {
                         const res = await fetch("/mmrefloader/info?file=" + encodeURIComponent(p)).catch(() => null);
@@ -1851,20 +1827,16 @@ app.registerExtension({
 
             function refresh() {
                 const s = getState();
-                const withSound = s.videos.filter((v) => v.sound);
                 rows.image.count.textContent = s.images.length + " / " + LIMITS.image;
-                rows.video.count.textContent = s.videos.length + " / " + LIMITS.video +
-                    (withSound.length ? " · " + withSound.length + " 🔊" : "");
-                rows.video_audio.count.textContent = withSound.length + " 🔊 = video";
+                rows.video.count.textContent = s.videos.length + " / " + LIMITS.video;
+                // Video/Audio : des pistes audio (bande-son extraite des videos).
+                rows.video_audio.count.textContent = s.video_audios.length + " / " + LIMITS.video_audio + " · audio";
                 rows.audio.count.textContent = s.audios.length + " / " + LIMITS.audio;
 
-                // Poubelles : grises et inactives sans reference, rouges sinon
-                // (Video/Audio : selon les videos dont le son est garde).
-                const counts = { image: s.images.length, video: s.videos.length,
-                    video_audio: withSound.length, audio: s.audios.length };
-                for (const id in counts) {
-                    const t = rows[id].trash;
-                    const on = counts[id] > 0;
+                // Poubelles : grises et inactives sans reference, rouges sinon.
+                for (const b of BUTTONS) {
+                    const t = rows[b.id].trash;
+                    const on = listOf(s, b.kind).length > 0;
                     t.disabled = !on;
                     t.style.background = on ? MARK_RED : INACTIVE_BG;
                     t.style.opacity = on ? "1" : "0.45";
@@ -1872,17 +1844,16 @@ app.registerExtension({
                 }
 
                 rows.image.btn.title = listTitle(s.images);
-                rows.video.btn.title = s.videos.length
-                    ? s.videos.map((v, i) => i + 1 + ". " + baseName(v.file) + (v.sound ? "  🔊" : "")).join("\n")
-                    : "Nothing selected";
-                rows.video_audio.btn.title = withSound.length
-                    ? s.videos.map((v, i) => (v.sound ? i + 1 + ". " + baseName(v.file) + "  🔊" : null)).filter(Boolean).join("\n")
-                    : "No video with sound";
+                rows.video.btn.title = listTitle(s.videos);
+                rows.video_audio.btn.title = s.video_audios.length
+                    ? "Soundtracks (ref_video_audio):\n" + listTitle(s.video_audios)
+                    : "No video soundtrack selected";
                 rows.audio.btn.title = listTitle(s.audios);
 
-                const total = s.images.length + s.videos.length + s.audios.length;
+                const total = totalRefs(s);
                 summary.textContent = notice || (total
-                    ? s.images.length + " image(s), " + s.videos.length + " video(s), " + s.audios.length + " audio"
+                    ? s.images.length + " image(s), " + s.videos.length + " video(s), " +
+                      (s.video_audios.length + s.audios.length) + " audio"
                     : "Click a button to pick references");
                 summary.style.color = notice ? ORANGE : "#9fd6cf";
                 summary.title = notice ? noticeTitle : "";

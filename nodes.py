@@ -29,7 +29,8 @@ ANY_TYPE = AnyType("*")
 
 # Noms techniques des 18 sorties (dans l'ordre maximal) : le JS les
 # renomme et les reordonne selon la selection.
-_ALL_KEYS = media.layout_keys(media.MAX_IMAGES, media.MAX_VIDEOS, media.MAX_AUDIOS)
+_ALL_KEYS = media.layout_keys(media.MAX_IMAGES, media.MAX_VIDEOS, media.MAX_VIDEO_AUDIOS,
+                               media.MAX_AUDIOS)
 
 
 class MiniMaxH3RefLoader:
@@ -46,8 +47,8 @@ class MiniMaxH3RefLoader:
     FUNCTION = "run"
     CATEGORY = "loaders/minimax"
     DESCRIPTION = (
-        "Pick reference images, videos (with or without their soundtrack) and "
-        "audio for MiniMax H3 Reference to Video."
+        "Pick reference images, videos, video soundtracks and audio for "
+        "MiniMax H3 Reference to Video."
     )
 
     @classmethod
