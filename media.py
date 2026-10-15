@@ -38,6 +38,8 @@ TOTAL_OUTPUTS = MAX_IMAGES + MAX_VIDEOS + MAX_VIDEO_AUDIOS + MAX_AUDIOS
 # (MiniMax H3 Image to Video : premiere image, et derniere en option).
 MODES = ("ref2va", "fl2va")
 FRAME_KEYS = ["first_frame", "last_frame"]
+# Listes dont les fichiers peuvent etre rognes.
+TRIM_KINDS = ("video", "video_audio", "audio")
 
 KIND_EXTS = {
     "image": (".png", ".jpg", ".jpeg", ".webp", ".bmp"),
@@ -108,8 +110,23 @@ def parse_state(raw):
 
     mode = data.get("mode") if data.get("mode") in MODES else "ref2va"
 
+    # Rognages {liste: {cle du chemin: [debut, fin]}} (secondes, fin > debut).
+    trims_in = data.get("trims") if isinstance(data.get("trims"), dict) else {}
+    trims = {}
+    for kind in TRIM_KINDS:
+        entries = trims_in.get(kind) if isinstance(trims_in.get(kind), dict) else {}
+        trims[kind] = {}
+        for k, v in entries.items():
+            try:
+                a, b = float(v[0]), float(v[1])
+            except (TypeError, ValueError, IndexError, KeyError):
+                continue
+            if isinstance(k, str) and 0 <= a < b:
+                trims[kind][trim_key(k)] = [a, b]
+
     return {
         "mode": mode,
+        "trims": trims,
         "first_frame": _frame(data.get("first_frame")),
         "last_frame": _frame(data.get("last_frame")),
         "folders": folders,
@@ -118,6 +135,17 @@ def parse_state(raw):
         "video_audios": video_audios[:MAX_VIDEO_AUDIOS],
         "audios": audios[:MAX_AUDIOS],
     }
+
+
+def trim_key(path):
+    """Cle d'un chemin pour les rognages (identique a trimKey() du JS)."""
+    return path.replace("\\", "/").lower()
+
+
+def _trim(state, kind, name):
+    """(debut, fin) du rognage d'un fichier d'une liste, ou (0, None)."""
+    t = state.get("trims", {}).get(kind, {}).get(trim_key(name))
+    return (t[0], t[1]) if t else (0.0, None)
 
 
 def _as_list(value):
@@ -330,12 +358,16 @@ def _target_size(width, height, max_pixels):
     return tw, th
 
 
-def _decode_audio(container, max_seconds):
-    """Piste son d'un conteneur deja ouvert -> dict AUDIO, ou None sans piste."""
+def _decode_audio(container, max_seconds, start=0.0):
+    """
+    Piste son d'un conteneur deja ouvert -> dict AUDIO, ou None sans piste.
+    Garde max_seconds a partir de start (secondes depuis le debut du fichier).
+    """
     if not container.streams.audio:
         return None
     stream = container.streams.audio[0]
     sr = stream.codec_context.sample_rate or stream.rate
+    skip = int(round(max(0.0, start) * sr))
     max_samples = int(round(max_seconds * sr)) if max_seconds else None
     # Conversion en float planaire : (canaux, echantillons) quel que soit le format source.
     resampler = av.AudioResampler(format="fltp")
@@ -352,7 +384,7 @@ def _decode_audio(container, max_seconds):
 
     for frame in container.decode(stream):
         add(resampler.resample(frame))
-        if max_samples is not None and total >= max_samples:
+        if max_samples is not None and total >= skip + max_samples:
             break
     else:
         add(resampler.resample(None))
@@ -360,29 +392,40 @@ def _decode_audio(container, max_seconds):
     if not chunks:
         return None
     wav = torch.from_numpy(np.concatenate(chunks, axis=1).astype(np.float32))
-    if max_samples is not None:
-        wav = wav[:, :max_samples]
+    wav = wav[:, skip:] if max_samples is None else wav[:, skip:skip + max_samples]
+    if wav.shape[1] == 0:
+        return None
     return {"waveform": wav[None, ...].contiguous(), "sample_rate": int(sr)}
 
 
-def load_audio(path, max_seconds=MAX_SECONDS):
-    """Fichier audio -> dict AUDIO, coupe a max_seconds."""
+def _trim_length(max_seconds, start, end):
+    """Duree gardee : max_seconds, ou moins si une fin de rognage est donnee."""
+    if end is not None and end > start:
+        return min(max_seconds, end - start)
+    return max_seconds
+
+
+def load_audio(path, max_seconds=MAX_SECONDS, start=0.0, end=None):
+    """Fichier audio -> dict AUDIO : portion [start, end] coupee a max_seconds."""
     with av.open(path) as c:
-        audio = _decode_audio(c, max_seconds)
+        audio = _decode_audio(c, _trim_length(max_seconds, start, end), start)
     if audio is None:
         raise ValueError("No audio stream in %s" % path)
     return audio
 
 
-def load_video(path, with_audio=False, max_seconds=MAX_SECONDS, max_pixels=MAX_PIXELS):
+def load_video(path, with_audio=False, max_seconds=MAX_SECONDS, max_pixels=MAX_PIXELS,
+               start=0.0, end=None):
     """
     Video -> (images [N, H, W, 3] a 24 ips, piste son ou None).
 
     Reechantillonnage : chaque instant k/24 recoit la derniere image source
     affichee a cet instant (images repetees sous 24 ips, sautees au-dessus).
-    La piste son est coupee a la duree des images gardees.
+    Rognage : seule la portion [start, end] (secondes) est gardee, coupee a
+    max_seconds. La piste son est coupee a la meme portion que les images.
     """
-    max_frames = max(1, int(round(max_seconds * FPS)))
+    start = max(0.0, float(start or 0.0))
+    max_frames = max(1, int(round(_trim_length(max_seconds, start, end) * FPS)))
     eps = 1e-3
 
     with av.open(path) as c:
@@ -397,7 +440,11 @@ def load_video(path, with_audio=False, max_seconds=MAX_SECONDS, max_pixels=MAX_P
         pending = None      # derniere image source decodee (pas encore convertie)
         pending_arr = None
         pending_t = 0.0
-        t0 = None
+        # Origine des temps : debut du flux (ou premiere image decodee).
+        t0 = float(vs.start_time * vs.time_base) if vs.start_time is not None else None
+        if start > 0 and t0 is not None:
+            # Saut a l'image cle precedant le debut du rognage.
+            c.seek(int((t0 + start) / float(vs.time_base)), stream=vs, backward=True)
 
         def emit_until(limit):
             nonlocal pending_arr
@@ -410,8 +457,10 @@ def load_video(path, with_audio=False, max_seconds=MAX_SECONDS, max_pixels=MAX_P
             t = frame.time if frame.time is not None else idx / src_fps
             if t0 is None:
                 t0 = t
-            t -= t0
-            if pending is not None:
+            # Temps relatif au debut du rognage : l'image affichee a cet
+            # instant (meme anterieure) devient l'image 0.
+            t -= t0 + start
+            if pending is not None and t > 0:
                 emit_until(t)
                 if len(out) >= max_frames:
                     break
@@ -427,7 +476,7 @@ def load_video(path, with_audio=False, max_seconds=MAX_SECONDS, max_pixels=MAX_P
     audio = None
     if with_audio:
         with av.open(path) as c:
-            audio = _decode_audio(c, len(out) / FPS)
+            audio = _decode_audio(c, len(out) / FPS, start)
     return frames, audio
 
 
@@ -461,19 +510,22 @@ def build_outputs(state):
         values[key] = load_image(_checked(state, "image", name, key))
     for i, name in enumerate(state["videos"], 1):
         key = "ref_video_%d" % i
-        frames, _ = load_video(_checked(state, "video", name, key))
+        start, end = _trim(state, "video", name)
+        frames, _ = load_video(_checked(state, "video", name, key), start=start, end=end)
         values[key] = frames
     # ref_video_audio : seulement la bande-son de la video (une piste audio).
     for i, name in enumerate(state["video_audios"], 1):
         key = "ref_video_audio_%d" % i
         path = _checked(state, "video", name, key)
+        start, end = _trim(state, "video_audio", name)
         try:
-            values[key] = load_audio(path)
+            values[key] = load_audio(path, start=start, end=end)
         except ValueError:
             raise ValueError("%s: no soundtrack in %s" % (key, path))
     for i, name in enumerate(state["audios"], 1):
         key = "ref_audio_%d" % i
-        values[key] = load_audio(_checked(state, "audio", name, key))
+        start, end = _trim(state, "audio", name)
+        values[key] = load_audio(_checked(state, "audio", name, key), start=start, end=end)
 
     out = [values.get(k) for k in state_layout(state)]
     out += [None] * (TOTAL_OUTPUTS - len(out))

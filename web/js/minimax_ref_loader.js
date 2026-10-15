@@ -1,5 +1,5 @@
 import { app } from "../../scripts/app.js";
-import { formatConfig, parseConfig } from "./config_format.js";
+import { formatConfig, parseConfig, trimKey } from "./config_format.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -30,6 +30,13 @@ const LIST_KEYS = {
     first_frame: "first_frame", last_frame: "last_frame",
 };
 const listOf = (s, kind) => s[LIST_KEYS[kind]];
+// Listes dont les fichiers peuvent etre rognes (identique a media.TRIM_KINDS).
+const TRIM_KINDS = ["video", "video_audio", "audio"];
+/** Rognage [debut, fin] d'un fichier d'une liste, ou null. */
+const trimOf = (s, kind, path) => (s.trims && s.trims[kind] ? s.trims[kind][trimKey(path)] || null : null);
+const fmtSec = (x) => String(Number(Number(x).toFixed(2)));
+const fmtTrim = (t) => fmtSec(t[0]) + "–" + fmtSec(t[1]) + " s";
+
 /** Type de fichier selectionnable pour une liste (video_audio : des videos ; frames : des images). */
 const fileKind = (kind) =>
     kind === "video_audio" ? "video" : kind === "first_frame" || kind === "last_frame" ? "image" : kind;
@@ -166,6 +173,12 @@ const HELP_SECTIONS = [
             " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " arrows move a file one place: number 1 always " +
             "goes out on <b>ref_image_1</b>, number 2 on <b>ref_image_2</b>, and so on (the wires stay " +
             "on the outputs).</p>" +
+            "<p><b>Trim</b> (videos, video soundtracks and audio): in the preview window, set the " +
+            "<b>Start</b> and <b>End</b> of the part to keep (fields, or the current playback position " +
+            "with <b>Set start</b> / <b>Set end</b>), check it with <b>Play trim</b>, or <b>Reset</b> to " +
+            "keep the whole file. The file itself is never changed; only that part goes to the output " +
+            "(frames and sound). A trimmed file shows a ✂ badge, and the trim is kept in the saved " +
+            ".txt file (<code>video 1 : rush\plan.mp4 | 2.5-8</code>).</p>" +
             "<p>The " + iconBadge(TRASH_ICON, INACTIVE_BG) + " on a thumbnail marks it for deletion (it turns " +
             iconBadge(TRASH_ICON, MARK_RED) + "); <b>Delete</b> removes the marked files after a confirmation. " +
             "The following references move up (ref 4 becomes ref 3...) and the last output, now empty, " +
@@ -230,6 +243,8 @@ function emptyState() {
         images: [], videos: [], video_audios: [], audios: [],
         // Mode F2VA/FL2VA : une image au plus dans chaque liste.
         mode: "ref2va", first_frame: [], last_frame: [],
+        // Rognages par liste : {cle du chemin: [debut, fin]} en secondes.
+        trims: { video: {}, video_audio: {}, audio: {} },
     };
 }
 
@@ -265,6 +280,15 @@ function parseState(raw) {
     const va = (Array.isArray(data.video_audios) ? data.video_audios : []).filter((v) => typeof v === "string" && v);
     s.video_audios = (va.length ? va : oldSounds).slice(0, LIMITS.video_audio);
     s.mode = data.mode === "fl2va" ? "fl2va" : "ref2va";
+    const tr = data.trims && typeof data.trims === "object" ? data.trims : {};
+    for (const k of TRIM_KINDS) {
+        const entries = tr[k] && typeof tr[k] === "object" ? tr[k] : {};
+        for (const [key, v] of Object.entries(entries)) {
+            if (Array.isArray(v) && v.length === 2 && v[0] >= 0 && v[1] > v[0]) {
+                s.trims[k][trimKey(key)] = [Number(v[0]), Number(v[1])];
+            }
+        }
+    }
     for (const k of ["first_frame", "last_frame"]) {
         const v = data[k];
         s[k] = (Array.isArray(v) ? v : [v]).filter((x) => typeof x === "string" && x).slice(0, 1);
@@ -682,29 +706,174 @@ function buildSidePreview(card, overlay) {
         side.style.top = r.top + "px";
     }
 
-    function show(path, fk, sub) {
+    // ------ Barre de rognage (videos et audios de la fenetre oeil) ------
+    const trimBar = document.createElement("div");
+    Object.assign(trimBar.style, {
+        display: "none", flexWrap: "wrap", alignItems: "center", gap: "6px", padding: "0 10px 10px",
+    });
+    side.appendChild(trimBar);
+    const numField = (tip) => {
+        const f = document.createElement("input");
+        f.type = "number";
+        f.step = "0.1";
+        f.min = "0";
+        f.title = tip;
+        Object.assign(f.style, {
+            width: "64px", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "8px",
+            padding: "3px 6px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+        });
+        return f;
+    };
+    const smallBtn = (text, bg, tip) => {
+        const b = makeTextButton(text, bg);
+        b.title = tip;
+        Object.assign(b.style, { padding: "4px 8px", fontSize: "11px" });
+        return b;
+    };
+    const label = (text) => {
+        const l = document.createElement("span");
+        l.textContent = text;
+        l.style.color = "#9fd6cf";
+        return l;
+    };
+    const startField = numField("Start of the part kept (seconds)");
+    const endField = numField("End of the part kept (seconds)");
+    const setStartBtn = smallBtn("⟦ Set start", VIOLET, "Start = current playback position");
+    const setEndBtn = smallBtn("Set end ⟧", VIOLET, "End = current playback position");
+    const playTrimBtn = smallBtn("▶ Play trim", GREEN, "Play only the part kept");
+    const resetTrimBtn = smallBtn("Reset", INACTIVE_BG, "Keep the whole file");
+    const trimInfo = document.createElement("span");
+    Object.assign(trimInfo.style, { flex: "1 1 100%", color: "#bbb" });
+    trimBar.append(label("✂ Start"), startField, setStartBtn, label("End"), endField, setEndBtn,
+        playTrimBtn, resetTrimBtn, trimInfo);
+
+    let media = null;     // element video / audio affiche
+    let trimCtx = null;   // { range, onChange, isVideo }
+    let stopAt = null;    // fin de la lecture "Play trim"
+
+    const duration = () => (media && isFinite(media.duration) ? media.duration : null);
+
+    function trimValues() {
+        const d = duration();
+        const r = trimCtx.range;
+        return { start: r ? r[0] : 0, end: r ? r[1] : d };
+    }
+
+    function updateTrimUI() {
+        if (!trimCtx) return;
+        const d = duration();
+        const { start, end } = trimValues();
+        startField.value = fmtSec(start);
+        endField.value = end != null ? fmtSec(end) : "";
+        if (d != null) {
+            startField.max = String(d);
+            endField.max = String(d);
+        }
+        if (end == null) {
+            trimInfo.textContent = "Loading...";
+            return;
+        }
+        const kept = end - start;
+        let text = (trimCtx.range ? "Trimmed: " : "Whole file: ") + fmtSec(kept) + " s kept" +
+            (d != null ? " of " + fmtSec(d) + " s" : "");
+        let warn = "";
+        if (kept > 15) warn = "only the first 15 s are used";
+        else if (trimCtx.isVideo && kept < 2) warn = "MiniMax expects 2 to 15 s";
+        trimInfo.textContent = text + (warn ? "  —  ⚠ " + warn : "");
+        trimInfo.style.color = warn ? ORANGE : "#bbb";
+    }
+
+    /** Enregistre le rognage ; [0, duree] (fichier entier) = pas de rognage. */
+    function commitTrim(start, end) {
+        const d = duration();
+        if (d == null) return;
+        start = Math.max(0, Math.min(Number(start) || 0, d));
+        end = Math.max(0, Math.min(end === "" || end == null ? d : Number(end), d));
+        if (end <= start) end = Math.min(d, start + 0.1);
+        if (end <= start) start = Math.max(0, end - 0.1);
+        const whole = start <= 0.01 && end >= d - 0.05;
+        const range = whole ? null : [Number(start.toFixed(3)), Number(end.toFixed(3))];
+        trimCtx.range = range;
+        trimCtx.onChange(range);
+        updateTrimUI();
+    }
+
+    startField.addEventListener("change", () => commitTrim(startField.value, trimValues().end));
+    endField.addEventListener("change", () => commitTrim(trimValues().start, endField.value));
+    setStartBtn.addEventListener("click", () => media && commitTrim(media.currentTime, trimValues().end));
+    setEndBtn.addEventListener("click", () => media && commitTrim(trimValues().start, media.currentTime));
+    resetTrimBtn.addEventListener("click", () => {
+        if (!trimCtx) return;
+        trimCtx.range = null;
+        trimCtx.onChange(null);
+        updateTrimUI();
+    });
+    playTrimBtn.addEventListener("click", () => {
+        if (!media || duration() == null) return;
+        const { start, end } = trimValues();
+        stopAt = end;
+        media.currentTime = start;
+        media.play();
+    });
+
+    // Touches tapees dans les champs : ne pas les laisser au canvas (Suppr...).
+    const onKey = (e) => {
+        if (side.style.display !== "none" && e.key !== "Escape" && side.contains(e.target)) {
+            e.stopImmediatePropagation();
+        }
+    };
+
+    /**
+     * show(path, fileKind, sousTitre, trim) : image, video ou audio avec son
+     * lecteur. trim = { range: [debut, fin] | null, onChange(range | null) }
+     * affiche la barre de rognage (videos et audios seulement).
+     */
+    function show(path, fk, sub, trim) {
         body.innerHTML = "";
+        stopAt = null;
         let el;
         if (fk === "image") {
             el = document.createElement("img");
         } else {
-            el = document.createElement("video");
+            el = document.createElement(fk === "audio" ? "audio" : "video");
             el.controls = true;
             el.preload = "metadata";
         }
         el.src = "/mmrefloader/media?file=" + encodeURIComponent(path);
-        Object.assign(el.style, { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
+        Object.assign(el.style, fk === "audio"
+            ? { width: "95%" }
+            : { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
         body.appendChild(el);
+        media = fk === "image" ? null : el;
+        trimCtx = trim && media ? { range: trim.range, onChange: trim.onChange, isVideo: fk === "video" } : null;
+        trimBar.style.display = trimCtx ? "flex" : "none";
+        if (media) {
+            media.addEventListener("loadedmetadata", () => {
+                updateTrimUI();
+                if (trimCtx && trimCtx.range) media.currentTime = trimCtx.range[0];
+            });
+            media.addEventListener("timeupdate", () => {
+                if (stopAt != null && media.currentTime >= stopAt) {
+                    media.pause();
+                    stopAt = null;
+                }
+            });
+        }
+        updateTrimUI();
         title.textContent = baseName(path);
         title.title = path;
         subtitle.textContent = sub || "";
         side.style.display = "flex";
+        window.addEventListener("keydown", onKey, true);
         place();
     }
 
     function hide() {
         side.style.display = "none";
-        body.innerHTML = ""; // arrete une lecture video en cours
+        body.innerHTML = ""; // arrete une lecture en cours
+        media = null;
+        trimCtx = null;
+        window.removeEventListener("keydown", onKey, true);
     }
 
     closeBtn.addEventListener("click", hide);
@@ -1712,7 +1881,21 @@ function buildSelectionViewer(container, ctx) {
             });
             if (isMarked) thumb.style.opacity = "0.45";
 
-            tile.append(thumb, badge, bin, name, out, arrows);
+            // Fichier rogne : badge avec la portion gardee.
+            const tr = TRIM_KINDS.includes(kind) ? trimOf(ctx.getState(), kind, path) : null;
+            if (tr) {
+                const cut = document.createElement("div");
+                cut.textContent = "✂ " + fmtTrim(tr);
+                cut.title = "Trimmed: " + fmtTrim(tr);
+                Object.assign(cut.style, {
+                    position: "absolute", left: "4px", top: "58px", background: "rgba(0,0,0,0.75)",
+                    color: ORANGE, padding: "1px 5px", borderRadius: "4px", fontSize: "10px",
+                });
+                thumb.style.position = "relative";
+                tile.append(thumb, badge, bin, cut, name, out, arrows);
+            } else {
+                tile.append(thumb, badge, bin, name, out, arrows);
+            }
             tile.addEventListener("click", () => showInfo(path));
             grid.appendChild(tile);
         });
@@ -1730,7 +1913,17 @@ function buildSelectionViewer(container, ctx) {
     const sidePreview = buildSidePreview(card, overlay);
 
     function showSide(path, idx) {
-        sidePreview.show(path, fileKind(kind), outputName(kind, idx));
+        const trim = TRIM_KINDS.includes(kind) ? {
+            range: trimOf(ctx.getState(), kind, path),
+            onChange: (range) => {
+                const s = ctx.getState();
+                if (range) s.trims[kind][trimKey(path)] = range;
+                else delete s.trims[kind][trimKey(path)];
+                ctx.setState(s);
+                render();
+            },
+        } : null;
+        sidePreview.show(path, fileKind(kind), outputName(kind, idx), trim);
     }
 
     function hideSide() {
@@ -1755,12 +1948,11 @@ function buildSelectionViewer(container, ctx) {
         const fk = fileKind(kind);
         let el;
         if (fk === "audio") {
-            el = document.createElement("audio");
-            el.src = "/mmrefloader/media?file=" + encodeURIComponent(path);
-            el.controls = true;
-            el.preload = "metadata";
-            el.style.width = "95%";
-            hideSide();
+            // Audio : icone ici, lecteur + rognage dans la fenetre de droite.
+            el = document.createElement("div");
+            el.innerHTML = AUDIO_ICON.replace(/width="15" height="15"/, 'width="40" height="40"');
+            el.style.opacity = "0.7";
+            showSide(path, list().findIndex((it) => samePath(pathOf(it), path)));
         } else {
             el = document.createElement("img");
             el.src = "/mmrefloader/thumb?path=" + encodeURIComponent(dirName(path)) +
@@ -2135,6 +2327,7 @@ app.registerExtension({
                         s.videos = conf.videos;
                         s.video_audios = conf.video_audios;
                         s.audios = conf.audios;
+                        s.trims = conf.trims;
                         paths = conf.images.concat(conf.videos, conf.video_audios, conf.audios);
                     }
                     setState(s);
@@ -2154,8 +2347,12 @@ app.registerExtension({
             });
 
             // ---- Rafraichissement (compteurs, info-bulles, sorties) ----
-            function listTitle(paths) {
-                return paths.length ? paths.map((p, i) => i + 1 + ". " + baseName(p)).join("\n") : "Nothing selected";
+            function listTitle(paths, kind, s) {
+                if (!paths.length) return "Nothing selected";
+                return paths.map((p, i) => {
+                    const t = kind && s ? trimOf(s, kind, p) : null;
+                    return i + 1 + ". " + baseName(p) + (t ? "  ✂ " + fmtTrim(t) : "");
+                }).join("\n");
             }
 
             function refresh() {
@@ -2191,11 +2388,11 @@ app.registerExtension({
                 }
 
                 rows.image.btn.title = listTitle(s.images);
-                rows.video.btn.title = listTitle(s.videos);
+                rows.video.btn.title = listTitle(s.videos, "video", s);
                 rows.video_audio.btn.title = s.video_audios.length
-                    ? "Soundtracks (ref_video_audio):\n" + listTitle(s.video_audios)
+                    ? "Soundtracks (ref_video_audio):\n" + listTitle(s.video_audios, "video_audio", s)
                     : "No video soundtrack selected";
-                rows.audio.btn.title = listTitle(s.audios);
+                rows.audio.btn.title = listTitle(s.audios, "audio", s);
 
                 const refText = fl
                     ? (s.first_frame.length ? (s.last_frame.length ? "FL2VA: first + last frame" : "F2VA: first frame")

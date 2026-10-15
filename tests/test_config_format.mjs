@@ -2,7 +2,9 @@
 //     node --test tests/test_config_format.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatConfig, parseConfig, toRelative, toAbsolute } from "../web/js/config_format.js";
+import { formatConfig, parseConfig, toRelative, toAbsolute, trimKey } from "../web/js/config_format.js";
+
+const NO_TRIMS = { video: {}, video_audio: {}, audio: {} };
 
 const ROOT = "F:\\Rushs\\Projet";
 
@@ -71,10 +73,11 @@ test("format d'une configuration vide", () => {
 });
 
 test("aller-retour format -> lecture, chaque mode ne garde que sa partie", () => {
-    assert.deepEqual(parseConfig(formatConfig(state)), { ...state, header: true, first_frame: [], last_frame: [] });
+    assert.deepEqual(parseConfig(formatConfig(state)),
+        { ...state, header: true, trims: NO_TRIMS, first_frame: [], last_frame: [] });
     const fl = { ...state, mode: "fl2va" };
     assert.deepEqual(parseConfig(formatConfig(fl)),
-        { ...fl, header: true, images: [], videos: [], video_audios: [], audios: [] });
+        { ...fl, header: true, trims: NO_TRIMS, images: [], videos: [], video_audios: [], audios: [] });
 });
 
 test("lecture tolerante : ordre, casse, espaces, trous de numerotation, NaN", () => {
@@ -91,6 +94,7 @@ test("lecture tolerante : ordre, casse, espaces, trous de numerotation, NaN", ()
     assert.deepEqual(parseConfig(text), {
         mode: "ref2va",
         header: false,
+        trims: NO_TRIMS,
         root: "F:/r",
         images: ["F:/r/a.png", "F:/r/c.png"],
         videos: [],
@@ -110,7 +114,7 @@ test("ancien fichier : video_audio N = NaN ou meme chemin que video N", () => {
         "video_audio 2 : C:\\b.mp4",
     ].join("\n");
     assert.deepEqual(parseConfig(text), {
-        mode: "ref2va", header: false, root: "", images: [], videos: ["C:\\a.mp4", "C:\\b.mp4"], video_audios: ["C:\\b.mp4"],
+        mode: "ref2va", header: false, trims: NO_TRIMS, root: "", images: [], videos: ["C:\\a.mp4", "C:\\b.mp4"], video_audios: ["C:\\b.mp4"],
         audios: [], first_frame: [], last_frame: [],
     });
 });
@@ -153,4 +157,26 @@ test("en-tete : il donne le mode du fichier (prioritaire sur la ligne mode)", ()
     assert.equal(old.header, false);
     // un commentaire quelconque n'est pas un en-tete
     assert.equal(parseConfig("# notes\nimage 1 : a.png").header, false);
+});
+
+test("rognage : ecrit apres le chemin et relu", () => {
+    const v = ROOT + "\\videos\\v1.mp4";
+    const st = {
+        ...state, videos: [v], video_audios: [v], audios: ["D:\\son.wav"],
+        trims: { video: { [trimKey(v)]: [2.5, 8] }, video_audio: { [trimKey(v)]: [1, 3.25] },
+                 audio: { [trimKey("D:\\son.wav")]: [0, 4] } },
+    };
+    const text = formatConfig(st);
+    assert.ok(text.includes("video 1 : videos\\v1.mp4 | 2.5-8\r\n"));
+    assert.ok(text.includes("video_audio 1 : videos\\v1.mp4 | 1-3.25\r\n"));
+    assert.ok(text.includes("audio 1 : D:\\son.wav | 0-4\r\n"));
+    const back = parseConfig(text);
+    assert.deepEqual(back.videos, [v]);
+    assert.deepEqual(back.trims, st.trims);
+});
+
+test("rognage invalide ignore, chemin garde", () => {
+    const c = parseConfig("video 1 : C:\\a.mp4 | 5-2\nvideo 2 : C:\\b.mp4 | x\n");
+    assert.deepEqual(c.videos, ["C:\\a.mp4", "C:\\b.mp4"]);
+    assert.deepEqual(c.trims.video, {});
 });

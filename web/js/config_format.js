@@ -11,6 +11,7 @@
 //   video 1 : videos\v1.mp4
 //   video_audio 1 : videos2.mp4 (bande-son extraite de cette video : piste audio)
 //   audio 1 : NaN                (groupe vide : premier numero + NaN)
+//   video 2 : rush\plan.mp4 | 2.5-8 (rognage : debut-fin en secondes, facultatif)
 //   first_frame : images\a.png   (mode F2VA/FL2VA ; NaN si vide)
 //   last_frame : NaN
 // Les chemins situes sous la racine sont ecrits relativement a elle.
@@ -20,6 +21,15 @@ const EMPTY = "NaN";
 const HEADER = "# MiniMax H3 Reference Loader - ";
 const HEADER_RE = /^\s*#\s*MiniMax H3 Reference Loader\s*-\s*(REF2VA|FL2VA)\b/i;
 const EOL = "\r\n";
+
+/** Cle d'un chemin pour les rognages (identique a media.trim_key cote Python). */
+export function trimKey(path) {
+    return String(path).replace(/\\/g, "/").toLowerCase();
+}
+
+// Listes dont les fichiers peuvent etre rognes.
+const TRIM_KINDS = ["video", "video_audio", "audio"];
+const fmtSeconds = (x) => String(Number(Number(x).toFixed(3)));
 
 const norm = (p) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 const isAbsolute = (p) => /^[A-Za-z]:[\\/]/.test(p) || /^[\\/]/.test(p);
@@ -62,14 +72,23 @@ export function formatConfig(state) {
         }
         return lines.join(EOL) + EOL;
     }
-    const group = (name, values) => {
-        if (!values.length) values = [EMPTY];
-        values.forEach((v, i) => lines.push(name + " " + (i + 1) + " : " + (v || EMPTY)));
+    const trims = state.trims || {};
+    // Ligne "groupe N : chemin" suivie de " | debut-fin" si le fichier est rogne.
+    const group = (name, paths) => {
+        if (!paths.length) {
+            lines.push(name + " 1 : " + EMPTY);
+            return;
+        }
+        paths.forEach((p, i) => {
+            const t = (trims[name] || {})[trimKey(p)];
+            lines.push(name + " " + (i + 1) + " : " + rel(p) +
+                (t ? " | " + fmtSeconds(t[0]) + "-" + fmtSeconds(t[1]) : ""));
+        });
     };
-    group("image", state.images.map(rel));
-    group("video", state.videos.map(rel));
-    group("video_audio", (state.video_audios || []).map(rel));
-    group("audio", state.audios.map(rel));
+    group("image", state.images);
+    group("video", state.videos);
+    group("video_audio", state.video_audios || []);
+    group("audio", state.audios);
     return lines.join(EOL) + EOL;
 }
 
@@ -129,16 +148,29 @@ export function parseConfig(text) {
 
     const abs = (p) => toAbsolute(root, p);
     const ordered = (g) => Object.keys(g).map(Number).sort((a, b) => a - b);
-    const list = (g) => ordered(g).map((k) => g[k]).filter(Boolean).map(abs);
+    // "chemin | debut-fin" : le rognage invalide est ignore, le chemin garde.
+    const trims = { video: {}, video_audio: {}, audio: {} };
+    const split = (kind, v) => {
+        const m = v.match(/^(.*?)\s*\|\s*(.*)$/);
+        const path = abs(m ? m[1].trim() : v);
+        const r = m && m[2].match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
+        if (r && TRIM_KINDS.includes(kind) && Number(r[1]) < Number(r[2])) {
+            trims[kind][trimKey(path)] = [Number(r[1]), Number(r[2])];
+        }
+        return path;
+    };
+    const list = (kind) => ordered(groups[kind]).map((k) => groups[kind][k]).filter(Boolean)
+        .map((v) => split(kind, v));
 
     return {
         mode: headerMode || mode,
         header: headerMode !== null,
         root,
-        images: list(groups.image).slice(0, CONFIG_LIMITS.image),
-        videos: list(groups.video).slice(0, CONFIG_LIMITS.video),
-        video_audios: list(groups.video_audio).slice(0, CONFIG_LIMITS.video_audio),
-        audios: list(groups.audio).slice(0, CONFIG_LIMITS.audio),
+        images: list("image").slice(0, CONFIG_LIMITS.image),
+        videos: list("video").slice(0, CONFIG_LIMITS.video),
+        video_audios: list("video_audio").slice(0, CONFIG_LIMITS.video_audio),
+        audios: list("audio").slice(0, CONFIG_LIMITS.audio),
+        trims,
         first_frame: frames.first_frame ? [abs(frames.first_frame)] : [],
         last_frame: frames.last_frame ? [abs(frames.last_frame)] : [],
     };

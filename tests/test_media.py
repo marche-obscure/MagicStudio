@@ -355,6 +355,53 @@ class MediaInfoTests(TmpDirTest):
             media.media_info(self.p("gone.png"))
 
 
+class TrimTests(TmpDirTest):
+    def test_video_trim_keeps_only_the_range(self):
+        # Rouge = (numero d'image * 7) % 256 ; a 24 ips, 0.5 s = image 12 -> rouge 84.
+        make_video(self.p("v.mp4"), 3.0, 24, with_audio=False)
+        frames, _ = media.load_video(self.p("v.mp4"), start=0.5, end=1.5)
+        self.assertEqual(frames.shape[0], 24)
+        first_red = float(frames[0, :, :, 0].mean()) * 255
+        self.assertAlmostEqual(first_red, 84, delta=12)
+
+    def test_video_trim_is_still_capped_at_max_seconds(self):
+        make_video(self.p("v.mp4"), 3.0, 24, with_audio=False)
+        frames, _ = media.load_video(self.p("v.mp4"), start=1.0, end=3.0, max_seconds=1.0)
+        self.assertEqual(frames.shape[0], 24)
+
+    def test_trimmed_soundtrack_matches_the_trimmed_frames(self):
+        make_video(self.p("v.mp4"), 3.0, 24, sr=16000)
+        frames, audio = media.load_video(self.p("v.mp4"), with_audio=True, start=1.0, end=2.0)
+        self.assertEqual(frames.shape[0], 24)
+        self.assertLessEqual(audio["waveform"].shape[2], 16000)
+        self.assertGreater(audio["waveform"].shape[2], 15000)
+
+    def test_audio_trim(self):
+        make_audio(self.p("s.wav"), 3.0, sr=8000)
+        a = media.load_audio(self.p("s.wav"), start=1.0, end=2.5)
+        self.assertEqual(a["waveform"].shape[2], 12000)
+        full = media.load_audio(self.p("s.wav"))
+        # meme contenu que le fichier entier a partir de 1 s
+        self.assertTrue(np.allclose(a["waveform"][0, :, :100].numpy(), full["waveform"][0, :, 8000:8100].numpy()))
+
+    def test_trims_in_state_are_normalized_and_applied(self):
+        make_video(self.p("v.mp4"), 3.0, 24, sr=16000)
+        path = self.p("v.mp4")
+        state = media.parse_state(json.dumps({
+            "videos": [path], "video_audios": [path],
+            "trims": {
+                "video": {path.replace("\\", "/").upper(): [0.5, 1.5]},
+                "video_audio": {media.trim_key(path): [1.0, 2.0]},
+                "audio": {"x": [3, 1], "y": "bad"},
+            },
+        }))
+        self.assertEqual(state["trims"]["audio"], {})
+        out = media.build_outputs(state)
+        # ref_image_1, ref_video_1, ref_video_audio_1, ref_audio_1
+        self.assertEqual(out[1].shape[0], 24)
+        self.assertLessEqual(out[2]["waveform"].shape[2], 16000)
+
+
 class BuildOutputsTests(TmpDirTest):
     def test_outputs_follow_layout_and_are_padded(self):
         Image.new("RGB", (8, 8)).save(self.p("a.png"))
