@@ -6,7 +6,7 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
 - **Images** (up to 9), **Video** (up to 3), **Video/Audio** (up to 3 video soundtracks), **Audio** (up to 3).
 - Click order sets the number: the first image clicked is `ref_image_1`, i.e. `<Picture 1>` in the prompt.
 - **Video** gives the video frames on `ref_video_N`. **Video/Audio** picks videos too, but only their **soundtrack** is extracted: it is an **audio track** on `ref_video_audio_N`, counted with the audio tracks. The two lists are independent (pick the same video in both to get its frames and its sound).
-- Note: MiniMax uses the audio track wired to `ref_video_audio_N` together with the reference video wired to `ref_video_N`.
+- Note: MiniMax uses the audio track wired to `ref_video_audio_N` together with the reference video wired to `ref_video_N`. When both have a file, their output dots share a colour (pair 1 orange, 2 pink, 3 green).
 - One output appears per selected file (at least one per type); wire the outputs in order (MiniMax numbers its inputs from 0: `ref_image_1` goes to `ref_image_0`, and so on). Double-click an output name to rename it.
 - The eye button next to each row shows the selection in order: arrows move a reference, the trash on a thumbnail marks it, and **Delete** removes the marked ones (the following references move up, the last empty output is removed).
 - The trash button next to the eye deletes **all** the references of its row, after a confirmation.

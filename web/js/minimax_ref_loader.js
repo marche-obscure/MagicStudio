@@ -19,6 +19,10 @@ const INACTIVE_FG = "#888";
 // Plafonds des entrees de MiniMaxH3ReferenceToVideo (identiques a media.py).
 const LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3, first_frame: 1, last_frame: 1 };
 
+// Couleur des points de sortie d'une paire complete ref_video_N / ref_video_audio_N
+// (N = 1, 2, 3).
+const PAIR_COLORS = [ORANGE, PINK, GREEN];
+
 // Les 4 listes de references. video_audio : bandes-son extraites de videos
 // (pistes audio ref_video_audio_N), liste independante des videos.
 const LIST_KEYS = {
@@ -138,7 +142,9 @@ const HELP_SECTIONS = [
             "that goes out on <b>ref_video_audio_N</b>. The two lists are independent; pick the same " +
             "video in both to have its frames and its sound.</p>" +
             "<p><b>Note:</b> MiniMax uses the audio track wired to <b>ref_video_audio_N</b> together " +
-            "with the reference video wired to <b>ref_video_N</b>.</p>" +
+            "with the reference video wired to <b>ref_video_N</b>. When both <b>ref_video_N</b> and " +
+            "<b>ref_video_audio_N</b> have a file, their output dots share a colour (1 orange, 2 pink, " +
+            "3 green).</p>" +
             "<p>The " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
             " deletes <b>all</b> the references of its row, after a confirmation.</p>",
     },
@@ -335,8 +341,15 @@ function applyLayout(node, state) {
             o.label = saved[k] ? saved[k].label : undefined;
         });
     }
+    // Paire complete (ref_video_N et ref_video_audio_N ont chacun une source) :
+    // les deux points prennent la couleur de la paire N ; sinon couleur du type.
+    const paired = (n) => state.mode === "ref2va" && !!state.videos[n - 1] && !!state.video_audios[n - 1];
     node.outputs.forEach((o) => {
         o.type = slotType(o.name);
+        const m = o.name.match(/^ref_video(?:_audio)?_(\d)$/);
+        const color = m && paired(Number(m[1])) ? PAIR_COLORS[Number(m[1]) - 1] : undefined;
+        o.color_on = color;
+        o.color_off = color;
     });
     const min = node.computeSize();
     // La hauteur suit le contenu (elle rapetisse quand des sorties disparaissent).
