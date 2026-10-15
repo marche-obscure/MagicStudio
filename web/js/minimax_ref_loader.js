@@ -182,7 +182,7 @@ const HELP_SECTIONS = [
             "the chosen subfolder. A folder with one kind of files shows a single grid; a mixed folder " +
             "shows a section per kind (Images, Video or Video/Audio, Audio). Only the files of the button " +
             "that opened the gallery can be selected, the others are shown for information. Without a root folder " +
-            "they are greyed out; Browse and Reload stay available.</p>" +
+            "they are greyed out; Browse and Reload stay available; Reload goes back to the root folder of the gear button when the gallery shows another folder.</p>" +
             "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the whole configuration (root folder, " +
             "images, videos, video soundtracks, audio) in a .txt file, one line per output, e.g. " +
             "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
@@ -666,7 +666,8 @@ function buildGallery(container, ctx) {
     const baseInput = makeField("Folder path - type, paste, or Browse");
     const pickBtn = makeIconButton(VIOLET, SEARCH_ICON, "Show the root folder content and find its subfolders");
     const browseBtn = makeIconButton(VIOLET, FOLDER_ICON, "Browse");
-    const refreshBtn = makeIconButton(INACTIVE_BG, REFRESH_ICON, "Reload the folder");
+    const refreshBtn = makeIconButton(INACTIVE_BG, REFRESH_ICON,
+        "Reload (back to the root folder of the gear button when another folder is shown)");
     baseRow.append(baseInput, pickBtn, browseBtn, refreshBtn);
 
     const subRow = makeRow("Subfolder");
@@ -989,9 +990,19 @@ function buildGallery(container, ctx) {
         render();
     }
 
-    /** Reload : relit les fichiers du dossier affiche. */
+    /**
+     * Reload : si un dossier racine est declare (roue crantee) et que la
+     * galerie montre un autre dossier (Browse, saisie), revient au dossier
+     * racine sur "(root folder)" ; sinon relit le dossier et ses sous-dossiers.
+     */
     function reload() {
+        const root = ctx.getState().root || "";
+        if (root && !samePath(base, root)) {
+            setBase(root);
+            return;
+        }
         loadFolder();
+        scanSubfolders();
     }
 
     async function browse() {
