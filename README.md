@@ -2,6 +2,10 @@
 
 ComfyUI custom node that loads the references of the native **MiniMax H3 Reference to Video** node, picked in thumbnail galleries.
 
+<p align="center">
+  <img src="assets/screenshot.webp" alt="MiniMax H3 Reference Loader node with its project overview and preview windows" width="960">
+</p>
+
 - A switch at the top chooses the mode: **Ref2VA** (references for MiniMax H3 Reference to Video, the rows below) or **F2VA / FL2VA** (a **First frame** and an optional **Last frame**, images only, on the outputs `first_frame` and `last_frame` for MiniMax H3 Image to Video; without a last frame MiniMax does F2VA). Each mode keeps its own selection and outputs; switching back reconnects the wires of that mode when their target is still there and free.
 - **Images** (up to 9), **Video** (up to 3), **Video/Audio** (up to 3 video soundtracks), **Audio** (up to 3).
 - Click order sets the number: the first image clicked is `ref_image_1`, i.e. `<Picture 1>` in the prompt.
