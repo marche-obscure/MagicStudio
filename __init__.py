@@ -77,29 +77,43 @@ try:
                 {"error": "This feature is only available on Windows."}, status=400)
 
         initial = request.rel_url.query.get("initial", "").strip()
-        initial_line = ""
-        if initial and os.path.isdir(initial):
-            safe_initial = initial.replace('"', '`"')
-            initial_line = f'$dialog.SelectedPath = "{safe_initial}"'
 
-        script = f"""
-Add-Type -AssemblyName System.Windows.Forms
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = "Select a folder"
-$dialog.ShowNewFolderButton = $false
-{initial_line}
-$result = $dialog.ShowDialog()
-if ($result -eq [System.Windows.Forms.DialogResult]::OK) {{
-    Write-Output $dialog.SelectedPath
-}}
-"""
+        # Lancee seule, la boite de dialogue s'ouvre derriere le navigateur :
+        # on affiche d'abord une fenetre invisible "toujours au premier plan"
+        # et on ouvre la boite dans son evenement Shown, avec elle comme
+        # proprietaire, pour qu'elle herite du premier plan (meme methode que
+        # Pixaroma). Le dossier de depart passe par une variable
+        # d'environnement (pas de probleme de guillemets) et la sortie est
+        # forcee en UTF-8 (chemins avec accents).
+        script = (
+            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            "$r='';"
+            "$o=New-Object System.Windows.Forms.Form;"
+            "$o.TopMost=$true;$o.ShowInTaskbar=$false;$o.FormBorderStyle='None';"
+            "$o.Width=1;$o.Height=1;$o.Opacity=0;$o.StartPosition='CenterScreen';"
+            "$o.Add_Shown({"
+            "$o.Activate();"
+            "$d=New-Object System.Windows.Forms.FolderBrowserDialog;"
+            "$d.Description='Select a folder';$d.ShowNewFolderButton=$false;"
+            "if($env:MMREF_START){try{$d.SelectedPath=$env:MMREF_START}catch{}};"
+            "if($d.ShowDialog($o) -eq [System.Windows.Forms.DialogResult]::OK){$script:r=$d.SelectedPath};"
+            "$o.Close()"
+            "});"
+            "[void]$o.ShowDialog();"
+            "[Console]::Out.Write($r)"
+        )
 
         def run_dialog():
+            env = dict(os.environ)
+            env["MMREF_START"] = initial if initial and os.path.isdir(initial) else ""
             proc = subprocess.run(
                 ["powershell", "-NoProfile", "-STA", "-Command", script],
-                capture_output=True, text=True, timeout=300,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=300, env=env,
+                creationflags=0x08000000,  # CREATE_NO_WINDOW : pas de console qui clignote
             )
-            return proc.stdout.strip()
+            return (proc.stdout or "").strip()
 
         try:
             path = await _in_executor(run_dialog)
