@@ -98,7 +98,10 @@ const HELP_SECTIONS = [
             "chosen folder. <b>Video</b> and <b>Video/Audio</b> open the same video gallery and " +
             "share the same 3 slots: a video picked from <b>Video/Audio</b> keeps its sound, one " +
             "picked from <b>Video</b> is muted. The " + iconBadge(SPEAKER_ICON, GREEN) +
-            " switch on a selected video changes it at any time.</p>",
+            " switch on a selected video changes it at any time.</p>" +
+            "<p>The " + iconBadge(TRASH_ICON, DARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
+            " deletes <b>all</b> the references of its row, after a confirmation. On the " +
+            "<b>Video/Audio</b> row it mutes all the videos instead (they stay selected).</p>",
     },
     {
         title: "Numbering",
@@ -779,6 +782,94 @@ function buildGallery(container, ctx) {
     };
 }
 
+function escapeHtml(text) {
+    return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// --------------------------------------------------------------------
+// Fenetre de confirmation (suppression, vidage d'une liste)
+// --------------------------------------------------------------------
+/**
+ * Petite fenetre flottante : message, Cancel, bouton de confirmation
+ * rouge. ask(html, label, onConfirm, anchor) la centre sur l'element
+ * anchor (ex. la fenetre de selection), ou la place a cote du noeud sans
+ * anchor. Echap, Cancel ou un clic a cote annulent.
+ */
+function buildConfirmDialog(container) {
+    const overlay = document.createElement("div");
+    Object.assign(overlay.style, {
+        position: "fixed", inset: "0", background: "transparent", zIndex: "10001", display: "none",
+    });
+    const card = document.createElement("div");
+    Object.assign(card.style, {
+        position: "fixed", width: "min(360px, 90vw)", background: "#1e1e1e", color: "#ddd",
+        border: "1px solid " + MARK_RED, borderRadius: "10px", boxShadow: "0 8px 28px rgba(0,0,0,0.7)",
+        padding: "14px 16px", fontFamily: "sans-serif", fontSize: "12px", boxSizing: "border-box",
+    });
+    const text = document.createElement("div");
+    text.style.lineHeight = "1.5";
+    const btns = document.createElement("div");
+    Object.assign(btns.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const okBtn = makeTextButton("Delete", MARK_RED);
+    btns.append(cancelBtn, okBtn);
+    card.append(text, btns);
+    card.addEventListener("mousedown", (e) => e.stopPropagation());
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    let onConfirm = null;
+    const isOpen = () => overlay.style.display !== "none";
+
+    const onKey = (e) => {
+        if (!isOpen() || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close();
+    };
+
+    function close() {
+        overlay.style.display = "none";
+        onConfirm = null;
+        window.removeEventListener("keydown", onKey, true);
+    }
+
+    function ask(html, label, callback, anchor) {
+        text.innerHTML = html;
+        okBtn.textContent = label;
+        onConfirm = callback;
+        overlay.style.display = "block";
+        window.addEventListener("keydown", onKey, true);
+        if (anchor) {
+            let r = anchor.getBoundingClientRect();
+            // Element pas encore mesurable : centrer sur l'ecran.
+            if (!r.width) r = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+            card.style.left = Math.max(8, r.left + (r.width - card.offsetWidth) / 2) + "px";
+            card.style.top = Math.max(8, r.top + (r.height - card.offsetHeight) / 2) + "px";
+        } else {
+            positionCardNextToNode(card, container, 360);
+        }
+    }
+
+    cancelBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
+    okBtn.addEventListener("click", () => {
+        const cb = onConfirm;
+        close();
+        if (cb) cb();
+    });
+
+    return {
+        ask,
+        close,
+        isOpen,
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
 // --------------------------------------------------------------------
 // Fenetre de la selection : ordre, reorganisation et infos d'un fichier
 // --------------------------------------------------------------------
@@ -880,31 +971,10 @@ function buildSelectionViewer(container, ctx) {
         render();
     }
 
-    // Fenetre de confirmation, centree sur la fenetre de selection.
-    const confirmOverlay = document.createElement("div");
-    Object.assign(confirmOverlay.style, {
-        position: "fixed", inset: "0", background: "transparent", zIndex: "10001", display: "none",
-    });
-    const confirmCard = document.createElement("div");
-    Object.assign(confirmCard.style, {
-        position: "fixed", width: "min(360px, 90vw)", background: "#1e1e1e", color: "#ddd",
-        border: "1px solid " + MARK_RED, borderRadius: "10px", boxShadow: "0 8px 28px rgba(0,0,0,0.7)",
-        padding: "14px 16px", fontFamily: "sans-serif", fontSize: "12px", boxSizing: "border-box",
-    });
-    const confirmText = document.createElement("div");
-    confirmText.style.lineHeight = "1.5";
-    const confirmBtns = document.createElement("div");
-    Object.assign(confirmBtns.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" });
-    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
-    const confirmBtn = makeTextButton("Delete", MARK_RED);
-    confirmBtns.append(cancelBtn, confirmBtn);
-    confirmCard.append(confirmText, confirmBtns);
-    confirmCard.addEventListener("mousedown", (e) => e.stopPropagation());
-    confirmOverlay.appendChild(confirmCard);
-    document.body.appendChild(confirmOverlay);
-
-    const confirmOpen = () => confirmOverlay.style.display !== "none";
-    const closeConfirm = () => (confirmOverlay.style.display = "none");
+    // Confirmation centree sur la fenetre de selection.
+    const confirm = buildConfirmDialog(container);
+    const confirmOpen = () => confirm.isOpen();
+    const closeConfirm = () => confirm.close();
 
     function askDelete() {
         if (!marked.size) return;
@@ -913,27 +983,15 @@ function buildSelectionViewer(container, ctx) {
             .map((it, i) => (marked.has(markKey(pathOf(it))) ? i + 1 : null))
             .filter((v) => v !== null);
         const prefix = OUTPUT_PREFIX[kind];
-        confirmText.innerHTML =
+        confirm.ask(
             "<b>Delete " + numbers.length + " reference" + (numbers.length > 1 ? "s" : "") + "?</b><br>" +
-            numbers.map((n) => prefix + n + " : " + baseName(pathOf(arr[n - 1]))
-                .replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("<br>") +
+            numbers.map((n) => prefix + n + " : " + escapeHtml(baseName(pathOf(arr[n - 1])))).join("<br>") +
             '<div style="color:#999;margin-top:8px">The following references move up and the last ' +
-            "output that becomes empty is removed.</div>";
-        confirmOverlay.style.display = "block";
-        let r = card.getBoundingClientRect();
-        // Fenetre pas encore mesurable : centrer sur l'ecran.
-        if (!r.width) r = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
-        confirmCard.style.left = Math.max(8, r.left + (r.width - confirmCard.offsetWidth) / 2) + "px";
-        confirmCard.style.top = Math.max(8, r.top + (r.height - confirmCard.offsetHeight) / 2) + "px";
+            "output that becomes empty is removed.</div>",
+            "Delete", deleteMarked, card);
     }
 
     deleteBtn.addEventListener("click", askDelete);
-    cancelBtn.addEventListener("click", closeConfirm);
-    confirmOverlay.addEventListener("mousedown", closeConfirm);
-    confirmBtn.addEventListener("click", () => {
-        closeConfirm();
-        deleteMarked();
-    });
 
     function list(s) {
         s = s || ctx.getState();
@@ -1162,7 +1220,7 @@ function buildSelectionViewer(container, ctx) {
         remove() {
             close();
             overlay.remove();
-            confirmOverlay.remove();
+            confirm.remove();
         },
     };
 }
@@ -1238,13 +1296,36 @@ app.registerExtension({
                 // Poubelle : vide le type (Video/Audio : coupe le son de toutes les videos).
                 const trash = makeIconButton(DARK_RED, TRASH_ICON,
                     b.id === "video_audio" ? "Mute all videos" : "Clear the " + b.label.toLowerCase() + " selection");
+                // Confirmation avant d'agir ; rien a faire = pas de question.
                 trash.addEventListener("click", () => {
-                    const s = getState();
-                    if (b.id === "image") s.images = [];
-                    else if (b.id === "video") s.videos = [];
-                    else if (b.id === "video_audio") s.videos.forEach((v) => (v.sound = false));
-                    else s.audios = [];
-                    setState(s);
+                    const s0 = getState();
+                    let count, html, label;
+                    if (b.id === "video_audio") {
+                        count = s0.videos.filter((v) => v.sound).length;
+                        html = "<b>Mute all videos?</b><br>" + count + " video" + (count > 1 ? "s" : "") +
+                            " will lose " + (count > 1 ? "their" : "its") + " soundtrack " +
+                            '(the videos stay selected).<div style="color:#999;margin-top:8px">' +
+                            "The ref_video_audio outputs become empty.</div>";
+                        label = "Mute all";
+                    } else {
+                        const items = b.id === "image" ? s0.images : b.id === "video" ? s0.videos : s0.audios;
+                        count = items.length;
+                        html = "<b>Delete all " + count + " " + b.kind + " reference" +
+                            (count > 1 ? "s" : "") + "?</b><br>" +
+                            items.map((it, i) => i + 1 + ". " + escapeHtml(baseName(it.file || it))).join("<br>") +
+                            '<div style="color:#999;margin-top:8px">Only the first ' +
+                            b.kind + " output stays, empty.</div>";
+                        label = "Delete all";
+                    }
+                    if (!count) return;
+                    clearConfirm.ask(html, label, () => {
+                        const s = getState();
+                        if (b.id === "image") s.images = [];
+                        else if (b.id === "video") s.videos = [];
+                        else if (b.id === "video_audio") s.videos.forEach((v) => (v.sound = false));
+                        else s.audios = [];
+                        setState(s);
+                    });
                 });
                 row.appendChild(trash);
 
@@ -1271,9 +1352,10 @@ app.registerExtension({
 
             const gallery = buildGallery(container, { getState, setState });
             const viewer = buildSelectionViewer(container, { getState, setState });
+            const clearConfirm = buildConfirmDialog(container);
             const help = buildHelpOverlay(container);
             helpBtn.addEventListener("click", () => help.open());
-            node.__mmrefOverlays = [gallery, viewer, help];
+            node.__mmrefOverlays = [gallery, viewer, clearConfirm, help];
 
             // ---- Rafraichissement (compteurs, info-bulles, sorties) ----
             function listTitle(paths) {
