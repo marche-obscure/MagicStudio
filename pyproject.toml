@@ -1,0 +1,10 @@
+[project]
+name = "comfyui-minimaxrefloader"
+description = "ComfyUI node to pick reference images, videos (with or without their soundtrack) and audio in thumbnail galleries, for MiniMax H3 Reference to Video."
+version = "0.1.0"
+license = {text = "MIT"}
+
+[tool.comfy]
+PublisherId = "local-marche-obscure"
+DisplayName = "MiniMax H3 Reference Loader"
+Icon = ""

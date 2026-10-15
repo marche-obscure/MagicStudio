@@ -1,0 +1,934 @@
+import { app } from "../../scripts/app.js";
+
+const NODE_NAME = "MiniMaxH3RefLoader";
+
+const TITLE_COLOR = "#3eaca5";
+const BODY_COLOR = "#097267";
+const VIOLET = "#6a5fd3";
+const PINK = "#d35fa8";
+const ORANGE = "#e0793c";
+const GREEN = "#43a047";
+const DARK_RED = "#6b2b2b";
+const INACTIVE_BG = "#2a2a2a";
+const INACTIVE_FG = "#888";
+
+// Plafonds des entrees de MiniMaxH3ReferenceToVideo (identiques a media.py).
+const LIMITS = { image: 9, video: 3, audio: 3 };
+
+// Hauteur de l'interface DOM (4 boutons + barre du bas).
+const UI_HEIGHT = 196;
+const MIN_WIDTH = 300;
+
+const svg = (body, size) =>
+    '<svg viewBox="0 0 24 24" width="' + (size || 15) + '" height="' + (size || 15) +
+    '" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round">' + body + "</svg>";
+
+const IMAGE_ICON = svg(
+    '<rect x="3" y="3" width="18" height="18" rx="2"></rect>' +
+    '<circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path>');
+const VIDEO_ICON = svg(
+    '<rect x="2" y="6" width="14" height="12" rx="2"></rect>' +
+    '<path d="M16 10l6-3v10l-6-3z"></path>');
+const SPEAKER_BODY =
+    '<path d="M11 5L6 9H2v6h4l5 4V5z"></path>' +
+    '<path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M19 5a10 10 0 0 1 0 14"></path>';
+const SPEAKER_ICON = svg(SPEAKER_BODY);
+const MUTE_ICON = svg(
+    '<path d="M11 5L6 9H2v6h4l5 4V5z"></path>' +
+    '<line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line>');
+const VIDEO_AUDIO_ICON =
+    '<span style="display:flex;gap:1px">' + svg(
+        '<rect x="2" y="6" width="14" height="12" rx="2"></rect>' +
+        '<path d="M16 10l6-3v10l-6-3z"></path>', 13) + svg(SPEAKER_BODY, 13) + "</span>";
+const AUDIO_ICON = svg(
+    '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle>' +
+    '<circle cx="18" cy="16" r="3"></circle>');
+const FOLDER_ICON = svg(
+    '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>', 13);
+const REFRESH_ICON = svg(
+    '<polyline points="23 4 23 10 17 10"></polyline>' +
+    '<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>', 13);
+const TRASH_ICON = svg(
+    '<polyline points="3 6 5 6 21 6"></polyline>' +
+    '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+    '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
+    '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>', 12);
+const CLOSE_ICON = svg(
+    '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>', 14);
+
+// Une ligne par bouton : type de galerie ouverte, son par defaut d'une
+// nouvelle video selectionnee depuis ce bouton.
+const BUTTONS = [
+    { id: "image", kind: "image", label: "Images", icon: IMAGE_ICON, color: VIOLET },
+    { id: "video", kind: "video", label: "Video", icon: VIDEO_ICON, color: ORANGE, sound: false },
+    { id: "video_audio", kind: "video", label: "Video/Audio", icon: VIDEO_AUDIO_ICON, color: GREEN, sound: true },
+    { id: "audio", kind: "audio", label: "Audio", icon: AUDIO_ICON, color: TITLE_COLOR },
+];
+
+const KIND_TITLES = { image: "Reference images", video: "Reference videos", audio: "Reference audio" };
+
+function iconBadge(icon, bg) {
+    return '<span style="display:inline-flex;align-items:center;justify-content:center;' +
+        "min-width:18px;height:18px;padding:0 3px;border-radius:4px;vertical-align:middle;" +
+        "background:" + bg + '">' + icon + "</span>";
+}
+
+const HELP_SECTIONS = [
+    {
+        title: "What this node does",
+        html: "<p>Loads the references of <b>MiniMax H3 Reference to Video</b>: " +
+            "up to 9 images, 3 videos (each with or without its soundtrack) and 3 audio files. " +
+            "Wire each output to the input of the same name.</p>",
+    },
+    {
+        title: "The four buttons",
+        html: "<p>" + iconBadge(IMAGE_ICON, VIOLET) + " <b>Images</b>, " +
+            iconBadge(VIDEO_ICON, ORANGE) + " <b>Video</b>, " +
+            iconBadge(VIDEO_AUDIO_ICON, GREEN) + " <b>Video/Audio</b>, " +
+            iconBadge(AUDIO_ICON, TITLE_COLOR) + " <b>Audio</b>: each opens a gallery of the " +
+            "chosen folder. <b>Video</b> and <b>Video/Audio</b> open the same video gallery and " +
+            "share the same 3 slots: a video picked from <b>Video/Audio</b> keeps its sound, one " +
+            "picked from <b>Video</b> is muted. The " + iconBadge(SPEAKER_ICON, GREEN) +
+            " switch on a selected video changes it at any time.</p>",
+    },
+    {
+        title: "Numbering",
+        html: "<p>Click order sets the number: the first image clicked is <b>ref_image_1</b>, " +
+            "that is <b>&lt;Picture 1&gt;</b> in the prompt. Click again to remove it; the " +
+            "others move up. <b>ref_video_audio_N</b> is the soundtrack of <b>ref_video_N</b> " +
+            "(empty when muted).</p>" +
+            "<p>MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks first, then " +
+            "the audio files: with 2 videos with sound, <b>ref_audio_1</b> is " +
+            "<b>&lt;Audio 3&gt;</b>.</p>",
+    },
+    {
+        title: "Loading",
+        html: "<p>Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most " +
+            "(MiniMax would reduce them anyway). Audio files are cut to 15 s.</p>",
+    },
+    {
+        title: "Outputs",
+        html: "<p>An output appears for each selected file (at least one per type). " +
+            "Double-click an output name to rename it (empty = default name), or use the " +
+            "right-click menu.</p>",
+    },
+];
+
+// --------------------------------------------------------------------
+// Etat et disposition des sorties
+// --------------------------------------------------------------------
+function emptyState() {
+    return { folders: { image: "", video: "", audio: "" }, images: [], videos: [], audios: [] };
+}
+
+function parseState(raw) {
+    const s = emptyState();
+    let data = null;
+    try {
+        data = JSON.parse(raw || "{}");
+    } catch (e) {
+        data = null;
+    }
+    if (!data || typeof data !== "object") return s;
+    const f = data.folders || {};
+    for (const k of ["image", "video", "audio"]) s.folders[k] = typeof f[k] === "string" ? f[k] : "";
+    s.images = (Array.isArray(data.images) ? data.images : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.image);
+    s.audios = (Array.isArray(data.audios) ? data.audios : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.audio);
+    s.videos = (Array.isArray(data.videos) ? data.videos : [])
+        .filter((v) => v && typeof v.file === "string" && v.file)
+        .map((v) => ({ file: v.file, sound: !!v.sound }))
+        .slice(0, LIMITS.video);
+    return s;
+}
+
+/** Doit rester identique a media.layout_keys() cote Python. */
+function layoutKeys(ni, nv, na) {
+    const clamp = (n, max) => Math.min(Math.max(1, n), max);
+    const keys = [];
+    for (let i = 1; i <= clamp(ni, LIMITS.image); i++) keys.push("ref_image_" + i);
+    const v = clamp(nv, LIMITS.video);
+    for (let i = 1; i <= v; i++) keys.push("ref_video_" + i);
+    for (let i = 1; i <= v; i++) keys.push("ref_video_audio_" + i);
+    for (let i = 1; i <= clamp(na, LIMITS.audio); i++) keys.push("ref_audio_" + i);
+    return keys;
+}
+
+function slotType(key) {
+    return key.startsWith("ref_video_audio_") || key.startsWith("ref_audio_") ? "AUDIO" : "IMAGE";
+}
+
+function getLink(graph, id) {
+    if (!graph || !graph.links) return null;
+    return typeof graph.links.get === "function" ? graph.links.get(id) : graph.links[id];
+}
+
+/**
+ * Aligne les sorties du noeud sur la selection : les sorties en trop
+ * sont debranchees puis retirees, les manquantes ajoutees, et le tout
+ * remis dans l'ordre de layoutKeys(). Les sorties conservees gardent
+ * leur objet (donc leurs liens et leur nom renomme) : seuls les index
+ * d'origine des liens sont corriges, sans debrancher les noeuds en aval.
+ */
+function applyLayout(node, state) {
+    const keys = layoutKeys(state.images.length, state.videos.length, state.audios.length);
+    const outputs = node.outputs || [];
+    const same = outputs.length === keys.length && outputs.every((o, i) => o.name === keys[i]);
+    if (!same) {
+        for (let i = outputs.length - 1; i >= 0; i--) {
+            if (!keys.includes(outputs[i].name) && outputs[i].links && outputs[i].links.length) {
+                node.disconnectOutput(i);
+            }
+        }
+        const byName = {};
+        (node.outputs || []).forEach((o) => {
+            if (keys.includes(o.name)) byName[o.name] = o;
+        });
+        for (const k of keys) {
+            if (!byName[k]) {
+                node.addOutput(k, slotType(k));
+                byName[k] = node.outputs[node.outputs.length - 1];
+            }
+        }
+        node.outputs = keys.map((k) => byName[k]);
+        node.outputs.forEach((o, i) => {
+            (o.links || []).forEach((id) => {
+                const link = getLink(node.graph, id);
+                if (link) link.origin_slot = i;
+            });
+        });
+    }
+    node.outputs.forEach((o) => {
+        o.type = slotType(o.name);
+    });
+    const min = node.computeSize();
+    node.setSize([Math.max(node.size[0], MIN_WIDTH), Math.max(node.size[1], min[1])]);
+    node.setDirtyCanvas(true, true);
+}
+
+// --------------------------------------------------------------------
+// Renommage des sorties (double-clic sur l'etiquette ou clic droit)
+// --------------------------------------------------------------------
+function outputLabelRect(node, i) {
+    const slotH = (window.LiteGraph && window.LiteGraph.NODE_SLOT_HEIGHT) || 20;
+    const dot = node.getConnectionPos(false, i);
+    const x = node.size[0] * 0.45;
+    return { x: x, y: dot[1] - node.pos[1] - slotH / 2, w: node.size[0] - x, h: slotH };
+}
+
+function hitOutputLabel(node, pos) {
+    if (!node.outputs || (node.flags && node.flags.collapsed)) return -1;
+    for (let i = 0; i < node.outputs.length; i++) {
+        const r = outputLabelRect(node, i);
+        if (pos[0] >= r.x && pos[0] <= r.x + r.w && pos[1] >= r.y && pos[1] <= r.y + r.h) return i;
+    }
+    return -1;
+}
+
+/** Ne change que l'etiquette affichee (jamais .name) ; vide = nom par defaut. */
+function setOutputLabel(node, i, value) {
+    const out = node.outputs[i];
+    const trimmed = (value || "").trim();
+    out.label = trimmed && trimmed !== out.name ? trimmed : undefined;
+    node.setDirtyCanvas(true, true);
+}
+
+let activeOutputEditor = null;
+
+function openOutputLabelEditor(node, i) {
+    if (activeOutputEditor) activeOutputEditor.close(true);
+    const out = node.outputs[i];
+    const ds = app.canvas.ds;
+    const scale = ds.scale || 1;
+    const canvasRect = app.canvas.canvas.getBoundingClientRect();
+    const r = outputLabelRect(node, i);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = out.label || out.name;
+    input.placeholder = out.name;
+    Object.assign(input.style, {
+        position: "fixed",
+        left: canvasRect.left + (node.pos[0] + r.x + ds.offset[0]) * scale + "px",
+        top: canvasRect.top + (node.pos[1] + r.y + ds.offset[1]) * scale + "px",
+        width: r.w * scale + "px",
+        height: r.h * scale + "px",
+        zIndex: "10000",
+        background: "#1f1f1f",
+        color: "#e6e6e6",
+        border: Math.max(1, 2 * scale) + "px solid " + PINK,
+        borderRadius: "3px",
+        padding: "0 " + 6 * scale + "px",
+        font: 12 * scale + "px sans-serif",
+        textAlign: "right",
+        outline: "none",
+        boxSizing: "border-box",
+    });
+    document.body.appendChild(input);
+
+    let closed = false;
+    const editor = { node: node };
+    // Capture au niveau window : les raccourcis du canvas (Ctrl+Z,
+    // Suppr, ...) ne doivent pas partir pendant la saisie.
+    const onKey = (e) => {
+        if (e.target !== input) return;
+        e.stopImmediatePropagation();
+        if (e.key === "Enter") {
+            e.preventDefault();
+            editor.close(true);
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            editor.close(false);
+        }
+    };
+    const onBlur = () => editor.close(true);
+    editor.close = (save) => {
+        if (closed) return;
+        closed = true;
+        window.removeEventListener("keydown", onKey, true);
+        input.removeEventListener("blur", onBlur);
+        if (save) setOutputLabel(node, i, input.value);
+        input.remove();
+        if (activeOutputEditor === editor) activeOutputEditor = null;
+    };
+    window.addEventListener("keydown", onKey, true);
+    activeOutputEditor = editor;
+
+    // Focus differe : le double-clic en cours de propagation rendrait
+    // sinon le focus au canvas, fermant le champ aussitot ouvert.
+    setTimeout(() => {
+        if (closed) return;
+        input.focus();
+        input.select();
+        input.addEventListener("blur", onBlur);
+    }, 0);
+}
+
+// --------------------------------------------------------------------
+// Utilitaires DOM
+// --------------------------------------------------------------------
+/**
+ * Positionne une carte flottante contre le bord droit du noeud (ou le
+ * bord gauche si la place manque), sans jamais le recouvrir.
+ */
+function positionCardNextToNode(card, container, maxWidth) {
+    const rect = container.getBoundingClientRect();
+    const margin = 14;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const width = Math.min(maxWidth, vw - margin * 2);
+
+    let left = rect.right + margin;
+    if (left + width + margin > vw) left = rect.left - margin - width;
+    left = Math.max(margin, Math.min(left, vw - width - margin));
+
+    const height = Math.min(card.offsetHeight || 320, vh - margin * 2);
+    const top = Math.max(margin, Math.min(rect.top, vh - height - margin));
+
+    card.style.left = left + "px";
+    card.style.top = top + "px";
+}
+
+function makeOverlay() {
+    const overlay = document.createElement("div");
+    Object.assign(overlay.style, {
+        position: "fixed", inset: "0", background: "transparent", zIndex: "10000", display: "none",
+    });
+    const card = document.createElement("div");
+    Object.assign(card.style, {
+        position: "fixed", background: "#1e1e1e", color: "#ddd", border: "1px solid " + BODY_COLOR,
+        borderRadius: "10px", boxShadow: "0 8px 28px rgba(0,0,0,0.6)", fontFamily: "sans-serif",
+        fontSize: "12px", boxSizing: "border-box",
+    });
+    card.addEventListener("mousedown", (e) => e.stopPropagation());
+    card.addEventListener("click", (e) => e.stopPropagation());
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    return { overlay, card };
+}
+
+function makeIconButton(color, icon, title) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.innerHTML = icon;
+    if (title) btn.title = title;
+    Object.assign(btn.style, {
+        flex: "0 0 auto", width: "24px", height: "24px", display: "flex", alignItems: "center",
+        justifyContent: "center", background: color, border: "none", borderRadius: "4px",
+        cursor: "pointer", padding: "0",
+    });
+    return btn;
+}
+
+function makeTextButton(text, bg) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = text;
+    Object.assign(btn.style, {
+        background: bg, color: "white", border: "none", borderRadius: "6px", padding: "6px 14px",
+        cursor: "pointer", fontSize: "12px", fontWeight: "bold",
+    });
+    return btn;
+}
+
+async function apiGet(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    let data = null;
+    try {
+        data = await res.json();
+    } catch (e) {
+        data = null;
+    }
+    if (!res.ok) throw new Error((data && data.error) || "HTTP error " + res.status);
+    return data;
+}
+
+function joinPath(folder, name) {
+    const sep = folder.includes("\\") ? "\\" : "/";
+    return folder.replace(/[\\/]+$/, "") + sep + name;
+}
+
+function baseName(path) {
+    return path.split(/[\\/]/).pop();
+}
+
+function samePath(a, b) {
+    return a.replace(/\\/g, "/").toLowerCase() === b.replace(/\\/g, "/").toLowerCase();
+}
+
+function formatDuration(sec) {
+    if (sec == null) return "";
+    if (sec < 60) return sec.toFixed(1) + " s";
+    const m = Math.floor(sec / 60);
+    return m + ":" + String(Math.floor(sec % 60)).padStart(2, "0");
+}
+
+function hideWidget(widget) {
+    if (!widget || widget.__mmref_hidden) return;
+    widget.__mmref_hidden = true;
+    widget.computeSize = () => [0, -4];
+    // Type sentinelle : exclut vraiment le widget du dessin et du hit-testing.
+    widget.type = "converted-widget";
+    widget.draw = () => {};
+    widget.onDrawBackground = () => {};
+}
+
+// --------------------------------------------------------------------
+// Fenetre d'aide
+// --------------------------------------------------------------------
+function buildHelpOverlay(container) {
+    const { overlay, card } = makeOverlay();
+    card.style.width = "min(520px, 92vw)";
+    card.style.maxHeight = "80vh";
+    card.style.overflowX = "hidden";
+    card.style.overflowY = "auto";
+    card.style.padding = "14px 18px";
+    let html = '<div style="font-size:14px;font-weight:bold;color:' + TITLE_COLOR +
+        ';margin-bottom:8px">MiniMax H3 Reference Loader</div>';
+    for (const s of HELP_SECTIONS) {
+        html += '<div style="font-weight:bold;color:' + PINK + ';margin:10px 0 4px">' + s.title +
+            '</div><div style="line-height:1.5">' + s.html + "</div>";
+    }
+    card.innerHTML = html;
+    overlay.addEventListener("mousedown", () => (overlay.style.display = "none"));
+    return {
+        open() {
+            overlay.style.display = "block";
+            positionCardNextToNode(card, container, 520);
+        },
+        remove() {
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
+// Galerie de selection (une seule fenetre, reutilisee pour les 3 types)
+// --------------------------------------------------------------------
+function buildGallery(container, ctx) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, {
+        width: "min(720px, 92vw)", height: "min(560px, 82vh)", display: "flex",
+        flexDirection: "column", overflow: "hidden", borderColor: PINK,
+    });
+
+    let kind = "image";
+    let defaultSound = false;
+    let files = [];
+
+    // En-tete : titre, compteur, fermeture.
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+        display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px",
+        borderBottom: "1px solid #333",
+    });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, flex: "1" });
+    const counter = document.createElement("div");
+    counter.style.color = "#bbb";
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
+    header.append(title, counter, closeBtn);
+
+    // Dossier : champ, Browse, actualiser.
+    const folderRow = document.createElement("div");
+    Object.assign(folderRow.style, { display: "flex", gap: "6px", padding: "8px 12px", alignItems: "center" });
+    const folderInput = document.createElement("input");
+    folderInput.type = "text";
+    folderInput.placeholder = "Folder path - type, paste, or Browse";
+    Object.assign(folderInput.style, {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833",
+        borderRadius: "10px", padding: "5px 10px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+    });
+    const browseBtn = makeIconButton(VIOLET, FOLDER_ICON, "Browse");
+    const refreshBtn = makeIconButton(INACTIVE_BG, REFRESH_ICON, "Reload the folder");
+    folderRow.append(folderInput, browseBtn, refreshBtn);
+
+    const status = document.createElement("div");
+    Object.assign(status.style, { padding: "0 12px 6px", color: "#999", minHeight: "14px" });
+
+    // Grille de miniatures.
+    const grid = document.createElement("div");
+    Object.assign(grid.style, {
+        flex: "1", overflowX: "hidden", overflowY: "auto", padding: "4px 12px 10px",
+        display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))",
+        gap: "8px", alignContent: "start",
+    });
+
+    // Pied : vider, terminer.
+    const footer = document.createElement("div");
+    Object.assign(footer.style, {
+        display: "flex", gap: "8px", padding: "10px 12px", borderTop: "1px solid #333", alignItems: "center",
+    });
+    const clearBtn = makeTextButton("Clear", DARK_RED);
+    const footerInfo = document.createElement("div");
+    Object.assign(footerInfo.style, { flex: "1", color: "#999" });
+    const doneBtn = makeTextButton("Done", PINK);
+    footer.append(clearBtn, footerInfo, doneBtn);
+
+    card.append(header, folderRow, status, grid, footer);
+
+    // ------ Selection ------
+    function list() {
+        const s = ctx.getState();
+        return kind === "image" ? s.images : kind === "audio" ? s.audios : s.videos;
+    }
+    const pathOf = (item) => (kind === "video" ? item.file : item);
+    const indexOf = (path) => list().findIndex((it) => samePath(pathOf(it), path));
+
+    function toggle(path) {
+        const s = ctx.getState();
+        const arr = list();
+        const idx = indexOf(path);
+        if (idx >= 0) arr.splice(idx, 1);
+        else if (arr.length < LIMITS[kind]) arr.push(kind === "video" ? { file: path, sound: defaultSound } : path);
+        else return;
+        ctx.setState(s);
+        render();
+    }
+
+    function toggleSound(path) {
+        const s = ctx.getState();
+        const item = s.videos[indexOf(path)];
+        if (!item) return;
+        item.sound = !item.sound;
+        ctx.setState(s);
+        render();
+    }
+
+    // ------ Affichage ------
+    function updateCounters() {
+        const arr = list();
+        let text = arr.length + " / " + LIMITS[kind] + " selected";
+        if (kind === "video") text += " · " + arr.filter((v) => v.sound).length + " 🔊";
+        counter.textContent = text;
+        const folder = folderInput.value.trim();
+        const elsewhere = folder ? arr.filter((it) => !files.some((f) => samePath(joinPath(folder, f.name), pathOf(it)))).length : arr.length;
+        footerInfo.textContent = elsewhere ? "+" + elsewhere + " selected in another folder" : "";
+    }
+
+    function render() {
+        updateCounters();
+        grid.innerHTML = "";
+        const folder = folderInput.value.trim();
+        const full = list().length >= LIMITS[kind];
+        for (const f of files) {
+            const path = joinPath(folder, f.name);
+            const idx = indexOf(path);
+            const selected = idx >= 0;
+
+            const tile = document.createElement("div");
+            tile.title = f.name;
+            Object.assign(tile.style, {
+                position: "relative", background: "#151515", borderRadius: "6px", overflow: "hidden",
+                cursor: selected || !full ? "pointer" : "not-allowed",
+                border: "2px solid " + (selected ? PINK : "#2c2c2c"),
+                opacity: selected || !full ? "1" : "0.35",
+            });
+
+            const thumb = document.createElement("div");
+            Object.assign(thumb.style, {
+                height: "84px", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d0d0d",
+            });
+            if (kind === "audio") {
+                thumb.innerHTML = svg(
+                    '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle>' +
+                    '<circle cx="18" cy="16" r="3"></circle>', 34);
+                thumb.style.opacity = "0.7";
+            } else {
+                const img = document.createElement("img");
+                img.loading = "lazy";
+                img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(folder) + "&file=" +
+                    encodeURIComponent(f.name) + "&mt=" + Math.floor(f.mtime || 0);
+                Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
+                thumb.appendChild(img);
+            }
+
+            const name = document.createElement("div");
+            name.textContent = f.name;
+            Object.assign(name.style, {
+                padding: "3px 5px", fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden",
+                textOverflow: "ellipsis", color: selected ? "#fff" : "#bbb",
+            });
+            tile.append(thumb, name);
+
+            if (f.duration != null) {
+                const dur = document.createElement("div");
+                dur.textContent = formatDuration(f.duration);
+                Object.assign(dur.style, {
+                    position: "absolute", right: "4px", bottom: "22px", background: "rgba(0,0,0,0.7)",
+                    padding: "1px 5px", borderRadius: "4px", fontSize: "10px",
+                });
+                tile.appendChild(dur);
+            }
+
+            if (selected) {
+                const badge = document.createElement("div");
+                badge.textContent = String(idx + 1);
+                Object.assign(badge.style, {
+                    position: "absolute", left: "4px", top: "4px", minWidth: "20px", height: "20px",
+                    borderRadius: "10px", background: PINK, color: "white", fontWeight: "bold",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px",
+                    boxShadow: "0 0 6px rgba(211,95,168,0.8)",
+                });
+                tile.appendChild(badge);
+
+                if (kind === "video") {
+                    const on = list()[idx].sound;
+                    const snd = makeIconButton(on ? GREEN : INACTIVE_BG, on ? SPEAKER_ICON : MUTE_ICON,
+                        on ? "Soundtrack kept (click to mute)" : "Muted (click to keep the soundtrack)");
+                    Object.assign(snd.style, { position: "absolute", right: "4px", top: "4px" });
+                    snd.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        toggleSound(path);
+                    });
+                    tile.appendChild(snd);
+                }
+            }
+
+            tile.addEventListener("click", () => toggle(path));
+            grid.appendChild(tile);
+        }
+    }
+
+    async function loadFolder() {
+        const folder = folderInput.value.trim();
+        const s = ctx.getState();
+        if (s.folders[kind] !== folder) {
+            s.folders[kind] = folder;
+            ctx.setState(s);
+        }
+        files = [];
+        if (!folder) {
+            status.textContent = "Set a folder first (type, paste, or Browse).";
+            render();
+            return;
+        }
+        status.textContent = "Loading...";
+        render();
+        try {
+            const data = await apiGet("/mmrefloader/list?path=" + encodeURIComponent(folder) + "&kind=" + kind);
+            files = data.files || [];
+            status.textContent = files.length ? files.length + " file(s)" : "No " + kind + " file in this folder.";
+        } catch (e) {
+            status.textContent = e.message;
+        }
+        render();
+    }
+
+    async function browse() {
+        const prev = browseBtn.innerHTML;
+        browseBtn.disabled = true;
+        status.textContent = "Opening the folder dialog...";
+        try {
+            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(folderInput.value.trim()));
+            if (data.path) {
+                folderInput.value = data.path;
+                await loadFolder();
+            } else {
+                status.textContent = "";
+            }
+        } catch (e) {
+            status.textContent = e.message;
+        } finally {
+            browseBtn.disabled = false;
+            browseBtn.innerHTML = prev;
+        }
+    }
+
+    // Clavier : tant que la galerie est ouverte, les touches tapees dans le
+    // champ dossier ne doivent pas atteindre le canvas (Suppr supprimerait
+    // le noeud) ; Entree charge le dossier, Echap ferme.
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            close();
+            return;
+        }
+        if (e.target === folderInput) {
+            e.stopImmediatePropagation();
+            if (e.key === "Enter") {
+                e.preventDefault();
+                loadFolder();
+            }
+        }
+    };
+
+    function close() {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+
+    closeBtn.addEventListener("click", close);
+    doneBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
+    browseBtn.addEventListener("click", browse);
+    refreshBtn.addEventListener("click", loadFolder);
+    clearBtn.addEventListener("click", () => {
+        const s = ctx.getState();
+        if (kind === "image") s.images = [];
+        else if (kind === "audio") s.audios = [];
+        else s.videos = [];
+        ctx.setState(s);
+        render();
+    });
+
+    return {
+        open(newKind, sound) {
+            kind = newKind;
+            defaultSound = !!sound;
+            title.textContent = KIND_TITLES[kind] + (kind === "video"
+                ? (defaultSound ? " — new picks keep their sound" : " — new picks are muted")
+                : "");
+            folderInput.value = ctx.getState().folders[kind] || "";
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 720);
+            loadFolder();
+        },
+        close,
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
+// Extension
+// --------------------------------------------------------------------
+app.registerExtension({
+    name: "ComfyUI.MiniMaxRefLoader",
+    async beforeRegisterNodeDef(nodeType, nodeData) {
+        if (nodeData.name !== NODE_NAME) return;
+
+        const onNodeCreated = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function () {
+            const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
+            const node = this;
+            node.color = TITLE_COLOR;
+            node.bgcolor = BODY_COLOR;
+
+            const stateWidget = node.widgets.find((w) => w.name === "state");
+            hideWidget(stateWidget);
+
+            const getState = () => parseState(stateWidget.value);
+            const setState = (s) => {
+                stateWidget.value = JSON.stringify(s);
+                refresh();
+            };
+
+            // ---- Interface ----
+            const container = document.createElement("div");
+            Object.assign(container.style, {
+                display: "flex", flexDirection: "column", gap: "6px", padding: "6px 8px",
+                boxSizing: "border-box", width: "100%", fontFamily: "sans-serif", fontSize: "12px",
+            });
+
+            const rows = {};
+            for (const b of BUTTONS) {
+                const row = document.createElement("div");
+                Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center", flex: "0 0 auto" });
+
+                const btn = document.createElement("button");
+                btn.type = "button";
+                Object.assign(btn.style, {
+                    flex: "1", minWidth: "0", display: "flex", alignItems: "center", gap: "8px",
+                    background: INACTIVE_BG, color: "#ddd", border: "1px solid #0c3833",
+                    borderRadius: "8px", padding: "4px 8px 4px 4px", cursor: "pointer", height: "32px",
+                    textAlign: "left",
+                });
+                const icon = document.createElement("span");
+                icon.innerHTML = b.icon;
+                Object.assign(icon.style, {
+                    display: "flex", alignItems: "center", justifyContent: "center", minWidth: "24px",
+                    height: "24px", padding: "0 3px", borderRadius: "5px", background: b.color, flex: "0 0 auto",
+                    boxSizing: "border-box",
+                });
+                const label = document.createElement("span");
+                label.textContent = b.label;
+                Object.assign(label.style, { fontWeight: "bold", flex: "0 0 auto" });
+                const count = document.createElement("span");
+                Object.assign(count.style, {
+                    flex: "1", textAlign: "right", color: INACTIVE_FG, whiteSpace: "nowrap",
+                    overflow: "hidden", textOverflow: "ellipsis",
+                });
+                btn.append(icon, label, count);
+                btn.addEventListener("click", () => gallery.open(b.kind, b.sound));
+                row.appendChild(btn);
+
+                // Poubelle : vide le type (Video/Audio : coupe le son de toutes les videos).
+                const trash = makeIconButton(DARK_RED, TRASH_ICON,
+                    b.id === "video_audio" ? "Mute all videos" : "Clear the " + b.label.toLowerCase() + " selection");
+                trash.addEventListener("click", () => {
+                    const s = getState();
+                    if (b.id === "image") s.images = [];
+                    else if (b.id === "video") s.videos = [];
+                    else if (b.id === "video_audio") s.videos.forEach((v) => (v.sound = false));
+                    else s.audios = [];
+                    setState(s);
+                });
+                row.appendChild(trash);
+
+                container.appendChild(row);
+                rows[b.id] = { btn, count };
+            }
+
+            const bottom = document.createElement("div");
+            Object.assign(bottom.style, { display: "flex", alignItems: "center", gap: "6px", flex: "0 0 auto" });
+            const summary = document.createElement("div");
+            Object.assign(summary.style, {
+                flex: "1", color: "#9fd6cf", fontSize: "11px", whiteSpace: "nowrap", overflow: "hidden",
+                textOverflow: "ellipsis",
+            });
+            const helpBtn = document.createElement("button");
+            helpBtn.type = "button";
+            helpBtn.textContent = "?";
+            Object.assign(helpBtn.style, {
+                width: "22px", height: "22px", borderRadius: "50%", border: "none", background: PINK,
+                color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
+            });
+            bottom.append(summary, helpBtn);
+            container.appendChild(bottom);
+
+            const gallery = buildGallery(container, { getState, setState });
+            const help = buildHelpOverlay(container);
+            helpBtn.addEventListener("click", () => help.open());
+            node.__mmrefOverlays = [gallery, help];
+
+            // ---- Rafraichissement (compteurs, info-bulles, sorties) ----
+            function listTitle(paths) {
+                return paths.length ? paths.map((p, i) => i + 1 + ". " + baseName(p)).join("\n") : "Nothing selected";
+            }
+
+            function refresh() {
+                const s = getState();
+                const withSound = s.videos.filter((v) => v.sound);
+                rows.image.count.textContent = s.images.length + " / " + LIMITS.image;
+                rows.video.count.textContent = s.videos.length + " / " + LIMITS.video +
+                    (withSound.length ? " · " + withSound.length + " 🔊" : "");
+                rows.video_audio.count.textContent = withSound.length + " 🔊 · counts as video";
+                rows.audio.count.textContent = s.audios.length + " / " + LIMITS.audio;
+
+                rows.image.btn.title = listTitle(s.images);
+                rows.video.btn.title = s.videos.length
+                    ? s.videos.map((v, i) => i + 1 + ". " + baseName(v.file) + (v.sound ? "  🔊" : "")).join("\n")
+                    : "Nothing selected";
+                rows.video_audio.btn.title = withSound.length
+                    ? s.videos.map((v, i) => (v.sound ? i + 1 + ". " + baseName(v.file) + "  🔊" : null)).filter(Boolean).join("\n")
+                    : "No video with sound";
+                rows.audio.btn.title = listTitle(s.audios);
+
+                const total = s.images.length + s.videos.length + s.audios.length;
+                summary.textContent = total
+                    ? s.images.length + " image(s), " + s.videos.length + " video(s), " + s.audios.length + " audio"
+                    : "Click a button to pick references";
+
+                applyLayout(node, s);
+            }
+
+            node.addDOMWidget("mmrefloader_ui", "mmrefloader", container, {
+                serialize: false,
+                hideOnZoom: false,
+                getMinHeight: () => UI_HEIGHT,
+                getHeight: () => UI_HEIGHT,
+            });
+
+            const onResize = node.onResize;
+            node.onResize = function (size) {
+                if (size[0] < MIN_WIDTH) size[0] = MIN_WIDTH;
+                return onResize ? onResize.apply(this, arguments) : undefined;
+            };
+
+            // configure() (rechargement d'un workflow) s'execute apres
+            // onNodeCreated : relire l'etat a ce moment-la.
+            const onConfigure = node.onConfigure;
+            node.onConfigure = function () {
+                const ret = onConfigure ? onConfigure.apply(this, arguments) : undefined;
+                refresh();
+                return ret;
+            };
+
+            refresh();
+            return r;
+        };
+
+        // Renommer une sortie par double-clic sur son nom.
+        const onDblClick = nodeType.prototype.onDblClick;
+        nodeType.prototype.onDblClick = function (e, pos) {
+            const r = onDblClick ? onDblClick.apply(this, arguments) : undefined;
+            const i = hitOutputLabel(this, pos);
+            if (i >= 0) openOutputLabelEditor(this, i);
+            return r;
+        };
+
+        const onRemoved = nodeType.prototype.onRemoved;
+        nodeType.prototype.onRemoved = function () {
+            if (activeOutputEditor && activeOutputEditor.node === this) activeOutputEditor.close(false);
+            (this.__mmrefOverlays || []).forEach((o) => o.remove());
+            return onRemoved ? onRemoved.apply(this, arguments) : undefined;
+        };
+
+        // Secours : renommer par le menu clic droit.
+        const getExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
+        nodeType.prototype.getExtraMenuOptions = function (canvas, options) {
+            const r = getExtraMenuOptions ? getExtraMenuOptions.apply(this, arguments) : undefined;
+            const node = this;
+            if (node.outputs && node.outputs.length) {
+                options.push(null);
+                node.outputs.forEach((out, i) => {
+                    const current = out.label || out.name;
+                    options.push({
+                        content: 'Rename output "' + current + '"...',
+                        callback: () => {
+                            const value = window.prompt("New name for this output:", current);
+                            if (value !== null) setOutputLabel(node, i, value);
+                        },
+                    });
+                });
+            }
+            return r;
+        };
+    },
+});
