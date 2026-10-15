@@ -186,16 +186,18 @@ const HELP_SECTIONS = [
             "or a video also shows it (image, or video with its player) in a preview window on the right. " +
             "Without a root folder " +
             "they are greyed out; Browse and Reload stay available; Reload goes back to the root folder of the gear button when the gallery shows another folder.</p>" +
-            "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the whole configuration (root folder, " +
-            "images, videos, video soundtracks, audio) in a .txt file, one line per output, e.g. " +
+            "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the configuration of the mode shown in its " +
+            "own .txt file (one file per mode, never mixed): <b>minimax_ref2va_config.txt</b> with the " +
+            "root folder and the four lists, or <b>minimax_fl2va_config.txt</b> with the root folder and " +
+            "the two frames. One line per output, e.g. " +
             "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
             "to it; an empty group is written with its first number and NaN, e.g. " +
             "<code>audio 1 : NaN</code>.</p>" +
-            "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads such a file and sets the outputs from it. " +
-            "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " as soon as the mode shown has a reference (the " +
-            "root folder alone does not count). Loading only replaces the part of the mode shown " +
-            "(Ref2VA: the four lists; F2VA / FL2VA: the two frames) and the root folder; the other mode " +
-            "and the mode switch are not changed. It asks a confirmation when the button is orange. " +
+            "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads a file of the mode shown and sets its outputs; " +
+            "a file of the other mode is refused (switch mode first) and nothing is changed. It turns " +
+            iconBadge(UPLOAD_ICON, ORANGE) + " as soon as the mode shown has a reference (the root folder " +
+            "alone does not count) and then asks a confirmation. The other mode and the mode switch are " +
+            "never changed; the root folder is taken from the file. " +
             "Files missing on " +
             "disk are still loaded and reported under the buttons.</p>",
     },
@@ -2033,13 +2035,14 @@ app.registerExtension({
             // Orange = le mode affiche a deja des references.
             const hasConfig = (s) => modeRefs(s) > 0;
 
-            // Download : fichier texte genere dans le navigateur.
+            // Download : fichier du mode affiche seulement (un fichier par mode).
             downloadBtn.addEventListener("click", () => {
-                const blob = new Blob([formatConfig(getState())], { type: "text/plain" });
+                const s = getState();
+                const blob = new Blob([formatConfig(s)], { type: "text/plain" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = "minimax_ref_config.txt";
+                a.download = s.mode === "fl2va" ? "minimax_fl2va_config.txt" : "minimax_ref2va_config.txt";
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
@@ -2080,9 +2083,19 @@ app.registerExtension({
                         refresh();
                         return;
                     }
+                    // Fichier de l'autre mode : refuse, rien n'est modifie (il
+                    // viderait la partie du mode affiche).
+                    const s = getState();
+                    if (conf.mode !== s.mode) {
+                        const name = (m) => (m === "fl2va" ? "F2VA / FL2VA" : "Ref2VA");
+                        notice = "⚠ " + name(conf.mode) + " file: switch to " + name(conf.mode) + " to load it";
+                        noticeTitle = "This configuration file was saved in " + name(conf.mode) +
+                            " mode; the node is in " + name(s.mode) + " mode. Nothing was changed.";
+                        refresh();
+                        return;
+                    }
                     // Seule la partie du mode affiche est remplacee ; le mode du
                     // noeud ne change pas. Le dossier racine (commun) est repris.
-                    const s = getState();
                     if (s.root !== conf.root) resetRootSubs(s);
                     s.root = conf.root;
                     let paths;

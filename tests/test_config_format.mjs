@@ -32,7 +32,7 @@ test("chemin relatif rejoint la racine, absolu garde tel quel", () => {
     assert.equal(toAbsolute("F:/r", "sub/a.png"), "F:/r/sub/a.png");
 });
 
-test("format : une ligne par sortie, NaN pour un groupe vide", () => {
+test("format Ref2VA : une ligne par sortie, NaN pour un groupe vide, sans les frames", () => {
     assert.equal(formatConfig(state), [
         "mode : Ref2VA",
         "root : F:\\Rushs\\Projet",
@@ -42,6 +42,14 @@ test("format : une ligne par sortie, NaN pour un groupe vide", () => {
         "video 2 : videos\\v2.mp4",
         "video_audio 1 : videos\\v2.mp4",
         "audio 1 : NaN",
+        "",
+    ].join("\r\n"));
+});
+
+test("format F2VA/FL2VA : seulement les frames, sans les listes Ref2VA", () => {
+    assert.equal(formatConfig({ ...state, mode: "fl2va" }), [
+        "mode : FL2VA",
+        "root : F:\\Rushs\\Projet",
         "first_frame : images\\debut.png",
         "last_frame : NaN",
         "",
@@ -51,13 +59,18 @@ test("format : une ligne par sortie, NaN pour un groupe vide", () => {
 test("format d'une configuration vide", () => {
     const text = formatConfig({ mode: "fl2va", root: "", images: [], videos: [], video_audios: [], audios: [],
         first_frame: [], last_frame: [] });
-    assert.equal(text, "mode : FL2VA\r\nroot : NaN\r\nimage 1 : NaN\r\nvideo 1 : NaN\r\nvideo_audio 1 : NaN\r\n" +
-        "audio 1 : NaN\r\nfirst_frame : NaN\r\nlast_frame : NaN\r\n");
+    assert.equal(text, "mode : FL2VA\r\nroot : NaN\r\nfirst_frame : NaN\r\nlast_frame : NaN\r\n");
+    const ref = formatConfig({ mode: "ref2va", root: "", images: [], videos: [], video_audios: [], audios: [],
+        first_frame: [], last_frame: [] });
+    assert.equal(ref, "mode : Ref2VA\r\nroot : NaN\r\nimage 1 : NaN\r\nvideo 1 : NaN\r\nvideo_audio 1 : NaN\r\n" +
+        "audio 1 : NaN\r\n");
 });
 
-test("aller-retour format -> lecture", () => {
-    const back = parseConfig(formatConfig(state));
-    assert.deepEqual(back, state);
+test("aller-retour format -> lecture, chaque mode ne garde que sa partie", () => {
+    assert.deepEqual(parseConfig(formatConfig(state)), { ...state, first_frame: [], last_frame: [] });
+    const fl = { ...state, mode: "fl2va" };
+    assert.deepEqual(parseConfig(formatConfig(fl)),
+        { ...fl, images: [], videos: [], video_audios: [], audios: [] });
 });
 
 test("lecture tolerante : ordre, casse, espaces, trous de numerotation, NaN", () => {

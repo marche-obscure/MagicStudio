@@ -37,11 +37,23 @@ export function toAbsolute(root, path) {
     return base + sep + path;
 }
 
-/** Etat du noeud -> texte du fichier de configuration. */
+/**
+ * Etat du noeud -> texte du fichier de configuration du MODE ACTIF seulement :
+ * Ref2VA = les 4 listes ; F2VA/FL2VA = first_frame et last_frame. Les deux
+ * modes ont des fichiers separes, sans melange.
+ */
 export function formatConfig(state) {
     const root = state.root || "";
     const rel = (p) => toRelative(root, p);
-    const lines = ["mode : " + (state.mode === "fl2va" ? "FL2VA" : "Ref2VA"), "root : " + (root || EMPTY)];
+    const fl = state.mode === "fl2va";
+    const lines = ["mode : " + (fl ? "FL2VA" : "Ref2VA"), "root : " + (root || EMPTY)];
+    if (fl) {
+        for (const key of ["first_frame", "last_frame"]) {
+            const v = (state[key] || [])[0];
+            lines.push(key + " : " + (v ? rel(v) : EMPTY));
+        }
+        return lines.join(EOL) + EOL;
+    }
     const group = (name, values) => {
         if (!values.length) values = [EMPTY];
         values.forEach((v, i) => lines.push(name + " " + (i + 1) + " : " + (v || EMPTY)));
@@ -50,10 +62,6 @@ export function formatConfig(state) {
     group("video", state.videos.map(rel));
     group("video_audio", (state.video_audios || []).map(rel));
     group("audio", state.audios.map(rel));
-    for (const key of ["first_frame", "last_frame"]) {
-        const v = (state[key] || [])[0];
-        lines.push(key + " : " + (v ? rel(v) : EMPTY));
-    }
     return lines.join(EOL) + EOL;
 }
 
