@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { formatConfig, parseConfig } from "./config_format.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -61,6 +62,11 @@ const CLOSE_ICON = svg(
     '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>', 14);
 const EYE_ICON = svg(
     '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>', 13);
+const GEAR_ICON = svg(
+    '<circle cx="12" cy="12" r="3"></circle>' +
+    '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>', 13);
+const DOWNLOAD_ICON = svg('<path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path>', 13);
+const UPLOAD_ICON = svg('<path d="M12 21V9"></path><path d="M7 14l5-5 5 5"></path><path d="M5 3h14"></path>', 13);
 const LEFT_ICON = svg('<polyline points="15 18 9 12 15 6"></polyline>', 12);
 const RIGHT_ICON = svg('<polyline points="9 18 15 12 9 6"></polyline>', 12);
 
@@ -127,6 +133,20 @@ const HELP_SECTIONS = [
             "is removed.</p>",
     },
     {
+        title: "Root folder and configuration",
+        html: "<p>" + iconBadge(GEAR_ICON, VIOLET) + " sets the <b>root folder</b> of your rushes: " +
+            "galleries without their own folder open there.</p>" +
+            "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the whole configuration (root folder, " +
+            "images, videos, video sound, audio) in a .txt file, one line per output, e.g. " +
+            "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
+            "to it; an empty group is written <code>audio 1 : NaN</code>, a muted video " +
+            "<code>video_audio 1 : NaN</code>.</p>" +
+            "<p>" + iconBadge(UPLOAD_ICON, GREEN) + " loads such a file and sets the outputs from it. " +
+            "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " when a configuration already exists: " +
+            "loading then asks a confirmation, since it overwrites the current one. Files missing on " +
+            "disk are still loaded and reported under the buttons.</p>",
+    },
+    {
         title: "Loading",
         html: "<p>Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most " +
             "(MiniMax would reduce them anyway). Audio files are cut to 15 s.</p>",
@@ -143,7 +163,7 @@ const HELP_SECTIONS = [
 // Etat et disposition des sorties
 // --------------------------------------------------------------------
 function emptyState() {
-    return { folders: { image: "", video: "", audio: "" }, images: [], videos: [], audios: [] };
+    return { root: "", folders: { image: "", video: "", audio: "" }, images: [], videos: [], audios: [] };
 }
 
 function parseState(raw) {
@@ -157,6 +177,7 @@ function parseState(raw) {
     if (!data || typeof data !== "object") return s;
     const f = data.folders || {};
     for (const k of ["image", "video", "audio"]) s.folders[k] = typeof f[k] === "string" ? f[k] : "";
+    s.root = typeof data.root === "string" ? data.root : "";
     s.images = (Array.isArray(data.images) ? data.images : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.image);
     s.audios = (Array.isArray(data.audios) ? data.audios : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.audio);
     s.videos = (Array.isArray(data.videos) ? data.videos : [])
@@ -768,7 +789,9 @@ function buildGallery(container, ctx) {
             title.textContent = KIND_TITLES[kind] + (kind === "video"
                 ? (defaultSound ? " — new picks keep their sound" : " — new picks are muted")
                 : "");
-            folderInput.value = ctx.getState().folders[kind] || "";
+            // Sans dossier pour ce type, la galerie demarre sur le dossier racine.
+            const st = ctx.getState();
+            folderInput.value = st.folders[kind] || st.root || "";
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 720);
@@ -863,6 +886,121 @@ function buildConfirmDialog(container) {
         ask,
         close,
         isOpen,
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
+// Fenetre du dossier racine (roue crantee)
+// --------------------------------------------------------------------
+/**
+ * Dossier racine des rushs : les galeries sans dossier propre demarrent
+ * dessus, et le fichier de configuration y ecrit les chemins en relatif.
+ * Entree ou Done enregistre ; Echap ou clic a cote ferment sans changer.
+ */
+function buildRootDialog(container, ctx) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, { width: "min(460px, 92vw)", padding: "12px 14px", borderColor: VIOLET });
+
+    const title = document.createElement("div");
+    title.textContent = "Root folder of the rushes";
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "6px" });
+    const hint = document.createElement("div");
+    hint.textContent = "Galleries without their own folder open here; the saved configuration " +
+        "stores the paths under it relative to it.";
+    Object.assign(hint.style, { color: "#999", marginBottom: "10px", lineHeight: "1.4" });
+
+    const row = document.createElement("div");
+    Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center" });
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Folder path - type, paste, or Browse";
+    Object.assign(input.style, {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833",
+        borderRadius: "10px", padding: "5px 10px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+    });
+    const browseBtn = makeIconButton(VIOLET, FOLDER_ICON, "Browse");
+    const clearBtn = makeIconButton(MARK_RED, TRASH_ICON, "Clear the root folder");
+    row.append(input, browseBtn, clearBtn);
+
+    const status = document.createElement("div");
+    Object.assign(status.style, { color: "#999", minHeight: "14px", margin: "6px 0 0" });
+
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", marginTop: "10px" });
+    const doneBtn = makeTextButton("Done", PINK);
+    footer.appendChild(doneBtn);
+
+    card.append(title, hint, row, status, footer);
+
+    function save() {
+        const s = ctx.getState();
+        const value = input.value.trim();
+        if (s.root !== value) {
+            s.root = value;
+            ctx.setState(s);
+        }
+        close();
+    }
+
+    async function browse() {
+        browseBtn.disabled = true;
+        status.textContent = "Opening the folder dialog...";
+        try {
+            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(input.value.trim()));
+            if (data.path) input.value = data.path;
+            status.textContent = "";
+        } catch (e) {
+            status.textContent = e.message;
+        } finally {
+            browseBtn.disabled = false;
+        }
+    }
+
+    // Les touches tapees dans le champ ne doivent pas atteindre le canvas.
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            close();
+            return;
+        }
+        if (e.target === input) {
+            e.stopImmediatePropagation();
+            if (e.key === "Enter") {
+                e.preventDefault();
+                save();
+            }
+        }
+    };
+
+    function close() {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+
+    browseBtn.addEventListener("click", browse);
+    clearBtn.addEventListener("click", () => {
+        input.value = "";
+        input.focus();
+    });
+    doneBtn.addEventListener("click", save);
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        open() {
+            input.value = ctx.getState().root || "";
+            status.textContent = "";
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 460);
+            setTimeout(() => input.focus(), 0);
+        },
+        close,
         remove() {
             close();
             overlay.remove();
@@ -1244,7 +1382,13 @@ app.registerExtension({
             hideWidget(stateWidget);
 
             const getState = () => parseState(stateWidget.value);
+            // Message temporaire du resume (ex. fichiers manquants apres un
+            // Upload) : efface au prochain changement de la selection.
+            let notice = "";
+            let noticeTitle = "";
             const setState = (s) => {
+                notice = "";
+                noticeTitle = "";
                 stateWidget.value = JSON.stringify(s);
                 refresh();
             };
@@ -1347,15 +1491,97 @@ app.registerExtension({
                 width: "22px", height: "22px", borderRadius: "50%", border: "none", background: PINK,
                 color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
             });
-            bottom.append(summary, helpBtn);
+            // Dossier racine, sauvegarde et chargement de la configuration.
+            const rootBtn = makeIconButton(VIOLET, GEAR_ICON, "Root folder of the rushes");
+            const downloadBtn = makeIconButton(PINK, DOWNLOAD_ICON, "Save the configuration (.txt)");
+            const uploadBtn = makeIconButton(GREEN, UPLOAD_ICON, "Load a configuration (.txt)");
+            [rootBtn, downloadBtn, uploadBtn].forEach((b) => {
+                b.style.width = "22px";
+                b.style.height = "22px";
+            });
+            const fileInput = document.createElement("input");
+            fileInput.type = "file";
+            fileInput.accept = ".txt,text/plain";
+            fileInput.style.display = "none";
+
+            bottom.append(summary, rootBtn, downloadBtn, uploadBtn, helpBtn, fileInput);
             container.appendChild(bottom);
 
             const gallery = buildGallery(container, { getState, setState });
             const viewer = buildSelectionViewer(container, { getState, setState });
             const clearConfirm = buildConfirmDialog(container);
+            const rootDialog = buildRootDialog(container, { getState, setState });
             const help = buildHelpOverlay(container);
             helpBtn.addEventListener("click", () => help.open());
-            node.__mmrefOverlays = [gallery, viewer, clearConfirm, help];
+            rootBtn.addEventListener("click", () => rootDialog.open());
+            node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help];
+
+            const hasConfig = (s) => !!(s.root || s.images.length || s.videos.length || s.audios.length);
+
+            // Download : fichier texte genere dans le navigateur.
+            downloadBtn.addEventListener("click", () => {
+                const blob = new Blob([formatConfig(getState())], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "minimax_ref_config.txt";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            });
+
+            // Upload : confirmation seulement s'il y a deja une configuration.
+            uploadBtn.addEventListener("click", () => {
+                const s = getState();
+                if (!hasConfig(s)) {
+                    fileInput.click();
+                    return;
+                }
+                const n = s.images.length + s.videos.length + s.audios.length;
+                clearConfirm.ask(
+                    "<b>Overwrite the current configuration?</b><br>Loading a file replaces the root " +
+                    "folder and all the references (" + n + " now)." +
+                    '<div style="color:#999;margin-top:8px">Save it first with the download button ' +
+                    "if you want to keep it.</div>",
+                    "Overwrite", () => fileInput.click());
+            });
+
+            fileInput.addEventListener("change", () => {
+                const file = fileInput.files && fileInput.files[0];
+                fileInput.value = "";
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async () => {
+                    let conf;
+                    try {
+                        conf = parseConfig(String(reader.result || ""));
+                    } catch (e) {
+                        notice = "⚠ " + e.message;
+                        refresh();
+                        return;
+                    }
+                    const s = getState();
+                    s.root = conf.root;
+                    s.images = conf.images;
+                    s.videos = conf.videos;
+                    s.audios = conf.audios;
+                    setState(s);
+                    // Fichiers absents du disque : charges quand meme, signales.
+                    const paths = conf.images.concat(conf.videos.map((v) => v.file), conf.audios);
+                    const missing = [];
+                    await Promise.all(paths.map(async (p) => {
+                        const res = await fetch("/mmrefloader/info?file=" + encodeURIComponent(p)).catch(() => null);
+                        if (!res || res.status === 404) missing.push(baseName(p));
+                    }));
+                    if (missing.length) {
+                        notice = "⚠ " + missing.length + " missing file" + (missing.length > 1 ? "s" : "");
+                        noticeTitle = "Not found on disk:\n" + missing.join("\n");
+                        refresh();
+                    }
+                };
+                reader.readAsText(file);
+            });
 
             // ---- Rafraichissement (compteurs, info-bulles, sorties) ----
             function listTitle(paths) {
@@ -1394,9 +1620,15 @@ app.registerExtension({
                 rows.audio.btn.title = listTitle(s.audios);
 
                 const total = s.images.length + s.videos.length + s.audios.length;
-                summary.textContent = total
+                summary.textContent = notice || (total
                     ? s.images.length + " image(s), " + s.videos.length + " video(s), " + s.audios.length + " audio"
-                    : "Click a button to pick references";
+                    : "Click a button to pick references");
+                summary.style.color = notice ? ORANGE : "#9fd6cf";
+                summary.title = notice ? noticeTitle : "";
+
+                // Upload orange s'il ecrasera une configuration, vert sinon.
+                uploadBtn.style.background = hasConfig(s) ? ORANGE : GREEN;
+                rootBtn.title = s.root ? "Root folder: " + s.root : "Root folder of the rushes (not set)";
 
                 applyLayout(node, s);
             }
