@@ -17,7 +17,7 @@ const LIMITS = { image: 9, video: 3, audio: 3 };
 
 // Hauteur de l'interface DOM (4 boutons + barre du bas).
 const UI_HEIGHT = 196;
-const MIN_WIDTH = 300;
+const MIN_WIDTH = 340;
 
 const svg = (body, size) =>
     '<svg viewBox="0 0 24 24" width="' + (size || 15) + '" height="' + (size || 15) +
@@ -79,7 +79,8 @@ const HELP_SECTIONS = [
         title: "What this node does",
         html: "<p>Loads the references of <b>MiniMax H3 Reference to Video</b>: " +
             "up to 9 images, 3 videos (each with or without its soundtrack) and 3 audio files. " +
-            "Wire each output to the input of the same name.</p>",
+            "Wire the outputs in order: <b>ref_image_1</b> goes to the first image input of " +
+            "MiniMax (named <b>ref_image_0</b> there), <b>ref_image_2</b> to the next one, and so on.</p>",
     },
     {
         title: "The four buttons",
@@ -158,51 +159,60 @@ function slotType(key) {
     return key.startsWith("ref_video_audio_") || key.startsWith("ref_audio_") ? "AUDIO" : "IMAGE";
 }
 
-function getLink(graph, id) {
-    if (!graph || !graph.links) return null;
-    return typeof graph.links.get === "function" ? graph.links.get(id) : graph.links[id];
+/**
+ * Aligne les sorties du noeud sur la selection, dans l'ordre de
+ * layoutKeys(). Les sorties en trop sont d'abord debranchees ; pour les
+ * autres, nom renomme et liens sont relus puis reecrits position par
+ * position, en corrigeant l'index d'origine des liens, sans jamais
+ * debrancher les noeuds en aval (debrancher retrecirait les entrees
+ * Autogrow du MiniMax).
+ *
+ * Dans le frontend actuel, les liens d'une sortie sont deduits de la
+ * liste des liens du graphe (link.origin_id / link.origin_slot) : les
+ * objets sortie restent donc a leur place, on ne fait que corriger
+ * origin_slot des liens et reecrire nom/type/etiquette par position.
+ * Ne jamais assigner output.links (obsolete : une affectation debranche).
+ */
+function outputLinksOf(node, slot) {
+    const graph = node.graph;
+    if (!graph || !graph.links) return [];
+    const all = typeof graph.links.values === "function" ? [...graph.links.values()] : Object.values(graph.links);
+    return all.filter((l) => l && l.origin_id === node.id && l.origin_slot === slot);
 }
 
-/**
- * Aligne les sorties du noeud sur la selection : les sorties en trop
- * sont debranchees puis retirees, les manquantes ajoutees, et le tout
- * remis dans l'ordre de layoutKeys(). Les sorties conservees gardent
- * leur objet (donc leurs liens et leur nom renomme) : seuls les index
- * d'origine des liens sont corriges, sans debrancher les noeuds en aval.
- */
 function applyLayout(node, state) {
     const keys = layoutKeys(state.images.length, state.videos.length, state.audios.length);
-    const outputs = node.outputs || [];
-    const same = outputs.length === keys.length && outputs.every((o, i) => o.name === keys[i]);
+    const same = node.outputs.length === keys.length && node.outputs.every((o, i) => o.name === keys[i]);
     if (!same) {
-        for (let i = outputs.length - 1; i >= 0; i--) {
-            if (!keys.includes(outputs[i].name) && outputs[i].links && outputs[i].links.length) {
-                node.disconnectOutput(i);
-            }
+        for (let i = node.outputs.length - 1; i >= 0; i--) {
+            if (!keys.includes(node.outputs[i].name) && node.isOutputConnected(i)) node.disconnectOutput(i);
         }
-        const byName = {};
-        (node.outputs || []).forEach((o) => {
-            if (keys.includes(o.name)) byName[o.name] = o;
-        });
-        for (const k of keys) {
-            if (!byName[k]) {
-                node.addOutput(k, slotType(k));
-                byName[k] = node.outputs[node.outputs.length - 1];
-            }
-        }
-        node.outputs = keys.map((k) => byName[k]);
+        // Instantane des sorties conservees : etiquette et objets lien.
+        const saved = {};
         node.outputs.forEach((o, i) => {
-            (o.links || []).forEach((id) => {
-                const link = getLink(node.graph, id);
-                if (link) link.origin_slot = i;
-            });
+            if (keys.includes(o.name)) saved[o.name] = { label: o.label, links: outputLinksOf(node, i) };
+        });
+        // Nouveaux index d'abord : ainsi, retirer les dernieres sorties ne
+        // debranche que des positions devenues vides.
+        keys.forEach((k, i) => {
+            (saved[k] ? saved[k].links : []).forEach((l) => (l.origin_slot = i));
+        });
+        while (node.outputs.length < keys.length) node.addOutput("ref_tmp", "*");
+        while (node.outputs.length > keys.length) node.removeOutput(node.outputs.length - 1);
+
+        keys.forEach((k, i) => {
+            const o = node.outputs[i];
+            o.name = k;
+            o.localized_name = k;
+            o.label = saved[k] ? saved[k].label : undefined;
         });
     }
     node.outputs.forEach((o) => {
         o.type = slotType(o.name);
     });
     const min = node.computeSize();
-    node.setSize([Math.max(node.size[0], MIN_WIDTH), Math.max(node.size[1], min[1])]);
+    // La hauteur suit le contenu (elle rapetisse quand des sorties disparaissent).
+    node.setSize([Math.max(node.size[0], MIN_WIDTH), min[1]]);
     node.setDirtyCanvas(true, true);
 }
 
@@ -508,17 +518,19 @@ function buildGallery(container, ctx) {
     card.append(header, folderRow, status, grid, footer);
 
     // ------ Selection ------
-    function list() {
-        const s = ctx.getState();
+    // getState() renvoie une copie neuve a chaque appel : toujours modifier
+    // la liste de l'objet s que l'on renvoie ensuite a setState().
+    function list(s) {
+        s = s || ctx.getState();
         return kind === "image" ? s.images : kind === "audio" ? s.audios : s.videos;
     }
     const pathOf = (item) => (kind === "video" ? item.file : item);
-    const indexOf = (path) => list().findIndex((it) => samePath(pathOf(it), path));
+    const indexOf = (path, s) => list(s).findIndex((it) => samePath(pathOf(it), path));
 
     function toggle(path) {
         const s = ctx.getState();
-        const arr = list();
-        const idx = indexOf(path);
+        const arr = list(s);
+        const idx = indexOf(path, s);
         if (idx >= 0) arr.splice(idx, 1);
         else if (arr.length < LIMITS[kind]) arr.push(kind === "video" ? { file: path, sound: defaultSound } : path);
         else return;
@@ -528,7 +540,7 @@ function buildGallery(container, ctx) {
 
     function toggleSound(path) {
         const s = ctx.getState();
-        const item = s.videos[indexOf(path)];
+        const item = s.videos[indexOf(path, s)];
         if (!item) return;
         item.sound = !item.sound;
         ctx.setState(s);
@@ -848,7 +860,7 @@ app.registerExtension({
                 rows.image.count.textContent = s.images.length + " / " + LIMITS.image;
                 rows.video.count.textContent = s.videos.length + " / " + LIMITS.video +
                     (withSound.length ? " · " + withSound.length + " 🔊" : "");
-                rows.video_audio.count.textContent = withSound.length + " 🔊 · counts as video";
+                rows.video_audio.count.textContent = withSound.length + " 🔊 = video";
                 rows.audio.count.textContent = s.audios.length + " / " + LIMITS.audio;
 
                 rows.image.btn.title = listTitle(s.images);
