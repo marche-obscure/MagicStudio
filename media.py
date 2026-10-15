@@ -144,24 +144,30 @@ def media_duration(path):
 
 
 def list_folder(folder, kind):
-    """Fichiers du type demande dans le dossier (non recursif), tries par nom."""
-    if kind not in KIND_EXTS:
+    """
+    Fichiers du dossier (non recursif), tries par nom, chacun avec sa
+    categorie ("kind"). kind = "image" / "video" / "audio" : ce type
+    seulement ; kind = "all" : tous les fichiers medias (galerie affichant
+    les autres categories pour information).
+    """
+    if kind != "all" and kind not in KIND_EXTS:
         raise ValueError("Unknown kind: %s" % kind)
     if not folder or not os.path.isdir(folder):
         raise FileNotFoundError("Folder not found: %s" % folder)
 
-    exts = KIND_EXTS[kind]
     files = []
     for name in os.listdir(folder):
         full = os.path.join(folder, name)
-        if not name.lower().endswith(exts) or not os.path.isfile(full):
+        k = kind_of(name)
+        if k is None or (kind != "all" and k != kind) or not os.path.isfile(full):
             continue
         st = os.stat(full)
         files.append({
             "name": name,
+            "kind": k,
             "size": st.st_size,
             "mtime": st.st_mtime,
-            "duration": media_duration(full) if kind != "image" else None,
+            "duration": media_duration(full) if k != "image" else None,
         })
     files.sort(key=lambda f: f["name"].lower())
     return files

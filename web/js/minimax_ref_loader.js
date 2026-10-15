@@ -142,16 +142,20 @@ const HELP_SECTIONS = [
             "<b>Subfolder</b> is a drop-down list of all its subfolders, with the number of files of " +
             "that type after each name; <b>(root folder)</b> shows the root folder itself. The " +
             iconBadge(SEARCH_ICON, VIOLET) + " of <b>Root folder</b> finds the subfolders again for the " +
-            "list, the one of <b>Subfolder</b> filters the thumbnails by name. Without a root folder " +
+            "list and shows the root folder content, the one of <b>Subfolder</b> shows the content of " +
+            "the chosen subfolder. A folder with one kind of files shows a single grid; a mixed folder " +
+            "shows a section per kind (Images, Video or Video/Audio, Audio). Only the files of the button " +
+            "that opened the gallery can be selected, the others are shown for information. Without a root folder " +
             "they are greyed out; Browse and Reload stay available.</p>" +
             "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the whole configuration (root folder, " +
             "images, videos, video sound, audio) in a .txt file, one line per output, e.g. " +
             "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
             "to it; an empty group is written <code>audio 1 : NaN</code>, a muted video " +
             "<code>video_audio 1 : NaN</code>.</p>" +
-            "<p>" + iconBadge(UPLOAD_ICON, GREEN) + " loads such a file and sets the outputs from it. " +
-            "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " when a configuration already exists: " +
-            "loading then asks a confirmation, since it overwrites the current one. Files missing on " +
+            "<p>" + iconBadge(UPLOAD_ICON, PINK) + " loads such a file and sets the outputs from it. " +
+            "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " as soon as a reference is selected (the " +
+            "root folder alone does not count): loading then asks a confirmation, since it overwrites " +
+            "the current configuration. Files missing on " +
             "disk are still loaded and reported under the buttons.</p>",
     },
     {
@@ -552,7 +556,6 @@ function buildGallery(container, ctx) {
     let sub = "";      // sous-dossier relatif a base ; "" = base elle-meme
     let subfolders = []; // [{path, count}] reperes sous base (liste deroulante)
     let scanId = 0;      // ignore les reponses d'un reperage depasse
-    let filterText = "";
 
     // En-tete : titre, compteur, fermeture.
     const header = document.createElement("div");
@@ -568,8 +571,7 @@ function buildGallery(container, ctx) {
     header.append(title, counter, closeBtn);
 
     // Ligne 1 : dossier racine + loupe (reperage des sous-dossiers), Browse, Reload.
-    // Ligne 2 : liste deroulante des sous-dossiers + loupe (filtre des miniatures).
-    // Ligne 3 (cachee par defaut) : champ du filtre.
+    // Ligne 2 : liste deroulante des sous-dossiers + loupe (affiche leur contenu).
     const makeRow = (labelText) => {
         const row = document.createElement("div");
         Object.assign(row.style, { display: "flex", gap: "6px", padding: "4px 12px", alignItems: "center" });
@@ -597,7 +599,7 @@ function buildGallery(container, ctx) {
     const baseRow = makeRow("Root folder");
     baseRow.style.paddingTop = "8px";
     const baseInput = makeField("Folder path - type, paste, or Browse");
-    const pickBtn = makeIconButton(VIOLET, SEARCH_ICON, "Find the subfolders of the root folder");
+    const pickBtn = makeIconButton(VIOLET, SEARCH_ICON, "Show the root folder content and find its subfolders");
     const browseBtn = makeIconButton(VIOLET, FOLDER_ICON, "Browse");
     const refreshBtn = makeIconButton(INACTIVE_BG, REFRESH_ICON, "Reload the folder");
     baseRow.append(baseInput, pickBtn, browseBtn, refreshBtn);
@@ -609,17 +611,11 @@ function buildGallery(container, ctx) {
         borderRadius: "10px", padding: "4px 8px", fontSize: "12px", outline: "none", boxSizing: "border-box",
         cursor: "pointer",
     });
-    const filterBtn = makeIconButton(VIOLET, SEARCH_ICON, "Filter the thumbnails by name");
+    const showBtn = makeIconButton(VIOLET, SEARCH_ICON, "Show the content of the chosen subfolder");
     // Meme largeur que Browse + Reload a droite : les deux loupes restent alignees.
     const subSpacer = document.createElement("div");
     subSpacer.style.flex = "0 0 54px";
-    subRow.append(subSelect, filterBtn, subSpacer);
-
-    const filterRow = makeRow("Filter");
-    filterRow.style.display = "none";
-    const filterInput = makeField("Filter the thumbnails by name");
-    const filterClear = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Clear the filter");
-    filterRow.append(filterInput, filterClear);
+    subRow.append(subSelect, showBtn, subSpacer);
 
     const status = document.createElement("div");
     Object.assign(status.style, { padding: "4px 12px 6px", color: "#999", minHeight: "14px" });
@@ -643,7 +639,7 @@ function buildGallery(container, ctx) {
     const doneBtn = makeTextButton("Done", PINK);
     footer.append(clearBtn, footerInfo, doneBtn);
 
-    card.append(header, baseRow, subRow, filterRow, status, grid, footer);
+    card.append(header, baseRow, subRow, status, grid, footer);
 
     /**
      * Dossier dont on affiche les miniatures : le sous-dossier choisi, ou
@@ -697,8 +693,7 @@ function buildGallery(container, ctx) {
         baseInput.value = base;
         fillSelect();
         setEnabled(pickBtn, !!base);
-        setEnabled(filterBtn, !!base);
-        if (filterBtn.disabled) showFilter(false);
+        setEnabled(showBtn, !!base);
     }
 
     /**
@@ -734,16 +729,6 @@ function buildGallery(container, ctx) {
                 setEnabled(pickBtn, !!base);
             }
         }
-    }
-
-    function showFilter(on) {
-        filterRow.style.display = on ? "flex" : "none";
-        if (!on && filterText) {
-            filterText = "";
-            filterInput.value = "";
-            render();
-        }
-        if (on) setTimeout(() => filterInput.focus(), 0);
     }
 
     /** Memorise base et sous-dossier pour ce type (base = racine : stocke ""). */
@@ -802,97 +787,141 @@ function buildGallery(container, ctx) {
         if (kind === "video") text += " · " + arr.filter((v) => v.sound).length + " 🔊";
         counter.textContent = text;
         const folder = currentFolder();
-        const elsewhere = folder ? arr.filter((it) => !files.some((f) => samePath(joinPath(folder, f.name), pathOf(it)))).length : arr.length;
+        const elsewhere = folder ? arr.filter((it) => !files.some((f) => f.kind === kind && samePath(joinPath(folder, f.name), pathOf(it)))).length : arr.length;
         footerInfo.textContent = elsewhere ? "+" + elsewhere + " selected in another folder" : "";
     }
 
+    // Ordre et titres des sections quand le dossier melange les categories.
+    const SECTIONS = [
+        { kind: "image", title: "Images" },
+        { kind: "video", title: "Video or Video/Audio" },
+        { kind: "audio", title: "Audio" },
+    ];
+
+    function sectionHeader(text) {
+        const h = document.createElement("div");
+        h.textContent = text;
+        Object.assign(h.style, {
+            gridColumn: "1 / -1", color: TITLE_COLOR, fontWeight: "bold", fontSize: "12px",
+            padding: "6px 2px 2px", borderBottom: "1px solid #333", marginBottom: "2px",
+        });
+        return h;
+    }
+
+    /**
+     * Miniature d'un fichier. Seuls les fichiers du type du bouton qui a
+     * ouvert la galerie se selectionnent ; les autres sont affiches pour
+     * information (meme aspect, curseur et info-bulle differents).
+     */
+    function makeTile(f, folder, full) {
+        const path = joinPath(folder, f.name);
+        const own = f.kind === kind;
+        const idx = own ? indexOf(path) : -1;
+        const selected = idx >= 0;
+        const selectable = own && (selected || !full);
+
+        const tile = document.createElement("div");
+        tile.title = own ? f.name : f.name + "\n(" + f.kind + ": not selectable here, use the " +
+            (f.kind === "image" ? "Images" : f.kind === "video" ? "Video or Video/Audio" : "Audio") + " button)";
+        Object.assign(tile.style, {
+            position: "relative", background: "#151515", borderRadius: "6px", overflow: "hidden",
+            cursor: selectable ? "pointer" : own ? "not-allowed" : "default",
+            border: "2px solid " + (selected ? PINK : "#2c2c2c"),
+            opacity: own && !selectable ? "0.35" : "1",
+        });
+
+        const thumb = document.createElement("div");
+        Object.assign(thumb.style, {
+            height: "84px", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d0d0d",
+        });
+        if (f.kind === "audio") {
+            thumb.innerHTML = svg(
+                '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle>' +
+                '<circle cx="18" cy="16" r="3"></circle>', 34);
+            thumb.style.opacity = "0.7";
+        } else {
+            const img = document.createElement("img");
+            img.loading = "lazy";
+            img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(folder) + "&file=" +
+                encodeURIComponent(f.name) + "&mt=" + Math.floor(f.mtime || 0);
+            Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
+            thumb.appendChild(img);
+        }
+
+        const name = document.createElement("div");
+        name.textContent = f.name;
+        Object.assign(name.style, {
+            padding: "3px 5px", fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden",
+            textOverflow: "ellipsis", color: selected ? "#fff" : "#bbb",
+        });
+        tile.append(thumb, name);
+
+        if (f.duration != null) {
+            const dur = document.createElement("div");
+            dur.textContent = formatDuration(f.duration);
+            Object.assign(dur.style, {
+                position: "absolute", right: "4px", bottom: "22px", background: "rgba(0,0,0,0.7)",
+                padding: "1px 5px", borderRadius: "4px", fontSize: "10px",
+            });
+            tile.appendChild(dur);
+        }
+
+        if (selected) {
+            const badge = document.createElement("div");
+            badge.textContent = String(idx + 1);
+            Object.assign(badge.style, {
+                position: "absolute", left: "4px", top: "4px", minWidth: "20px", height: "20px",
+                borderRadius: "10px", background: PINK, color: "white", fontWeight: "bold",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px",
+                boxShadow: "0 0 6px rgba(211,95,168,0.8)",
+            });
+            tile.appendChild(badge);
+
+            if (kind === "video") {
+                const on = list()[idx].sound;
+                const snd = makeIconButton(on ? GREEN : INACTIVE_BG, on ? SPEAKER_ICON : MUTE_ICON,
+                    on ? "Soundtrack kept (click to mute)" : "Muted (click to keep the soundtrack)");
+                Object.assign(snd.style, { position: "absolute", right: "4px", top: "4px" });
+                snd.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    toggleSound(path);
+                });
+                tile.appendChild(snd);
+            }
+        }
+
+        if (own) tile.addEventListener("click", () => toggle(path));
+        return tile;
+    }
+
+    /**
+     * Une seule categorie dans le dossier : une grille simple. Plusieurs :
+     * une section par categorie (Images, Video ou Video/Audio, Audio).
+     */
     function render() {
         updateCounters();
         grid.innerHTML = "";
         const folder = currentFolder();
         const full = list().length >= LIMITS[kind];
-        const needle = filterText.trim().toLowerCase();
-        const shown = needle ? files.filter((f) => f.name.toLowerCase().includes(needle)) : files;
-        if (needle && files.length) {
-            status.textContent = shown.length + " / " + files.length + " file(s) matching \"" + filterText.trim() + "\"";
+        const present = SECTIONS.filter((sec) => files.some((f) => f.kind === sec.kind));
+        for (const sec of present) {
+            const group = files.filter((f) => f.kind === sec.kind);
+            if (present.length > 1) {
+                grid.appendChild(sectionHeader(sec.title + "  ·  " + group.length +
+                    (sec.kind === kind ? "" : "  (for information)")));
+            }
+            group.forEach((f) => grid.appendChild(makeTile(f, folder, full)));
         }
-        for (const f of shown) {
-            const path = joinPath(folder, f.name);
-            const idx = indexOf(path);
-            const selected = idx >= 0;
+    }
 
-            const tile = document.createElement("div");
-            tile.title = f.name;
-            Object.assign(tile.style, {
-                position: "relative", background: "#151515", borderRadius: "6px", overflow: "hidden",
-                cursor: selected || !full ? "pointer" : "not-allowed",
-                border: "2px solid " + (selected ? PINK : "#2c2c2c"),
-                opacity: selected || !full ? "1" : "0.35",
-            });
-
-            const thumb = document.createElement("div");
-            Object.assign(thumb.style, {
-                height: "84px", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d0d0d",
-            });
-            if (kind === "audio") {
-                thumb.innerHTML = svg(
-                    '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle>' +
-                    '<circle cx="18" cy="16" r="3"></circle>', 34);
-                thumb.style.opacity = "0.7";
-            } else {
-                const img = document.createElement("img");
-                img.loading = "lazy";
-                img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(folder) + "&file=" +
-                    encodeURIComponent(f.name) + "&mt=" + Math.floor(f.mtime || 0);
-                Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
-                thumb.appendChild(img);
-            }
-
-            const name = document.createElement("div");
-            name.textContent = f.name;
-            Object.assign(name.style, {
-                padding: "3px 5px", fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden",
-                textOverflow: "ellipsis", color: selected ? "#fff" : "#bbb",
-            });
-            tile.append(thumb, name);
-
-            if (f.duration != null) {
-                const dur = document.createElement("div");
-                dur.textContent = formatDuration(f.duration);
-                Object.assign(dur.style, {
-                    position: "absolute", right: "4px", bottom: "22px", background: "rgba(0,0,0,0.7)",
-                    padding: "1px 5px", borderRadius: "4px", fontSize: "10px",
-                });
-                tile.appendChild(dur);
-            }
-
-            if (selected) {
-                const badge = document.createElement("div");
-                badge.textContent = String(idx + 1);
-                Object.assign(badge.style, {
-                    position: "absolute", left: "4px", top: "4px", minWidth: "20px", height: "20px",
-                    borderRadius: "10px", background: PINK, color: "white", fontWeight: "bold",
-                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px",
-                    boxShadow: "0 0 6px rgba(211,95,168,0.8)",
-                });
-                tile.appendChild(badge);
-
-                if (kind === "video") {
-                    const on = list()[idx].sound;
-                    const snd = makeIconButton(on ? GREEN : INACTIVE_BG, on ? SPEAKER_ICON : MUTE_ICON,
-                        on ? "Soundtrack kept (click to mute)" : "Muted (click to keep the soundtrack)");
-                    Object.assign(snd.style, { position: "absolute", right: "4px", top: "4px" });
-                    snd.addEventListener("click", (e) => {
-                        e.stopPropagation();
-                        toggleSound(path);
-                    });
-                    tile.appendChild(snd);
-                }
-            }
-
-            tile.addEventListener("click", () => toggle(path));
-            grid.appendChild(tile);
-        }
+    function describeFiles() {
+        if (!files.length) return "No image, video or audio file in this folder.";
+        const parts = SECTIONS.map((sec) => {
+            const n = files.filter((f) => f.kind === sec.kind).length;
+            return n ? n + " " + sec.kind + (n > 1 && sec.kind !== "audio" ? "s" : "") : null;
+        }).filter(Boolean);
+        const own = files.filter((f) => f.kind === kind).length;
+        return parts.join(", ") + (own ? "" : "  (no " + kind + " file to select here)");
     }
 
     async function loadFolder() {
@@ -906,9 +935,10 @@ function buildGallery(container, ctx) {
         status.textContent = "Loading...";
         render();
         try {
-            const data = await apiGet("/mmrefloader/list?path=" + encodeURIComponent(folder) + "&kind=" + kind);
+            // Tous les types : les autres categories sont montrees pour information.
+            const data = await apiGet("/mmrefloader/list?path=" + encodeURIComponent(folder) + "&kind=all");
             files = data.files || [];
-            status.textContent = files.length ? files.length + " file(s)" : "No " + kind + " file in this folder.";
+            status.textContent = describeFiles();
         } catch (e) {
             status.textContent = e.message;
         }
@@ -950,7 +980,7 @@ function buildGallery(container, ctx) {
             close();
             return;
         }
-        if (e.target === baseInput || e.target === filterInput || e.target === subSelect) {
+        if (e.target === baseInput || e.target === subSelect) {
             e.stopImmediatePropagation();
             if (e.key === "Enter" && e.target === baseInput) {
                 e.preventDefault();
@@ -969,25 +999,29 @@ function buildGallery(container, ctx) {
     overlay.addEventListener("mousedown", close);
     browseBtn.addEventListener("click", browse);
     refreshBtn.addEventListener("click", reload);
-    pickBtn.addEventListener("click", () => scanSubfolders(true));
+    // Loupe du Root folder : affiche son contenu et repere ses sous-dossiers.
+    pickBtn.addEventListener("click", async () => {
+        if (sub) {
+            sub = "";
+            saveNav();
+            fillSelect();
+        }
+        await loadFolder();
+        scanSubfolders(true);
+    });
+    // Loupe du Subfolder : affiche le contenu du sous-dossier choisi dans la liste.
+    showBtn.addEventListener("click", () => {
+        if (subSelect.value !== sub) {
+            sub = subSelect.value;
+            saveNav();
+        }
+        loadFolder();
+    });
     // Choix dans la liste : memorise et affiche ce sous-dossier ("" = Root folder).
     subSelect.addEventListener("change", () => {
         sub = subSelect.value;
         saveNav();
         loadFolder();
-    });
-    filterBtn.addEventListener("click", () => showFilter(filterRow.style.display === "none"));
-    filterInput.addEventListener("input", () => {
-        filterText = filterInput.value;
-        if (!filterText.trim()) status.textContent = files.length + " file(s)";
-        render();
-    });
-    filterClear.addEventListener("click", () => {
-        filterInput.value = "";
-        filterText = "";
-        status.textContent = files.length + " file(s)";
-        render();
-        filterInput.focus();
     });
     clearBtn.addEventListener("click", () => {
         const s = ctx.getState();
@@ -1013,9 +1047,6 @@ function buildGallery(container, ctx) {
             sub = base ? st.subs[kind] || "" : "";
             subfolders = [];
             files = [];
-            filterText = "";
-            filterInput.value = "";
-            filterRow.style.display = "none";
             updateNav();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
@@ -1721,7 +1752,7 @@ app.registerExtension({
             // Dossier racine, sauvegarde et chargement de la configuration.
             const rootBtn = makeIconButton(VIOLET, GEAR_ICON, "Root folder of the rushes");
             const downloadBtn = makeIconButton(PINK, DOWNLOAD_ICON, "Save the configuration (.txt)");
-            const uploadBtn = makeIconButton(GREEN, UPLOAD_ICON, "Load a configuration (.txt)");
+            const uploadBtn = makeIconButton(PINK, UPLOAD_ICON, "Load a configuration (.txt)");
             [rootBtn, downloadBtn, uploadBtn].forEach((b) => {
                 b.style.width = "22px";
                 b.style.height = "22px";
@@ -1743,7 +1774,9 @@ app.registerExtension({
             rootBtn.addEventListener("click", () => rootDialog.open());
             node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help];
 
-            const hasConfig = (s) => !!(s.root || s.images.length || s.videos.length || s.audios.length);
+            // Une configuration "existe" des qu'une reference est selectionnee ;
+            // le dossier racine seul ne compte pas.
+            const hasConfig = (s) => !!(s.images.length || s.videos.length || s.audios.length);
 
             // Download : fichier texte genere dans le navigateur.
             downloadBtn.addEventListener("click", () => {
@@ -1768,7 +1801,7 @@ app.registerExtension({
                 const n = s.images.length + s.videos.length + s.audios.length;
                 clearConfirm.ask(
                     "<b>Overwrite the current configuration?</b><br>Loading a file replaces the root " +
-                    "folder and all the references (" + n + " now)." +
+                    "folder and all the references (" + n + " selected now)." +
                     '<div style="color:#999;margin-top:8px">Save it first with the download button ' +
                     "if you want to keep it.</div>",
                     "Overwrite", () => fileInput.click());
@@ -1854,8 +1887,8 @@ app.registerExtension({
                 summary.style.color = notice ? ORANGE : "#9fd6cf";
                 summary.title = notice ? noticeTitle : "";
 
-                // Upload orange s'il ecrasera une configuration, vert sinon.
-                uploadBtn.style.background = hasConfig(s) ? ORANGE : GREEN;
+                // Upload orange s'il ecrasera des references, couleur standard sinon.
+                uploadBtn.style.background = hasConfig(s) ? ORANGE : PINK;
                 rootBtn.title = s.root ? "Root folder: " + s.root : "Root folder of the rushes (not set)";
 
                 applyLayout(node, s);

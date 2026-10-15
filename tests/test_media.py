@@ -142,6 +142,18 @@ class ListFolderTests(TmpDirTest):
         with self.assertRaises(FileNotFoundError):
             media.list_folder(self.p("nope"), "image")
 
+    def test_all_kinds_are_listed_with_their_kind(self):
+        # Galerie : tous les fichiers medias du dossier, chacun avec sa categorie.
+        Image.new("RGB", (8, 8)).save(self.p("a.png"))
+        make_video(self.p("v.mp4"), 0.3, 24, with_audio=False)
+        make_audio(self.p("s.wav"), 0.3)
+        open(self.p("notes.txt"), "w").close()
+        files = media.list_folder(self.dir, "all")
+        self.assertEqual([(f["name"], f["kind"]) for f in files],
+                         [("a.png", "image"), ("s.wav", "audio"), ("v.mp4", "video")])
+        self.assertIsNone(files[0]["duration"])
+        self.assertIsNotNone(files[2]["duration"])
+
 
 class SubfoldersTests(TmpDirTest):
     def test_lists_every_subfolder_with_its_count_of_the_kind(self):
