@@ -187,9 +187,10 @@ const HELP_SECTIONS = [
             "Without a root folder " +
             "they are greyed out; Browse and Reload stay available; Reload goes back to the root folder of the gear button when the gallery shows another folder.</p>" +
             "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the configuration of the mode shown in its " +
-            "own .txt file (one file per mode, never mixed): <b>REF2VA_minimax_config.txt</b> with the " +
-            "root folder and the four lists, or <b>FL2VA_minimax_config.txt</b> with the root folder and " +
-            "the two frames. The first line is a header with the file type " +
+            "own .txt file (one file per mode, never mixed): <b>REF2VA_minimax_config_yyyyMMdd-HHmmss.txt</b> " +
+            "with the root folder and the four lists, or <b>FL2VA_minimax_config_yyyyMMdd-HHmmss.txt</b> with " +
+            "the root folder and the two frames (date and time in the name: a new save never overwrites " +
+            "an older one). The first line is a header with the file type " +
             "(<code># MiniMax H3 Reference Loader - REF2VA configuration</code>), then one line per output, e.g. " +
             "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
             "to it; an empty group is written with its first number and NaN, e.g. " +
@@ -1238,6 +1239,14 @@ function buildGallery(container, ctx) {
     };
 }
 
+/** Date et heure locales au format yyyyMMdd-HHmmss (noms de sauvegarde). */
+function timestamp(d) {
+    d = d || new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" +
+        p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
 function escapeHtml(text) {
     return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -2047,8 +2056,9 @@ app.registerExtension({
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                // Nom prefixe par le mode : REF2VA_... ou FL2VA_...
-                a.download = (s.mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config.txt";
+                // Nom prefixe par le mode et suffixe par la date / heure locales
+                // (yyyyMMdd-HHmmss) : une nouvelle sauvegarde n'ecrase pas la precedente.
+                a.download = (s.mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config_" + timestamp() + ".txt";
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
