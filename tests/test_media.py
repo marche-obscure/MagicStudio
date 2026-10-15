@@ -143,6 +143,27 @@ class ListFolderTests(TmpDirTest):
             media.list_folder(self.p("nope"), "image")
 
 
+class SubfoldersTests(TmpDirTest):
+    def test_lists_subfolders_with_files_of_the_kind(self):
+        os.makedirs(self.p("images/sdb"))
+        os.makedirs(self.p("images/vide"))
+        os.makedirs(self.p("videos"))
+        os.makedirs(self.p(".cache"))
+        Image.new("RGB", (8, 8)).save(self.p("racine.png"))
+        Image.new("RGB", (8, 8)).save(self.p("images/sdb/a.png"))
+        Image.new("RGB", (8, 8)).save(self.p("images/sdb/b.jpg"))
+        Image.new("RGB", (8, 8)).save(self.p(".cache/c.png"))
+        open(self.p("images/vide/notes.txt"), "w").close()
+        make_audio(self.p("videos/son.wav"), 0.2)
+        subs = media.list_subfolders(self.dir, "image")
+        self.assertEqual(subs, [{"path": "", "count": 1}, {"path": "images/sdb", "count": 2}])
+        self.assertEqual(media.list_subfolders(self.dir, "audio"), [{"path": "videos", "count": 1}])
+
+    def test_missing_root_raises(self):
+        with self.assertRaises(FileNotFoundError):
+            media.list_subfolders(self.p("nope"), "image")
+
+
 class LoadImageTests(TmpDirTest):
     def test_image_tensor_is_bhwc_float(self):
         Image.new("RGBA", (10, 6), (255, 0, 0, 128)).save(self.p("r.png"))

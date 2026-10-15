@@ -51,6 +51,19 @@ try:
             return web.json_response({"error": str(e)}, status=500)
         return web.json_response({"files": files})
 
+    @routes.get("/mmrefloader/subfolders")
+    async def mmrefloader_subfolders(request):
+        """Sous-dossiers de 'path' contenant des fichiers du type 'kind' (fenetre de choix)."""
+        folder = request.rel_url.query.get("path", "").strip()
+        kind = request.rel_url.query.get("kind", "").strip()
+        try:
+            subs = await _in_executor(media.list_subfolders, folder, kind)
+        except FileNotFoundError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"subfolders": subs})
+
     @routes.get("/mmrefloader/thumb")
     async def mmrefloader_thumb(request):
         """Miniature JPEG d'un fichier du dossier (nom simple, sans chemin)."""

@@ -213,6 +213,36 @@ def media_info(path):
     return info
 
 
+# Garde-fou : nombre de dossiers parcourus au plus sous une racine.
+MAX_SCAN_DIRS = 5000
+
+
+def list_subfolders(root, kind):
+    """
+    Sous-dossiers de root (tous niveaux) contenant directement au moins un
+    fichier du type demande, chemins relatifs avec "/" ; "" = la racine
+    elle-meme si elle contient de tels fichiers. Les dossiers caches
+    (commencant par ".") et __pycache__ sont ignores.
+    """
+    if kind not in KIND_EXTS:
+        raise ValueError("Unknown kind: %s" % kind)
+    if not root or not os.path.isdir(root):
+        raise FileNotFoundError("Folder not found: %s" % root)
+
+    exts = KIND_EXTS[kind]
+    out = []
+    for n, (cur, dirs, files) in enumerate(os.walk(root)):
+        if n >= MAX_SCAN_DIRS:
+            break
+        dirs[:] = sorted((d for d in dirs if not d.startswith(".") and d != "__pycache__"), key=str.lower)
+        count = sum(1 for f in files if f.lower().endswith(exts))
+        if count:
+            rel = os.path.relpath(cur, root)
+            out.append({"path": "" if rel == "." else rel.replace(os.sep, "/"), "count": count})
+    out.sort(key=lambda e: e["path"].lower())
+    return out
+
+
 def _jpeg_bytes(img, size):
     img = img.convert("RGB")
     img.thumbnail((size, size))

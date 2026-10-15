@@ -62,6 +62,8 @@ const CLOSE_ICON = svg(
     '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>', 14);
 const EYE_ICON = svg(
     '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>', 13);
+const SEARCH_ICON = svg(
+    '<circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>', 13);
 const GEAR_ICON = svg(
     '<circle cx="12" cy="12" r="3"></circle>' +
     '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>', 13);
@@ -135,7 +137,12 @@ const HELP_SECTIONS = [
     {
         title: "Root folder and configuration",
         html: "<p>" + iconBadge(GEAR_ICON, VIOLET) + " sets the <b>root folder</b> of your rushes: " +
-            "galleries without their own folder open there.</p>" +
+            "galleries open on it.</p>" +
+            "<p>In a gallery, <b>Root folder</b> is prefilled with it; when no subfolder is chosen yet, " +
+            "a window lists the subfolders holding files of that type (and <b>(root)</b>), with a search. " +
+            "The " + iconBadge(SEARCH_ICON, VIOLET) + " of <b>Root folder</b> opens that window again, " +
+            "the one of <b>Subfolder</b> filters the thumbnails by name; they are greyed out without a " +
+            "root folder or a chosen subfolder. Browse and Reload stay available.</p>" +
             "<p>" + iconBadge(DOWNLOAD_ICON, PINK) + " saves the whole configuration (root folder, " +
             "images, videos, video sound, audio) in a .txt file, one line per output, e.g. " +
             "<code>image 1 : images\\a.png</code>. Paths under the root folder are written relative " +
@@ -163,7 +170,13 @@ const HELP_SECTIONS = [
 // Etat et disposition des sorties
 // --------------------------------------------------------------------
 function emptyState() {
-    return { root: "", folders: { image: "", video: "", audio: "" }, images: [], videos: [], audios: [] };
+    // folders[kind] : dossier de base propre a une galerie ("" = dossier racine) ;
+    // subs[kind] : sous-dossier choisi, relatif a la base ("" = la base elle-meme,
+    // null = pas encore choisi : la fenetre de choix s'ouvre a l'ouverture).
+    return {
+        root: "", folders: { image: "", video: "", audio: "" }, subs: { image: null, video: null, audio: null },
+        images: [], videos: [], audios: [],
+    };
 }
 
 function parseState(raw) {
@@ -178,6 +191,8 @@ function parseState(raw) {
     const f = data.folders || {};
     for (const k of ["image", "video", "audio"]) s.folders[k] = typeof f[k] === "string" ? f[k] : "";
     s.root = typeof data.root === "string" ? data.root : "";
+    const sb = data.subs || {};
+    for (const k of ["image", "video", "audio"]) s.subs[k] = typeof sb[k] === "string" ? sb[k] : null;
     s.images = (Array.isArray(data.images) ? data.images : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.image);
     s.audios = (Array.isArray(data.audios) ? data.audios : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.audio);
     s.videos = (Array.isArray(data.videos) ? data.videos : [])
@@ -185,6 +200,17 @@ function parseState(raw) {
         .map((v) => ({ file: v.file, sound: !!v.sound }))
         .slice(0, LIMITS.video);
     return s;
+}
+
+/**
+ * Le dossier racine change : les sous-dossiers choisis relativement a lui
+ * (galeries sans dossier propre) ne sont plus valables, la fenetre de
+ * choix se rouvrira.
+ */
+function resetRootSubs(s) {
+    for (const k of ["image", "video", "audio"]) {
+        if (!s.folders[k]) s.subs[k] = null;
+    }
 }
 
 /** Doit rester identique a media.layout_keys() cote Python. */
@@ -509,6 +535,163 @@ function buildHelpOverlay(container) {
 }
 
 // --------------------------------------------------------------------
+// Fenetre de choix du sous-dossier (centree sur la galerie)
+// --------------------------------------------------------------------
+/**
+ * Liste les sous-dossiers du dossier racine qui contiennent des fichiers
+ * du type de la galerie (tous niveaux, "(root)" pour la racine elle-meme),
+ * avec une zone de recherche par nom. open(base, kind, onChoose) ;
+ * un clic sur une ligne appelle onChoose(cheminRelatif) puis ferme.
+ */
+function buildSubfolderPicker(anchor) {
+    const overlay = document.createElement("div");
+    Object.assign(overlay.style, {
+        position: "fixed", inset: "0", background: "transparent", zIndex: "10001", display: "none",
+    });
+    const card = document.createElement("div");
+    Object.assign(card.style, {
+        position: "fixed", width: "min(440px, 90vw)", height: "min(420px, 76vh)", display: "flex",
+        flexDirection: "column", background: "#1e1e1e", color: "#ddd", border: "1px solid " + VIOLET,
+        borderRadius: "10px", boxShadow: "0 8px 28px rgba(0,0,0,0.7)", fontFamily: "sans-serif",
+        fontSize: "12px", boxSizing: "border-box", overflow: "hidden",
+    });
+    card.addEventListener("mousedown", (e) => e.stopPropagation());
+
+    const head = document.createElement("div");
+    Object.assign(head.style, { padding: "10px 12px 6px" });
+    const title = document.createElement("div");
+    title.textContent = "Choose a subfolder";
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR });
+    const where = document.createElement("div");
+    Object.assign(where.style, {
+        color: "#999", fontSize: "11px", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden",
+        textOverflow: "ellipsis",
+    });
+    head.append(title, where);
+
+    const search = document.createElement("input");
+    search.type = "text";
+    search.placeholder = "Search a folder by name";
+    Object.assign(search.style, {
+        margin: "0 12px 6px", background: "#111", color: "#ddd", border: "1px solid #0c3833",
+        borderRadius: "10px", padding: "5px 10px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+        flex: "0 0 auto",
+    });
+
+    const listEl = document.createElement("div");
+    Object.assign(listEl.style, { flex: "1", overflowX: "hidden", overflowY: "auto", padding: "0 8px" });
+
+    const foot = document.createElement("div");
+    Object.assign(foot.style, { display: "flex", justifyContent: "flex-end", padding: "8px 12px", borderTop: "1px solid #333" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    foot.appendChild(cancelBtn);
+
+    card.append(head, search, listEl, foot);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    let entries = [];
+    let onChoose = null;
+    let message = "";
+
+    function renderList() {
+        listEl.innerHTML = "";
+        if (message) {
+            const m = document.createElement("div");
+            m.textContent = message;
+            Object.assign(m.style, { color: "#999", padding: "10px 4px" });
+            listEl.appendChild(m);
+            return;
+        }
+        const needle = search.value.trim().toLowerCase();
+        const shown = needle ? entries.filter((e) => e.path.toLowerCase().includes(needle)) : entries;
+        if (!shown.length) {
+            const m = document.createElement("div");
+            m.textContent = "No folder matches.";
+            Object.assign(m.style, { color: "#999", padding: "10px 4px" });
+            listEl.appendChild(m);
+        }
+        for (const e of shown) {
+            const row = document.createElement("div");
+            row.title = e.path || "(root)";
+            Object.assign(row.style, {
+                display: "flex", gap: "8px", alignItems: "center", padding: "5px 6px", borderRadius: "6px",
+                cursor: "pointer",
+            });
+            row.addEventListener("mouseenter", () => (row.style.background = "#2a2a3d"));
+            row.addEventListener("mouseleave", () => (row.style.background = "transparent"));
+            const icon = document.createElement("span");
+            icon.innerHTML = FOLDER_ICON;
+            icon.style.flex = "0 0 auto";
+            const name = document.createElement("span");
+            name.textContent = e.path || "(root)";
+            Object.assign(name.style, {
+                flex: "1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                color: e.path ? "#ddd" : "#9fd6cf",
+            });
+            const count = document.createElement("span");
+            count.textContent = e.count + " file" + (e.count > 1 ? "s" : "");
+            Object.assign(count.style, { color: "#888", flex: "0 0 auto" });
+            row.append(icon, name, count);
+            row.addEventListener("click", () => {
+                const cb = onChoose;
+                close();
+                if (cb) cb(e.path);
+            });
+            listEl.appendChild(row);
+        }
+    }
+
+    function place() {
+        let r = anchor.getBoundingClientRect();
+        if (!r.width) r = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+        card.style.left = Math.max(8, r.left + (r.width - card.offsetWidth) / 2) + "px";
+        card.style.top = Math.max(8, r.top + (r.height - card.offsetHeight) / 2) + "px";
+    }
+
+    async function open(base, kind, callback) {
+        onChoose = callback;
+        where.textContent = base;
+        where.title = base;
+        search.value = "";
+        entries = [];
+        message = "Reading the folder...";
+        overlay.style.display = "block";
+        place();
+        renderList();
+        setTimeout(() => search.focus(), 0);
+        try {
+            const data = await apiGet("/mmrefloader/subfolders?path=" + encodeURIComponent(base) + "&kind=" + kind);
+            entries = data.subfolders || [];
+            message = entries.length ? "" : "No " + kind + " file in this folder or its subfolders.";
+        } catch (e) {
+            message = e.message;
+        }
+        renderList();
+    }
+
+    function close() {
+        overlay.style.display = "none";
+        onChoose = null;
+    }
+
+    search.addEventListener("input", renderList);
+    cancelBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        open,
+        close,
+        isOpen: () => overlay.style.display !== "none",
+        ownsTarget: (t) => t === search,
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
 // Galerie de selection (une seule fenetre, reutilisee pour les 3 types)
 // --------------------------------------------------------------------
 function buildGallery(container, ctx) {
@@ -521,6 +704,9 @@ function buildGallery(container, ctx) {
     let kind = "image";
     let defaultSound = false;
     let files = [];
+    let base = "";     // champ Root folder (dossier racine, ou dossier propre a la galerie)
+    let sub = null;    // sous-dossier relatif a base ; "" = base elle-meme ; null = pas choisi
+    let filterText = "";
 
     // En-tete : titre, compteur, fermeture.
     const header = document.createElement("div");
@@ -535,22 +721,58 @@ function buildGallery(container, ctx) {
     const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
     header.append(title, counter, closeBtn);
 
-    // Dossier : champ, Browse, actualiser.
-    const folderRow = document.createElement("div");
-    Object.assign(folderRow.style, { display: "flex", gap: "6px", padding: "8px 12px", alignItems: "center" });
-    const folderInput = document.createElement("input");
-    folderInput.type = "text";
-    folderInput.placeholder = "Folder path - type, paste, or Browse";
-    Object.assign(folderInput.style, {
-        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833",
-        borderRadius: "10px", padding: "5px 10px", fontSize: "12px", outline: "none", boxSizing: "border-box",
-    });
+    // Ligne 1 : dossier racine + loupe (choix du sous-dossier), Browse, Reload.
+    // Ligne 2 : sous-dossier choisi + loupe (filtre des miniatures par nom).
+    // Ligne 3 (cachee par defaut) : champ du filtre.
+    const makeRow = (labelText) => {
+        const row = document.createElement("div");
+        Object.assign(row.style, { display: "flex", gap: "6px", padding: "4px 12px", alignItems: "center" });
+        if (labelText) {
+            const label = document.createElement("div");
+            label.textContent = labelText;
+            Object.assign(label.style, { flex: "0 0 70px", color: "#9fd6cf", fontSize: "11px" });
+            row.appendChild(label);
+        }
+        return row;
+    };
+    const makeField = (placeholder, readOnly) => {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = placeholder;
+        input.readOnly = !!readOnly;
+        Object.assign(input.style, {
+            flex: "1", minWidth: "0", background: "#111", color: readOnly ? "#9fd6cf" : "#ddd",
+            border: "1px solid #0c3833", borderRadius: "10px", padding: "5px 10px", fontSize: "12px",
+            outline: "none", boxSizing: "border-box", cursor: readOnly ? "default" : "text",
+        });
+        return input;
+    };
+
+    const baseRow = makeRow("Root folder");
+    baseRow.style.paddingTop = "8px";
+    const baseInput = makeField("Folder path - type, paste, or Browse");
+    const pickBtn = makeIconButton(VIOLET, SEARCH_ICON, "Choose a subfolder");
     const browseBtn = makeIconButton(VIOLET, FOLDER_ICON, "Browse");
     const refreshBtn = makeIconButton(INACTIVE_BG, REFRESH_ICON, "Reload the folder");
-    folderRow.append(folderInput, browseBtn, refreshBtn);
+    baseRow.append(baseInput, pickBtn, browseBtn, refreshBtn);
+
+    const subRow = makeRow("Subfolder");
+    const subInput = makeField("Choose a subfolder with the magnifier above", true);
+    const filterBtn = makeIconButton(VIOLET, SEARCH_ICON, "Filter the thumbnails by name");
+    // Meme largeur que Browse + Reload a droite : les deux loupes restent alignees.
+    const subSpacer = document.createElement("div");
+    subSpacer.style.flex = "0 0 54px";
+    subRow.append(subInput, filterBtn, subSpacer);
+
+    const filterRow = makeRow("");
+    filterRow.style.display = "none";
+    filterRow.style.paddingLeft = "88px";
+    const filterInput = makeField("Filter the thumbnails by name");
+    const filterClear = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Clear the filter");
+    filterRow.append(filterInput, filterClear);
 
     const status = document.createElement("div");
-    Object.assign(status.style, { padding: "0 12px 6px", color: "#999", minHeight: "14px" });
+    Object.assign(status.style, { padding: "4px 12px 6px", color: "#999", minHeight: "14px" });
 
     // Grille de miniatures.
     const grid = document.createElement("div");
@@ -571,7 +793,71 @@ function buildGallery(container, ctx) {
     const doneBtn = makeTextButton("Done", PINK);
     footer.append(clearBtn, footerInfo, doneBtn);
 
-    card.append(header, folderRow, status, grid, footer);
+    card.append(header, baseRow, subRow, filterRow, status, grid, footer);
+
+    const picker = buildSubfolderPicker(card);
+
+    /** Dossier dont on affiche les miniatures ("" tant que rien n'est choisi). */
+    function currentFolder() {
+        if (!base || sub === null) return "";
+        if (!sub) return base;
+        return joinPath(base, base.includes("\\") ? sub.replace(/\//g, "\\") : sub);
+    }
+
+    /** Loupes grisees et inactives sans dossier racine / sans sous-dossier. */
+    function setEnabled(btn, on) {
+        btn.disabled = !on;
+        btn.style.background = on ? VIOLET : INACTIVE_BG;
+        btn.style.opacity = on ? "1" : "0.45";
+        btn.style.cursor = on ? "pointer" : "default";
+    }
+    function updateNav() {
+        baseInput.value = base;
+        subInput.value = sub === null ? "" : sub || "(root)";
+        setEnabled(pickBtn, !!base);
+        setEnabled(filterBtn, !!base && sub !== null);
+        if (filterBtn.disabled) showFilter(false);
+    }
+
+    function showFilter(on) {
+        filterRow.style.display = on ? "flex" : "none";
+        if (!on && filterText) {
+            filterText = "";
+            filterInput.value = "";
+            render();
+        }
+        if (on) setTimeout(() => filterInput.focus(), 0);
+    }
+
+    /** Memorise base et sous-dossier pour ce type (base = racine : stocke ""). */
+    function saveNav() {
+        const s = ctx.getState();
+        s.folders[kind] = base && base !== s.root ? base : "";
+        s.subs[kind] = sub;
+        ctx.setState(s);
+    }
+
+    /** Nouveau dossier racine pour cette galerie : il faut rechoisir le sous-dossier. */
+    function setBase(value) {
+        base = value.trim();
+        sub = null;
+        files = [];
+        saveNav();
+        updateNav();
+        render();
+        if (base) openPicker();
+        else status.textContent = "Set a root folder (gear button of the node), type a path, or Browse.";
+    }
+
+    function openPicker() {
+        if (!base) return;
+        picker.open(base, kind, (choice) => {
+            sub = choice;
+            saveNav();
+            updateNav();
+            loadFolder();
+        });
+    }
 
     // ------ Selection ------
     // getState() renvoie une copie neuve a chaque appel : toujours modifier
@@ -609,7 +895,7 @@ function buildGallery(container, ctx) {
         let text = arr.length + " / " + LIMITS[kind] + " selected";
         if (kind === "video") text += " · " + arr.filter((v) => v.sound).length + " 🔊";
         counter.textContent = text;
-        const folder = folderInput.value.trim();
+        const folder = currentFolder();
         const elsewhere = folder ? arr.filter((it) => !files.some((f) => samePath(joinPath(folder, f.name), pathOf(it)))).length : arr.length;
         footerInfo.textContent = elsewhere ? "+" + elsewhere + " selected in another folder" : "";
     }
@@ -617,9 +903,14 @@ function buildGallery(container, ctx) {
     function render() {
         updateCounters();
         grid.innerHTML = "";
-        const folder = folderInput.value.trim();
+        const folder = currentFolder();
         const full = list().length >= LIMITS[kind];
-        for (const f of files) {
+        const needle = filterText.trim().toLowerCase();
+        const shown = needle ? files.filter((f) => f.name.toLowerCase().includes(needle)) : files;
+        if (needle && files.length) {
+            status.textContent = shown.length + " / " + files.length + " file(s) matching \"" + filterText.trim() + "\"";
+        }
+        for (const f of shown) {
             const path = joinPath(folder, f.name);
             const idx = indexOf(path);
             const selected = idx >= 0;
@@ -699,15 +990,12 @@ function buildGallery(container, ctx) {
     }
 
     async function loadFolder() {
-        const folder = folderInput.value.trim();
-        const s = ctx.getState();
-        if (s.folders[kind] !== folder) {
-            s.folders[kind] = folder;
-            ctx.setState(s);
-        }
+        const folder = currentFolder();
         files = [];
         if (!folder) {
-            status.textContent = "Set a folder first (type, paste, or Browse).";
+            status.textContent = base
+                ? "Choose a subfolder with the magnifier of the root folder."
+                : "Set a root folder (gear button of the node), type a path, or Browse.";
             render();
             return;
         }
@@ -723,15 +1011,20 @@ function buildGallery(container, ctx) {
         render();
     }
 
+    /** Reload : relit les fichiers, ou rouvre le choix si aucun sous-dossier n'est choisi. */
+    function reload() {
+        if (base && sub === null) openPicker();
+        else loadFolder();
+    }
+
     async function browse() {
         const prev = browseBtn.innerHTML;
         browseBtn.disabled = true;
         status.textContent = "Opening the folder dialog...";
         try {
-            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(folderInput.value.trim()));
+            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(baseInput.value.trim()));
             if (data.path) {
-                folderInput.value = data.path;
-                await loadFolder();
+                setBase(data.path);
             } else {
                 status.textContent = "";
             }
@@ -751,19 +1044,22 @@ function buildGallery(container, ctx) {
         if (e.key === "Escape") {
             e.preventDefault();
             e.stopImmediatePropagation();
-            close();
+            // Echap ferme d'abord la fenetre de choix du sous-dossier.
+            if (picker.isOpen()) picker.close();
+            else close();
             return;
         }
-        if (e.target === folderInput) {
+        if (e.target === baseInput || e.target === filterInput || picker.ownsTarget(e.target)) {
             e.stopImmediatePropagation();
-            if (e.key === "Enter") {
+            if (e.key === "Enter" && e.target === baseInput) {
                 e.preventDefault();
-                loadFolder();
+                setBase(baseInput.value);
             }
         }
     };
 
     function close() {
+        picker.close();
         overlay.style.display = "none";
         window.removeEventListener("keydown", onKey, true);
     }
@@ -772,7 +1068,21 @@ function buildGallery(container, ctx) {
     doneBtn.addEventListener("click", close);
     overlay.addEventListener("mousedown", close);
     browseBtn.addEventListener("click", browse);
-    refreshBtn.addEventListener("click", loadFolder);
+    refreshBtn.addEventListener("click", reload);
+    pickBtn.addEventListener("click", openPicker);
+    filterBtn.addEventListener("click", () => showFilter(filterRow.style.display === "none"));
+    filterInput.addEventListener("input", () => {
+        filterText = filterInput.value;
+        if (!filterText.trim()) status.textContent = files.length + " file(s)";
+        render();
+    });
+    filterClear.addEventListener("click", () => {
+        filterInput.value = "";
+        filterText = "";
+        status.textContent = files.length + " file(s)";
+        render();
+        filterInput.focus();
+    });
     clearBtn.addEventListener("click", () => {
         const s = ctx.getState();
         if (kind === "image") s.images = [];
@@ -789,18 +1099,32 @@ function buildGallery(container, ctx) {
             title.textContent = KIND_TITLES[kind] + (kind === "video"
                 ? (defaultSound ? " — new picks keep their sound" : " — new picks are muted")
                 : "");
-            // Sans dossier pour ce type, la galerie demarre sur le dossier racine.
+            // Champ prerempli avec le dossier propre a ce type, sinon le dossier
+            // racine ; sans sous-dossier choisi, la fenetre de choix s'ouvre.
             const st = ctx.getState();
-            folderInput.value = st.folders[kind] || st.root || "";
+            base = st.folders[kind] || st.root || "";
+            sub = base ? st.subs[kind] : null;
+            files = [];
+            filterText = "";
+            filterInput.value = "";
+            filterRow.style.display = "none";
+            updateNav();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 720);
-            loadFolder();
+            if (base && sub === null) {
+                render();
+                status.textContent = "Choose a subfolder.";
+                openPicker();
+            } else {
+                loadFolder();
+            }
         },
         close,
         remove() {
             close();
             overlay.remove();
+            picker.remove();
         },
     };
 }
@@ -941,6 +1265,7 @@ function buildRootDialog(container, ctx) {
         const value = input.value.trim();
         if (s.root !== value) {
             s.root = value;
+            resetRootSubs(s);
             ctx.setState(s);
         }
         close();
@@ -1562,6 +1887,7 @@ app.registerExtension({
                         return;
                     }
                     const s = getState();
+                    if (s.root !== conf.root) resetRootSubs(s);
                     s.root = conf.root;
                     s.images = conf.images;
                     s.videos = conf.videos;

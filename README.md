@@ -8,7 +8,7 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
 - One output appears per selected file (at least one per type); wire the outputs in order (MiniMax numbers its inputs from 0: `ref_image_1` goes to `ref_image_0`, and so on). Double-click an output name to rename it.
 - The eye button next to each row shows the selection in order: arrows move a reference, the trash on a thumbnail marks it, and **Delete** removes the marked ones (the following references move up, the last empty output is removed).
 - The trash button next to the eye deletes **all** the references of its row, after a confirmation. On the **Video/Audio** row it mutes all the videos instead (they stay selected).
-- The gear button sets a **root folder** for your rushes: galleries without their own folder open there.
+- The gear button sets a **root folder** for your rushes. In a gallery, **Root folder** is prefilled with it and, when no subfolder is chosen yet, a window lists the subfolders that hold files of that type (plus `(root)`), with a search box. The magnifier of **Root folder** opens that window again; the magnifier of **Subfolder** filters the thumbnails by name. Both are greyed out without a root folder or a chosen subfolder; Browse and Reload stay available. The chosen subfolder is remembered per type.
 - The download button saves the whole configuration (root folder, images, videos, video sound, audio) in a `.txt` file, one line per output:
 
   ```
