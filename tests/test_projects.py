@@ -47,7 +47,7 @@ class ProjectFoldersTest(unittest.TestCase):
     def test_subfolders_list(self):
         self.assertEqual(projects.SUBFOLDERS,
                          ("00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son",
-                          "40.Rush Videos", "60.Rush Images"))
+                          "12.Video", "14.Video-Audio", "40.Rush Videos", "60.Rush Images"))
 
     def test_create_project_makes_all_subfolders(self):
         path = projects.create_project(self.root, " Clip 01 ")
@@ -103,6 +103,126 @@ class ProjectFoldersTest(unittest.TestCase):
         self.assertEqual(path, os.path.join(self.root, "Clip"))
         with self.assertRaises(FileNotFoundError):
             projects.open_project(self.root, "Other")
+
+
+def write(path, data=b"x"):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+class SaveTest(unittest.TestCase):
+    """Save : copie des fichiers du Ref Loader dans les dossiers du projet."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.project = projects.create_project(self.tmp, "Clip")
+        self.src = os.path.join(self.tmp, "rushs")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def item(self, name, folder, data=b"x"):
+        path = os.path.join(self.src, name)
+        write(path, data)
+        return {"path": path, "folder": folder}
+
+    def test_plan_copy_skip_rename_missing(self):
+        a = self.item("a.png", "08.Images")
+        same = self.item("b.png", "08.Images", b"same")
+        write(os.path.join(self.project, "08.Images", "b.png"), b"same")
+        other = self.item("c.png", "08.Images", b"new")
+        write(os.path.join(self.project, "08.Images", "c.png"), b"old")
+        inside = os.path.join(self.project, "10.Son", "s.wav")
+        write(inside)
+        missing = {"path": os.path.join(self.src, "nope.mp4"), "folder": "12.Video"}
+        plan = projects.plan_save(self.project, [a, same, other, {"path": inside, "folder": "10.Son"}, missing])
+        img = os.path.join(self.project, "08.Images")
+        self.assertEqual([(p["action"], p["dst"]) for p in plan], [
+            ("copy", os.path.join(img, "a.png")),
+            ("skip", os.path.join(img, "b.png")),
+            ("copy", os.path.join(img, "c (2).png")),
+            ("skip", inside),
+            ("missing", ""),
+        ])
+
+    def test_plan_same_name_twice_in_one_save(self):
+        a = self.item("x/a.png", "08.Images", b"1")
+        b = self.item("y/a.png", "08.Images", b"2")
+        plan = projects.plan_save(self.project, [a, b])
+        self.assertEqual([os.path.basename(p["dst"]) for p in plan], ["a.png", "a (2).png"])
+
+    def test_plan_same_file_listed_twice(self):
+        a = self.item("a.mp4", "12.Video")
+        plan = projects.plan_save(self.project, [a, dict(a)])
+        self.assertEqual([p["action"] for p in plan], ["copy", "skip"])
+        self.assertEqual(plan[0]["dst"], plan[1]["dst"])
+
+    def test_plan_unknown_folder_refused(self):
+        with self.assertRaises(ValueError):
+            projects.plan_save(self.project, [self.item("a.png", "../evil")])
+
+    def test_execute_save_copies_and_maps(self):
+        a = self.item("a.png", "08.Images", b"img")
+        v = self.item("v.mp4", "14.Video-Audio", b"vid")
+        both = dict(v, folder="12.Video")
+        missing = {"path": os.path.join(self.src, "nope.wav"), "folder": "10.Son"}
+        dsts = projects.execute_save(self.project, [a, v, both, missing])
+        dst = os.path.join(self.project, "08.Images", "a.png")
+        self.assertEqual(dsts, [dst, os.path.join(self.project, "14.Video-Audio", "v.mp4"),
+                                os.path.join(self.project, "12.Video", "v.mp4"), ""])
+        with open(dst, "rb") as f:
+            self.assertEqual(f.read(), b"img")
+        self.assertTrue(os.path.isfile(os.path.join(self.project, "14.Video-Audio", "v.mp4")))
+
+    def test_write_config(self):
+        path = projects.write_config(self.project, "20261016-153000_REF2VA_minimax_config.json", "{}\n")
+        self.assertEqual(path, os.path.join(self.project, "00.Workflows", "20261016-153000_REF2VA_minimax_config.json"))
+        for bad in ["../x.json", "a/b.json", "x.txt", ""]:
+            with self.assertRaises(ValueError, msg=bad):
+                projects.write_config(self.project, bad, "{}")
+
+
+class RenameMoveTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.project = projects.create_project(self.tmp, "Clip")
+        write(os.path.join(self.project, "08.Images", "a.png"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_rename(self):
+        new = projects.rename_project(self.project, " Clip v2 ")
+        self.assertEqual(new, os.path.join(self.tmp, "Clip v2"))
+        self.assertTrue(os.path.isfile(os.path.join(new, "08.Images", "a.png")))
+        self.assertFalse(os.path.exists(self.project))
+
+    def test_rename_refused(self):
+        projects.create_project(self.tmp, "Other")
+        with self.assertRaises(FileExistsError):
+            projects.rename_project(self.project, "other")
+        with self.assertRaises(ValueError):
+            projects.rename_project(self.project, "a:b")
+        with self.assertRaises(ValueError):
+            projects.rename_project(self.project, "Clip")  # meme nom
+
+    def test_move(self):
+        dest = os.path.join(self.tmp, "ailleurs", "projets")
+        new = projects.move_project(self.project, dest)
+        self.assertEqual(new, os.path.join(dest, "Clip"))
+        self.assertTrue(os.path.isfile(os.path.join(new, "08.Images", "a.png")))
+        self.assertFalse(os.path.exists(self.project))
+
+    def test_move_refused(self):
+        dest = os.path.join(self.tmp, "d")
+        os.makedirs(os.path.join(dest, "Clip"))
+        with self.assertRaises(FileExistsError):
+            projects.move_project(self.project, dest)
+        with self.assertRaises(ValueError):
+            projects.move_project(self.project, self.tmp)  # meme dossier
+        with self.assertRaises(ValueError):
+            projects.move_project(self.project, os.path.join(self.project, "08.Images"))  # dans lui-meme
 
 
 class SameAsJsTest(unittest.TestCase):

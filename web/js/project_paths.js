@@ -1,23 +1,108 @@
 // Regles des dossiers de projet, sans dependance a ComfyUI (testees par
 // node --test tests/test_project_paths.mjs).
+import { trimKey } from "./config_format.js";
 
 // Sous-dossiers de chaque projet (meme liste que projects.SUBFOLDERS en Python).
 export const PROJECT_SUBFOLDERS = [
-    "00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son", "40.Rush Videos", "60.Rush Images",
+    "00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son", "12.Video", "14.Video-Audio",
+    "40.Rush Videos", "60.Rush Images",
 ];
 
-// Couleur de la pastille de chaque sous-dossier dans le noeud (Images, Son et
-// Rush Videos reprennent les couleurs Images, Audio et Video du Ref Loader).
+// Couleur de la pastille de chaque sous-dossier dans le noeud (Images, Son,
+// Video et Video-Audio reprennent les couleurs Images, Audio, Video et
+// Video/Audio du Ref Loader).
 export const FOLDER_COLORS = {
-    "00.Workflows": "#43a047",
+    "00.Workflows": "#607d8b",
     "02.Models": "#3d6fd3",
     "04.Prompt": "#c9a227",
     "06.LoRA": "#d35fa8",
     "08.Images": "#6a5fd3",
     "10.Son": "#3eaca5",
-    "40.Rush Videos": "#e0793c",
+    "12.Video": "#e0793c",
+    "14.Video-Audio": "#43a047",
+    "40.Rush Videos": "#a8622e",
     "60.Rush Images": "#8e7fe0",
 };
+
+// Save : sous-dossier ou va chaque liste du Ref Loader (les deux modes).
+export const LIST_FOLDERS = {
+    images: "08.Images", videos: "12.Video", video_audios: "14.Video-Audio", audios: "10.Son",
+    first_frame: "08.Images", last_frame: "08.Images",
+};
+const LISTS = Object.keys(LIST_FOLDERS);
+// Liste -> type de rognage (cle de state.trims).
+const TRIM_OF_LIST = { videos: "video", video_audios: "video_audio", audios: "audio" };
+
+/** Fichiers a copier par Save : [{path, folder}] dans l'ordre des listes. */
+export function saveItems(state) {
+    const items = [];
+    for (const list of LISTS) {
+        for (const path of state[list] || []) items.push({ path, folder: LIST_FOLDERS[list] });
+    }
+    return items;
+}
+
+/**
+ * Copie de l'etat du Ref Loader avec chaque chemin des listes remplace par
+ * fn(chemin, liste) ; les cles de rognage suivent leur fichier.
+ */
+export function remapState(state, fn) {
+    const s = JSON.parse(JSON.stringify(state));
+    for (const list of LISTS) {
+        const old = state[list] || [];
+        s[list] = old.map((p) => fn(p, list));
+        const kind = TRIM_OF_LIST[list];
+        if (!kind || !state.trims || !state.trims[kind]) continue;
+        old.forEach((p, i) => {
+            const before = trimKey(p);
+            const after = trimKey(s[list][i]);
+            if (before === after || !(before in state.trims[kind])) return;
+            s.trims[kind][after] = state.trims[kind][before];
+            delete s.trims[kind][before];
+        });
+    }
+    return s;
+}
+
+/**
+ * fn pour remapState apres Save : destinations dans l'ordre de saveItems()
+ * ("" = fichier manquant, chemin garde). Par position et non par chemin :
+ * une meme video peut aller dans 12.Video et dans 14.Video-Audio.
+ */
+export function mapBySequence(dsts) {
+    let i = 0;
+    return (p) => {
+        const d = dsts[i++];
+        return d || p;
+    };
+}
+
+/** fn pour remapState : ce qui est sous oldDir passe sous newDir (renommer / deplacer un projet). */
+export function mapByPrefix(oldDir, newDir) {
+    const norm = (p) => String(p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+    const base = norm(oldDir) + "/";
+    const sep = newDir.includes("\\") || !newDir.includes("/") ? "\\" : "/";
+    return (p) => {
+        if (!norm(p).startsWith(base)) return p;
+        const rest = String(p).replace(/\\/g, "/").slice(base.length);
+        return newDir.replace(/[\\/]+$/, "") + sep + rest.split("/").join(sep);
+    };
+}
+
+/** Le mode a-t-il au moins une reference (une configuration a sauvegarder) ? */
+export function modeHasRefs(state, mode) {
+    const n = (k) => (state[k] || []).length;
+    return mode === "fl2va" ? n("first_frame") + n("last_frame") > 0
+        : n("images") + n("videos") + n("video_audios") + n("audios") > 0;
+}
+
+/** Nom d'une configuration enregistree par Save : yyyyMMdd-HHmmss_MODE_minimax_config.json. */
+export function configFileName(date, mode) {
+    const p = (n) => String(n).padStart(2, "0");
+    const stamp = date.getFullYear() + p(date.getMonth() + 1) + p(date.getDate()) + "-" +
+        p(date.getHours()) + p(date.getMinutes()) + p(date.getSeconds());
+    return stamp + "_" + (mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config.json";
+}
 
 const MAX_NAME_LENGTH = 100;
 const INVALID_CHARS = '<>:"/\\|?*';

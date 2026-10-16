@@ -3453,6 +3453,10 @@ app.registerExtension({
                 resetRootSubs(s);
                 setState(s);
             };
+            // Save, renommer / deplacer du noeud Projet : il lit la selection et
+            // la remplace par les chemins des copies (ou du projet deplace).
+            node.mmGetState = () => getState();
+            node.mmSetState = (s) => setState(parseState(JSON.stringify(s)));
             refresh();
             vueNodes.add(node);
             watchVueNodes();

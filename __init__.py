@@ -217,6 +217,51 @@ try:
             return _project_error(e)
         return web.json_response({"root": root, "path": os.path.join(root, name.strip()), "created": created})
 
+    @routes.post("/mmproject/save_plan")
+    async def mmproject_save_plan(request):
+        """Ce que Save va faire (copie, deja present, manquant), sans rien ecrire."""
+        try:
+            body = await request.json()
+            plan = await _in_executor(projects.plan_save, body.get("project", ""), body.get("items") or [])
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"plan": plan})
+
+    @routes.post("/mmproject/save")
+    async def mmproject_save(request):
+        """Copie les fichiers dans le projet et ecrit les configurations JSON dans 00.Workflows."""
+        try:
+            body = await request.json()
+            project = body.get("project", "")
+            dsts = await _in_executor(projects.execute_save, project, body.get("items") or [])
+            configs = []
+            for c in body.get("configs") or []:
+                configs.append(await _in_executor(projects.write_config, project, c.get("name", ""),
+                                                  c.get("content", "")))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"dsts": dsts, "configs": configs})
+
+    @routes.post("/mmproject/rename")
+    async def mmproject_rename(request):
+        """Renomme le dossier du projet 'path' en 'name'."""
+        try:
+            body = await request.json()
+            path = await _in_executor(projects.rename_project, body.get("path", ""), body.get("name", ""))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"path": path, "root": os.path.dirname(path), "name": os.path.basename(path)})
+
+    @routes.post("/mmproject/move")
+    async def mmproject_move(request):
+        """Deplace le dossier du projet 'path' dans le dossier 'dest'."""
+        try:
+            body = await request.json()
+            path = await _in_executor(projects.move_project, body.get("path", ""), body.get("dest", ""))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"path": path, "root": os.path.dirname(path), "name": os.path.basename(path)})
+
 except Exception:
     print("[ComfyUI-MiniMaxRefLoader] Could not register the API routes:")
     traceback.print_exc()

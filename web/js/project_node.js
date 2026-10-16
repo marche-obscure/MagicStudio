@@ -6,16 +6,20 @@ import {
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode,
 } from "./minimax_ref_loader.js";
-import { PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState } from "./project_paths.js";
+import {
+    PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
+    mapByPrefix, configFileName, modeHasRefs,
+} from "./project_paths.js";
+import { formatConfigJson } from "./config_format.js";
 
 // Noeud "MiniMax H3 Project" : cree ou choisit un dossier de projet dans le
 // Root folder recu du MiniMax H3 Reference Loader (entree "project"), ou
 // dans le dossier par defaut <input de ComfyUI>/Projets.
 
 const NODE_NAME = "MiniMaxH3Project";
-// Liste des projets + 8 lignes de dossiers (28 px + 4 px d'ecart) + ligne du bas.
+// Liste des projets + une ligne par dossier (28 px + 6 px d'ecart) + ligne du bas.
 const FOLDER_ROW_HEIGHT = 28;
-const UI_HEIGHT = 66 + PROJECT_SUBFOLDERS.length * (FOLDER_ROW_HEIGHT + 4) + 6;
+const UI_HEIGHT = 66 + PROJECT_SUBFOLDERS.length * (FOLDER_ROW_HEIGHT + 6) + 4;
 const MIN_WIDTH = 300;
 
 const PLUS_ICON = svg('<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>', 14);
@@ -25,6 +29,9 @@ const PROJECT_ICON = svg(
 const LINK_ICON = svg(
     '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>' +
     '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>', 13);
+const PENCIL_ICON = svg('<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path>', 13);
+const SAVE_ICON = svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>' +
+    '<polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline>', 13);
 const BELL_ICON = svg(
     '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>', 12);
 
@@ -42,7 +49,13 @@ const FOLDER_ICONS = {
         '<polyline points="2 12 12 17 22 12"></polyline>', 14),
     "08.Images": IMAGE_ICON,
     "10.Son": AUDIO_ICON,
-    "40.Rush Videos": VIDEO_ICON,
+    "12.Video": VIDEO_ICON,
+    // Camera + haut-parleur (video avec son).
+    "14.Video-Audio": svg('<rect x="1" y="7" width="12" height="10" rx="2"></rect><path d="M13 11l4-2v6l-4-2z"></path>' +
+        '<path d="M19.5 9a4.5 4.5 0 0 1 0 6"></path><path d="M21.8 7a7.5 7.5 0 0 1 0 10"></path>', 14),
+    // Clap (rushs video).
+    "40.Rush Videos": svg('<rect x="3" y="10" width="18" height="11" rx="2"></rect><path d="M3 10l1.5-5.5 15.5 0-1.5 5.5"></path>' +
+        '<path d="M8.5 4.5L7 10M13.5 4.5L12 10M18.5 4.5L17 10"></path>', 14),
     // Image + pellicule (rushs images).
     "60.Rush Images": svg('<rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M2 8h20M2 16h20"></path>' +
         '<path d="M6 4v4M10 4v4M14 4v4M18 4v4M6 16v4M10 16v4M14 16v4M18 16v4"></path>', 14),
@@ -84,7 +97,9 @@ const HELP_SECTIONS = [
             "Or pick an existing project in the drop-down list.",
         ]) +
         hCard("Buttons of the node", [
+            [iconBadge(PENCIL_ICON, VIOLET), "Rename or move the project"],
             [iconBadge(PLUS_ICON, PINK), "Create a new project (a window asks for the name)"],
+            [iconBadge(SAVE_ICON, PINK), "Save: copy the files of the Reference Loader into the project"],
             [iconBadge(REFRESH_ICON, VIOLET), "Read the list of projects again"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "One row per folder of the project (greyed until a project is picked; its tooltip gives the path)"],
             [iconBadge(BELL_ICON, INACTIVE_BG), "Small bell of a folder (coming soon)"],
@@ -110,7 +125,35 @@ const HELP_SECTIONS = [
             "The Root folder does not exist yet: the window of " + iconBadge(PLUS_ICON, PINK) +
             " warns you, and <b>Create</b> makes it first.",
         ]) +
-        hNote("The bottom line of the node shows the folder used, or the path of the selected project."),
+        hNote("The tooltip of a folder row gives its path; the bottom line of the node only shows messages."),
+    },
+    {
+        id: "save", title: "Save", icon: SAVE_ICON, color: PINK,
+        html: "<p>" + iconBadge(SAVE_ICON, PINK) + " needs a project and the Reference Loader wired. It shows " +
+            "what it will do and asks for a confirmation, then:</p>" +
+            hList([
+                "copies the files of the Reference Loader (both modes) into the project: Images, First and Last " +
+                "frame in <b>08.Images</b>, Video in <b>12.Video</b>, Video/Audio in <b>14.Video-Audio</b>, " +
+                "Audio in <b>10.Son</b>;",
+                "saves the configuration of each mode in <b>00.Workflows</b>, named " +
+                "<b>yyyyMMdd-HHmmss_REF2VA_minimax_config.json</b> (and FL2VA);",
+                "makes the Reference Loader use the copies of the project.",
+            ]) +
+            hNote("A file already in the project is not copied again; another file with the same name is " +
+                "copied as <b>name (2)</b>.") +
+            hTip("Right after creating a project, a first save is offered: all the files are copied to their " +
+                "folders once you confirm."),
+    },
+    {
+        id: "rename", title: "Rename or move", icon: PENCIL_ICON, color: VIOLET,
+        html: hList([
+            iconBadge(PENCIL_ICON, VIOLET) + " opens a window with a <b>Rename | Move</b> switch.",
+            "<b>Rename</b> changes the name of the project folder; <b>Move</b> moves the whole project folder " +
+            "into another folder (" + iconBadge(FOLDER_ICON, VIOLET) + " Browse).",
+            "The window shows the current name or folder and the new one; nothing changes before you confirm.",
+            "The references of the Reference Loader in the project follow it. After a move, the projects folder " +
+            "follows too (Root folder of the Reference Loader, or this node).",
+        ]),
     },
     {
         id: "link", title: "Link to the Reference Loader", icon: LINK_ICON, color: ORANGE,
@@ -132,7 +175,9 @@ const HELP_SECTIONS_FR = [
             "Ou choisissez un projet existant dans la liste déroulante.",
         ]) +
         hCard("Boutons du nœud", [
+            [iconBadge(PENCIL_ICON, VIOLET), "Renommer ou déplacer le projet"],
             [iconBadge(PLUS_ICON, PINK), "Créer un nouveau projet (une fenêtre demande le nom)"],
+            [iconBadge(SAVE_ICON, PINK), "Save : copier les fichiers du Reference Loader dans le projet"],
             [iconBadge(REFRESH_ICON, VIOLET), "Relire la liste des projets"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "Une ligne par dossier du projet (grisée tant qu'aucun projet n'est choisi ; l'infobulle donne le chemin)"],
             [iconBadge(BELL_ICON, INACTIVE_BG), "Petite cloche d'un dossier (bientôt)"],
@@ -159,7 +204,36 @@ const HELP_SECTIONS_FR = [
             "Le Root folder n'existe pas encore : la fenêtre de " + iconBadge(PLUS_ICON, PINK) +
             " vous prévient, et <b>Create</b> le crée d'abord.",
         ]) +
-        hNote("La ligne du bas du nœud montre le dossier utilisé, ou le chemin du projet choisi.", "Remarque :"),
+        hNote("L'infobulle d'une ligne de dossier donne son chemin ; la ligne du bas du nœud ne montre que " +
+            "les messages.", "Remarque :"),
+    },
+    {
+        id: "save", title: "Save",
+        html: "<p>" + iconBadge(SAVE_ICON, PINK) + " demande un projet et le Reference Loader relié. Il montre " +
+            "ce qu'il va faire et demande une confirmation, puis :</p>" +
+            hList([
+                "copie les fichiers du Reference Loader (les deux modes) dans le projet : Images, First et Last " +
+                "frame dans <b>08.Images</b>, Video dans <b>12.Video</b>, Video/Audio dans <b>14.Video-Audio</b>, " +
+                "Audio dans <b>10.Son</b> ;",
+                "enregistre la configuration de chaque mode dans <b>00.Workflows</b>, nommée " +
+                "<b>yyyyMMdd-HHmmss_REF2VA_minimax_config.json</b> (et FL2VA) ;",
+                "fait utiliser au Reference Loader les copies du projet.",
+            ]) +
+            hNote("Un fichier déjà dans le projet n'est pas recopié ; un autre fichier de même nom est copié " +
+                "en <b>nom (2)</b>.", "Remarque :") +
+            hTip("Juste après la création d'un projet, une première sauvegarde est proposée : tous les fichiers " +
+                "sont copiés dans leurs dossiers une fois confirmé.", "Astuce :"),
+    },
+    {
+        id: "rename", title: "Renommer ou déplacer",
+        html: hList([
+            iconBadge(PENCIL_ICON, VIOLET) + " ouvre une fenêtre avec un interrupteur <b>Rename | Move</b>.",
+            "<b>Rename</b> change le nom du dossier du projet ; <b>Move</b> déplace tout le dossier du projet " +
+            "dans un autre dossier (" + iconBadge(FOLDER_ICON, VIOLET) + " Browse).",
+            "La fenêtre montre le nom ou le dossier actuel et le nouveau ; rien ne change avant votre confirmation.",
+            "Les références du Reference Loader qui sont dans le projet le suivent. Après un déplacement, le " +
+            "dossier des projets suit aussi (Root folder du Reference Loader, ou ce nœud).",
+        ]),
     },
     {
         id: "link", title: "Lien avec le Reference Loader",
@@ -398,6 +472,290 @@ function buildCreateDialog(container, ctx) {
 }
 
 // --------------------------------------------------------------------
+// Confirmation (toute modification la demande)
+// --------------------------------------------------------------------
+/** ask({title, html, okLabel, okColor}) -> Promise<boolean> ; Echap ou clic a cote = non. */
+function buildConfirm(container) {
+    const { overlay, card } = makeOverlay();
+    overlay.style.zIndex = "10002";
+    Object.assign(card.style, { width: "min(420px, 92vw)", padding: "12px 14px", borderColor: ORANGE });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "8px" });
+    const text = document.createElement("div");
+    Object.assign(text.style, { lineHeight: "1.5", color: "#ccc", wordBreak: "break-word" });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const okBtn = makeTextButton("OK", GREEN);
+    footer.append(cancelBtn, okBtn);
+    card.append(title, text, footer);
+
+    let resolve = null;
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            finish(false);
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            finish(true);
+        }
+    };
+    function finish(answer) {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        const r = resolve;
+        resolve = null;
+        if (r) r(answer);
+    }
+    cancelBtn.addEventListener("click", () => finish(false));
+    okBtn.addEventListener("click", () => finish(true));
+    overlay.addEventListener("mousedown", () => finish(false));
+
+    return {
+        ask(opts) {
+            if (resolve) finish(false);
+            title.textContent = opts.title || "Confirm";
+            text.innerHTML = opts.html || "";
+            okBtn.textContent = opts.okLabel || "OK";
+            okBtn.style.background = opts.okColor || GREEN;
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 420);
+            return new Promise((r) => (resolve = r));
+        },
+        remove() {
+            finish(false);
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
+// Fenetre "Rename or move the project" (bouton crayon)
+// --------------------------------------------------------------------
+function joinDir(dir, name) {
+    const sep = dir.includes("\\") || !dir.includes("/") ? "\\" : "/";
+    return dir.replace(/[\\/]+$/, "") + sep + name;
+}
+function parentOf(path) {
+    const i = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+    return i > 0 ? path.slice(0, i) : "";
+}
+function baseOf(path) {
+    return path.split(/[\\/]/).pop();
+}
+
+function buildRenameMoveDialog(container, ctx) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, { width: "min(500px, 92vw)", padding: "12px 14px", borderColor: VIOLET });
+
+    const title = document.createElement("div");
+    title.textContent = "Rename or move the project";
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "8px" });
+
+    // Interrupteur pilule : Rename (orange) | Move (vert).
+    const pill = document.createElement("div");
+    Object.assign(pill.style, {
+        display: "flex", borderRadius: "999px", overflow: "hidden", border: "1px solid #0c3833", height: "24px",
+        marginBottom: "10px",
+    });
+    const pillBtn = (text, tip) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = text;
+        b.title = tip;
+        Object.assign(b.style, {
+            flex: "1", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold", fontSize: "11px",
+            padding: "0",
+        });
+        pill.appendChild(b);
+        return b;
+    };
+    const renameTab = pillBtn("Rename", "Change the name of the project folder");
+    const moveTab = pillBtn("Move", "Move the whole project folder to another folder");
+
+    const fieldStyle = {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "10px",
+        padding: "6px 10px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+    };
+    const row = document.createElement("div");
+    Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center" });
+    const input = document.createElement("input");
+    input.type = "text";
+    Object.assign(input.style, fieldStyle);
+    const browseBtn = makeIconButton(VIOLET, FOLDER_ICON, "Browse");
+    row.append(input, browseBtn);
+
+    // Nom / dossier actuel -> nouveau.
+    const summary = document.createElement("div");
+    Object.assign(summary.style, {
+        margin: "10px 0 0", padding: "8px 10px", background: "#161616", border: "1px solid #2c2c2c",
+        borderRadius: "8px", lineHeight: "1.6", wordBreak: "break-all",
+    });
+    const error = document.createElement("div");
+    Object.assign(error.style, { color: ORANGE, minHeight: "14px", margin: "6px 0 0" });
+
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const goBtn = makeTextButton("Rename...", ORANGE);
+    footer.append(cancelBtn, goBtn);
+    card.append(title, pill, row, summary, error, footer);
+
+    let mode = "rename";
+    let current = "";   // chemin actuel du projet
+    let values = { rename: "", move: "" };
+
+    /** Nouveau chemin du projet ("" si la saisie ne change rien ou est invalide). */
+    function target() {
+        const v = input.value.trim();
+        if (!v) return "";
+        return mode === "rename" ? joinDir(parentOf(current), v) : joinDir(v, baseOf(current));
+    }
+
+    function update() {
+        const rename = mode === "rename";
+        renameTab.style.background = rename ? ORANGE : INACTIVE_BG;
+        renameTab.style.color = rename ? "white" : "#888";
+        moveTab.style.background = rename ? INACTIVE_BG : GREEN;
+        moveTab.style.color = rename ? "#888" : "white";
+        browseBtn.style.display = rename ? "none" : "flex";
+        input.placeholder = rename ? "New name" : "New folder (the project folder goes inside)";
+        goBtn.textContent = rename ? "Rename..." : "Move...";
+        goBtn.style.background = rename ? ORANGE : GREEN;
+        const t = target();
+        const label = (k) => '<span style="color:#888">' + k + "</span> ";
+        summary.innerHTML = label(rename ? "Current name:" : "Current folder:") + escapeHtml(current) + "<br>" +
+            label("→ New:") + (t ? '<b style="color:#9fd6cf">' + escapeHtml(t) + "</b>" : '<span style="color:#888">-</span>');
+    }
+
+    function setMode(m) {
+        values[mode] = input.value;
+        mode = m;
+        input.value = values[m];
+        error.textContent = "";
+        input.style.borderColor = "#0c3833";
+        update();
+        setTimeout(() => input.focus(), 0);
+    }
+
+    async function go() {
+        const v = input.value.trim();
+        let err = "";
+        if (mode === "rename") {
+            err = projectNameError(v) || (v === baseOf(current) ? "The new name is the current name." : "");
+        } else if (!v) {
+            err = "Choose the destination folder.";
+        } else if (samePath(v, parentOf(current))) {
+            err = "The project is already in this folder.";
+        }
+        if (err) {
+            error.textContent = err;
+            input.style.borderColor = ORANGE;
+            return;
+        }
+        const t = target();
+        const ok = await ctx.confirm.ask({
+            title: mode === "rename" ? "Rename the project?" : "Move the project?",
+            html: escapeHtml(current) + '<br><span style="color:#888">→</span> <b style="color:#9fd6cf">' +
+                escapeHtml(t) + "</b>" +
+                '<div style="color:#999;margin-top:8px">The references of the Reference Loader that are in the ' +
+                "project follow it.</div>",
+            okLabel: mode === "rename" ? "Rename" : "Move",
+            okColor: mode === "rename" ? ORANGE : GREEN,
+        });
+        if (!ok) return;
+        goBtn.disabled = true;
+        error.textContent = mode === "rename" ? "Renaming..." : "Moving...";
+        try {
+            await ctx.apply(mode, v);
+            close();
+        } catch (e) {
+            error.textContent = e.message;
+        } finally {
+            goBtn.disabled = false;
+        }
+    }
+
+    async function browse() {
+        browseBtn.disabled = true;
+        error.textContent = "Opening the folder dialog...";
+        try {
+            const start = input.value.trim() || parentOf(current);
+            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(start));
+            if (data.path) input.value = data.path;
+            error.textContent = "";
+            update();
+        } catch (e) {
+            error.textContent = e.message;
+        } finally {
+            browseBtn.disabled = false;
+        }
+    }
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            close();
+            return;
+        }
+        if (e.target === input) {
+            e.stopImmediatePropagation();
+            if (e.key === "Enter") {
+                e.preventDefault();
+                go();
+            }
+        }
+    };
+
+    function close() {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+
+    input.addEventListener("input", () => {
+        error.textContent = "";
+        input.style.borderColor = "#0c3833";
+        update();
+    });
+    renameTab.addEventListener("click", () => setMode("rename"));
+    moveTab.addEventListener("click", () => setMode("move"));
+    browseBtn.addEventListener("click", browse);
+    cancelBtn.addEventListener("click", close);
+    goBtn.addEventListener("click", go);
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        open(path) {
+            current = path;
+            values = { rename: baseOf(path), move: parentOf(path) };
+            mode = "rename";
+            input.value = values.rename;
+            error.textContent = "";
+            input.style.borderColor = "#0c3833";
+            update();
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 500);
+            setTimeout(() => {
+                input.focus();
+                input.select();
+            }, 0);
+        },
+        close,
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
 // Nodes 2.0 : le widget cache "state" apparait comme une entree, on la masque.
 // --------------------------------------------------------------------
 function hideVueStateInput(node) {
@@ -458,7 +816,8 @@ app.registerExtension({
             let folder = { root: "", exists: true, linked: false, custom: false };
             let fallbackRoot = ""; // dossier de repli <input de ComfyUI>/Projets
             let projects = [];
-            let message = "";   // erreur ou avertissement (orange)
+            let message = "";   // erreur ou avertissement (orange), ou resultat (messageOk)
+            let messageOk = false;
             let loadId = 0;
 
             // ---- Interface ----
@@ -468,9 +827,13 @@ app.registerExtension({
                 boxSizing: "border-box", width: "100%", fontFamily: "sans-serif", fontSize: "12px",
             });
 
-            // Ligne 1 : liste deroulante des projets + bouton Nouveau.
+            // Ligne 1 : "Project name:", liste deroulante des projets, crayon
+            // (renommer / deplacer), bouton Nouveau.
             const pickRow = document.createElement("div");
             Object.assign(pickRow.style, { display: "flex", gap: "6px", alignItems: "center", flex: "0 0 auto" });
+            const nameLabel = document.createElement("span");
+            nameLabel.textContent = "Project name:";
+            Object.assign(nameLabel.style, { color: "#9fd6cf", fontWeight: "bold", whiteSpace: "nowrap", flex: "0 0 auto" });
             const select = document.createElement("select");
             Object.assign(select.style, {
                 flex: "1", minWidth: "0", height: "26px", background: "#111", color: "#ddd",
@@ -478,18 +841,22 @@ app.registerExtension({
                 outline: "none", boxSizing: "border-box", cursor: "pointer",
             });
             select.title = "Project";
+            const editBtn = makeIconButton(VIOLET, PENCIL_ICON, "Rename or move the project");
+            editBtn.style.width = editBtn.style.height = "26px";
             const newBtn = makeIconButton(PINK, PLUS_ICON, "New project");
             newBtn.style.width = newBtn.style.height = "26px";
-            pickRow.append(select, newBtn);
+            pickRow.append(nameLabel, select, editBtn, newBtn);
 
-            // Ligne du bas : dossier utilise ou chemin du projet, Relire, aide.
+            // Ligne du bas : messages (erreurs, resultat d'un Save), Save, Relire, aide.
             const bottom = document.createElement("div");
             Object.assign(bottom.style, { display: "flex", alignItems: "center", gap: "6px", flex: "0 0 auto" });
             const status = document.createElement("div");
             Object.assign(status.style, {
                 flex: "1", minWidth: "0", fontSize: "11px", whiteSpace: "nowrap", overflow: "hidden",
-                textOverflow: "ellipsis", direction: "rtl", textAlign: "left",
+                textOverflow: "ellipsis",
             });
+            const saveBtn = makeIconButton(PINK, SAVE_ICON, "Save");
+            saveBtn.style.width = saveBtn.style.height = "22px";
             const reloadBtn = makeIconButton(VIOLET, REFRESH_ICON, "Read the list of projects again");
             reloadBtn.style.width = reloadBtn.style.height = "22px";
             const helpBtn = document.createElement("button");
@@ -499,7 +866,7 @@ app.registerExtension({
                 width: "22px", height: "22px", borderRadius: "50%", border: "none", background: PINK,
                 color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
             });
-            bottom.append(status, reloadBtn, helpBtn);
+            bottom.append(status, saveBtn, reloadBtn, helpBtn);
 
             // Une ligne par sous-dossier : bouton (pastille coloree + nom) et
             // petite cloche. Pas encore d'action : leur role viendra plus tard.
@@ -540,7 +907,9 @@ app.registerExtension({
             const help = buildHelpOverlay(container, {
                 sectionsFor: projectHelpSections, nodeTitle: "MiniMax H3 Project", sectionKey: "mmproject.helpSection",
             });
-            node.__mmprojectOverlays = [createDialog, help];
+            const confirm = buildConfirm(container);
+            const renameDialog = buildRenameMoveDialog(container, { confirm, apply: applyRenameMove });
+            node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog];
 
             /**
              * Dossier des projets : Root folder du Reference Loader branche, sinon
@@ -581,26 +950,37 @@ app.registerExtension({
                     f.bell.title = current ? f.name + " - coming soon" : "";
                 });
 
-                let text;
-                let color;
-                if (message) {
-                    text = message;
-                    color = ORANGE;
-                } else if (current) {
-                    text = s.path;
-                    color = "#9fd6cf";
-                } else if (!folder.exists) {
-                    text = "Folder not found (created with the first project): " + folder.root;
-                    color = ORANGE;
-                } else {
-                    text = (folder.linked ? "Root folder: " : folder.custom ? "Projects folder: " : "Default folder: ") +
-                        folder.root;
-                    color = "#888";
+                // Bas du noeud : seulement les messages (plus de chemin).
+                let text = message;
+                let tip = message;
+                if (!text && !folder.exists) {
+                    text = "Projects folder not found (created with the first project)";
+                    tip = folder.root;
                 }
-                // rtl : la fin du chemin reste visible ; les marques LRM gardent la ponctuation en place.
-                status.textContent = "‎" + text + "‎";
-                status.style.color = color;
-                status.title = text;
+                status.textContent = text;
+                status.style.color = message && messageOk ? "#9fd6cf" : ORANGE;
+                status.title = tip;
+
+                // Crayon : un projet choisi ; Save : un projet et un Reference Loader relie.
+                const canSave = current && !!linkedLoader(node);
+                setOn(editBtn, current, VIOLET, current ? "Rename or move the project" : "Pick a project first");
+                setOn(saveBtn, canSave, PINK, !current ? "Pick a project first"
+                    : !canSave ? "Wire the project output of the Reference Loader first"
+                        : "Save: copy the files of the Reference Loader into the project and save its configuration");
+            }
+
+            function setOn(btn, on, color, title) {
+                btn.disabled = !on;
+                btn.style.background = on ? color : INACTIVE_BG;
+                btn.style.opacity = on ? "1" : "0.45";
+                btn.style.cursor = on ? "pointer" : "default";
+                btn.title = title;
+            }
+
+            function say(text, ok) {
+                message = text;
+                messageOk = !!ok;
+                render();
             }
 
             /** Relit le dossier des projets (Root folder du Ref Loader ou dossier par defaut). */
@@ -662,9 +1042,98 @@ app.registerExtension({
                     setState({ root: data.root, name: data.name, path: data.path, folder: folder.linked ? getState().folder : custom });
                 }
                 await loadProjects();
+                // Proposee apres la fermeture de la fenetre de creation.
+                setTimeout(() => saveAll(true), 0);
+            }
+
+            /**
+             * Save : copie les fichiers du Reference Loader dans les dossiers du
+             * projet, enregistre sa configuration (par mode) dans 00.Workflows,
+             * puis le Reference Loader pointe sur les copies. first = premiere
+             * sauvegarde proposee juste apres la creation du projet.
+             */
+            async function saveAll(first) {
+                const loader = linkedLoader(node);
+                const s = getState();
+                if (!loader || !s.name) return;
+                const refState = loader.mmGetState();
+                const items = saveItems(refState);
+                const modes = ["ref2va", "fl2va"].filter((m) => modeHasRefs(refState, m));
+                if (!items.length) {
+                    if (!first) say("Nothing to save: the Reference Loader has no reference.");
+                    return;
+                }
+                let plan;
+                try {
+                    plan = (await apiPost("/mmproject/save_plan", { project: s.path, items })).plan;
+                } catch (e) {
+                    say(e.message);
+                    return;
+                }
+                const count = (a) => plan.filter((x) => x.action === a).length;
+                const byFolder = {};
+                plan.filter((x) => x.action === "copy").forEach((x) => (byFolder[x.folder] = (byFolder[x.folder] || 0) + 1));
+                const now = new Date();
+                const names = modes.map((m) => configFileName(now, m));
+                const lines = Object.entries(byFolder).map(([f, n]) => n + " → <b>" + f + "</b>");
+                const html = (first
+                    ? "<b>All the files of the Reference Loader will be copied to their folders in the project.</b><br>"
+                    : "") +
+                    count("copy") + " file(s) to copy" + (lines.length ? ":<br>" + lines.join("<br>") : "") +
+                    (count("skip") ? "<br>" + count("skip") + " already in the project" : "") +
+                    (count("missing") ? '<br><span style="color:' + ORANGE + '">' + count("missing") +
+                        " missing on disk (not copied)</span>" : "") +
+                    "<br>Configuration in <b>00.Workflows</b>: " + names.map(escapeHtml).join(", ") +
+                    '<div style="color:#999;margin-top:8px">Then the Reference Loader uses the copies of the project.</div>';
+                const ok = await confirm.ask({
+                    title: first ? "Initialize a first save?" : "Save the project?", html,
+                    okLabel: first ? "Copy and save" : "Save", okColor: PINK,
+                });
+                if (!ok) return;
+                say("Saving...", true);
+                try {
+                    // Destinations du plan : la configuration pointe deja sur les copies.
+                    const planned = remapState(refState, mapBySequence(plan.map((x) => x.dst)));
+                    const configs = modes.map((m, i) => ({
+                        name: names[i], content: formatConfigJson(Object.assign({}, planned, { mode: m })),
+                    }));
+                    const data = await apiPost("/mmproject/save", { project: s.path, items, configs });
+                    // Le Reference Loader a pu changer pendant la confirmation : on repart de son etat.
+                    const latest = loader.mmGetState();
+                    const same = JSON.stringify(saveItems(latest)) === JSON.stringify(items);
+                    if (same) loader.mmSetState(remapState(latest, mapBySequence(data.dsts)));
+                    say("Saved: " + count("copy") + " file(s) copied, " + data.configs.length + " configuration(s).", true);
+                } catch (e) {
+                    say(e.message);
+                }
+            }
+
+            /** Renomme ou deplace le projet (deja confirme) ; le Reference Loader suit. */
+            async function applyRenameMove(mode, value) {
+                const s = getState();
+                const data = await apiPost(mode === "rename" ? "/mmproject/rename" : "/mmproject/move",
+                    mode === "rename" ? { path: s.path, name: value } : { path: s.path, dest: value });
+                const loader = linkedLoader(node);
+                const moved = mode === "move";
+                // Le dossier des projets suit un deplacement : Root folder du Ref Loader relie, sinon le noeud.
+                const custom = moved ? (samePath(data.root, fallbackRoot) ? "" : data.root) : s.folder;
+                setState({ root: data.root, name: data.name, path: data.path, folder: loader && moved ? "" : custom });
+                if (loader) {
+                    const st = remapState(loader.mmGetState(), mapByPrefix(s.path, data.path));
+                    if (moved) st.root = data.root;
+                    loader.mmSetState(st); // previent ce noeud si le Root folder change
+                }
+                await loadProjects();
+                // Apres la relecture (qui efface les messages).
+                say((moved ? "Moved to " : "Renamed: ") + data.path, true);
             }
 
             select.addEventListener("change", () => openProject(select.value));
+            editBtn.addEventListener("click", () => {
+                const s = getState();
+                if (s.name && projects.includes(s.name)) renameDialog.open(s.path);
+            });
+            saveBtn.addEventListener("click", () => saveAll(false));
             newBtn.addEventListener("click", async () => {
                 await loadProjects();
                 createDialog.open({
