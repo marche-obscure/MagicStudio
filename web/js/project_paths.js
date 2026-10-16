@@ -147,6 +147,36 @@ export function withoutMedia(state) {
     return s;
 }
 
+// ---- Galerie du Ref Loader reliee a un projet ----
+
+/**
+ * Selection de la galerie a la fermeture : added / removed par rapport a
+ * l'ouverture ; ask = demander Add ou Replace (de nouveaux fichiers, rien
+ * de retire, et une selection qui existait deja).
+ */
+export function gallerySession(initial, final) {
+    const has = (list, p) => list.some((x) => normPath(x) === normPath(p));
+    const added = final.filter((p) => !has(initial, p));
+    const removed = initial.filter((p) => !has(final, p));
+    return { added, removed, ask: added.length > 0 && removed.length === 0 && initial.length > 0 };
+}
+
+/** Replace : seuls les fichiers ajoutes pendant la session restent, dans leur ordre. */
+export function replaceSelection(initial, final) {
+    return gallerySession(initial, final).added;
+}
+
+/**
+ * Fichiers du dossier du projet que plus aucune liste du Ref Loader
+ * n'utilise (toutes les listes : une video peut servir de son seul) :
+ * ils partent dans Archives, aucun ne reste.
+ */
+export function unusedProjectFiles(paths, state) {
+    const used = new Set();
+    for (const list of LISTS) for (const p of state[list] || []) used.add(normPath(p));
+    return paths.filter((p) => !used.has(normPath(p)));
+}
+
 /** Le mode a-t-il au moins une reference (une configuration a sauvegarder) ? */
 export function modeHasRefs(state, mode) {
     const n = (k) => (state[k] || []).length;

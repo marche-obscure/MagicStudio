@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
+import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles } from "./project_paths.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -243,6 +244,24 @@ const HELP_SECTIONS = [
             "<b>🔊 sound only</b> badge and can be trimmed like any audio file. A video without soundtrack is refused."),
     },
     {
+        id: "project", title: "Gallery with a project", icon: FOLDER_ICON, color: ORANGE,
+        html: "<p>When the <b>project</b> output is wired to a <b>MiniMax H3 Project</b> node with a project " +
+            "picked, the gallery shows two zones:</p>" +
+            hList([
+                "above: the content of the selected folder (Root folder / Subfolder), as usual;",
+                "below the line: the content of the matching folder of the project (Images → <b>08.Images</b>, " +
+                "Video → <b>12.Video</b>, Video/Audio → <b>14.Video-Audio</b>, Audio → <b>10.Son</b>). An orange " +
+                "badge gives the selection order; the check box under each file selects it or takes it out.",
+                "The selection is full: a message above the line asks you to uncheck below the file to replace, " +
+                "then to pick the new one above.",
+                "On closing (Done, ✕, Escape): new files added to an existing selection ask <b>Add</b> (keep the " +
+                "current files) or <b>Replace</b> (only the new ones stay).",
+            ]) +
+            hNote("no unused file stays in the project: the files of its folder that no list of the node uses " +
+                "anymore go to <b>Archives</b> inside that folder (e.g. 08.Images/Archives), after a confirmation. " +
+                "Cancel goes back to the gallery. Nothing is ever deleted."),
+    },
+    {
         id: "selection", title: "Selection", icon: EYE_ICON, color: VIOLET,
         html: hList([
             iconBadge(EYE_ICON, VIOLET) + " shows the files of a row in their order, with their number and output.",
@@ -402,6 +421,25 @@ const HELP_SECTIONS_FR = [
             "sur <b>ref_audio_N</b>, comme une piste audio indépendante (sans lien avec <b>ref_video_N</b>). " +
             "Elles portent un badge <b>🔊 sound only</b> et se rognent comme un fichier audio. Une vidéo sans " +
             "bande-son est refusée.", NOTE_FR),
+    },
+    {
+        id: "project", title: "Galerie avec un projet",
+        html: "<p>Quand la sortie <b>project</b> est reliée à un nœud <b>MiniMax H3 Project</b> dont un projet " +
+            "est choisi, la galerie affiche deux zones :</p>" +
+            hList([
+                "en haut : le contenu du dossier choisi (Root folder / Subfolder), comme d'habitude ;",
+                "sous le trait : le contenu du dossier correspondant du projet (Images → <b>08.Images</b>, " +
+                "Video → <b>12.Video</b>, Video/Audio → <b>14.Video-Audio</b>, Audio → <b>10.Son</b>). Une " +
+                "pastille orange donne l'ordre de sélection ; la case à cocher sous chaque fichier le sélectionne " +
+                "ou le retire.",
+                "Sélection pleine : un message au-dessus du trait invite à décocher en bas le fichier à remplacer, " +
+                "puis à choisir le nouveau en haut.",
+                "À la fermeture (Done, ✕, Échap) : de nouveaux fichiers ajoutés à une sélection existante " +
+                "demandent <b>Add</b> (garder les fichiers actuels) ou <b>Replace</b> (seuls les nouveaux restent).",
+            ]) +
+            hNote("aucun fichier inutilisé ne reste dans le projet : les fichiers de son dossier qu'aucune liste " +
+                "du nœud n'utilise plus partent dans <b>Archives</b> de ce dossier (ex. 08.Images/Archives), après " +
+                "confirmation. Cancel revient à la galerie. Rien n'est jamais effacé.", NOTE_FR),
     },
     {
         id: "selection", title: "Sélection",
@@ -980,6 +1018,20 @@ function makeTextButton(text, bg) {
 
 async function apiGet(url) {
     const res = await fetch(url, { cache: "no-store" });
+    let data = null;
+    try {
+        data = await res.json();
+    } catch (e) {
+        data = null;
+    }
+    if (!res.ok) throw new Error((data && data.error) || "HTTP error " + res.status);
+    return data;
+}
+
+async function apiPost(url, body) {
+    const res = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
     let data = null;
     try {
         data = await res.json();
@@ -1666,6 +1718,72 @@ function buildSidePreview(card, overlay) {
 }
 
 // --------------------------------------------------------------------
+// Petite fenetre de choix centree sur la galerie (Add / Replace, Archives)
+// --------------------------------------------------------------------
+/** ask(anchor, {title, html, buttons: [{label, color, value}]}) -> Promise<value | null> (Echap, clic a cote = null). */
+function buildChoiceDialog() {
+    const overlay = document.createElement("div");
+    Object.assign(overlay.style, { position: "fixed", inset: "0", background: "transparent", zIndex: "10002", display: "none" });
+    const card = document.createElement("div");
+    Object.assign(card.style, {
+        position: "fixed", width: "min(400px, 90vw)", background: "#1e1e1e", color: "#ddd",
+        border: "1px solid " + ORANGE, borderRadius: "10px", boxShadow: "0 8px 28px rgba(0,0,0,0.7)",
+        padding: "14px 16px", fontFamily: "sans-serif", fontSize: "12px", boxSizing: "border-box",
+    });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "8px" });
+    const text = document.createElement("div");
+    Object.assign(text.style, { lineHeight: "1.5", wordBreak: "break-word" });
+    const btns = document.createElement("div");
+    Object.assign(btns.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" });
+    card.append(title, text, btns);
+    card.addEventListener("mousedown", (e) => e.stopPropagation());
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    let resolve = null;
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        finish(null);
+    };
+    function finish(value) {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        const r = resolve;
+        resolve = null;
+        if (r) r(value);
+    }
+    overlay.addEventListener("mousedown", () => finish(null));
+
+    return {
+        ask(anchor, opts) {
+            if (resolve) finish(null);
+            title.textContent = opts.title || "";
+            text.innerHTML = opts.html || "";
+            btns.innerHTML = "";
+            for (const b of opts.buttons) {
+                const btn = makeTextButton(b.label, b.color || INACTIVE_BG);
+                btn.addEventListener("click", () => finish(b.value));
+                btns.appendChild(btn);
+            }
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            let r = anchor.getBoundingClientRect();
+            if (!r.width) r = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+            card.style.left = Math.max(8, r.left + (r.width - card.offsetWidth) / 2) + "px";
+            card.style.top = Math.max(8, r.top + (r.height - card.offsetHeight) / 2) + "px";
+            return new Promise((res) => (resolve = res));
+        },
+        remove() {
+            finish(null);
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
 // Galerie de selection (une seule fenetre, reutilisee pour les 3 types)
 // --------------------------------------------------------------------
 function buildGallery(container, ctx) {
@@ -1681,6 +1799,15 @@ function buildGallery(container, ctx) {
     let sub = "";      // sous-dossier relatif a base ; "" = base elle-meme
     let subfolders = []; // [{path, count}] reperes sous base (liste deroulante)
     let scanId = 0;      // ignore les reponses d'un reperage depasse
+    // Sortie project reliee a un projet choisi : zone du dossier du projet sous
+    // le dossier choisi. project = {name, path} ; projFolder = 08.Images, etc.
+    let project = null;
+    let projFolder = "";
+    let projDir = "";
+    let projFiles = [];  // fichiers du dossier du projet (tous types)
+    let initial = [];    // selection a l'ouverture (Add / Replace a la fermeture)
+    let closing = false;
+    const choice = buildChoiceDialog();
 
     // En-tete : titre, compteur, fermeture.
     const header = document.createElement("div");
@@ -1751,7 +1878,8 @@ function buildGallery(container, ctx) {
     Object.assign(grid.style, {
         flex: "1", overflowX: "hidden", overflowY: "auto", padding: "4px 12px 10px",
         display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))",
-        gap: "8px", alignContent: "start",
+        // Lignes a la hauteur de leur contenu : la grille defile au lieu d'ecraser les vignettes.
+        gridAutoRows: "max-content", gap: "8px", alignContent: "start",
     });
 
     // Pied : vider, terminer.
@@ -1942,7 +2070,9 @@ function buildGallery(container, ctx) {
         const arr = list();
         counter.textContent = arr.length + " / " + LIMITS[kind] + " selected";
         const folder = currentFolder();
-        const elsewhere = folder ? arr.filter((it) => !files.some((f) => canPick(kind, f.kind) && samePath(joinPath(folder, f.name), it))).length : arr.length;
+        const shown = (it) => (folder && files.some((f) => canPick(kind, f.kind) && samePath(joinPath(folder, f.name), it))) ||
+            (project && projFiles.some((f) => canPick(kind, f.kind) && samePath(joinPath(projDir, f.name), it)));
+        const elsewhere = arr.filter((it) => !shown(it)).length;
         footerInfo.textContent = elsewhere ? "+" + elsewhere + " selected in another folder" : "";
     }
 
@@ -1968,7 +2098,7 @@ function buildGallery(container, ctx) {
      * ouvert la galerie se selectionnent ; les autres sont affiches pour
      * information (meme aspect, curseur et info-bulle differents).
      */
-    function makeTile(f, folder, full) {
+    function makeTile(f, folder, full, inProject) {
         const path = joinPath(folder, f.name);
         const own = canPick(kind, f.kind);
         const idx = own ? indexOf(path) : -1;
@@ -2026,14 +2156,38 @@ function buildGallery(container, ctx) {
         if (selected) {
             const badge = document.createElement("div");
             badge.textContent = String(idx + 1);
+            // Projet : pastille orange (ordre de selection).
+            const color = inProject ? ORANGE : PINK;
             Object.assign(badge.style, {
                 position: "absolute", left: "4px", top: "4px", minWidth: "20px", height: "20px",
-                borderRadius: "10px", background: PINK, color: "white", fontWeight: "bold",
+                borderRadius: "10px", background: color, color: "white", fontWeight: "bold",
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px",
-                boxShadow: "0 0 6px rgba(211,95,168,0.8)",
+                boxShadow: inProject ? "0 0 6px rgba(224,121,60,0.8)" : "0 0 6px rgba(211,95,168,0.8)",
             });
             tile.appendChild(badge);
 
+        }
+
+        if (inProject) {
+            // Case a cocher sous la vignette : selectionne / retire ce fichier du projet.
+            tile.style.cursor = "default";
+            tile.style.border = "2px solid " + (selected ? ORANGE : "#2c2c2c");
+            const boxRow = document.createElement("div");
+            Object.assign(boxRow.style, { display: "flex", justifyContent: "center", padding: "2px 0 5px" });
+            const box = document.createElement("input");
+            box.type = "checkbox";
+            box.checked = selected;
+            box.disabled = !selectable;
+            box.title = selected ? "Uncheck: this file leaves the selection (archived in Archives when you close)"
+                : selectable ? "Check: select this file" : "The selection is full: uncheck another file first";
+            Object.assign(box.style, { width: "15px", height: "15px", margin: "0", accentColor: ORANGE,
+                cursor: selectable ? "pointer" : "not-allowed" });
+            box.addEventListener("click", (e) => e.stopPropagation());
+            box.addEventListener("change", () => toggle(path));
+            boxRow.appendChild(box);
+            tile.appendChild(boxRow);
+            tile.addEventListener("click", () => previewFile(f, path));
+            return tile;
         }
 
         tile.addEventListener("click", async () => {
@@ -2048,12 +2202,35 @@ function buildGallery(container, ctx) {
      * Une seule categorie dans le dossier : une grille simple. Plusieurs :
      * une section par categorie (Images, Video ou Video/Audio, Audio).
      */
+    /** Titre de zone sur toute la largeur : texte a gauche, compte a droite. */
+    function zoneHeader(html, right) {
+        const h = document.createElement("div");
+        Object.assign(h.style, {
+            gridColumn: "1 / -1", display: "flex", alignItems: "baseline", gap: "8px", color: TITLE_COLOR,
+            fontWeight: "bold", fontSize: "12px", padding: "6px 2px 2px",
+        });
+        const left = document.createElement("div");
+        left.innerHTML = html;
+        left.style.flex = "1";
+        const r = document.createElement("div");
+        r.textContent = right || "";
+        Object.assign(r.style, { color: "#bbb", fontWeight: "normal" });
+        h.append(left, r);
+        return h;
+    }
+
+    const countText = (n) => n + " " + (kind === "audio" ? "audio file" : fileKind(kind)) + (n > 1 ? "s" : "");
+
     function render() {
         updateCounters();
         grid.innerHTML = "";
         const folder = currentFolder();
         // Liste d'une seule image : jamais "pleine", un clic remplace l'image.
         const full = LIMITS[kind] > 1 && list().length >= LIMITS[kind];
+        if (project) {
+            grid.appendChild(zoneHeader("Content of the selected folder",
+                countText(files.filter((f) => canPick(kind, f.kind)).length)));
+        }
         const present = SECTIONS.filter((sec) => files.some((f) => f.kind === sec.kind));
         for (const sec of present) {
             const group = files.filter((f) => f.kind === sec.kind);
@@ -2063,6 +2240,40 @@ function buildGallery(container, ctx) {
                 grid.appendChild(sectionHeader(sec.title + "  ·  " + group.length + note));
             }
             group.forEach((f) => grid.appendChild(makeTile(f, folder, full)));
+        }
+        if (!project) return;
+        // Dossier du projet plein : choisir en bas le fichier a remplacer.
+        if (full) {
+            const msg = document.createElement("div");
+            msg.innerHTML = "The selection is full: <b>uncheck below</b> the file to replace, then pick the new one " +
+                "above. The replaced file will be archived in <b>" + escapeHtml(projFolder) + "/Archives</b> of the project.";
+            Object.assign(msg.style, { gridColumn: "1 / -1", color: ORANGE, padding: "8px 2px 0", lineHeight: "1.4" });
+            grid.appendChild(msg);
+        }
+        const sep = document.createElement("div");
+        Object.assign(sep.style, { gridColumn: "1 / -1", height: "3px", background: "#e8e8e8", borderRadius: "2px", margin: "8px 0 2px" });
+        grid.appendChild(sep);
+        const own = projFiles.filter((f) => canPick(kind, f.kind));
+        grid.appendChild(zoneHeader("Content of " + escapeHtml(projFolder) + " of the project <span style=\"color:#ddd\">" +
+            escapeHtml(project.name) + "</span>", countText(own.length)));
+        if (!own.length) {
+            const none = document.createElement("div");
+            none.textContent = "No " + (kind === "audio" ? "audio" : fileKind(kind)) + " file in this folder of the project yet.";
+            Object.assign(none.style, { gridColumn: "1 / -1", color: "#888", padding: "2px" });
+            grid.appendChild(none);
+        }
+        own.forEach((f) => grid.appendChild(makeTile(f, projDir, full, true)));
+    }
+
+    /** Relit le dossier du projet (zone du bas). */
+    async function loadProject() {
+        projFiles = [];
+        if (!project) return;
+        try {
+            const data = await apiGet("/mmrefloader/list?path=" + encodeURIComponent(projDir) + "&kind=all");
+            projFiles = data.files || [];
+        } catch (e) {
+            projFiles = []; // dossier absent : rien a montrer
         }
     }
 
@@ -2139,7 +2350,7 @@ function buildGallery(container, ctx) {
         if (e.key === "Escape") {
             e.preventDefault();
             e.stopImmediatePropagation();
-            close();
+            finish();
             return;
         }
         if (e.target === baseInput || e.target === subSelect) {
@@ -2157,9 +2368,77 @@ function buildGallery(container, ctx) {
         window.removeEventListener("keydown", onKey, true);
     }
 
-    closeBtn.addEventListener("click", close);
-    doneBtn.addEventListener("click", close);
-    overlay.addEventListener("mousedown", close);
+    /**
+     * Fermeture (Done, X, Echap, clic a cote). Projet relie : Add ou Replace
+     * si de nouveaux fichiers s'ajoutent a une selection existante, puis les
+     * fichiers du dossier du projet que plus rien n'utilise partent dans
+     * Archives (confirme ; Cancel revient a la galerie, rien ne change).
+     */
+    async function finish() {
+        if (!project) {
+            close();
+            return;
+        }
+        if (closing) return;
+        closing = true;
+        try {
+            const s = ctx.getState();
+            const final = list(s).slice();
+            const sess = gallerySession(initial, final);
+            let next = final;
+            if (sess.ask) {
+                const answer = await choice.ask(card, {
+                    title: "Add or replace?",
+                    html: sess.added.length + " new file(s) picked. <b>Add</b> them to the current selection (" +
+                        initial.length + "), or <b>Replace</b> the current selection with them?" +
+                        '<div style="color:#999;margin-top:6px">With Replace, the files of the project that are not ' +
+                        "used anymore go to <b>" + escapeHtml(projFolder) + "/Archives</b>.</div>",
+                    buttons: [
+                        { label: "Cancel", value: null },
+                        { label: "Replace", color: ORANGE, value: "replace" },
+                        { label: "Add", color: PINK, value: "add" },
+                    ],
+                });
+                if (!answer) return;
+                if (answer === "replace") next = replaceSelection(initial, final);
+            }
+            s[LIST_KEYS[kind]] = next;
+            await loadProject();
+            const unused = unusedProjectFiles(projFiles.map((f) => joinPath(projDir, f.name)), s);
+            if (unused.length) {
+                const names = unused.map((p) => escapeHtml(baseName(p)));
+                const ok = await choice.ask(card, {
+                    title: "Archive the files not used anymore?",
+                    html: unused.length + " file(s) of <b>" + escapeHtml(projFolder) + "</b> are not used anymore by the " +
+                        "Reference Loader and go to <b>" + escapeHtml(projFolder) + "/Archives</b>: " +
+                        names.slice(0, 8).join(", ") + (names.length > 8 ? ", … (+" + (names.length - 8) + ")" : "") +
+                        '<div style="color:#999;margin-top:6px">No unused file stays in the project; nothing is deleted.</div>',
+                    buttons: [
+                        { label: "Cancel", value: null },
+                        { label: "Archive", color: ORANGE, value: true },
+                    ],
+                });
+                if (!ok) {
+                    render();
+                    return;
+                }
+                await apiPost("/mmproject/archive_files", {
+                    project: project.path, folder: projFolder, names: unused.map(baseName),
+                });
+            }
+            ctx.setState(s);
+            close();
+        } catch (e) {
+            status.textContent = e.message;
+            render();
+        } finally {
+            closing = false;
+        }
+    }
+
+    closeBtn.addEventListener("click", finish);
+    doneBtn.addEventListener("click", finish);
+    overlay.addEventListener("mousedown", finish);
     browseBtn.addEventListener("click", browse);
     refreshBtn.addEventListener("click", reload);
     // Loupe du Root folder : affiche son contenu et repere ses sous-dossiers.
@@ -2205,15 +2484,23 @@ function buildGallery(container, ctx) {
             sub = base ? st.subs[fileKind(kind)] || "" : "";
             subfolders = [];
             files = [];
+            // Sortie project reliee a un projet : zone de son dossier (Images -> 08.Images...).
+            project = ctx.getProject ? ctx.getProject() : null;
+            projFolder = project ? LIST_FOLDERS[LIST_KEYS[kind]] : "";
+            projDir = project ? joinPath(project.path, projFolder) : "";
+            projFiles = [];
+            initial = list(st).slice();
             updateNav();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 720);
             loadFolder();
             scanSubfolders();
+            if (project) loadProject().then(render);
         },
         close,
         remove() {
+            choice.remove();
             close();
             overlay.remove();
         },
@@ -2476,7 +2763,8 @@ function buildSelectionViewer(container, ctx) {
     Object.assign(grid.style, {
         flex: "1", overflowX: "hidden", overflowY: "auto", padding: "10px 12px",
         display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))",
-        gap: "8px", alignContent: "start",
+        // Lignes a la hauteur de leur contenu : la grille defile au lieu d'ecraser les vignettes.
+        gridAutoRows: "max-content", gap: "8px", alignContent: "start",
     });
 
     // Encadre d'infos : apercu a gauche, details a droite.
@@ -3174,7 +3462,18 @@ app.registerExtension({
             container.appendChild(bottom);
 
             let lastRoot = null;
-            const gallery = buildGallery(container, { getState, setState });
+            // Projet choisi dans un noeud MiniMax H3 Project relie a la sortie project.
+            const getProject = () => {
+                const i = node.outputs.findIndex((o) => o.name === PROJECT_KEY);
+                if (i < 0) return null;
+                for (const l of outputLinksOf(node, i)) {
+                    const t = node.graph && node.graph.getNodeById(l.target_id);
+                    const info = t && typeof t.mmProjectInfo === "function" ? t.mmProjectInfo() : null;
+                    if (info) return info;
+                }
+                return null;
+            };
+            const gallery = buildGallery(container, { getState, setState, getProject });
             const viewer = buildSelectionViewer(container, { getState, setState });
             const clearConfirm = buildConfirmDialog(container);
             const rootDialog = buildRootDialog(container, { getState, setState });

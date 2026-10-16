@@ -334,6 +334,40 @@ def save_workflow(project, name, content, archive=None):
     return {"name": name, "mtime": os.path.getmtime(path), "archived": archived}
 
 
+# Fichiers du projet plus utilises par le Ref Loader : deplaces ici, jamais effaces.
+ARCHIVE_FOLDER = "Archives"
+
+
+def archive_files(project, folder, names):
+    """
+    Deplace les fichiers 'names' de <projet>/<folder> dans
+    <projet>/<folder>/Archives ("nom (2).ext" si le nom y est pris).
+    Renvoie les nouveaux chemins, dans l'ordre.
+    """
+    if not project or not os.path.isdir(project):
+        raise FileNotFoundError("Project folder not found: %s" % project)
+    if folder not in SUBFOLDERS:
+        raise ValueError("Unknown project folder: %s" % folder)
+    src_dir = os.path.join(project, folder)
+    for name in names:
+        if not os.path.isfile(_safe_file(src_dir, name)):
+            raise FileNotFoundError("File not found: %s" % os.path.join(src_dir, name))
+    dst_dir = os.path.join(src_dir, ARCHIVE_FOLDER)
+    os.makedirs(dst_dir, exist_ok=True)
+    moved = []
+    for name in names:
+        stem, ext = os.path.splitext(name)
+        n = 1
+        while True:
+            dst = os.path.join(dst_dir, name if n == 1 else "%s (%d)%s" % (stem, n, ext))
+            if not os.path.exists(dst):
+                break
+            n += 1
+        shutil.move(os.path.join(src_dir, name), dst)
+        moved.append(dst)
+    return moved
+
+
 def delete_archive(project, name):
     """Supprime une archive yyyyMMdd-HHmmss_nom.json (jamais un workflow ni une configuration)."""
     if not _STAMPED.match(name or "") or _CONFIG.match(name) or not name.lower().endswith(".json"):
