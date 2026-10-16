@@ -23,9 +23,11 @@ const NODE_NAME = "MiniMaxH3Project";
 const FOLDER_ROW_HEIGHT = 28;
 const UI_HEIGHT = 66 + PROJECT_SUBFOLDERS.length * (FOLDER_ROW_HEIGHT + 6) + 4;
 // Assez large pour « Last save: dd/MM/yyyy at hh:mm:ss » sur la ligne 00.Workflows.
-const MIN_WIDTH = 400;
+const MIN_WIDTH = 420;
 // Verification de secours de la cloche (l'evenement graphChanged fait le reste).
 const FALLBACK_CHECK_MS = 30000;
+// Relecture juste apres un evenement graphChanged (valeurs de widget mises a jour apres lui).
+const RECHECK_MS = 300;
 
 const PLUS_ICON = svg('<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>', 14);
 const PROJECT_ICON = svg(
@@ -43,6 +45,12 @@ const ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect>
 // Archives : 5 au plus par projet (comme projects.MAX_ARCHIVES) ; rouge = suppression.
 const TRASH_RED = "#d32f2f";
 const MAX_ARCHIVES = 5;
+// Avertissement a gauche du bouton 00.Workflows : workflow modifie, pas encore sauvegarde.
+const WARN_ICON = '<svg viewBox="0 0 24 24" width="16" height="16">' +
+    '<path d="M12 2.5 22.5 21h-21z" fill="#e0793c" stroke="#e0793c" stroke-width="1.5" stroke-linejoin="round"></path>' +
+    '<path d="M12 9v5.5" stroke="#1b1b1b" stroke-width="2.4" stroke-linecap="round"></path>' +
+    '<circle cx="12" cy="17.6" r="1.3" fill="#1b1b1b"></circle></svg>';
+const WARN_WIDTH = 16;
 // Couleurs de la cloche du workflow : orange = changements a sauvegarder, vert = a jour.
 const BELL_ORANGE = "#e0793c";
 const BELL_GREEN = "#43a047";
@@ -118,6 +126,7 @@ const HELP_SECTIONS = [
             [iconBadge(REFRESH_ICON, VIOLET), "Read the list of projects again"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "One row per folder of the project (greyed until a project is picked; its tooltip gives the path)"],
             [iconBadge(BELL_ICON, BELL_ORANGE), "Bell of 00.Workflows: save the workflow (orange = changes to save, green = saved)"],
+            [iconBadge(WARN_ICON, INACTIVE_BG), "Left of 00.Workflows: the workflow has changed and is not saved yet (gone once saved)"],
             [iconBadge(ARCHIVE_ICON, VIOLET), "Open an archived workflow in a new tab"],
         ]),
     },
@@ -224,6 +233,7 @@ const HELP_SECTIONS_FR = [
             [iconBadge(REFRESH_ICON, VIOLET), "Relire la liste des projets"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "Une ligne par dossier du projet (grisée tant qu'aucun projet n'est choisi ; l'infobulle donne le chemin)"],
             [iconBadge(BELL_ICON, BELL_ORANGE), "Cloche de 00.Workflows : sauvegarder le workflow (orange = changements, vert = sauvegardé)"],
+            [iconBadge(WARN_ICON, INACTIVE_BG), "À gauche de 00.Workflows : le workflow a changé et n'est pas encore sauvegardé (disparaît une fois sauvegardé)"],
             [iconBadge(ARCHIVE_ICON, VIOLET), "Ouvrir un workflow archivé dans un nouvel onglet"],
         ]),
     },
@@ -1354,8 +1364,16 @@ app.registerExtension({
                 // 00.Workflows : bouton des archives a droite de la cloche ; ailleurs, un espace.
                 const arch = name === WORKFLOWS ? makeIconButton(INACTIVE_BG, ARCHIVE_ICON, "") : document.createElement("span");
                 Object.assign(arch.style, { width: "22px", height: "22px", flex: "0 0 auto" });
-                row.append(btn, bell, arch);
-                return { name, row, btn, bell, arch, last };
+                // Place du sigle d'avertissement sur toutes les lignes (boutons alignes) ;
+                // seul 00.Workflows l'affiche, quand le workflow a change sans etre sauvegarde.
+                const warn = document.createElement("span");
+                if (name === WORKFLOWS) warn.innerHTML = WARN_ICON;
+                Object.assign(warn.style, {
+                    width: WARN_WIDTH + "px", height: "22px", flex: "0 0 auto", display: "flex", alignItems: "center",
+                    justifyContent: "center", visibility: "hidden", cursor: "help",
+                });
+                row.append(warn, btn, bell, arch);
+                return { name, row, btn, bell, arch, last, warn };
             });
 
             container.append(pickRow, ...folderRows.map((f) => f.row), bottom);
@@ -1614,13 +1632,24 @@ app.registerExtension({
                 const s = getState();
                 if (!wfInfo.current || !s.name) return "none";
                 if (!(s.wfValidated && s.wfPath === s.path)) return "orange";
-                return workflowSignature(forCompare(wf || currentWorkflow())) === savedSig ? "green" : "orange";
+                return workflowChanged(wf) ? "orange" : "green";
+            }
+
+            /** Nœuds, liens ou valeurs differents du workflow sauvegarde (la disposition ne compte pas). */
+            function workflowChanged(wf) {
+                if (!wfInfo.current || savedSig === null) return false;
+                return workflowSignature(forCompare(wf || currentWorkflow())) !== savedSig;
             }
 
             function paintBell(wf) {
                 const s = getState();
                 const current = s.name && projects.includes(s.name);
+                if (current && wfInfo.current && !wf) wf = currentWorkflow();
                 const st = current ? bellState(wf) : "none";
+                // Sigle a gauche du bouton : modifie mais pas encore sauvegarde.
+                const changed = current && workflowChanged(wf);
+                wfRow.warn.style.visibility = changed ? "visible" : "hidden";
+                wfRow.warn.title = changed ? "The workflow has changed since the last save and is not saved yet" : "";
                 const b = wfRow.bell;
                 b.style.background = st === "orange" ? BELL_ORANGE : st === "green" ? BELL_GREEN : INACTIVE_BG;
                 b.style.opacity = current ? "1" : "0.6";
@@ -1761,13 +1790,31 @@ app.registerExtension({
             });
             // Changements surveilles sans minuteur rapide : le ChangeTracker de ComfyUI emet
             // "graphChanged" (workflow deja serialise) a chaque modification de l'onglet actif.
+            // Nodes 2.0 : le ChangeTracker verifie a l'appui, avant que la valeur du widget
+            // change, et peut ne rien emettre ; une relecture peu apres chaque geste
+            // (souris relachee, touche, saisie) donne l'etat final.
+            let recheck = null;
+            const scheduleRecheck = () => {
+                if (!wfInfo.current || !node.graph) return;
+                clearTimeout(recheck);
+                recheck = setTimeout(() => {
+                    if (wfInfo.current && node.graph) paintBell();
+                }, RECHECK_MS);
+            };
             const onGraphChanged = (e) => {
                 if (!wfInfo.current || !node.graph) return;
                 const wf = e && e.detail && Array.isArray(e.detail.nodes) ? e.detail : null;
                 paintBell(wf);
+                scheduleRecheck();
             };
+            const GESTURES = ["pointerup", "keyup", "change"];
             api.addEventListener("graphChanged", onGraphChanged);
-            node.__mmprojectUnlisten = () => api.removeEventListener("graphChanged", onGraphChanged);
+            GESTURES.forEach((t) => document.addEventListener(t, scheduleRecheck, true));
+            node.__mmprojectUnlisten = () => {
+                api.removeEventListener("graphChanged", onGraphChanged);
+                GESTURES.forEach((t) => document.removeEventListener(t, scheduleRecheck, true));
+                clearTimeout(recheck);
+            };
             // Secours espace : changements faits par un script, sans action de l'utilisateur.
             node.__mmprojectTimer = setInterval(() => {
                 if (wfInfo.current) paintBell();
