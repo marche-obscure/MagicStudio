@@ -346,6 +346,80 @@ class ArchiveFilesTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(self.img, "a.png")))
 
 
+class ImportFilesTest(unittest.TestCase):
+    """Remplacants valides : copies (deplaces depuis Archives) dans le dossier du projet."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.project = projects.create_project(self.tmp, "Clip")
+        self.img = os.path.join(self.project, "08.Images")
+        self.src = os.path.join(self.tmp, "src")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_import_name(self):
+        self.assertEqual(projects.import_name(self.img, "a.png"), "a.png")
+        write(os.path.join(self.img, "a.png"))
+        self.assertEqual(projects.import_name(self.img, "a.png"), "a_02.png")
+        write(os.path.join(self.img, "a_02.png"))
+        self.assertEqual(projects.import_name(self.img, "a.png"), "a_03.png")
+
+    def test_copies_outside_moves_from_archives_keeps_inside(self):
+        outside = os.path.join(self.src, "a.png")
+        write(outside, b"new")
+        write(os.path.join(self.img, "a.png"), b"taken")
+        arch = os.path.join(self.img, "Archives", "b.png")
+        write(arch, b"back")
+        inside = os.path.join(self.img, "c.png")
+        write(inside, b"c")
+        dsts = projects.import_files(self.project, "08.Images", [outside, arch, inside])
+        self.assertEqual(dsts, [os.path.join(self.img, "a_02.png"), os.path.join(self.img, "b.png"), inside])
+        self.assertTrue(os.path.isfile(outside))  # copie : la source reste
+        self.assertFalse(os.path.exists(arch))  # deplace depuis Archives
+        with open(dsts[0], "rb") as f:
+            self.assertEqual(f.read(), b"new")
+
+    def test_replacing_itself_keeps_its_name(self):
+        # L'ancien "a.png" est archive d'abord : le remplacant du meme nom garde son nom.
+        write(os.path.join(self.img, "a.png"), b"old")
+        new = os.path.join(self.src, "a.png")
+        write(new, b"resized")
+        projects.archive_files(self.project, "08.Images", ["a.png"])
+        dsts = projects.import_files(self.project, "08.Images", [new])
+        self.assertEqual(dsts, [os.path.join(self.img, "a.png")])
+
+    def test_refuses_bad_input_and_imports_nothing(self):
+        ok = os.path.join(self.src, "a.png")
+        write(ok)
+        with self.assertRaises(ValueError):
+            projects.import_files(self.project, "Nope", [ok])
+        with self.assertRaises(FileNotFoundError):
+            projects.import_files(self.project, "08.Images", [ok, os.path.join(self.src, "missing.png")])
+        self.assertFalse(os.path.exists(os.path.join(self.img, "a.png")))
+
+
+class HashTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_same_content_same_hash_and_cache_follows_changes(self):
+        a, b, c = (os.path.join(self.tmp, n) for n in ("a.png", "b.png", "c.png"))
+        write(a, b"same")
+        write(b, b"same")
+        write(c, b"other")
+        h = projects.file_hashes([a, b, c, os.path.join(self.tmp, "missing.png")])
+        self.assertEqual(sorted(h), sorted([a, b, c]))
+        self.assertEqual(h[a], h[b])
+        self.assertNotEqual(h[a], h[c])
+        write(a, b"changed!")
+        os.utime(a, (time.time() + 10, time.time() + 10))
+        self.assertNotEqual(projects.file_hash(a), h[b])
+
+
 class SameAsJsTest(unittest.TestCase):
     """La liste des sous-dossiers doit etre la meme cote JS."""
 

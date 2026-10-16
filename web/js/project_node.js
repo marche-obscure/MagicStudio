@@ -2003,6 +2003,16 @@ app.registerExtension({
 
             // Appele par le Reference Loader quand son Root folder change.
             node.__mmprojectRefresh = () => loadProjects();
+            // Galerie du Reference Loader : remplacements valides, le dossier est a jour.
+            node.mmResnapFolder = (f) => {
+                const loader = linkedLoader(node);
+                const now = getState();
+                if (!loader || !UPDATE_FOLDERS.includes(f)) return;
+                const snap = Object.assign({}, now.snapPath === now.path ? now.snap : {});
+                snap[f] = folderPaths(loader.mmGetState(), f);
+                setState({ snap, snapPath: now.path });
+                paintFolders();
+            };
             // Lu par la galerie du Reference Loader : projet choisi (et existant), sinon null.
             node.mmProjectInfo = () => {
                 const s = getState();

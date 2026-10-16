@@ -8,6 +8,7 @@ projets (le Root folder du MiniMax H3 Reference Loader branche, sinon
 import os
 import shutil
 import filecmp
+import hashlib
 import re
 import time
 
@@ -366,6 +367,86 @@ def archive_files(project, folder, names):
         shutil.move(os.path.join(src_dir, name), dst)
         moved.append(dst)
     return moved
+
+
+def import_name(folder, name):
+    """
+    Nom libre pour 'name' dans 'folder' : le nom lui-meme s'il est libre,
+    sinon "nom_02.ext", "nom_03.ext"... (un fichier qui en remplace un du
+    meme nom garde son nom : l'ancien est archive avant).
+    """
+    if not os.path.exists(os.path.join(folder, name)):
+        return name
+    stem, ext = os.path.splitext(name)
+    n = 2
+    while os.path.exists(os.path.join(folder, "%s_%02d%s" % (stem, n, ext))):
+        n += 1
+    return "%s_%02d%s" % (stem, n, ext)
+
+
+def import_files(project, folder, paths):
+    """
+    Fait entrer des fichiers dans <projet>/<folder> : ceux de
+    <projet>/<folder>/Archives sont deplaces, les autres copies (la source
+    reste intacte), ceux deja dans le dossier restent en place. Nom pris =
+    import_name(). Renvoie les nouveaux chemins, dans l'ordre.
+    """
+    if not project or not os.path.isdir(project):
+        raise FileNotFoundError("Project folder not found: %s" % project)
+    if folder not in SUBFOLDERS:
+        raise ValueError("Unknown project folder: %s" % folder)
+    dst_dir = os.path.join(project, folder)
+    arch_dir = os.path.join(dst_dir, ARCHIVE_FOLDER)
+    for p in paths:
+        if not os.path.isfile(p or ""):
+            raise FileNotFoundError("File not found: %s" % p)
+    os.makedirs(dst_dir, exist_ok=True)
+    out = []
+    for p in paths:
+        parent = _norm(os.path.dirname(p))
+        if parent == _norm(dst_dir):
+            out.append(p)
+            continue
+        dst = os.path.join(dst_dir, import_name(dst_dir, os.path.basename(p)))
+        if parent == _norm(arch_dir):
+            shutil.move(p, dst)
+        else:
+            shutil.copy2(p, dst)
+        out.append(dst)
+    return out
+
+
+# SHA256 deja calcules : chemin -> (taille, date, empreinte).
+_HASH_CACHE = {}
+
+
+def file_hash(path):
+    """SHA256 du fichier (None s'il n'existe pas), garde en cache tant que taille et date ne changent pas."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = _norm(path)
+    hit = _HASH_CACHE.get(key)
+    if hit and hit[0] == st.st_size and hit[1] == st.st_mtime:
+        return hit[2]
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    digest = h.hexdigest()
+    _HASH_CACHE[key] = (st.st_size, st.st_mtime, digest)
+    return digest
+
+
+def file_hashes(paths):
+    """{chemin: SHA256} pour les fichiers existants."""
+    out = {}
+    for p in paths:
+        d = file_hash(p)
+        if d:
+            out[p] = d
+    return out
 
 
 def delete_archive(project, name):
