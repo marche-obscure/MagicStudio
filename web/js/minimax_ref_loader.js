@@ -253,9 +253,15 @@ const HELP_SECTIONS = [
                 "Video → <b>12.Video</b>, Video/Audio → <b>14.Video-Audio</b>, Audio → <b>10.Son</b>). The orange " +
                 "badge always gives the selection number; clicking a file of the project that is not selected " +
                 "selects it.",
-                "The check box under a selected file of the project (unchecked at first) marks it <b>to replace</b>: " +
-                "the next file you pick above takes its number, and the replaced file goes to <b>Archives</b>. A " +
-                "file still checked when you close leaves the selection too.",
+                "The check box under a selected file of the project (unchecked at first) marks it <b>to replace</b>. " +
+                "The next file you pick above goes to the <b>pending replacements</b> (shown above the line, greyed " +
+                "out in the top row) with that number; the replaced file is locked and shows <b>n → A</b>.",
+                "In the pending replacements, the orange number under the green ✓ is the number the file takes. " +
+                "The green ✓ validates one replacement (confirmed), the red ✕ cancels " +
+                "it and frees the locked file. <b>Validate changes</b> applies them all: each new file takes its " +
+                "number and the replaced files go to <b>Archives</b>; <b>Cancel changes</b> (confirmed) puts " +
+                "everything back. Closing with pending replacements asks Validate or Discard.",
+                "A file still checked without replacement when you close leaves the selection too.",
                 "The selection is full: a message above the line asks you to check below the file to replace, " +
                 "then to pick the new one above.",
                 "When the <b>Archives</b> folder of the project folder has files, a <b>View archives</b> button " +
@@ -442,8 +448,15 @@ const HELP_SECTIONS_FR = [
                 "pastille orange donne toujours le numéro dans la sélection ; cliquer sur un fichier du projet non " +
                 "sélectionné le sélectionne.",
                 "La case à cocher sous un fichier sélectionné du projet (décochée au départ) le marque <b>à " +
-                "remplacer</b> : le prochain fichier choisi en haut prend son numéro, et le fichier remplacé part " +
-                "dans <b>Archives</b>. Un fichier encore coché à la fermeture sort aussi de la sélection.",
+                "remplacer</b>. Le prochain fichier choisi en haut entre dans le <b>pool de remplacements</b> " +
+                "(au-dessus du trait, grisé dans la ligne du haut) avec ce numéro ; le fichier remplacé est " +
+                "verrouillé et affiche <b>n → A</b>.",
+                "Dans le pool, le numéro orange sous la ✓ verte est le numéro que prendra le fichier. " +
+                "La ✓ verte valide un remplacement (avec confirmation), la ✕ rouge l'annule et " +
+                "libère le fichier verrouillé. <b>Validate changes</b> les applique tous : chaque nouveau fichier " +
+                "prend son numéro et les fichiers remplacés partent dans <b>Archives</b> ; <b>Cancel changes</b> " +
+                "(avec confirmation) remet tout en place. Fermer avec un pool non vide demande Validate ou Discard.",
+                "Un fichier encore coché sans remplaçant à la fermeture sort aussi de la sélection.",
                 "Sélection pleine : un message au-dessus du trait invite à cocher en bas le fichier à remplacer, " +
                 "puis à choisir le nouveau en haut.",
                 "Quand le dossier <b>Archives</b> du dossier du projet contient des fichiers, un bouton <b>View " +
@@ -1826,6 +1839,11 @@ function buildGallery(container, ctx) {
     // Fichiers du projet coches = a remplacer, dans l'ordre ou ils ont ete coches :
     // le prochain fichier choisi prend la place (le numero) du premier.
     let marked = [];
+    // Remplacements en attente (pool) : {path, old, f, folder}. Le remplacant
+    // prend le numero de old a la validation ; old part alors dans Archives.
+    let pool = [];
+    const inPool = (path) => pool.some((it) => samePath(it.path, path));
+    const poolOf = (old) => pool.find((it) => samePath(it.old, old));
     // Archives du dossier du projet : bouton "View archives" (vert = affichees a la
     // place du dossier choisi, dans la zone du haut).
     let archFiles = [];
@@ -2064,7 +2082,8 @@ function buildGallery(container, ctx) {
     }
     const indexOf = (path, s) => list(s).findIndex((it) => samePath(it, path));
 
-    async function toggle(path) {
+    async function toggle(path, f, folder) {
+        if (inPool(path)) return; // deja en attente de remplacement
         // Son seul : une video sans bande-son est refusee des la galerie.
         const s0 = ctx.getState();
         const room = list(s0).length < LIMITS[kind] || marked.length > 0;
@@ -2086,11 +2105,11 @@ function buildGallery(container, ctx) {
         if (idx >= 0) {
             arr.splice(idx, 1);
         } else if (marked.length) {
-            // Fichier du projet coche : le nouveau prend sa place et son numero ;
-            // le remplace part dans Archives a la fermeture.
-            const at = indexOf(marked.shift(), s);
-            if (at >= 0) arr[at] = path;
-            else if (arr.length < LIMITS[kind]) arr.push(path);
+            // Fichier du projet coche : le nouveau va dans le pool (pas de changement
+            // immediat) ; il prendra la place et le numero de l'ancien a la validation.
+            pool.push({ path, old: marked.shift(), f, folder });
+            render();
+            return;
         } else if (arr.length < LIMITS[kind]) {
             arr.push(path);
         } else if (LIMITS[kind] === 1) {
@@ -2151,7 +2170,8 @@ function buildGallery(container, ctx) {
         const own = canPick(kind, f.kind);
         const idx = own ? indexOf(path) : -1;
         const selected = idx >= 0;
-        const selectable = own && (selected || !full || marked.length > 0);
+        const pooled = !inProject && own && !selected && inPool(path);
+        const selectable = own && !pooled && (selected || !full || marked.length > 0);
 
         const tile = document.createElement("div");
         tile.title = own ? f.name + (soundOnly(kind, path) ? "\n(sound only: its soundtrack goes out on ref_audio)" : "")
@@ -2221,12 +2241,22 @@ function buildGallery(container, ctx) {
             // selectionne = a remplacer : le prochain fichier choisi prend son numero.
             const isMarked = selected && marked.some((m) => samePath(m, path));
             const order = isMarked ? marked.findIndex((m) => samePath(m, path)) : -1;
+            const locked = selected && !!poolOf(path);
             tile.style.cursor = selected ? "default" : tile.style.cursor;
-            tile.style.border = "2px " + (isMarked ? "dashed " + MARK_RED : "solid " + (selected ? ORANGE : "#2c2c2c"));
+            tile.style.border = "2px " + (isMarked || locked ? "dashed " + MARK_RED : "solid " + (selected ? ORANGE : "#2c2c2c"));
             const boxRow = document.createElement("div");
             Object.assign(boxRow.style, { display: "flex", justifyContent: "center", alignItems: "center", gap: "4px",
                 padding: "2px 0 5px", minHeight: "17px", fontSize: "10px", color: MARK_RED });
-            if (selected) {
+            if (locked) {
+                // Remplacement en attente : verrouille, "n -> A" (A comme Archives).
+                tile.style.opacity = "0.6";
+                const tag = document.createElement("div");
+                tag.textContent = (idx + 1) + " → A";
+                tag.title = "Locked: replaced by " + poolOf(path).f.name + " when the changes are validated, then archived";
+                Object.assign(tag.style, { fontWeight: "bold", fontSize: "11px", color: "#fff", background: MARK_RED,
+                    borderRadius: "8px", padding: "0 8px" });
+                boxRow.appendChild(tag);
+            } else if (selected) {
                 const box = document.createElement("input");
                 box.type = "checkbox";
                 box.checked = isMarked;
@@ -2242,18 +2272,153 @@ function buildGallery(container, ctx) {
             tile.appendChild(boxRow);
             tile.addEventListener("click", async () => {
                 // Fichier du projet non selectionne : le clic le selectionne.
-                if (own && !selected) await toggle(path);
+                if (own && !selected) await toggle(path, f, folder);
                 previewFile(f, path);
             });
             return tile;
         }
 
+        if (pooled) {
+            tile.title = f.name + "\n(in the pending replacements below)";
+            tile.style.cursor = "default";
+            tile.addEventListener("click", () => previewFile(f, path));
+            return tile;
+        }
         tile.addEventListener("click", async () => {
             // Attendre la selection (verification de la bande-son) avant l'apercu.
-            if (own) await toggle(path);
+            if (own) await toggle(path, f, folder);
             previewFile(f, path);
         });
         return tile;
+    }
+
+    /** Vignette du pool : numero vise, coche verte (valider celui-ci), croix rouge (l'annuler). */
+    function poolTile(it) {
+        const num = indexOf(it.old) + 1;
+        const tile = document.createElement("div");
+        tile.title = it.f.name + "\nWill replace number " + num + " (" + baseName(it.old) + ")";
+        Object.assign(tile.style, {
+            position: "relative", flex: "0 0 120px", background: "#151515", borderRadius: "6px", overflow: "hidden",
+            border: "2px solid " + ORANGE,
+        });
+        const thumb = document.createElement("div");
+        Object.assign(thumb.style, { height: "84px", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d0d0d" });
+        if (it.f.kind === "audio") {
+            thumb.innerHTML = svg('<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle>' +
+                '<circle cx="18" cy="16" r="3"></circle>', 34);
+            thumb.style.opacity = "0.7";
+        } else {
+            const img = document.createElement("img");
+            img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(it.folder) + "&file=" +
+                encodeURIComponent(it.f.name) + "&mt=" + Math.floor(it.f.mtime || 0);
+            Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
+            thumb.appendChild(img);
+        }
+        const name = document.createElement("div");
+        name.textContent = it.f.name;
+        Object.assign(name.style, { padding: "3px 5px", fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden",
+            textOverflow: "ellipsis", color: "#fff" });
+        tile.append(thumb, name);
+        const corner = (html, bg, pos, title, onClick) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.innerHTML = html;
+            b.title = title;
+            Object.assign(b.style, Object.assign({
+                position: "absolute", top: "4px", width: "20px", height: "20px", borderRadius: "10px", border: "none",
+                background: bg, color: "white", fontWeight: "bold", fontSize: "12px", lineHeight: "20px", padding: "0",
+                cursor: "pointer", boxShadow: "0 0 4px rgba(0,0,0,0.6)",
+            }, pos));
+            b.addEventListener("click", (e) => {
+                e.stopPropagation();
+                onClick();
+            });
+            tile.appendChild(b);
+        };
+        corner("✓", GREEN, { left: "4px" }, "Validate this replacement", () => validateOne(it));
+        const badge = document.createElement("div");
+        badge.textContent = String(num);
+        badge.title = "Will take number " + num;
+        Object.assign(badge.style, {
+            position: "absolute", left: "4px", top: "28px", minWidth: "20px", height: "20px",
+            borderRadius: "10px", background: ORANGE, color: "white", fontWeight: "bold",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px",
+            boxShadow: "0 0 6px rgba(224,121,60,0.8)",
+        });
+        tile.appendChild(badge);
+        corner("✕", MARK_RED, { right: "4px" }, "Cancel this replacement", () => {
+            pool = pool.filter((x) => x !== it);
+            render();
+        });
+        tile.addEventListener("click", () => previewFile(it.f, it.path));
+        return tile;
+    }
+
+    /** Applique des remplacements du pool : nouveaux a la place des anciens, anciens dans Archives. */
+    async function applyPool(items) {
+        const s = ctx.getState();
+        const arr = list(s);
+        for (const it of items) {
+            const at = indexOf(it.old, s);
+            if (at >= 0) arr[at] = it.path;
+        }
+        const inProj = (p) => projFiles.some((f) => samePath(joinPath(projDir, f.name), p));
+        const toArchive = unusedProjectFiles(items.map((it) => it.old).filter(inProj), s);
+        if (toArchive.length) {
+            await apiPost("/mmproject/archive_files", { project: project.path, folder: projFolder, names: toArchive.map(baseName) });
+        }
+        ctx.setState(s);
+        pool = pool.filter((x) => !items.includes(x));
+        await loadProject();
+        render();
+    }
+
+    const replaceLine = (it) => "number " + (indexOf(it.old) + 1) + ": <b>" + escapeHtml(baseName(it.old)) + "</b> → <b>" +
+        escapeHtml(it.f.name) + "</b>";
+
+    async function validateOne(it) {
+        const ok = await choice.ask(card, {
+            title: "Validate this replacement?",
+            html: "Replace " + replaceLine(it) + ".<div style=\"color:#999;margin-top:6px\">The replaced file goes to <b>" +
+                escapeHtml(projFolder) + "/Archives</b>.</div>",
+            buttons: [{ label: "Cancel", value: null }, { label: "Validate", color: GREEN, value: true }],
+        });
+        if (!ok) return;
+        try {
+            await applyPool([it]);
+        } catch (e) {
+            status.textContent = e.message;
+        }
+    }
+
+    async function validateAll() {
+        if (!pool.length) return;
+        const ok = await choice.ask(card, {
+            title: "Validate the changes?",
+            html: pool.length + " replacement(s):<br>" + pool.map(replaceLine).join("<br>") +
+                "<div style=\"color:#999;margin-top:6px\">The replaced files go to <b>" + escapeHtml(projFolder) +
+                "/Archives</b>.</div>",
+            buttons: [{ label: "Cancel", value: null }, { label: "Validate changes", color: GREEN, value: true }],
+        });
+        if (!ok) return;
+        try {
+            await applyPool(pool.slice());
+        } catch (e) {
+            status.textContent = e.message;
+        }
+    }
+
+    async function cancelAll() {
+        if (!pool.length) return;
+        const ok = await choice.ask(card, {
+            title: "Cancel the changes?",
+            html: "The " + pool.length + " pending replacement(s) are dropped and everything goes back as it was.",
+            buttons: [{ label: "Keep them", value: null }, { label: "Cancel changes", color: MARK_RED, value: true }],
+        });
+        if (!ok) return;
+        pool = [];
+        marked = [];
+        render();
     }
 
     /**
@@ -2281,6 +2446,7 @@ function buildGallery(container, ctx) {
 
     function render() {
         marked = marked.filter((m) => indexOf(m) >= 0);
+        pool = pool.filter((it) => indexOf(it.old) >= 0);
         // Projet relie : Clear viderait l'ordre des fichiers du projet, il est bloque.
         clearBtn.disabled = !!project;
         clearBtn.style.opacity = project ? "0.45" : "1";
@@ -2339,15 +2505,31 @@ function buildGallery(container, ctx) {
             grid.appendChild(strip);
         }
         if (!project) return;
+        if (pool.length) {
+            const head = zoneHeader("Pending replacements", "");
+            const actions = document.createElement("div");
+            Object.assign(actions.style, { display: "flex", gap: "6px", alignSelf: "center" });
+            const okBtn = makeTextButton("Validate changes", GREEN);
+            const noBtn = makeTextButton("Cancel changes", INACTIVE_BG);
+            [okBtn, noBtn].forEach((b) => Object.assign(b.style, { padding: "2px 10px", fontSize: "11px" }));
+            okBtn.addEventListener("click", validateAll);
+            noBtn.addEventListener("click", cancelAll);
+            actions.append(noBtn, okBtn);
+            head.appendChild(actions);
+            grid.appendChild(head);
+            const strip = document.createElement("div");
+            Object.assign(strip.style, {
+                gridColumn: "1 / -1", display: "flex", flexWrap: "nowrap", gap: "8px", overflowX: "auto",
+                overflowY: "hidden", paddingBottom: "6px", minWidth: "0",
+            });
+            pool.forEach((it) => strip.appendChild(poolTile(it)));
+            grid.appendChild(strip);
+        }
         // Dossier du projet plein : choisir en bas le fichier a remplacer.
         {
             // Toujours la meme place (vide sans message) : les vignettes ne bougent pas.
             const msg = document.createElement("div");
-            const next = marked.length ? indexOf(marked[0]) + 1 : 0;
-            msg.innerHTML = !(full || marked.length) ? "" : marked.length
-                ? "Pick above the file that replaces number <b>" + next + "</b>" +
-                (marked.length > 1 ? " (" + marked.length + " files checked)" : "") + ". It takes the same number; " +
-                "the replaced file will be archived in <b>" + escapeHtml(projFolder) + "/Archives</b> of the project."
+            msg.innerHTML = !full || marked.length ? ""
                 : "The selection is full: <b>check below</b> the file to replace, then pick the new one above: it " +
                 "takes the same number, and the replaced file will be archived in <b>" + escapeHtml(projFolder) +
                 "/Archives</b> of the project.";
@@ -2494,6 +2676,23 @@ function buildGallery(container, ctx) {
         if (closing) return;
         closing = true;
         try {
+            if (pool.length) {
+                const answer = await choice.ask(card, {
+                    title: "Pending replacements",
+                    html: pool.length + " replacement(s) are not validated:<br>" + pool.map(replaceLine).join("<br>"),
+                    buttons: [
+                        { label: "Cancel", value: null },
+                        { label: "Discard", color: MARK_RED, value: "discard" },
+                        { label: "Validate", color: GREEN, value: "validate" },
+                    ],
+                });
+                if (!answer) return;
+                if (answer === "validate") await applyPool(pool.slice());
+                else {
+                    pool = [];
+                    marked = [];
+                }
+            }
             const s = ctx.getState();
             // Fichiers coches sans remplacant : ils sortent aussi de la selection (Archives).
             if (marked.length) s[LIST_KEYS[kind]] = list(s).filter((p) => !marked.some((m) => samePath(m, p)));
@@ -2607,6 +2806,7 @@ function buildGallery(container, ctx) {
             projFiles = [];
             initial = list(st).slice();
             marked = [];
+            pool = [];
             archFiles = [];
             showArchives = false;
             // Deux zones avec un projet : fenetre plus haute (meme largeur).
