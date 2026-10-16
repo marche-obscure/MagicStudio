@@ -3,7 +3,8 @@ ComfyUI-MiniMaxRefLoader
 ------------------------
 Noeud de chargement des references (images, videos, videos avec son,
 audios) pour MiniMaxH3ReferenceToVideo, avec choix des fichiers dans des
-galeries de miniatures.
+galeries de miniatures, et noeud de dossier de projet (MiniMaxH3Project)
+qui fixe le dossier racine de ces galeries.
 """
 
 import os
@@ -13,14 +14,17 @@ import subprocess
 import traceback
 
 from . import media
-from .nodes import MiniMaxH3RefLoader
+from . import projects
+from .nodes import MiniMaxH3RefLoader, MiniMaxH3Project, default_projects_root
 
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3RefLoader": MiniMaxH3RefLoader,
+    "MiniMaxH3Project": MiniMaxH3Project,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3RefLoader": "MiniMax H3 Reference Loader",
+    "MiniMaxH3Project": "MiniMax H3 Project",
 }
 
 WEB_DIRECTORY = "./web/js"
@@ -156,6 +160,55 @@ try:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
         return web.json_response({"path": path or ""})
+
+    # ------ Noeud Projet : racine des projets, liste, creation, ouverture ------
+
+    def _projects_root(root):
+        """Racine demandee, ou racine par defaut (creee si besoin) si vide."""
+        root = (root or "").strip()
+        if root:
+            return root
+        root = default_projects_root()
+        os.makedirs(root, exist_ok=True)
+        return root
+
+    def _project_error(e):
+        status = 409 if isinstance(e, FileExistsError) else 400 if isinstance(
+            e, (ValueError, FileNotFoundError)) else 500
+        return web.json_response({"error": str(e)}, status=status)
+
+    @routes.get("/mmproject/list")
+    async def mmproject_list(request):
+        """Projets de la racine 'root' ("" = racine par defaut)."""
+        try:
+            root = await _in_executor(_projects_root, request.rel_url.query.get("root", ""))
+            names = await _in_executor(projects.list_projects, root)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"root": root, "default_root": default_projects_root(), "projects": names})
+
+    @routes.post("/mmproject/create")
+    async def mmproject_create(request):
+        """Cree le projet 'name' (et ses sous-dossiers) dans 'root'."""
+        try:
+            body = await request.json()
+            root = await _in_executor(_projects_root, body.get("root", ""))
+            path = await _in_executor(projects.create_project, root, body.get("name", ""))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"root": root, "path": path, "name": os.path.basename(path)})
+
+    @routes.post("/mmproject/open")
+    async def mmproject_open(request):
+        """Chemin du projet 'name' de 'root' ; ses sous-dossiers manquants sont recrees."""
+        try:
+            body = await request.json()
+            root = await _in_executor(_projects_root, body.get("root", ""))
+            name = body.get("name", "")
+            created = await _in_executor(projects.ensure_project, os.path.join(root, projects.validate_name(name)))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"root": root, "path": os.path.join(root, name.strip()), "created": created})
 
 except Exception:
     print("[ComfyUI-MiniMaxRefLoader] Could not register the API routes:")

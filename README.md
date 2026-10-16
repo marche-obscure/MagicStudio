@@ -52,6 +52,15 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
 - The **?** button opens the help: a menu of sections on the left (Quick start, Modes, Picking files, Selection, Trim, Overview, Save and load, Outputs, Limits), one section at a time on the right, a search field that filters the sections and highlights the words, and Previous / Next links (or the ← → keys). It reopens on the last section viewed. The help is in English or French: the globe button in its header opens the language list; by default it follows the ComfyUI language (then the browser's), and the choice is remembered. The search ignores accents and case.
 - Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most; audio is cut to 15 s.
 
+## MiniMax H3 Project node
+
+A second node of this pack, **MiniMax H3 Project** (`loaders/minimax`), creates and picks project folders:
+
+- Click **+**, type a name and press Enter: the project folder is created with `Workflows`, `Prompt`, `Images`, `Son`, `Rush Videos` and `Rush Images`. Or pick an existing project in the drop-down list.
+- The gear sets the projects folder (empty: `ComfyUI/input/Projets`, created if needed); the last one chosen is used by new Project nodes.
+- A missing subfolder is created again when the project is picked, when the workflow is loaded, or when it runs.
+- Wire its **project** output to the **project** input of the Reference Loader: the root folder of the galleries becomes the project folder (the gear of the Reference Loader is greyed) and each gallery opens in its subfolder: Images and First/Last frame in `Images`, Video and Video/Audio in `Rush Videos`, Audio in `Son`. The Subfolder list stays free. Unwire it and the Reference Loader gets its own root folder back.
+
 ## Compatibility
 
 Works with the classic node design and with **Modern Node Design (Nodes 2.0)**: in both, output names can be renamed by double-click (or the right-click menu) and paired outputs share their colour.
@@ -64,7 +73,7 @@ Copy this folder into `ComfyUI/custom_nodes/` and restart ComfyUI. No extra depe
 
 ```
 python -m unittest discover -s tests -v
-node --test tests/test_config_format.mjs tests/test_config_json.mjs tests/test_help_search.mjs
+node --test tests/test_config_format.mjs tests/test_config_json.mjs tests/test_help_search.mjs tests/test_project_paths.mjs
 ```
 
 ## Credits

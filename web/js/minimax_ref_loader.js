@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
+import { gallerySubfolder } from "./project_paths.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -639,6 +640,39 @@ function outputLinksOf(node, slot) {
     return all.filter((l) => l && l.origin_id === node.id && l.origin_slot === slot);
 }
 
+// --------------------------------------------------------------------
+// Lien avec le noeud MiniMax H3 Project (entree "project")
+// --------------------------------------------------------------------
+const PROJECT_TYPE = "MINIMAX_PROJECT";
+
+function linkById(graph, id) {
+    if (!graph || !graph.links || id == null) return null;
+    return typeof graph.links.get === "function" ? graph.links.get(id) : graph.links[id];
+}
+
+/**
+ * Chemin du projet du noeud Projet branche sur l'entree "project" (en
+ * traversant les noeuds Reroute), ou "" si rien n'est branche.
+ */
+function projectPathOf(node) {
+    const graph = node.graph;
+    let input = (node.inputs || []).find((inp) => inp.name === "project");
+    for (let hop = 0; input && hop < 20; hop++) {
+        const link = linkById(graph, input.link);
+        const origin = link && graph.getNodeById(link.origin_id);
+        if (!origin) return "";
+        if (typeof origin.mmProjectPath === "function") return origin.mmProjectPath() || "";
+        // Reroute classique : on remonte son entree.
+        input = origin.inputs && origin.inputs.length === 1 ? origin.inputs[0] : null;
+    }
+    return "";
+}
+
+/** Ancien workflow (sans l'entree "project") : on l'ajoute. */
+function ensureProjectInput(node) {
+    if (!(node.inputs || []).some((inp) => inp.name === "project")) node.addInput("project", PROJECT_TYPE);
+}
+
 function applyLayout(node, state) {
     const keys = stateLayout(state);
     const same = node.outputs.length === keys.length && node.outputs.every((o, i) => o.name === keys[i]);
@@ -1005,7 +1039,15 @@ function hideWidget(widget) {
 // --------------------------------------------------------------------
 // Fenetre d'aide
 // --------------------------------------------------------------------
-function buildHelpOverlay(container) {
+/**
+ * opts (facultatif, pour un autre noeud) : sectionsFor(lang) = rubriques,
+ * nodeTitle = nom dans le titre, sectionKey = cle localStorage de la
+ * derniere rubrique consultee.
+ */
+function buildHelpOverlay(container, opts) {
+    const o = Object.assign({
+        sectionsFor: helpSectionsFor, nodeTitle: "MiniMax H3 Reference Loader", sectionKey: HELP_SECTION_KEY,
+    }, opts);
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
         width: "min(760px, 94vw)", height: "min(560px, 84vh)", display: "flex", flexDirection: "column",
@@ -1107,19 +1149,19 @@ function buildHelpOverlay(container) {
     card.append(header, main, footer);
 
     let lang = loadHelpLanguage();
-    let sections = helpSectionsFor(lang);
+    let sections = o.sectionsFor(lang);
     let byId = Object.fromEntries(sections.map((sec) => [sec.id, sec]));
     let visible = sections.map((sec) => sec.id);
-    let currentId = loadHelpSection();
+    let currentId = loadHelpSection(o.sectionKey, sections[0].id);
 
     /** Textes de la fenetre dans la langue choisie. */
     function applyLanguage() {
         const ui = HELP_UI[lang];
-        sections = helpSectionsFor(lang);
+        sections = o.sectionsFor(lang);
         byId = Object.fromEntries(sections.map((sec) => [sec.id, sec]));
         visible = filterSections(sections, search.value);
         if (visible.length && !visible.includes(currentId)) currentId = visible[0];
-        title.textContent = "MiniMax H3 Reference Loader — " + ui.title;
+        title.textContent = o.nodeTitle + " — " + ui.title;
         search.placeholder = ui.search;
         closeBtn.title = ui.close;
         langBtn.innerHTML = GLOBE_ICON + "<span>" + lang.toUpperCase() + "</span>";
@@ -1265,7 +1307,7 @@ function buildHelpOverlay(container) {
 
     function select(id) {
         currentId = id;
-        saveHelpSection(id);
+        saveHelpSection(o.sectionKey, id);
         renderNav();
         renderContent();
     }
@@ -1316,7 +1358,7 @@ function buildHelpOverlay(container) {
     return {
         open() {
             search.value = "";
-            if (!byId[currentId]) currentId = HELP_SECTIONS[0].id;
+            if (!byId[currentId]) currentId = sections[0].id;
             applyLanguage();
             renderNav();
             renderContent();
@@ -1357,22 +1399,22 @@ function saveHelpLanguage(code) {
     }
 }
 
-// Derniere rubrique consultee (memoire du navigateur, facultative).
+// Derniere rubrique consultee (memoire du navigateur, facultative), par noeud.
 const HELP_SECTION_KEY = "mmrefloader.helpSection";
-let helpSection = null;
-function loadHelpSection() {
-    if (helpSection) return helpSection;
+const helpSections = {};
+function loadHelpSection(key, first) {
+    if (helpSections[key]) return helpSections[key];
     try {
-        helpSection = localStorage.getItem(HELP_SECTION_KEY);
+        helpSections[key] = localStorage.getItem(key);
     } catch (e) {
-        helpSection = null;
+        helpSections[key] = null;
     }
-    return helpSection || HELP_SECTIONS[0].id;
+    return helpSections[key] || first;
 }
-function saveHelpSection(id) {
-    helpSection = id;
+function saveHelpSection(key, id) {
+    helpSections[key] = id;
     try {
-        localStorage.setItem(HELP_SECTION_KEY, id);
+        localStorage.setItem(key, id);
     } catch (e) {
         // Stockage indisponible : la rubrique est gardee pour cette session.
     }
@@ -1643,6 +1685,11 @@ function buildGallery(container, ctx) {
     let sub = "";      // sous-dossier relatif a base ; "" = base elle-meme
     let subfolders = []; // [{path, count}] reperes sous base (liste deroulante)
     let scanId = 0;      // ignore les reponses d'un reperage depasse
+    // Noeud Projet branche : chemin du projet (racine fixe) et sous-dossiers
+    // choisis pendant cette session, par type (l'etat du noeud n'est pas touche :
+    // en debranchant, on retrouve la racine et les sous-dossiers d'avant).
+    let project = "";
+    let projectSubs = {};
 
     // En-tete : titre, compteur, fermeture.
     const header = document.createElement("div");
@@ -1847,6 +1894,10 @@ function buildGallery(container, ctx) {
 
     /** Memorise base et sous-dossier pour ce type (base = racine : stocke ""). */
     function saveNav() {
+        if (project) {
+            projectSubs[fileKind(kind)] = sub;
+            return;
+        }
         const s = ctx.getState();
         // Video et Video/Audio partagent la memoire de navigation des videos.
         s.folders[fileKind(kind)] = base && base !== s.root ? base : "";
@@ -2065,7 +2116,7 @@ function buildGallery(container, ctx) {
      * racine sur "(root folder)" ; sinon relit le dossier et ses sous-dossiers.
      */
     function reload() {
-        const root = ctx.getState().root || "";
+        const root = project || ctx.getState().root || "";
         if (root && !samePath(base, root)) {
             setBase(root);
             return;
@@ -2106,7 +2157,7 @@ function buildGallery(container, ctx) {
         }
         if (e.target === baseInput || e.target === subSelect) {
             e.stopImmediatePropagation();
-            if (e.key === "Enter" && e.target === baseInput) {
+            if (e.key === "Enter" && e.target === baseInput && !project) {
                 e.preventDefault();
                 setBase(baseInput.value);
             }
@@ -2163,8 +2214,25 @@ function buildGallery(container, ctx) {
             // racine ; on affiche le sous-dossier memorise (ou le Root folder
             // lui-meme) et on repere les sous-dossiers pour la liste deroulante.
             const st = ctx.getState();
-            base = st.folders[fileKind(kind)] || st.root || "";
-            sub = base ? st.subs[fileKind(kind)] || "" : "";
+            const proj = ctx.getProject ? ctx.getProject() : "";
+            if (proj !== project) {
+                project = proj;
+                projectSubs = {};
+            }
+            if (project) {
+                // Projet : racine = dossier du projet, depart dans le sous-dossier du type.
+                base = project;
+                sub = fileKind(kind) in projectSubs ? projectSubs[fileKind(kind)] : gallerySubfolder(fileKind(kind));
+            } else {
+                base = st.folders[fileKind(kind)] || st.root || "";
+                sub = base ? st.subs[fileKind(kind)] || "" : "";
+            }
+            // Racine fixee par le projet : ni saisie ni Browse.
+            baseInput.readOnly = !!project;
+            baseInput.style.color = project ? "#9fd6cf" : "#ddd";
+            baseInput.title = project ? "Root folder set by the MiniMax H3 Project node" : "";
+            setEnabled(browseBtn, !project);
+            browseBtn.title = project ? "Root folder set by the MiniMax H3 Project node" : "Browse";
             subfolders = [];
             files = [];
             updateNav();
@@ -3133,7 +3201,9 @@ app.registerExtension({
             bottom.append(summary, overviewBtn, rootBtn, downloadBtn, uploadBtn, helpBtn, fileInput);
             container.appendChild(bottom);
 
-            const gallery = buildGallery(container, { getState, setState });
+            // Chemin du projet du noeud MiniMax H3 Project branche ("" sinon).
+            const getProject = () => projectPathOf(node);
+            const gallery = buildGallery(container, { getState, setState, getProject });
             const viewer = buildSelectionViewer(container, { getState, setState });
             const clearConfirm = buildConfirmDialog(container);
             const rootDialog = buildRootDialog(container, { getState, setState });
@@ -3141,7 +3211,9 @@ app.registerExtension({
             const overview = buildOverview(container, { getState });
             helpBtn.addEventListener("click", () => help.open());
             overviewBtn.addEventListener("click", () => overview.open());
-            rootBtn.addEventListener("click", () => rootDialog.open());
+            rootBtn.addEventListener("click", () => {
+                if (!getProject()) rootDialog.open();
+            });
             node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview];
 
             // Une configuration "existe" des qu'une reference est selectionnee ;
@@ -3377,7 +3449,14 @@ app.registerExtension({
                 overviewBtn.style.background = canSave ? VIOLET : INACTIVE_BG;
                 overviewBtn.style.opacity = canSave ? "1" : "0.45";
                 overviewBtn.style.cursor = canSave ? "pointer" : "default";
-                rootBtn.title = s.root ? "Root folder: " + s.root : "Root folder of the rushes (not set)";
+                // Noeud Projet branche : la racine est celle du projet, roue grisee.
+                const proj = getProject();
+                rootBtn.disabled = !!proj;
+                rootBtn.style.background = proj ? INACTIVE_BG : VIOLET;
+                rootBtn.style.opacity = proj ? "0.45" : "1";
+                rootBtn.style.cursor = proj ? "default" : "pointer";
+                rootBtn.title = proj ? "Root folder set by the MiniMax H3 Project node: " + proj
+                    : s.root ? "Root folder: " + s.root : "Root folder of the rushes (not set)";
 
                 applyLayout(node, s);
             }
@@ -3400,14 +3479,25 @@ app.registerExtension({
             const onConfigure = node.onConfigure;
             node.onConfigure = function () {
                 const ret = onConfigure ? onConfigure.apply(this, arguments) : undefined;
+                ensureProjectInput(node);
                 refresh();
                 return ret;
             };
 
+            // Appele par le noeud Projet (projet change) et a chaque (de)branchement.
+            node.__mmrefRefresh = () => refresh();
             refresh();
             vueNodes.add(node);
             watchVueNodes();
             scheduleVueSync();
+            return r;
+        };
+
+        // Branchement ou debranchement du noeud Projet : roue et galeries a jour.
+        const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+        nodeType.prototype.onConnectionsChange = function () {
+            const r = onConnectionsChange ? onConnectionsChange.apply(this, arguments) : undefined;
+            if (this.__mmrefRefresh) setTimeout(() => this.__mmrefRefresh && this.__mmrefRefresh(), 0);
             return r;
         };
 
@@ -3452,3 +3542,12 @@ app.registerExtension({
         };
     },
 });
+
+// Utilitaires partages avec le noeud MiniMax H3 Project (web/js/project_node.js).
+export {
+    TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, MARK_RED, INACTIVE_BG, INACTIVE_FG,
+    svg, iconBadge, hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, REFRESH_ICON, CLOSE_ICON, GEAR_ICON,
+    START_ICON, INFO_ICON, OUTPUT_ICON, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, TRASH_ICON,
+    makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
+    escapeHtml, buildHelpOverlay, vueMode,
+};
