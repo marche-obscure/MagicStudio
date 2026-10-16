@@ -8,6 +8,8 @@ projets (le Root folder du MiniMax H3 Reference Loader branche, sinon
 import os
 import shutil
 import filecmp
+import re
+import time
 
 # Sous-dossiers de chaque projet (meme liste que web/js/project_paths.js).
 SUBFOLDERS = ("00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son",
@@ -232,3 +234,97 @@ def move_project(path, dest_parent):
     os.makedirs(dest_parent, exist_ok=True)
     shutil.move(path, new_path)
     return new_path
+
+
+# ----------------------------------------------------------------------
+# Workflow du projet (00.Workflows) et ses archives
+# ----------------------------------------------------------------------
+# Archive : yyyyMMdd-HHmmss_<nom du workflow>.json ; configuration du Ref
+# Loader : yyyyMMdd-HHmmss_REF2VA|FL2VA_minimax_config.json (pas un workflow).
+_STAMPED = re.compile(r"^(\d{8}-\d{6})_(.+)$")
+_CONFIG = re.compile(r"^\d{8}-\d{6}_(REF2VA|FL2VA)_minimax_config\.json$", re.IGNORECASE)
+
+
+def workflow_file_name(name):
+    """Nom de fichier d'un workflow (".json" ajoute) ; ValueError si invalide."""
+    name = (name or "").strip()
+    if name.lower().endswith(".json"):
+        name = name[:-5].strip()
+    stem = validate_name(name).replace("The project name", "The workflow name")
+    if _STAMPED.match(stem + ".json"):
+        raise ValueError("A workflow name cannot start with a date (yyyyMMdd-HHmmss_): it is kept for the archives.")
+    return stem + ".json"
+
+
+def _workflow_dir(project):
+    if not project or not os.path.isdir(project):
+        raise FileNotFoundError("Project folder not found: %s" % project)
+    return os.path.join(project, CONFIG_FOLDER)
+
+
+def _safe_file(folder, name):
+    if not name or os.path.basename(name) != name:
+        raise ValueError("Invalid file name: %s" % name)
+    return os.path.join(folder, name)
+
+
+def list_workflows(project):
+    """
+    {"workflows": [{name, mtime}] (plus recent d'abord),
+     "archives": [{name, mtime, stamp, of}] (plus recente d'abord)}.
+    Les configurations du Ref Loader ne sont pas listees.
+    """
+    folder = _workflow_dir(project)
+    workflows, archives = [], []
+    if os.path.isdir(folder):
+        for e in os.scandir(folder):
+            if not e.is_file() or not e.name.lower().endswith(".json") or _CONFIG.match(e.name):
+                continue
+            mtime = e.stat().st_mtime
+            m = _STAMPED.match(e.name)
+            if m:
+                archives.append({"name": e.name, "mtime": mtime, "stamp": m.group(1), "of": m.group(2)})
+            else:
+                workflows.append({"name": e.name, "mtime": mtime})
+    workflows.sort(key=lambda w: -w["mtime"])
+    archives.sort(key=lambda a: a["name"], reverse=True)
+    return {"workflows": workflows, "archives": archives}
+
+
+def read_workflow(project, name):
+    """Texte d'un workflow (ou d'une archive) de 00.Workflows."""
+    path = _safe_file(_workflow_dir(project), name)
+    if not os.path.isfile(path):
+        raise FileNotFoundError("Workflow not found: %s" % name)
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def save_workflow(project, name, content, archive=None):
+    """
+    Ecrit le workflow 'name' dans 00.Workflows. archive = nom du workflow
+    precedent a archiver d'abord : renomme yyyyMMdd-HHmmss_<nom>.json avec
+    la date de sa derniere sauvegarde ("nom (2)" si cette archive existe).
+    Renvoie {name, mtime, archived}.
+    """
+    folder = _workflow_dir(project)
+    os.makedirs(folder, exist_ok=True)
+    name = workflow_file_name(name)
+    archived = None
+    if archive:
+        old = _safe_file(folder, archive)
+        if os.path.isfile(old):
+            stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(os.path.getmtime(old)))
+            stem, ext = os.path.splitext(archive)
+            n = 1
+            while True:
+                candidate = "%s_%s%s" % (stamp, stem, ext) if n == 1 else "%s_%s (%d)%s" % (stamp, stem, n, ext)
+                if not os.path.exists(os.path.join(folder, candidate)):
+                    break
+                n += 1
+            os.rename(old, os.path.join(folder, candidate))
+            archived = candidate
+    path = os.path.join(folder, name)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(content)
+    return {"name": name, "mtime": os.path.getmtime(path), "archived": archived}

@@ -144,5 +144,10 @@ export function parseProjectState(raw) {
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) data = {};
     const str = (v) => (typeof v === "string" ? v : "");
-    return { root: str(data.root), name: str(data.name), path: str(data.path), folder: str(data.folder) };
+    // Workflow du projet wfPath : nom du fichier (00.Workflows) et validation
+    // par la cloche (cloche orange tant qu'elle n'a pas ete faite).
+    return {
+        root: str(data.root), name: str(data.name), path: str(data.path), folder: str(data.folder),
+        wfPath: str(data.wfPath), wfName: str(data.wfName), wfValidated: data.wfValidated === true,
+    };
 }

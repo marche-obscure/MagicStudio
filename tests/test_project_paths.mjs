@@ -101,11 +101,14 @@ test("noms refuses", () => {
 });
 
 test("etat tolerant", () => {
-    assert.deepEqual(parseProjectState('{"root":"R","name":"N","path":"P","folder":"F"}'),
-        { root: "R", name: "N", path: "P", folder: "F" });
-    // Etat d'avant le dossier personnalise : folder vide.
-    assert.deepEqual(parseProjectState('{"root":"R","name":"N","path":"P"}'), { root: "R", name: "N", path: "P", folder: "" });
-    for (const raw of ["", "{", "[]", "null", '{"root":3}']) {
-        assert.deepEqual(parseProjectState(raw), { root: "", name: "", path: "", folder: "" });
+    const empty = { root: "", name: "", path: "", folder: "", wfPath: "", wfName: "", wfValidated: false };
+    assert.deepEqual(parseProjectState(
+        '{"root":"R","name":"N","path":"P","folder":"F","wfPath":"P","wfName":"N.json","wfValidated":true}'),
+    { root: "R", name: "N", path: "P", folder: "F", wfPath: "P", wfName: "N.json", wfValidated: true });
+    // Etat d'avant le dossier personnalise et le workflow : champs vides.
+    assert.deepEqual(parseProjectState('{"root":"R","name":"N","path":"P"}'),
+        Object.assign({}, empty, { root: "R", name: "N", path: "P" }));
+    for (const raw of ["", "{", "[]", "null", '{"root":3,"wfValidated":"yes"}']) {
+        assert.deepEqual(parseProjectState(raw), empty);
     }
 });

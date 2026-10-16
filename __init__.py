@@ -262,6 +262,38 @@ try:
             return _project_error(e)
         return web.json_response({"path": path, "root": os.path.dirname(path), "name": os.path.basename(path)})
 
+    # ------ Workflow du projet (00.Workflows) et archives ------
+
+    @routes.get("/mmproject/workflows")
+    async def mmproject_workflows(request):
+        """Workflows et archives du projet 'project'."""
+        try:
+            data = await _in_executor(projects.list_workflows, request.rel_url.query.get("project", ""))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.get("/mmproject/workflow")
+    async def mmproject_workflow(request):
+        """Contenu d'un workflow (ou d'une archive) du projet."""
+        q = request.rel_url.query
+        try:
+            text = await _in_executor(projects.read_workflow, q.get("project", ""), q.get("name", ""))
+        except Exception as e:
+            return _project_error(e)
+        return web.Response(text=text, content_type="application/json")
+
+    @routes.post("/mmproject/save_workflow")
+    async def mmproject_save_workflow(request):
+        """Ecrit le workflow ; 'archive' = workflow precedent renomme yyyyMMdd-HHmmss_nom.json d'abord."""
+        try:
+            body = await request.json()
+            info = await _in_executor(projects.save_workflow, body.get("project", ""), body.get("name", ""),
+                                      body.get("content", ""), body.get("archive") or None)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(info)
+
 except Exception:
     print("[ComfyUI-MiniMaxRefLoader] Could not register the API routes:")
     traceback.print_exc()
