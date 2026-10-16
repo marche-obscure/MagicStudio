@@ -256,7 +256,8 @@ const HELP_SECTIONS = [
                 "The check box under a selected file of the project (unchecked at first) marks it <b>to replace</b>. " +
                 "The next file you pick above goes to the <b>pending replacements</b> (shown above the line, greyed " +
                 "out in the top row) with that number; the replaced file is locked and shows <b>n → A</b>.",
-                "In the pending replacements: the green ✓ validates one replacement (confirmed), the red ✕ cancels " +
+                "In the pending replacements, the orange number under the green ✓ is the number the file takes. " +
+                "The green ✓ validates one replacement (confirmed), the red ✕ cancels " +
                 "it and frees the locked file. <b>Validate changes</b> applies them all: each new file takes its " +
                 "number and the replaced files go to <b>Archives</b>; <b>Cancel changes</b> (confirmed) puts " +
                 "everything back. Closing with pending replacements asks Validate or Discard.",
@@ -450,7 +451,8 @@ const HELP_SECTIONS_FR = [
                 "remplacer</b>. Le prochain fichier choisi en haut entre dans le <b>pool de remplacements</b> " +
                 "(au-dessus du trait, grisé dans la ligne du haut) avec ce numéro ; le fichier remplacé est " +
                 "verrouillé et affiche <b>n → A</b>.",
-                "Dans le pool : la ✓ verte valide un remplacement (avec confirmation), la ✕ rouge l'annule et " +
+                "Dans le pool, le numéro orange sous la ✓ verte est le numéro que prendra le fichier. " +
+                "La ✓ verte valide un remplacement (avec confirmation), la ✕ rouge l'annule et " +
                 "libère le fichier verrouillé. <b>Validate changes</b> les applique tous : chaque nouveau fichier " +
                 "prend son numéro et les fichiers remplacés partent dans <b>Archives</b> ; <b>Cancel changes</b> " +
                 "(avec confirmation) remet tout en place. Fermer avec un pool non vide demande Validate ou Discard.",
@@ -2313,7 +2315,7 @@ function buildGallery(container, ctx) {
             thumb.appendChild(img);
         }
         const name = document.createElement("div");
-        name.textContent = num + " ← " + it.f.name;
+        name.textContent = it.f.name;
         Object.assign(name.style, { padding: "3px 5px", fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden",
             textOverflow: "ellipsis", color: "#fff" });
         tile.append(thumb, name);
@@ -2334,6 +2336,16 @@ function buildGallery(container, ctx) {
             tile.appendChild(b);
         };
         corner("✓", GREEN, { left: "4px" }, "Validate this replacement", () => validateOne(it));
+        const badge = document.createElement("div");
+        badge.textContent = String(num);
+        badge.title = "Will take number " + num;
+        Object.assign(badge.style, {
+            position: "absolute", left: "4px", top: "28px", minWidth: "20px", height: "20px",
+            borderRadius: "10px", background: ORANGE, color: "white", fontWeight: "bold",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px",
+            boxShadow: "0 0 6px rgba(224,121,60,0.8)",
+        });
+        tile.appendChild(badge);
         corner("✕", MARK_RED, { right: "4px" }, "Cancel this replacement", () => {
             pool = pool.filter((x) => x !== it);
             render();
@@ -2517,12 +2529,7 @@ function buildGallery(container, ctx) {
         {
             // Toujours la meme place (vide sans message) : les vignettes ne bougent pas.
             const msg = document.createElement("div");
-            const next = marked.length ? indexOf(marked[0]) + 1 : 0;
-            msg.innerHTML = !(full || marked.length) ? "" : marked.length
-                ? "Pick above the file that replaces number <b>" + next + "</b>" +
-                (marked.length > 1 ? " (" + marked.length + " files checked)" : "") + ". It goes to the pending " +
-                "replacements; once validated it takes the same number and the replaced file is archived in <b>" +
-                escapeHtml(projFolder) + "/Archives</b> of the project."
+            msg.innerHTML = !full || marked.length ? ""
                 : "The selection is full: <b>check below</b> the file to replace, then pick the new one above: it " +
                 "takes the same number, and the replaced file will be archived in <b>" + escapeHtml(projFolder) +
                 "/Archives</b> of the project.";
