@@ -261,6 +261,8 @@ const HELP_SECTIONS = [
                 "When the <b>Archives</b> folder of the project folder has files, a <b>View archives</b> button " +
                 "appears: it turns green and shows them above instead of the selected folder; click it again to " +
                 "go back to the selected folder.",
+                "<b>Clear</b> is greyed out: the order of the files of the project cannot be emptied at once; " +
+                "check the files to replace instead.",
                 "On closing (Done, ✕, Escape): new files added to an existing selection ask <b>Add</b> (keep the " +
                 "current files) or <b>Replace</b> (only the new ones stay).",
             ]) +
@@ -447,6 +449,8 @@ const HELP_SECTIONS_FR = [
                 "Quand le dossier <b>Archives</b> du dossier du projet contient des fichiers, un bouton <b>View " +
                 "archives</b> apparaît : il passe au vert et les affiche en haut à la place du dossier choisi ; " +
                 "un nouveau clic revient au dossier choisi.",
+                "<b>Clear</b> est grisé : l'ordre des fichiers du projet ne peut pas être vidé d'un coup ; cochez " +
+                "plutôt les fichiers à remplacer.",
                 "À la fermeture (Done, ✕, Échap) : de nouveaux fichiers ajoutés à une sélection existante " +
                 "demandent <b>Add</b> (garder les fichiers actuels) ou <b>Replace</b> (seuls les nouveaux restent).",
             ]) +
@@ -2276,6 +2280,12 @@ function buildGallery(container, ctx) {
     const countText = (n) => n + " " + (kind === "audio" ? "audio file" : fileKind(kind)) + (n > 1 ? "s" : "");
 
     function render() {
+        marked = marked.filter((m) => indexOf(m) >= 0);
+        // Projet relie : Clear viderait l'ordre des fichiers du projet, il est bloque.
+        clearBtn.disabled = !!project;
+        clearBtn.style.opacity = project ? "0.45" : "1";
+        clearBtn.style.cursor = project ? "not-allowed" : "pointer";
+        clearBtn.title = project ? "Not available with a project: check below the files to replace instead" : "";
         updateCounters();
         grid.innerHTML = "";
         if (showArchives && !archFiles.length) showArchives = false;
@@ -2330,17 +2340,19 @@ function buildGallery(container, ctx) {
         }
         if (!project) return;
         // Dossier du projet plein : choisir en bas le fichier a remplacer.
-        if (full || marked.length) {
+        {
+            // Toujours la meme place (vide sans message) : les vignettes ne bougent pas.
             const msg = document.createElement("div");
             const next = marked.length ? indexOf(marked[0]) + 1 : 0;
-            msg.innerHTML = marked.length
+            msg.innerHTML = !(full || marked.length) ? "" : marked.length
                 ? "Pick above the file that replaces number <b>" + next + "</b>" +
                 (marked.length > 1 ? " (" + marked.length + " files checked)" : "") + ". It takes the same number; " +
                 "the replaced file will be archived in <b>" + escapeHtml(projFolder) + "/Archives</b> of the project."
                 : "The selection is full: <b>check below</b> the file to replace, then pick the new one above: it " +
                 "takes the same number, and the replaced file will be archived in <b>" + escapeHtml(projFolder) +
                 "/Archives</b> of the project.";
-            Object.assign(msg.style, { gridColumn: "1 / -1", color: ORANGE, padding: "8px 2px 0", lineHeight: "1.4" });
+            Object.assign(msg.style, { gridColumn: "1 / -1", color: ORANGE, padding: "8px 2px 0", lineHeight: "1.4",
+                minHeight: "62px", boxSizing: "border-box" });
             grid.appendChild(msg);
         }
         const sep = document.createElement("div");
@@ -2569,6 +2581,7 @@ function buildGallery(container, ctx) {
         loadFolder();
     });
     clearBtn.addEventListener("click", () => {
+        if (project) return; // l'ordre des fichiers du projet ne se vide pas
         const s = ctx.getState();
         s[LIST_KEYS[kind]] = [];
         ctx.setState(s);
@@ -2596,6 +2609,8 @@ function buildGallery(container, ctx) {
             marked = [];
             archFiles = [];
             showArchives = false;
+            // Deux zones avec un projet : fenetre plus haute (meme largeur).
+            card.style.height = project ? "min(720px, 90vh)" : "min(560px, 82vh)";
             updateNav();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
