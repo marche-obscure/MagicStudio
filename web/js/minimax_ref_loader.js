@@ -328,6 +328,8 @@ const HELP_SECTIONS = [
             "(MiniMax would reduce them anyway).",
             "Audio files are cut to 15 s.",
             "<b>Browse</b> uses the Windows folder dialog; on other systems type or paste the folder path.",
+            "Works with the classic node design and with <b>Modern Node Design (Nodes 2.0)</b>: renaming the " +
+            "outputs and the pair colours work in both.",
         ]),
     },
 ];
@@ -491,6 +493,8 @@ const HELP_SECTIONS_FR = [
             "Les fichiers audio sont coupés à 15 s.",
             "<b>Browse</b> utilise la fenêtre de dossiers de Windows ; sur un autre système, tapez ou collez " +
             "le chemin du dossier.",
+            "Fonctionne avec le design classique des nœuds et avec <b>Modern Node Design (Nodes 2.0)</b> : le " +
+            "renommage des sorties et les couleurs des paires marchent dans les deux.",
         ]),
     },
 ];
