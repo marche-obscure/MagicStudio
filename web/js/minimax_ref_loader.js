@@ -250,10 +250,17 @@ const HELP_SECTIONS = [
             hList([
                 "above: the content of the selected folder (Root folder / Subfolder), as usual;",
                 "below the line: the content of the matching folder of the project (Images → <b>08.Images</b>, " +
-                "Video → <b>12.Video</b>, Video/Audio → <b>14.Video-Audio</b>, Audio → <b>10.Son</b>). An orange " +
-                "badge gives the selection order; the check box under each file selects it or takes it out.",
-                "The selection is full: a message above the line asks you to uncheck below the file to replace, " +
+                "Video → <b>12.Video</b>, Video/Audio → <b>14.Video-Audio</b>, Audio → <b>10.Son</b>). The orange " +
+                "badge always gives the selection number; clicking a file of the project that is not selected " +
+                "selects it.",
+                "The check box under a selected file of the project (unchecked at first) marks it <b>to replace</b>: " +
+                "the next file you pick above takes its number, and the replaced file goes to <b>Archives</b>. A " +
+                "file still checked when you close leaves the selection too.",
+                "The selection is full: a message above the line asks you to check below the file to replace, " +
                 "then to pick the new one above.",
+                "When the <b>Archives</b> folder of the project folder has files, a <b>View archives</b> button " +
+                "appears: it turns green and shows them above instead of the selected folder; click it again to " +
+                "go back to the selected folder.",
                 "On closing (Done, ✕, Escape): new files added to an existing selection ask <b>Add</b> (keep the " +
                 "current files) or <b>Replace</b> (only the new ones stay).",
             ]) +
@@ -429,11 +436,17 @@ const HELP_SECTIONS_FR = [
             hList([
                 "en haut : le contenu du dossier choisi (Root folder / Subfolder), comme d'habitude ;",
                 "sous le trait : le contenu du dossier correspondant du projet (Images → <b>08.Images</b>, " +
-                "Video → <b>12.Video</b>, Video/Audio → <b>14.Video-Audio</b>, Audio → <b>10.Son</b>). Une " +
-                "pastille orange donne l'ordre de sélection ; la case à cocher sous chaque fichier le sélectionne " +
-                "ou le retire.",
-                "Sélection pleine : un message au-dessus du trait invite à décocher en bas le fichier à remplacer, " +
+                "Video → <b>12.Video</b>, Video/Audio → <b>14.Video-Audio</b>, Audio → <b>10.Son</b>). La " +
+                "pastille orange donne toujours le numéro dans la sélection ; cliquer sur un fichier du projet non " +
+                "sélectionné le sélectionne.",
+                "La case à cocher sous un fichier sélectionné du projet (décochée au départ) le marque <b>à " +
+                "remplacer</b> : le prochain fichier choisi en haut prend son numéro, et le fichier remplacé part " +
+                "dans <b>Archives</b>. Un fichier encore coché à la fermeture sort aussi de la sélection.",
+                "Sélection pleine : un message au-dessus du trait invite à cocher en bas le fichier à remplacer, " +
                 "puis à choisir le nouveau en haut.",
+                "Quand le dossier <b>Archives</b> du dossier du projet contient des fichiers, un bouton <b>View " +
+                "archives</b> apparaît : il passe au vert et les affiche en haut à la place du dossier choisi ; " +
+                "un nouveau clic revient au dossier choisi.",
                 "À la fermeture (Done, ✕, Échap) : de nouveaux fichiers ajoutés à une sélection existante " +
                 "demandent <b>Add</b> (garder les fichiers actuels) ou <b>Replace</b> (seuls les nouveaux restent).",
             ]) +
@@ -1806,6 +1819,14 @@ function buildGallery(container, ctx) {
     let projDir = "";
     let projFiles = [];  // fichiers du dossier du projet (tous types)
     let initial = [];    // selection a l'ouverture (Add / Replace a la fermeture)
+    // Fichiers du projet coches = a remplacer, dans l'ordre ou ils ont ete coches :
+    // le prochain fichier choisi prend la place (le numero) du premier.
+    let marked = [];
+    // Archives du dossier du projet : bouton "View archives" (vert = affichees a la
+    // place du dossier choisi, dans la zone du haut).
+    let archFiles = [];
+    let showArchives = false;
+    const archDir = () => (projDir ? joinPath(projDir, "Archives") : "");
     let closing = false;
     const choice = buildChoiceDialog();
 
@@ -2042,7 +2063,8 @@ function buildGallery(container, ctx) {
     async function toggle(path) {
         // Son seul : une video sans bande-son est refusee des la galerie.
         const s0 = ctx.getState();
-        if (soundOnly(kind, path) && indexOf(path, s0) < 0 && list(s0).length < LIMITS[kind]) {
+        const room = list(s0).length < LIMITS[kind] || marked.length > 0;
+        if (soundOnly(kind, path) && indexOf(path, s0) < 0 && room) {
             try {
                 const info = await apiGet("/mmrefloader/info?file=" + encodeURIComponent(path));
                 if (!info.has_audio) {
@@ -2057,11 +2079,32 @@ function buildGallery(container, ctx) {
         const s = ctx.getState();
         const arr = list(s);
         const idx = indexOf(path, s);
-        if (idx >= 0) arr.splice(idx, 1);
-        else if (arr.length < LIMITS[kind]) arr.push(path);
-        else if (LIMITS[kind] === 1) arr[0] = path; // une seule image : elle est remplacee
-        else return;
+        if (idx >= 0) {
+            arr.splice(idx, 1);
+        } else if (marked.length) {
+            // Fichier du projet coche : le nouveau prend sa place et son numero ;
+            // le remplace part dans Archives a la fermeture.
+            const at = indexOf(marked.shift(), s);
+            if (at >= 0) arr[at] = path;
+            else if (arr.length < LIMITS[kind]) arr.push(path);
+        } else if (arr.length < LIMITS[kind]) {
+            arr.push(path);
+        } else if (LIMITS[kind] === 1) {
+            arr[0] = path; // une seule image : elle est remplacee
+        } else {
+            if (project) status.textContent = "The selection is full: check below the file to replace.";
+            return;
+        }
         ctx.setState(s);
+        marked = marked.filter((m) => indexOf(m) >= 0);
+        render();
+    }
+
+    /** Coche / decoche un fichier du projet a remplacer. */
+    function toggleMark(path) {
+        const i = marked.findIndex((m) => samePath(m, path));
+        if (i >= 0) marked.splice(i, 1);
+        else marked.push(path);
         render();
     }
 
@@ -2071,7 +2114,8 @@ function buildGallery(container, ctx) {
         counter.textContent = arr.length + " / " + LIMITS[kind] + " selected";
         const folder = currentFolder();
         const shown = (it) => (folder && files.some((f) => canPick(kind, f.kind) && samePath(joinPath(folder, f.name), it))) ||
-            (project && projFiles.some((f) => canPick(kind, f.kind) && samePath(joinPath(projDir, f.name), it)));
+            (project && projFiles.some((f) => canPick(kind, f.kind) && samePath(joinPath(projDir, f.name), it))) ||
+            (showArchives && archFiles.some((f) => canPick(kind, f.kind) && samePath(joinPath(archDir(), f.name), it)));
         const elsewhere = arr.filter((it) => !shown(it)).length;
         footerInfo.textContent = elsewhere ? "+" + elsewhere + " selected in another folder" : "";
     }
@@ -2103,7 +2147,7 @@ function buildGallery(container, ctx) {
         const own = canPick(kind, f.kind);
         const idx = own ? indexOf(path) : -1;
         const selected = idx >= 0;
-        const selectable = own && (selected || !full);
+        const selectable = own && (selected || !full || marked.length > 0);
 
         const tile = document.createElement("div");
         tile.title = own ? f.name + (soundOnly(kind, path) ? "\n(sound only: its soundtrack goes out on ref_audio)" : "")
@@ -2169,24 +2213,34 @@ function buildGallery(container, ctx) {
         }
 
         if (inProject) {
-            // Case a cocher sous la vignette : selectionne / retire ce fichier du projet.
-            tile.style.cursor = "default";
-            tile.style.border = "2px solid " + (selected ? ORANGE : "#2c2c2c");
+            // Numero toujours affiche ; case a cocher (decochee au depart) sous un fichier
+            // selectionne = a remplacer : le prochain fichier choisi prend son numero.
+            const isMarked = selected && marked.some((m) => samePath(m, path));
+            const order = isMarked ? marked.findIndex((m) => samePath(m, path)) : -1;
+            tile.style.cursor = selected ? "default" : tile.style.cursor;
+            tile.style.border = "2px " + (isMarked ? "dashed " + MARK_RED : "solid " + (selected ? ORANGE : "#2c2c2c"));
             const boxRow = document.createElement("div");
-            Object.assign(boxRow.style, { display: "flex", justifyContent: "center", padding: "2px 0 5px" });
-            const box = document.createElement("input");
-            box.type = "checkbox";
-            box.checked = selected;
-            box.disabled = !selectable;
-            box.title = selected ? "Uncheck: this file leaves the selection (archived in Archives when you close)"
-                : selectable ? "Check: select this file" : "The selection is full: uncheck another file first";
-            Object.assign(box.style, { width: "15px", height: "15px", margin: "0", accentColor: ORANGE,
-                cursor: selectable ? "pointer" : "not-allowed" });
-            box.addEventListener("click", (e) => e.stopPropagation());
-            box.addEventListener("change", () => toggle(path));
-            boxRow.appendChild(box);
+            Object.assign(boxRow.style, { display: "flex", justifyContent: "center", alignItems: "center", gap: "4px",
+                padding: "2px 0 5px", minHeight: "17px", fontSize: "10px", color: MARK_RED });
+            if (selected) {
+                const box = document.createElement("input");
+                box.type = "checkbox";
+                box.checked = isMarked;
+                box.title = isMarked ? "To replace: the " + (order === 0 ? "next" : "#" + (order + 1) + " next") +
+                    " file you pick above takes number " + (idx + 1) + "; this one goes to Archives"
+                    : "Check to replace this file: the next file you pick above takes number " + (idx + 1);
+                Object.assign(box.style, { width: "15px", height: "15px", margin: "0", accentColor: MARK_RED, cursor: "pointer" });
+                box.addEventListener("click", (e) => e.stopPropagation());
+                box.addEventListener("change", () => toggleMark(path));
+                boxRow.appendChild(box);
+                if (isMarked) boxRow.appendChild(document.createTextNode("to replace"));
+            }
             tile.appendChild(boxRow);
-            tile.addEventListener("click", () => previewFile(f, path));
+            tile.addEventListener("click", async () => {
+                // Fichier du projet non selectionne : le clic le selectionne.
+                if (own && !selected) await toggle(path);
+                previewFile(f, path);
+            });
             return tile;
         }
 
@@ -2224,16 +2278,33 @@ function buildGallery(container, ctx) {
     function render() {
         updateCounters();
         grid.innerHTML = "";
-        const folder = currentFolder();
+        if (showArchives && !archFiles.length) showArchives = false;
+        // Zone du haut : le dossier choisi, ou les archives du projet (bouton vert).
+        const folder = showArchives ? archDir() : currentFolder();
+        const topFiles = showArchives ? archFiles : files;
         // Liste d'une seule image : jamais "pleine", un clic remplace l'image.
         const full = LIMITS[kind] > 1 && list().length >= LIMITS[kind];
         if (project) {
-            grid.appendChild(zoneHeader("Content of the selected folder",
-                countText(files.filter((f) => canPick(kind, f.kind)).length)));
+            const head = zoneHeader(showArchives
+                ? "Content of " + escapeHtml(projFolder) + "/Archives of the project"
+                : "Content of the selected folder",
+            countText(topFiles.filter((f) => canPick(kind, f.kind)).length));
+            if (archFiles.length) {
+                const btn = makeTextButton("View archives", showArchives ? GREEN : INACTIVE_BG);
+                Object.assign(btn.style, { padding: "2px 10px", fontSize: "11px", alignSelf: "center" });
+                btn.title = showArchives ? "Back to the selected folder"
+                    : archFiles.length + " file(s) in " + projFolder + "/Archives: show them instead of the selected folder";
+                btn.addEventListener("click", () => {
+                    showArchives = !showArchives;
+                    render();
+                });
+                head.appendChild(btn);
+            }
+            grid.appendChild(head);
         }
-        const present = SECTIONS.filter((sec) => files.some((f) => f.kind === sec.kind));
+        const present = SECTIONS.filter((sec) => topFiles.some((f) => f.kind === sec.kind));
         for (const sec of present) {
-            const group = files.filter((f) => f.kind === sec.kind);
+            const group = topFiles.filter((f) => f.kind === sec.kind);
             if (present.length > 1) {
                 const note = !canPick(kind, sec.kind) ? "  (for information)"
                     : sec.kind !== fileKind(kind) ? "  (sound only)" : "";
@@ -2259,10 +2330,16 @@ function buildGallery(container, ctx) {
         }
         if (!project) return;
         // Dossier du projet plein : choisir en bas le fichier a remplacer.
-        if (full) {
+        if (full || marked.length) {
             const msg = document.createElement("div");
-            msg.innerHTML = "The selection is full: <b>uncheck below</b> the file to replace, then pick the new one " +
-                "above. The replaced file will be archived in <b>" + escapeHtml(projFolder) + "/Archives</b> of the project.";
+            const next = marked.length ? indexOf(marked[0]) + 1 : 0;
+            msg.innerHTML = marked.length
+                ? "Pick above the file that replaces number <b>" + next + "</b>" +
+                (marked.length > 1 ? " (" + marked.length + " files checked)" : "") + ". It takes the same number; " +
+                "the replaced file will be archived in <b>" + escapeHtml(projFolder) + "/Archives</b> of the project."
+                : "The selection is full: <b>check below</b> the file to replace, then pick the new one above: it " +
+                "takes the same number, and the replaced file will be archived in <b>" + escapeHtml(projFolder) +
+                "/Archives</b> of the project.";
             Object.assign(msg.style, { gridColumn: "1 / -1", color: ORANGE, padding: "8px 2px 0", lineHeight: "1.4" });
             grid.appendChild(msg);
         }
@@ -2284,12 +2361,19 @@ function buildGallery(container, ctx) {
     /** Relit le dossier du projet (zone du bas). */
     async function loadProject() {
         projFiles = [];
+        archFiles = [];
         if (!project) return;
         try {
             const data = await apiGet("/mmrefloader/list?path=" + encodeURIComponent(projDir) + "&kind=all");
             projFiles = data.files || [];
         } catch (e) {
             projFiles = []; // dossier absent : rien a montrer
+        }
+        try {
+            const data = await apiGet("/mmrefloader/list?path=" + encodeURIComponent(archDir()) + "&kind=all");
+            archFiles = data.files || [];
+        } catch (e) {
+            archFiles = []; // pas encore d'archives
         }
     }
 
@@ -2399,6 +2483,8 @@ function buildGallery(container, ctx) {
         closing = true;
         try {
             const s = ctx.getState();
+            // Fichiers coches sans remplacant : ils sortent aussi de la selection (Archives).
+            if (marked.length) s[LIST_KEYS[kind]] = list(s).filter((p) => !marked.some((m) => samePath(m, p)));
             const final = list(s).slice();
             const sess = gallerySession(initial, final);
             let next = final;
@@ -2443,6 +2529,7 @@ function buildGallery(container, ctx) {
                 });
             }
             ctx.setState(s);
+            marked = [];
             close();
         } catch (e) {
             status.textContent = e.message;
@@ -2506,6 +2593,9 @@ function buildGallery(container, ctx) {
             projDir = project ? joinPath(project.path, projFolder) : "";
             projFiles = [];
             initial = list(st).slice();
+            marked = [];
+            archFiles = [];
+            showArchives = false;
             updateNav();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
