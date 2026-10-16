@@ -2239,7 +2239,23 @@ function buildGallery(container, ctx) {
                     : sec.kind !== fileKind(kind) ? "  (sound only)" : "";
                 grid.appendChild(sectionHeader(sec.title + "  ·  " + group.length + note));
             }
-            group.forEach((f) => grid.appendChild(makeTile(f, folder, full)));
+            if (!project) {
+                group.forEach((f) => grid.appendChild(makeTile(f, folder, full)));
+                continue;
+            }
+            // Avec un projet : le dossier choisi tient sur une seule ligne qui defile
+            // horizontalement (meme largeur de fenetre), le projet garde la grille.
+            const strip = document.createElement("div");
+            Object.assign(strip.style, {
+                gridColumn: "1 / -1", display: "flex", flexWrap: "nowrap", gap: "8px", overflowX: "auto",
+                overflowY: "hidden", paddingBottom: "6px", minWidth: "0",
+            });
+            group.forEach((f) => {
+                const tile = makeTile(f, folder, full);
+                tile.style.flex = "0 0 120px";
+                strip.appendChild(tile);
+            });
+            grid.appendChild(strip);
         }
         if (!project) return;
         // Dossier du projet plein : choisir en bas le fichier a remplacer.
