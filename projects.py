@@ -243,6 +243,8 @@ def move_project(path, dest_parent):
 # Loader : yyyyMMdd-HHmmss_REF2VA|FL2VA_minimax_config.json (pas un workflow).
 _STAMPED = re.compile(r"^(\d{8}-\d{6})_(.+)$")
 _CONFIG = re.compile(r"^\d{8}-\d{6}_(REF2VA|FL2VA)_minimax_config\.json$", re.IGNORECASE)
+# Archives de workflow gardees par projet (choix utilisateur : 5 au plus).
+MAX_ARCHIVES = 5
 
 
 def workflow_file_name(name):
@@ -314,6 +316,8 @@ def save_workflow(project, name, content, archive=None):
     if archive:
         old = _safe_file(folder, archive)
         if os.path.isfile(old):
+            if len(list_workflows(project)["archives"]) >= MAX_ARCHIVES:
+                raise ValueError("%d archives max: delete one before archiving." % MAX_ARCHIVES)
             stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(os.path.getmtime(old)))
             stem, ext = os.path.splitext(archive)
             n = 1
@@ -328,3 +332,13 @@ def save_workflow(project, name, content, archive=None):
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(content)
     return {"name": name, "mtime": os.path.getmtime(path), "archived": archived}
+
+
+def delete_archive(project, name):
+    """Supprime une archive yyyyMMdd-HHmmss_nom.json (jamais un workflow ni une configuration)."""
+    if not _STAMPED.match(name or "") or _CONFIG.match(name) or not name.lower().endswith(".json"):
+        raise ValueError("Not an archived workflow: %s" % name)
+    path = _safe_file(_workflow_dir(project), name)
+    if not os.path.isfile(path):
+        raise FileNotFoundError("Archive not found: %s" % name)
+    os.remove(path)
