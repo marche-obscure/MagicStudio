@@ -24,8 +24,11 @@ test("noms refuses", () => {
 });
 
 test("etat tolerant", () => {
-    assert.deepEqual(parseProjectState('{"root":"R","name":"N","path":"P"}'), { root: "R", name: "N", path: "P" });
+    assert.deepEqual(parseProjectState('{"root":"R","name":"N","path":"P","folder":"F"}'),
+        { root: "R", name: "N", path: "P", folder: "F" });
+    // Etat d'avant le dossier personnalise : folder vide.
+    assert.deepEqual(parseProjectState('{"root":"R","name":"N","path":"P"}'), { root: "R", name: "N", path: "P", folder: "" });
     for (const raw of ["", "{", "[]", "null", '{"root":3}']) {
-        assert.deepEqual(parseProjectState(raw), { root: "", name: "", path: "" });
+        assert.deepEqual(parseProjectState(raw), { root: "", name: "", path: "", folder: "" });
     }
 });

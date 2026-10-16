@@ -32,7 +32,11 @@ export function projectNameError(raw) {
     return "";
 }
 
-/** Etat du noeud Projet : racine ("" = par defaut), nom et chemin du projet. */
+/**
+ * Etat du noeud Projet : racine et chemin du projet choisi, nom, et
+ * folder = dossier des projets personnalise quand aucun Root folder ne
+ * vient du Reference Loader ("" = dossier de repli <input>/Projets).
+ */
 export function parseProjectState(raw) {
     let data = null;
     try {
@@ -42,5 +46,5 @@ export function parseProjectState(raw) {
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) data = {};
     const str = (v) => (typeof v === "string" ? v : "");
-    return { root: str(data.root), name: str(data.name), path: str(data.path) };
+    return { root: str(data.root), name: str(data.name), path: str(data.path), folder: str(data.folder) };
 }

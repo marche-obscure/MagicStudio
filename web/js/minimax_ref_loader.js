@@ -3444,6 +3444,15 @@ app.registerExtension({
 
             // Root folder lu par le noeud MiniMax H3 Project branche sur la sortie project.
             node.mmRootFolder = () => getState().root || "";
+            // Le noeud Projet y memorise le dossier personnalise choisi a la
+            // creation d'un projet (Root folder vide), comme la roue crantee.
+            node.mmSetRootFolder = (root) => {
+                const s = getState();
+                if (s.root === root) return;
+                s.root = root;
+                resetRootSubs(s);
+                setState(s);
+            };
             refresh();
             vueNodes.add(node);
             watchVueNodes();

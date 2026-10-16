@@ -57,7 +57,7 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
 A second node of this pack, **MiniMax H3 Project** (`loaders/minimax`), creates and picks project folders in the root folder of the Reference Loader:
 
 - The Reference Loader has a **project** output, always its last output (in both modes): it gives its root folder (gear button). Wire it to the **project** input of the Project node.
-- Click **+**: a window shows where the project goes (the root folder of the Reference Loader, or the default folder `ComfyUI/input/Projets` when nothing is wired or the root folder is empty), warns if that folder does not exist yet (it is then created), and asks for the name. **Create** makes the project folder with `00.Workflows`, `02.Models`, `04.Prompt`, `06.LoRA`, `08.Images`, `10.Son`, `40.Rush Videos` and `60.Rush Images`.
+- Click **+**: a window shows where the project goes and asks for the name. With a root folder in the Reference Loader, the project goes there. Without one (nothing wired, or empty root folder), you choose the projects folder (type it or Browse), with the fallback folder `ComfyUI/input/Projets` filled in; the folder chosen is then kept as the root folder of the wired Reference Loader, or by the Project node itself. The window warns when the folder does not exist yet (it is then created). **Create** makes the project folder with `00.Workflows`, `02.Models`, `04.Prompt`, `06.LoRA`, `08.Images`, `10.Son`, `40.Rush Videos` and `60.Rush Images`.
 - Or pick an existing project in the drop-down list; a missing subfolder is created again. Change the root folder of the Reference Loader and the list follows.
 
 ## Compatibility

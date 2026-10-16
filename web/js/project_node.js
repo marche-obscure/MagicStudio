@@ -1,7 +1,7 @@
 import { app } from "../../scripts/app.js";
 import {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, INACTIVE_BG,
-    svg, iconBadge, hList, hSteps, hTip, hNote, hCard, REFRESH_ICON, GEAR_ICON, START_ICON,
+    svg, iconBadge, hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, REFRESH_ICON, GEAR_ICON, START_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode,
 } from "./minimax_ref_loader.js";
@@ -22,6 +22,11 @@ const PROJECT_ICON = svg(
 const LINK_ICON = svg(
     '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>' +
     '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>', 13);
+
+function samePath(a, b) {
+    const norm = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+    return norm(a) === norm(b);
+}
 
 async function apiPost(url, body) {
     const res = await fetch(url, {
@@ -68,7 +73,11 @@ const HELP_SECTIONS = [
         html: hList([
             "Wired to the Reference Loader: in its <b>Root folder</b> (its " + iconBadge(GEAR_ICON, VIOLET) +
             " button). Change it there and the list of projects follows.",
-            "Not wired, or Root folder empty: in the default folder <b>ComfyUI/input/Projets</b>.",
+            "Not wired, or Root folder empty: the window of " + iconBadge(PLUS_ICON, PINK) + " lets you choose " +
+            "the folder (type it, or " + iconBadge(FOLDER_ICON, VIOLET) + " Browse), with the fallback folder " +
+            "<b>ComfyUI/input/Projets</b> already filled in (" + iconBadge(REFRESH_ICON, INACTIVE_BG) + " brings it back).",
+            "The folder chosen is kept in the Root folder of the Reference Loader when it is wired, otherwise " +
+            "in this node.",
             "The Root folder does not exist yet: the window of " + iconBadge(PLUS_ICON, PINK) +
             " warns you, and <b>Create</b> makes it first.",
         ]) +
@@ -111,7 +120,11 @@ const HELP_SECTIONS_FR = [
         html: hList([
             "Relié au Reference Loader : dans son <b>Root folder</b> (son bouton " + iconBadge(GEAR_ICON, VIOLET) +
             "). Changez-le là-bas et la liste des projets suit.",
-            "Non relié, ou Root folder vide : dans le dossier par défaut <b>ComfyUI/input/Projets</b>.",
+            "Non relié, ou Root folder vide : la fenêtre de " + iconBadge(PLUS_ICON, PINK) + " vous laisse choisir " +
+            "le dossier (tapez-le, ou " + iconBadge(FOLDER_ICON, VIOLET) + " Browse), avec le dossier de repli " +
+            "<b>ComfyUI/input/Projets</b> déjà rempli (" + iconBadge(REFRESH_ICON, INACTIVE_BG) + " le remet).",
+            "Le dossier choisi est gardé dans le Root folder du Reference Loader s'il est relié, sinon " +
+            "dans ce nœud.",
             "Le Root folder n'existe pas encore : la fenêtre de " + iconBadge(PLUS_ICON, PINK) +
             " vous prévient, et <b>Create</b> le crée d'abord.",
         ]) +
@@ -166,9 +179,33 @@ function buildCreateDialog(container, ctx) {
     title.textContent = "New project";
     Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "8px" });
 
+    // Destination fixe : Root folder du Reference Loader.
     const where = document.createElement("div");
     Object.assign(where.style, { color: "#bbb", lineHeight: "1.5", marginBottom: "8px", wordBreak: "break-all" });
+
+    // Destination libre (aucun Root folder) : champ + Browse + retour au dossier de repli.
+    const folderBox = document.createElement("div");
+    Object.assign(folderBox.style, { display: "none", marginBottom: "8px" });
+    const folderLabel = document.createElement("div");
+    folderLabel.textContent = "No Root folder in the MiniMax H3 Reference Loader: choose the projects folder.";
+    Object.assign(folderLabel.style, { color: "#bbb", lineHeight: "1.5", marginBottom: "6px" });
+    const folderRow = document.createElement("div");
+    Object.assign(folderRow.style, { display: "flex", gap: "6px", alignItems: "center" });
+    const fieldStyle = {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "10px",
+        padding: "6px 10px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+    };
+    const folderInput = document.createElement("input");
+    folderInput.type = "text";
+    folderInput.placeholder = "Projects folder";
+    Object.assign(folderInput.style, fieldStyle);
+    const browseBtn = makeIconButton(VIOLET, FOLDER_ICON, "Browse");
+    const fallbackBtn = makeIconButton(INACTIVE_BG, REFRESH_ICON, "");
+    folderRow.append(folderInput, browseBtn, fallbackBtn);
+    folderBox.append(folderLabel, folderRow);
+
     const warning = document.createElement("div");
+    warning.textContent = "This folder does not exist: it will be created.";
     Object.assign(warning.style, {
         display: "none", borderLeft: "3px solid " + ORANGE, background: "#241b15", color: "#efcfb6",
         padding: "6px 10px", marginBottom: "8px",
@@ -177,10 +214,7 @@ function buildCreateDialog(container, ctx) {
     const input = document.createElement("input");
     input.type = "text";
     input.placeholder = "Project name";
-    Object.assign(input.style, {
-        width: "100%", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "10px",
-        padding: "6px 10px", fontSize: "12px", outline: "none", boxSizing: "border-box",
-    });
+    Object.assign(input.style, fieldStyle, { width: "100%", flex: "0 0 auto" });
     const error = document.createElement("div");
     Object.assign(error.style, { color: ORANGE, minHeight: "14px", margin: "6px 0 0" });
 
@@ -189,9 +223,29 @@ function buildCreateDialog(container, ctx) {
     const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
     const createBtn = makeTextButton("Create", GREEN);
     footer.append(cancelBtn, createBtn);
-    card.append(title, where, warning, input, error, footer);
+    card.append(title, where, folderBox, warning, input, error, footer);
 
-    let info = null; // {root, exists, linked}
+    let info = null; // {root, exists, fixed, fallback}
+    let checkId = 0;
+
+    /** Dossier ou le projet sera cree. */
+    const destination = () => (info.fixed ? info.root : folderInput.value.trim());
+
+    /** Avertissement si le dossier choisi n'existe pas (demande au serveur). */
+    async function checkFolder() {
+        const id = ++checkId;
+        const path = destination();
+        if (!path) {
+            warning.style.display = "none";
+            return;
+        }
+        try {
+            const data = await ctx.check(path);
+            if (id === checkId) warning.style.display = data.exists === false ? "block" : "none";
+        } catch (e) {
+            if (id === checkId) warning.style.display = "none";
+        }
+    }
 
     async function create() {
         const name = input.value.trim();
@@ -201,16 +255,37 @@ function buildCreateDialog(container, ctx) {
             input.style.borderColor = ORANGE;
             return;
         }
+        const folder = destination();
+        if (!folder) {
+            error.textContent = "Choose the projects folder.";
+            folderInput.style.borderColor = ORANGE;
+            return;
+        }
         createBtn.disabled = true;
         error.textContent = "";
         try {
-            await ctx.create(name, !info.exists);
+            await ctx.create(name, folder);
             close();
         } catch (e) {
             error.textContent = e.message;
             input.style.borderColor = ORANGE;
         } finally {
             createBtn.disabled = false;
+        }
+    }
+
+    async function browse() {
+        browseBtn.disabled = true;
+        error.textContent = "Opening the folder dialog...";
+        try {
+            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(folderInput.value.trim()));
+            if (data.path) folderInput.value = data.path;
+            error.textContent = "";
+            checkFolder();
+        } catch (e) {
+            error.textContent = e.message;
+        } finally {
+            browseBtn.disabled = false;
         }
     }
 
@@ -223,7 +298,7 @@ function buildCreateDialog(container, ctx) {
             close();
             return;
         }
-        if (e.target === input) {
+        if (e.target === input || e.target === folderInput) {
             e.stopImmediatePropagation();
             if (e.key === "Enter") {
                 e.preventDefault();
@@ -241,19 +316,40 @@ function buildCreateDialog(container, ctx) {
         error.textContent = "";
         input.style.borderColor = "#0c3833";
     });
+    folderInput.addEventListener("input", () => {
+        error.textContent = "";
+        folderInput.style.borderColor = "#0c3833";
+        checkFolder();
+    });
+    browseBtn.addEventListener("click", browse);
+    fallbackBtn.addEventListener("click", () => {
+        folderInput.value = info.fallback;
+        folderInput.style.borderColor = "#0c3833";
+        checkFolder();
+    });
     cancelBtn.addEventListener("click", close);
     createBtn.addEventListener("click", create);
     overlay.addEventListener("mousedown", close);
 
     return {
-        /** info = {root, exists, linked} : dossier ou le projet sera cree. */
+        /**
+         * info = {root, exists, fixed, fallback} : fixed = Root folder du
+         * Reference Loader (non modifiable) ; sinon root = dossier propose
+         * (personnalise ou de repli), modifiable.
+         */
         open(newInfo) {
             info = newInfo;
-            const from = info.linked ? "Root folder of the MiniMax H3 Reference Loader" : "default folder";
-            where.innerHTML = "Create the project in the " + from + ":<br><b style=\"color:#9fd6cf\">" +
-                escapeHtml(info.root) + "</b>";
+            where.style.display = info.fixed ? "block" : "none";
+            folderBox.style.display = info.fixed ? "none" : "block";
+            if (info.fixed) {
+                where.innerHTML = "Create the project in the Root folder of the MiniMax H3 Reference Loader:" +
+                    "<br><b style=\"color:#9fd6cf\">" + escapeHtml(info.root) + "</b>";
+            } else {
+                folderInput.value = info.root || info.fallback;
+                folderInput.style.borderColor = "#0c3833";
+                fallbackBtn.title = "Back to the fallback folder: " + info.fallback;
+            }
             warning.style.display = info.exists ? "none" : "block";
-            warning.textContent = "This folder does not exist: it will be created.";
             input.value = "";
             input.style.borderColor = "#0c3833";
             error.textContent = "";
@@ -322,11 +418,14 @@ app.registerExtension({
             hideWidget(stateWidget);
             const getState = () => parseProjectState(stateWidget.value);
             const setState = (s) => {
-                stateWidget.value = JSON.stringify({ root: s.root, name: s.name, path: s.path });
+                const folder = s.folder !== undefined ? s.folder : getState().folder;
+                stateWidget.value = JSON.stringify({ root: s.root, name: s.name, path: s.path, folder });
             };
 
             // Dossier des projets actuel (donne par le serveur) et ses projets.
-            let folder = { root: "", exists: true, linked: false };
+            // linked : Root folder du Reference Loader ; custom : dossier personnalise du noeud.
+            let folder = { root: "", exists: true, linked: false, custom: false };
+            let fallbackRoot = ""; // dossier de repli <input de ComfyUI>/Projets
             let projects = [];
             let message = "";   // erreur ou avertissement (orange)
             let loadId = 0;
@@ -372,16 +471,25 @@ app.registerExtension({
             bottom.append(status, reloadBtn, helpBtn);
             container.append(pickRow, bottom);
 
-            const createDialog = buildCreateDialog(container, { create: createProject });
+            const createDialog = buildCreateDialog(container, {
+                create: createProject,
+                check: (path) => apiGet("/mmproject/list?root=" + encodeURIComponent(path)),
+            });
             const help = buildHelpOverlay(container, {
                 sectionsFor: projectHelpSections, nodeTitle: "MiniMax H3 Project", sectionKey: "mmproject.helpSection",
             });
             node.__mmprojectOverlays = [createDialog, help];
 
-            /** Root folder du Reference Loader branche ("" = dossier par defaut). */
+            /**
+             * Dossier des projets : Root folder du Reference Loader branche, sinon
+             * dossier personnalise du noeud, sinon "" (dossier de repli).
+             */
             function requestedRoot() {
                 const loader = linkedLoader(node);
-                return { root: loader ? loader.mmRootFolder() : "", linked: !!loader };
+                const root = loader ? loader.mmRootFolder() : "";
+                if (root) return { root, linked: true, custom: false };
+                const custom = getState().folder;
+                return { root: custom, linked: false, custom: !!custom };
             }
 
             function render() {
@@ -414,7 +522,8 @@ app.registerExtension({
                     text = "Folder not found (created with the first project): " + folder.root;
                     color = ORANGE;
                 } else {
-                    text = (folder.linked ? "Root folder: " : "Default folder: ") + folder.root;
+                    text = (folder.linked ? "Root folder: " : folder.custom ? "Projects folder: " : "Default folder: ") +
+                        folder.root;
                     color = "#888";
                 }
                 // rtl : la fin du chemin reste visible ; les marques LRM gardent la ponctuation en place.
@@ -430,12 +539,13 @@ app.registerExtension({
                 try {
                     const data = await apiGet("/mmproject/list?root=" + encodeURIComponent(req.root));
                     if (id !== loadId) return;
-                    folder = { root: data.root || "", exists: data.exists !== false, linked: req.linked && !!req.root };
+                    folder = { root: data.root || "", exists: data.exists !== false, linked: req.linked, custom: req.custom };
+                    fallbackRoot = data.default_root || fallbackRoot;
                     projects = data.projects || [];
                     message = "";
                 } catch (e) {
                     if (id !== loadId) return;
-                    folder = { root: req.root, exists: false, linked: req.linked && !!req.root };
+                    folder = { root: req.root, exists: false, linked: req.linked, custom: req.custom };
                     projects = [];
                     message = e.message;
                 }
@@ -463,17 +573,33 @@ app.registerExtension({
                 render();
             }
 
-            /** Appele par la fenetre "New project" ; une erreur reste affichee dans la fenetre. */
-            async function createProject(name, createRoot) {
-                const data = await apiPost("/mmproject/create", { root: folder.root, name, create_root: createRoot });
-                setState({ root: data.root, name: data.name, path: data.path });
+            /**
+             * Appele par la fenetre "New project" (dossier cree s'il manque, la
+             * fenetre l'a signale) ; une erreur reste affichee dans la fenetre.
+             * Dossier choisi sans Root folder : memorise dans le Reference Loader
+             * branche (sa roue), sinon dans le noeud ; le dossier de repli ne
+             * se memorise pas.
+             */
+            async function createProject(name, root) {
+                const data = await apiPost("/mmproject/create", { root, name, create_root: true });
+                const custom = folder.linked || samePath(data.root, fallbackRoot) ? "" : data.root;
+                const loader = linkedLoader(node);
+                if (!folder.linked && loader && custom) {
+                    setState({ root: data.root, name: data.name, path: data.path, folder: "" });
+                    loader.mmSetRootFolder(custom); // previent ensuite ce noeud (liste relue)
+                } else {
+                    setState({ root: data.root, name: data.name, path: data.path, folder: folder.linked ? getState().folder : custom });
+                }
                 await loadProjects();
             }
 
             select.addEventListener("change", () => openProject(select.value));
             newBtn.addEventListener("click", async () => {
                 await loadProjects();
-                createDialog.open(folder);
+                createDialog.open({
+                    root: folder.linked || folder.custom ? folder.root : fallbackRoot,
+                    exists: folder.exists, fixed: folder.linked, fallback: fallbackRoot,
+                });
             });
             reloadBtn.addEventListener("click", () => loadProjects());
             helpBtn.addEventListener("click", () => help.open());
