@@ -1,25 +1,17 @@
 // node --test tests/test_project_paths.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-    PROJECT_SUBFOLDERS, gallerySubfolder, projectNameError, parseProjectState,
-} from "../web/js/project_paths.js";
+import { PROJECT_SUBFOLDERS, projectNameError, parseProjectState } from "../web/js/project_paths.js";
 
 // Memes cas que tests/test_projects.py (meme verdict en Python).
 const VALID_NAMES = ["Clip 01", "Mon projet", "été-2026", "a.b", "x".repeat(100)];
 const INVALID_NAMES = ["", "   ", "a/b", "a\\b", "a:b", "a*b", "a?b", 'a"b', "a<b", "a>b", "a|b",
     "fin.", "CON", "nul", "Com1", "lpt9.txt", "..", "x".repeat(101), "tab\there"];
 
-test("six sous-dossiers", () => {
-    assert.deepEqual(PROJECT_SUBFOLDERS, ["Workflows", "Prompt", "Images", "Son", "Rush Videos", "Rush Images"]);
-});
-
-test("galeries : sous-dossier par type", () => {
-    assert.equal(gallerySubfolder("image"), "Images");
-    assert.equal(gallerySubfolder("video"), "Rush Videos");
-    assert.equal(gallerySubfolder("audio"), "Son");
-    assert.equal(gallerySubfolder("other"), "");
-    for (const k of ["image", "video", "audio"]) assert.ok(PROJECT_SUBFOLDERS.includes(gallerySubfolder(k)));
+test("huit sous-dossiers numerotes", () => {
+    assert.deepEqual(PROJECT_SUBFOLDERS, [
+        "00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son", "40.Rush Videos", "60.Rush Images",
+    ]);
 });
 
 test("noms valides", () => {

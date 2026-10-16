@@ -8,7 +8,6 @@ l'extension avec le Python embarque :
 import os
 import re
 import sys
-import json
 import shutil
 import tempfile
 import unittest
@@ -47,7 +46,8 @@ class ProjectFoldersTest(unittest.TestCase):
 
     def test_subfolders_list(self):
         self.assertEqual(projects.SUBFOLDERS,
-                         ("Workflows", "Prompt", "Images", "Son", "Rush Videos", "Rush Images"))
+                         ("00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son",
+                          "40.Rush Videos", "60.Rush Images"))
 
     def test_create_project_makes_all_subfolders(self):
         path = projects.create_project(self.root, " Clip 01 ")
@@ -63,6 +63,12 @@ class ProjectFoldersTest(unittest.TestCase):
     def test_create_in_missing_root_refused(self):
         with self.assertRaises(FileNotFoundError):
             projects.create_project(os.path.join(self.root, "nope"), "Clip")
+
+    def test_create_in_missing_root_with_create_root(self):
+        root = os.path.join(self.root, "new", "root")
+        path = projects.create_project(root, "Clip", create_root=True)
+        self.assertEqual(path, os.path.join(root, "Clip"))
+        self.assertTrue(os.path.isdir(os.path.join(path, "60.Rush Images")))
 
     def test_create_invalid_name_refused(self):
         with self.assertRaises(ValueError):
@@ -81,10 +87,10 @@ class ProjectFoldersTest(unittest.TestCase):
 
     def test_ensure_project_recreates_missing_subfolders(self):
         path = projects.create_project(self.root, "Clip")
-        shutil.rmtree(os.path.join(path, "Son"))
-        shutil.rmtree(os.path.join(path, "Prompt"))
+        shutil.rmtree(os.path.join(path, "10.Son"))
+        shutil.rmtree(os.path.join(path, "04.Prompt"))
         created = projects.ensure_project(path)
-        self.assertEqual(sorted(created), ["Prompt", "Son"])
+        self.assertEqual(sorted(created), ["04.Prompt", "10.Son"])
         self.assertEqual(projects.ensure_project(path), [])
 
     def test_ensure_missing_project_raises(self):
@@ -97,21 +103,6 @@ class ProjectFoldersTest(unittest.TestCase):
         self.assertEqual(path, os.path.join(self.root, "Clip"))
         with self.assertRaises(FileNotFoundError):
             projects.open_project(self.root, "Other")
-
-
-class StateTest(unittest.TestCase):
-    def test_parse_state(self):
-        self.assertEqual(projects.parse_state(json.dumps({"root": "R", "name": "N", "path": "x"})),
-                         {"root": "R", "name": "N"})
-
-    def test_parse_state_tolerant(self):
-        for raw in ["", "{", "[]", "null", json.dumps({"root": 3, "name": None})]:
-            self.assertEqual(projects.parse_state(raw), {"root": "", "name": ""})
-
-    def test_project_path(self):
-        self.assertEqual(projects.project_path({"root": "", "name": "Clip"}, "D"), os.path.join("D", "Clip"))
-        self.assertEqual(projects.project_path({"root": "R", "name": "Clip"}, "D"), os.path.join("R", "Clip"))
-        self.assertEqual(projects.project_path({"root": "R", "name": ""}, "D"), "")
 
 
 class SameAsJsTest(unittest.TestCase):

@@ -46,15 +46,13 @@ class MiniMaxH3RefLoader:
             "required": {
                 "state": ("STRING", {"default": "{}", "multiline": False}),
             },
-            # Projet (noeud MiniMax H3 Project) : utilise seulement par
-            # l'interface (dossier racine des galeries), ignore a l'execution.
-            "optional": {
-                "project": (PROJECT_TYPE,),
-            },
         }
 
-    RETURN_TYPES = tuple(ANY_TYPE for _ in _ALL_KEYS)
-    RETURN_NAMES = tuple(_ALL_KEYS)
+    # Derniere sortie declaree "project" (Root folder pour le noeud Projet) :
+    # le JS l'affiche toujours apres les sorties du mode, et run() renvoie
+    # sa valeur a cette position (media.outputs_with_project).
+    RETURN_TYPES = tuple(ANY_TYPE for _ in range(len(_ALL_KEYS) + 1))
+    RETURN_NAMES = tuple(_ALL_KEYS) + (media.PROJECT_KEY,)
     FUNCTION = "run"
     CATEGORY = "loaders/minimax"
     DESCRIPTION = (
@@ -63,12 +61,13 @@ class MiniMaxH3RefLoader:
     )
 
     @classmethod
-    def IS_CHANGED(cls, state, project=None):
-        # Recharge si la selection change ou si un fichier selectionne est modifie.
-        return media.state_signature(media.parse_state(state))
+    def IS_CHANGED(cls, state):
+        # Recharge si la selection ou le Root folder change, ou si un fichier selectionne est modifie.
+        return media.state_signature(media.parse_state(state)) + "|" + media.parse_root(state)
 
-    def run(self, state, project=None):
-        return media.build_outputs(media.parse_state(state))
+    def run(self, state):
+        s = media.parse_state(state)
+        return media.outputs_with_project(s, media.build_outputs(s), media.parse_root(state))
 
 
 def default_projects_root():
@@ -79,9 +78,11 @@ def default_projects_root():
 
 class MiniMaxH3Project:
     """
-    Dossier de projet (Workflows, Prompt, Images, Son, Rush Videos,
-    Rush Images) choisi ou cree dans l'interface JS (web/js/project_node.js) ;
-    la sortie "project" donne son chemin au MiniMax H3 Reference Loader.
+    Dossier de projet (00.Workflows ... 60.Rush Images) choisi ou cree dans
+    l'interface JS (web/js/project_node.js), dans le Root folder recu du
+    MiniMax H3 Reference Loader (entree "project"), sinon dans
+    <input de ComfyUI>/Projets. Tout se fait dans l'interface : le noeud
+    n'a pas de sortie.
     """
 
     @classmethod
@@ -89,25 +90,20 @@ class MiniMaxH3Project:
         return {
             "required": {
                 "state": ("STRING", {"default": "{}", "multiline": False}),
-            }
+            },
+            "optional": {
+                "project": (PROJECT_TYPE,),
+            },
         }
 
-    RETURN_TYPES = (PROJECT_TYPE,)
-    RETURN_NAMES = ("project",)
+    RETURN_TYPES = ()
     FUNCTION = "run"
     CATEGORY = "loaders/minimax"
     DESCRIPTION = (
-        "Create or pick a project folder (Workflows, Prompt, Images, Son, Rush Videos, "
-        "Rush Images) and give it to the MiniMax H3 Reference Loader."
+        "Create or pick a project folder (00.Workflows, 02.Models, 04.Prompt, 06.LoRA, 08.Images, "
+        "10.Son, 40.Rush Videos, 60.Rush Images) in the root folder of the MiniMax H3 Reference Loader."
     )
 
-    @classmethod
-    def IS_CHANGED(cls, state):
-        return state
-
-    def run(self, state):
-        path = projects.project_path(projects.parse_state(state), default_projects_root())
-        if not path:
-            raise ValueError("MiniMax H3 Project: no project selected.")
-        projects.ensure_project(path)
-        return (path,)
+    def run(self, state, project=None):
+        # Rien a calculer : le dossier est cree depuis l'interface.
+        return ()

@@ -179,21 +179,28 @@ try:
 
     @routes.get("/mmproject/list")
     async def mmproject_list(request):
-        """Projets de la racine 'root' ("" = racine par defaut)."""
+        """
+        Projets de la racine 'root' ("" = racine par defaut). Racine absente
+        du disque : exists = false et liste vide (la fenetre de creation
+        propose alors de la creer).
+        """
         try:
             root = await _in_executor(_projects_root, request.rel_url.query.get("root", ""))
-            names = await _in_executor(projects.list_projects, root)
+            exists = os.path.isdir(root)
+            names = await _in_executor(projects.list_projects, root) if exists else []
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"root": root, "default_root": default_projects_root(), "projects": names})
+        return web.json_response({"root": root, "exists": exists, "default_root": default_projects_root(),
+                                  "projects": names})
 
     @routes.post("/mmproject/create")
     async def mmproject_create(request):
-        """Cree le projet 'name' (et ses sous-dossiers) dans 'root'."""
+        """Cree le projet 'name' (et ses sous-dossiers) dans 'root', creee aussi si create_root."""
         try:
             body = await request.json()
             root = await _in_executor(_projects_root, body.get("root", ""))
-            path = await _in_executor(projects.create_project, root, body.get("name", ""))
+            path = await _in_executor(projects.create_project, root, body.get("name", ""),
+                                      bool(body.get("create_root")))
         except Exception as e:
             return _project_error(e)
         return web.json_response({"root": root, "path": path, "name": os.path.basename(path)})

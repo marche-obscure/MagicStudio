@@ -54,12 +54,11 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
 
 ## MiniMax H3 Project node
 
-A second node of this pack, **MiniMax H3 Project** (`loaders/minimax`), creates and picks project folders:
+A second node of this pack, **MiniMax H3 Project** (`loaders/minimax`), creates and picks project folders in the root folder of the Reference Loader:
 
-- Click **+**, type a name and press Enter: the project folder is created with `Workflows`, `Prompt`, `Images`, `Son`, `Rush Videos` and `Rush Images`. Or pick an existing project in the drop-down list.
-- The gear sets the projects folder (empty: `ComfyUI/input/Projets`, created if needed); the last one chosen is used by new Project nodes.
-- A missing subfolder is created again when the project is picked, when the workflow is loaded, or when it runs.
-- Wire its **project** output to the **project** input of the Reference Loader: the root folder of the galleries becomes the project folder (the gear of the Reference Loader is greyed) and each gallery opens in its subfolder: Images and First/Last frame in `Images`, Video and Video/Audio in `Rush Videos`, Audio in `Son`. The Subfolder list stays free. Unwire it and the Reference Loader gets its own root folder back.
+- The Reference Loader has a **project** output, always its last output (in both modes): it gives its root folder (gear button). Wire it to the **project** input of the Project node.
+- Click **+**: a window shows where the project goes (the root folder of the Reference Loader, or the default folder `ComfyUI/input/Projets` when nothing is wired or the root folder is empty), warns if that folder does not exist yet (it is then created), and asks for the name. **Create** makes the project folder with `00.Workflows`, `02.Models`, `04.Prompt`, `06.LoRA`, `08.Images`, `10.Son`, `40.Rush Videos` and `60.Rush Images`.
+- Or pick an existing project in the drop-down list; a missing subfolder is created again. Change the root folder of the Reference Loader and the list follows.
 
 ## Compatibility
 

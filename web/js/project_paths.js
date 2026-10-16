@@ -2,16 +2,9 @@
 // node --test tests/test_project_paths.mjs).
 
 // Sous-dossiers de chaque projet (meme liste que projects.SUBFOLDERS en Python).
-export const PROJECT_SUBFOLDERS = ["Workflows", "Prompt", "Images", "Son", "Rush Videos", "Rush Images"];
-
-// Sous-dossier d'ouverture des galeries du Ref Loader, par type de fichier
-// (Images et First/Last frame : image ; Video et Video/Audio : video).
-const GALLERY_SUBFOLDER = { image: "Images", video: "Rush Videos", audio: "Son" };
-
-/** Sous-dossier du projet ou s'ouvre la galerie d'un type de fichier. */
-export function gallerySubfolder(fileKind) {
-    return GALLERY_SUBFOLDER[fileKind] || "";
-}
+export const PROJECT_SUBFOLDERS = [
+    "00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son", "40.Rush Videos", "60.Rush Images",
+];
 
 const MAX_NAME_LENGTH = 100;
 const INVALID_CHARS = '<>:"/\\|?*';

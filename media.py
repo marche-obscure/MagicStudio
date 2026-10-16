@@ -167,6 +167,33 @@ def state_layout(state):
                        len(state["audios"]))
 
 
+# Derniere sortie (apres celles de state_layout) : le Root folder, pour le
+# noeud MiniMax H3 Project. Doit rester identique a PROJECT_KEY du JS.
+PROJECT_KEY = "project"
+
+
+def output_names(state):
+    """Sorties affichees : celles du mode puis project (identique au JS)."""
+    return state_layout(state) + [PROJECT_KEY]
+
+
+def parse_root(raw):
+    """Root folder de l'etat JSON ("" si absent)."""
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else {}
+    except (ValueError, TypeError):
+        data = {}
+    root = data.get("root") if isinstance(data, dict) else None
+    return root if isinstance(root, str) else ""
+
+
+def outputs_with_project(state, outputs, root):
+    """Insere le Root folder juste apres les sorties affichees du mode."""
+    n = len(state_layout(state))
+    out = list(outputs)
+    return tuple(out[:n] + [root] + out[n:])
+
+
 def _resolve(state, kind, name):
     return os.path.join(state["folders"].get(kind, ""), name)
 

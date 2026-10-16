@@ -402,6 +402,30 @@ class TrimTests(TmpDirTest):
         self.assertLessEqual(out[2]["waveform"].shape[2], 16000)
 
 
+class ProjectOutputTests(unittest.TestCase):
+    """La sortie project (Root folder) est toujours la derniere sortie affichee."""
+
+    def test_parse_root(self):
+        self.assertEqual(media.parse_root(json.dumps({"root": "F:\\Rushs"})), "F:\\Rushs")
+        for raw in ["", "{", "[]", json.dumps({"root": 3})]:
+            self.assertEqual(media.parse_root(raw), "")
+
+    def test_project_after_visible_outputs(self):
+        for raw, n in [({}, 4), ({"images": ["a.png", "b.png"]}, 5), ({"mode": "fl2va"}, 2)]:
+            state = media.parse_state(json.dumps(raw))
+            outs = tuple("v%d" % i for i in range(media.TOTAL_OUTPUTS))
+            res = media.outputs_with_project(state, outs, "R")
+            self.assertEqual(len(res), media.TOTAL_OUTPUTS + 1)
+            self.assertEqual(res[n], "R")
+            self.assertEqual(res[:n], outs[:n])
+            self.assertEqual(res[n + 1:], outs[n:])
+
+    def test_project_key_last_in_output_names(self):
+        self.assertEqual(media.output_names(media.parse_state("{}"))[-1], "project")
+        self.assertEqual(media.output_names(media.parse_state('{"mode": "fl2va"}')),
+                         ["first_frame", "last_frame", "project"])
+
+
 class BuildOutputsTests(TmpDirTest):
     def test_outputs_follow_layout_and_are_padded(self):
         Image.new("RGB", (8, 8)).save(self.p("a.png"))

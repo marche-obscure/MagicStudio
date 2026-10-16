@@ -1,14 +1,15 @@
 """
 Logique des dossiers de projet du noeud MiniMaxH3Project (sans import
 ComfyUI, testable seule) : un projet = un dossier de la racine des
-projets, avec toujours les memes sous-dossiers.
+projets (le Root folder du MiniMax H3 Reference Loader branche, sinon
+<input de ComfyUI>/Projets), avec toujours les memes sous-dossiers.
 """
 
 import os
-import json
 
 # Sous-dossiers de chaque projet (meme liste que web/js/project_paths.js).
-SUBFOLDERS = ("Workflows", "Prompt", "Images", "Son", "Rush Videos", "Rush Images")
+SUBFOLDERS = ("00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son",
+              "40.Rush Videos", "60.Rush Images")
 
 # Nom du dossier racine par defaut, cree dans le dossier input de ComfyUI.
 DEFAULT_ROOT_NAME = "Projets"
@@ -61,9 +62,15 @@ def ensure_project(path):
     return created
 
 
-def create_project(root, name):
-    """Cree le dossier du projet et ses sous-dossiers ; renvoie son chemin."""
+def create_project(root, name, create_root=False):
+    """
+    Cree le dossier du projet et ses sous-dossiers ; renvoie son chemin.
+    create_root : cree aussi la racine si elle n'existe pas (l'utilisateur
+    l'a accepte dans la fenetre de creation).
+    """
     name = validate_name(name)
+    if root and create_root and not os.path.isdir(root):
+        os.makedirs(root, exist_ok=True)
     if not root or not os.path.isdir(root):
         raise FileNotFoundError("Projects folder not found: %s" % root)
     # Comparaison sans casse : sous Windows, "Clip" et "clip" sont le meme dossier.
@@ -82,26 +89,3 @@ def open_project(root, name):
         raise FileNotFoundError('Project "%s" not found in %s' % (name, root))
     ensure_project(path)
     return path
-
-
-def parse_state(raw):
-    """Etat du noeud (JSON) : racine ("" = racine par defaut) et nom du projet."""
-    try:
-        data = json.loads(raw or "{}")
-    except (TypeError, ValueError):
-        data = None
-    if not isinstance(data, dict):
-        data = {}
-    root = data.get("root")
-    name = data.get("name")
-    return {
-        "root": root if isinstance(root, str) else "",
-        "name": name if isinstance(name, str) else "",
-    }
-
-
-def project_path(state, default_root):
-    """Chemin du projet de l'etat ("" si aucun projet choisi)."""
-    if not state["name"]:
-        return ""
-    return os.path.join(state["root"] or default_root, state["name"])
