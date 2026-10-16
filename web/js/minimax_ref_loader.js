@@ -718,6 +718,49 @@ function outputLinksOf(node, slot) {
     return all.filter((l) => l && l.origin_id === node.id && l.origin_slot === slot);
 }
 
+/**
+ * Liens d'une sortie retiree (selection reduite, meme un instant) : gardes
+ * en memoire par nom de sortie (jamais enregistres dans le workflow), puis
+ * rebranches quand la sortie revient, si l'entree en aval est encore libre.
+ */
+function rememberLinks(node, name, links) {
+    const graph = node.graph;
+    const list = links.map((l) => {
+        const t = graph && graph.getNodeById ? graph.getNodeById(l.target_id) : null;
+        const inp = t && t.inputs ? t.inputs[l.target_slot] : null;
+        return { id: l.target_id, slot: l.target_slot, input: inp ? inp.name : null };
+    });
+    if (!list.length) return;
+    node.__mmLostLinks = node.__mmLostLinks || {};
+    node.__mmLostLinks[name] = list;
+}
+
+function restoreLinks(node) {
+    const lost = node.__mmLostLinks;
+    const graph = node.graph;
+    if (!lost || !graph) return;
+    node.outputs.forEach((o, i) => {
+        const list = lost[o.name];
+        if (!list) return;
+        delete lost[o.name];
+        // Sortie deja rebranchee a la main : on ne touche a rien.
+        if (outputLinksOf(node, i).length) return;
+        list.forEach((t) => {
+            const target = graph.getNodeById ? graph.getNodeById(t.id) : null;
+            if (!target || !target.inputs) return;
+            let slot = t.input ? target.inputs.findIndex((x) => x.name === t.input) : -1;
+            if (slot < 0) slot = t.slot;
+            const inp = target.inputs[slot];
+            if (!inp || inp.link != null) return; // entree prise entre-temps
+            try {
+                node.connect(i, target, slot);
+            } catch (e) {
+                console.warn("[MiniMaxRefLoader] relink", o.name, e);
+            }
+        });
+    });
+}
+
 /** Previent les noeuds MiniMax H3 Project du graphe (Root folder change). */
 function notifyProjectNodes(node) {
     const graph = node.graph;
@@ -741,7 +784,10 @@ function applyLayout(node, state, relink = true) {
     if (!same) {
         if (relink) {
             for (let i = node.outputs.length - 1; i >= 0; i--) {
-                if (!keys.includes(node.outputs[i].name) && node.isOutputConnected(i)) node.disconnectOutput(i);
+                if (!keys.includes(node.outputs[i].name) && node.isOutputConnected(i)) {
+                    rememberLinks(node, node.outputs[i].name, outputLinksOf(node, i));
+                    node.disconnectOutput(i);
+                }
             }
         }
         // Instantane des sorties conservees : etiquette et objets lien.
@@ -774,6 +820,8 @@ function applyLayout(node, state, relink = true) {
         o.color_on = color;
         o.color_off = color;
     });
+    // Apres les types : une sortie qui etait AUDIO refuserait une entree IMAGE.
+    if (!same && relink) restoreLinks(node);
     const min = node.computeSize();
     // La hauteur suit le contenu (elle rapetisse quand des sorties disparaissent).
     node.setSize([Math.max(node.size[0], MIN_WIDTH), min[1]]);
