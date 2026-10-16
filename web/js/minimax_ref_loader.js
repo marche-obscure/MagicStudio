@@ -659,17 +659,27 @@ function notifyProjectNodes(node) {
     });
 }
 
-function applyLayout(node, state) {
+/**
+ * relink = false a la creation du noeud : il n'a encore aucun lien a lui,
+ * mais au chargement d'un workflow le graphe contient deja les liens
+ * enregistres sous son id (charges avant les noeuds). Les renumeroter ici,
+ * avec l'etat par defaut, deplacait les noeuds en aval (ref_image_2 et 3
+ * passaient sur ref_video_1 et ref_video_audio_1) ; configure() remet
+ * ensuite les sorties enregistrees.
+ */
+function applyLayout(node, state, relink = true) {
     const keys = outputNames(state);
     const same = node.outputs.length === keys.length && node.outputs.every((o, i) => o.name === keys[i]);
     if (!same) {
-        for (let i = node.outputs.length - 1; i >= 0; i--) {
-            if (!keys.includes(node.outputs[i].name) && node.isOutputConnected(i)) node.disconnectOutput(i);
+        if (relink) {
+            for (let i = node.outputs.length - 1; i >= 0; i--) {
+                if (!keys.includes(node.outputs[i].name) && node.isOutputConnected(i)) node.disconnectOutput(i);
+            }
         }
         // Instantane des sorties conservees : etiquette et objets lien.
         const saved = {};
         node.outputs.forEach((o, i) => {
-            if (keys.includes(o.name)) saved[o.name] = { label: o.label, links: outputLinksOf(node, i) };
+            if (keys.includes(o.name)) saved[o.name] = { label: o.label, links: relink ? outputLinksOf(node, i) : [] };
         });
         // Nouveaux index d'abord : ainsi, retirer les dernieres sorties ne
         // debranche que des positions devenues vides.
@@ -3030,6 +3040,8 @@ app.registerExtension({
             // Upload) : efface au prochain changement de la selection.
             let notice = "";
             let noticeTitle = "";
+            // Creation du noeud : pas de liens a lui (voir applyLayout).
+            let creating = false;
             const setState = (s) => {
                 notice = "";
                 noticeTitle = "";
@@ -3414,7 +3426,7 @@ app.registerExtension({
                     if (!first) notifyProjectNodes(node);
                 }
 
-                applyLayout(node, s);
+                applyLayout(node, s, !creating);
             }
 
             node.addDOMWidget("mmrefloader_ui", "mmrefloader", container, {
@@ -3432,9 +3444,30 @@ app.registerExtension({
 
             // configure() (rechargement d'un workflow) s'execute apres
             // onNodeCreated : relire l'etat a ce moment-la.
+            // configure() garde les noms des sorties creees par onNodeCreated (etat par
+            // defaut), n'ajoute que les sorties en plus et recopie ces noms dans les
+            // donnees recues : on releve les noms et etiquettes enregistres avant lui
+            // et on les remet dans onConfigure, sinon applyLayout suivrait de faux noms
+            // et deplacerait les liens (ref_image_2 et 3 -> ref_video_1 et ref_video_audio_1).
+            let savedOutputs = null;
+            const configure = node.configure;
+            node.configure = function (info) {
+                savedOutputs = info && Array.isArray(info.outputs)
+                    ? info.outputs.map((o) => (o && typeof o.name === "string" ? { name: o.name, label: o.label } : null))
+                    : null;
+                return configure.apply(this, arguments);
+            };
             const onConfigure = node.onConfigure;
             node.onConfigure = function () {
                 const ret = onConfigure ? onConfigure.apply(this, arguments) : undefined;
+                (savedOutputs || []).forEach((o, i) => {
+                    const out = node.outputs && node.outputs[i];
+                    if (!out || !o) return;
+                    out.name = o.name;
+                    out.localized_name = o.name;
+                    out.label = o.label;
+                });
+                savedOutputs = null;
                 // Entree "project" d'une version de test (sens inverse) : retiree.
                 const old = (node.inputs || []).findIndex((inp) => inp.name === "project");
                 if (old >= 0) node.removeInput(old);
@@ -3457,7 +3490,12 @@ app.registerExtension({
             // la remplace par les chemins des copies (ou du projet deplace).
             node.mmGetState = () => getState();
             node.mmSetState = (s) => setState(parseState(JSON.stringify(s)));
-            refresh();
+            creating = true;
+            try {
+                refresh();
+            } finally {
+                creating = false;
+            }
             vueNodes.add(node);
             watchVueNodes();
             scheduleVueSync();
