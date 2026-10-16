@@ -283,6 +283,30 @@ class WorkflowTest(unittest.TestCase):
         names = [a["name"] for a in projects.list_workflows(self.project)["archives"]]
         self.assertEqual(names, ["20261016-100000_Clip.json", "20261010-100000_Other.json", "20261001-100000_Clip.json"])
 
+    def test_at_most_five_archives(self):
+        for i in range(projects.MAX_ARCHIVES):
+            write(os.path.join(self.wf, "2026100%d-100000_Clip.json" % (i + 1)), b"{}")
+        projects.save_workflow(self.project, "Clip", "v1")
+        with self.assertRaises(ValueError):
+            projects.save_workflow(self.project, "Clip", "v2", archive="Clip.json")
+        self.assertEqual(projects.read_workflow(self.project, "Clip.json"), "v1")
+        # Ecraser reste possible.
+        projects.save_workflow(self.project, "Clip", "v2")
+        projects.delete_archive(self.project, "20261001-100000_Clip.json")
+        info = projects.save_workflow(self.project, "Clip", "v3", archive="Clip.json")
+        self.assertTrue(info["archived"])
+        self.assertEqual(len(projects.list_workflows(self.project)["archives"]), projects.MAX_ARCHIVES)
+
+    def test_delete_archive_only(self):
+        projects.save_workflow(self.project, "Clip", "v1")
+        write(os.path.join(self.wf, "20261016-153000_REF2VA_minimax_config.json"), b"{}")
+        for bad in ["Clip.json", "20261016-153000_REF2VA_minimax_config.json", "../20261016-153000_x.json"]:
+            with self.assertRaises(ValueError, msg=bad):
+                projects.delete_archive(self.project, bad)
+        with self.assertRaises(FileNotFoundError):
+            projects.delete_archive(self.project, "20261016-153000_Nope.json")
+        self.assertTrue(os.path.isfile(os.path.join(self.wf, "Clip.json")))
+
     def test_read_refuses_paths(self):
         with self.assertRaises(ValueError):
             projects.read_workflow(self.project, "../x.json")

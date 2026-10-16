@@ -294,6 +294,16 @@ try:
             return _project_error(e)
         return web.json_response(info)
 
+    @routes.post("/mmproject/delete_archive")
+    async def mmproject_delete_archive(request):
+        """Supprime une archive de workflow (deja confirme dans l'UI)."""
+        try:
+            body = await request.json()
+            await _in_executor(projects.delete_archive, body.get("project", ""), body.get("name", ""))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"ok": True})
+
 except Exception:
     print("[ComfyUI-MiniMaxRefLoader] Could not register the API routes:")
     traceback.print_exc()

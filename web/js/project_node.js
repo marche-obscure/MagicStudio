@@ -37,6 +37,9 @@ const SAVE_ICON = svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11
 // Boite d'archives (workflows archives).
 const ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path>' +
     '<line x1="10" y1="12" x2="14" y2="12"></line>', 12);
+// Archives : 5 au plus par projet (comme projects.MAX_ARCHIVES) ; rouge = suppression.
+const TRASH_RED = "#d32f2f";
+const MAX_ARCHIVES = 5;
 // Couleurs de la cloche du workflow : orange = changements a sauvegarder, vert = a jour.
 const BELL_ORANGE = "#e0793c";
 const BELL_GREEN = "#43a047";
@@ -172,6 +175,10 @@ const HELP_SECTIONS = [
                 "The workflow row shows <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
                 iconBadge(ARCHIVE_ICON, VIOLET) + " (right of the bell, active when there are archives) opens an " +
                 "archived workflow in a new tab; the current one is not changed.",
+                "At most <b>5 archives</b> per project. With 5, the archives get a check box: check the ones to " +
+                "delete, then <b>Delete</b> deletes them and proposes the save (<b>Cancel</b> closes the window). " +
+                "In the bell window, <b>Save</b> with <b>Archive it</b> opens this list first; <b>Overwrite</b> " +
+                "saves directly.",
                 "When a project is created, the workflow is saved right away; " + iconBadge(SAVE_ICON, PINK) +
                 " also saves it (through the bell window when it has changed).",
             ]) +
@@ -276,6 +283,10 @@ const HELP_SECTIONS_FR = [
                 "La ligne du workflow affiche <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
                 iconBadge(ARCHIVE_ICON, VIOLET) + " (à droite de la cloche, actif s'il y a des archives) ouvre un " +
                 "workflow archivé dans un nouvel onglet ; le workflow actuel ne change pas.",
+                "<b>5 archives</b> au plus par projet. À 5, les archives ont une case à cocher : cochez celles à " +
+                "supprimer, puis <b>Delete</b> les supprime et propose la sauvegarde (<b>Cancel</b> ferme la " +
+                "fenêtre). Dans la fenêtre de la cloche, <b>Save</b> avec <b>Archive it</b> ouvre d'abord cette " +
+                "liste ; <b>Overwrite</b> sauvegarde directement.",
                 "À la création d'un projet, le workflow est sauvegardé tout de suite ; " + iconBadge(SAVE_ICON, PINK) +
                 " le sauvegarde aussi (par la fenêtre de la cloche s'il a changé).",
             ]) +
@@ -860,7 +871,11 @@ function buildWorkflowDialog(container) {
     };
     const noBtn = pillBtn("Overwrite");
     const yesBtn = pillBtn("Archive it");
-    archiveBox.append(archiveLabel, pill);
+    // Limite atteinte : Save avec Archive it ouvre d'abord la fenetre "Delete archives".
+    const limitNote = document.createElement("div");
+    Object.assign(limitNote.style, { color: ORANGE, margin: "6px 0 0" });
+    limitNote.textContent = MAX_ARCHIVES + " archives already: Save asks which ones to delete first.";
+    archiveBox.append(archiveLabel, pill, limitNote);
 
     const nameLabel = document.createElement("div");
     nameLabel.textContent = "Name of the workflow (in 00.Workflows):";
@@ -882,6 +897,7 @@ function buildWorkflowDialog(container) {
     card.append(title, changesTitle, changes, archiveBox, nameLabel, input, error, footer);
 
     let archive = true;
+    let full = false;
     let resolve = null;
 
     function paintPill() {
@@ -889,6 +905,7 @@ function buildWorkflowDialog(container) {
         yesBtn.style.color = archive ? "white" : "#888";
         noBtn.style.background = archive ? INACTIVE_BG : ORANGE;
         noBtn.style.color = archive ? "#888" : "white";
+        limitNote.style.display = full && archive ? "block" : "none";
     }
 
     function finish(result) {
@@ -945,6 +962,7 @@ function buildWorkflowDialog(container) {
     overlay.addEventListener("mousedown", () => finish(null));
 
     return {
+        /** opts.full = la limite d'archives est atteinte (note sous la pilule). */
         open(opts) {
             if (resolve) finish(null);
             changesTitle.textContent = opts.previous ? "Changes since the last save of " + opts.previous + ":"
@@ -955,6 +973,7 @@ function buildWorkflowDialog(container) {
             archiveLabel.innerHTML = "Archive the previous workflow? It is renamed <b>yyyyMMdd-HHmmss_" +
                 escapeHtml(opts.previous || "") + "</b> (date of its last save).";
             archive = true;
+            full = !!opts.full;
             paintPill();
             input.value = opts.defaultName;
             input.style.borderColor = "#0c3833";
@@ -970,6 +989,86 @@ function buildWorkflowDialog(container) {
             overlay.remove();
         },
     };
+}
+
+/** "dd/MM/yyyy hh:mm:ss" d'une archive (stamp yyyyMMdd-HHmmss). */
+function archiveWhen(a) {
+    const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(a.stamp) || [];
+    return m.length ? m[3] + "/" + m[2] + "/" + m[1] + " " + m[4] + ":" + m[5] + ":" + m[6] : a.stamp;
+}
+
+/**
+ * Ligne d'archive : date + workflow d'origine. onOpen (facultatif) au clic sur
+ * la ligne ; check = case a cocher au bout (row.box), onCheck a chaque changement.
+ */
+function archiveRow(a, { onOpen, check, onCheck }) {
+    const row = document.createElement("div");
+    Object.assign(row.style, { display: "flex", alignItems: "center", gap: "6px", borderRadius: "6px" });
+    const label = document.createElement(onOpen ? "button" : "label");
+    if (onOpen) label.type = "button";
+    label.innerHTML = '<span style="color:#9fd6cf">' + escapeHtml(archiveWhen(a)) + "</span>  " + escapeHtml(a.of);
+    label.title = a.name;
+    Object.assign(label.style, {
+        flex: "1", minWidth: "0", textAlign: "left", background: "transparent", color: "#ddd", border: "none",
+        borderRadius: "6px", padding: "5px 8px", cursor: "pointer", fontSize: "12px",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+    });
+    label.addEventListener("mouseenter", () => (label.style.background = "#173a37"));
+    label.addEventListener("mouseleave", () => (label.style.background = "transparent"));
+    row.appendChild(label);
+    if (check) {
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.title = "Check to delete: " + a.name;
+        Object.assign(box.style, { width: "15px", height: "15px", margin: "0 6px", flex: "none", cursor: "pointer",
+            accentColor: TRASH_RED });
+        box.addEventListener("change", () => onCheck && onCheck());
+        row.appendChild(box);
+        row.box = box;
+    }
+    if (onOpen) label.addEventListener("click", () => onOpen(a));
+    else if (row.box) label.addEventListener("click", () => {
+        row.box.checked = !row.box.checked;
+        if (onCheck) onCheck();
+    });
+    return row;
+}
+
+/**
+ * Liste d'archives a cocher + Cancel | Delete (Delete rouge, actif des
+ * qu'une case est cochee). onDelete(noms coches) au clic sur Delete.
+ */
+function checkList(archives, { onOpen, onCancel, onDelete }) {
+    const box = document.createElement("div");
+    const list = document.createElement("div");
+    Object.assign(list.style, { maxHeight: "260px", overflowX: "hidden", overflowY: "auto" });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const deleteBtn = makeTextButton("Delete", TRASH_RED);
+    footer.append(cancelBtn, deleteBtn);
+    const rows = [];
+    const checked = () => rows.filter((r) => r.box.checked).map((r) => r.archive.name);
+    const paint = () => {
+        const on = checked().length > 0;
+        deleteBtn.disabled = !on;
+        deleteBtn.style.opacity = on ? "1" : "0.45";
+        deleteBtn.style.cursor = on ? "pointer" : "default";
+    };
+    for (const a of archives) {
+        const row = archiveRow(a, { onOpen, check: true, onCheck: paint });
+        row.archive = a;
+        rows.push(row);
+        list.appendChild(row);
+    }
+    cancelBtn.addEventListener("click", onCancel);
+    deleteBtn.addEventListener("click", () => {
+        const names = checked();
+        if (names.length) onDelete(names);
+    });
+    paint();
+    box.append(list, footer);
+    return box;
 }
 
 /** Liste HTML des changements (diffWorkflows) pour la fenetre. */
@@ -989,6 +1088,55 @@ function changesHtml(d) {
 }
 
 // --------------------------------------------------------------------
+// Fenetre "Delete archives" (limite atteinte, avant d'archiver)
+// --------------------------------------------------------------------
+/** open(archives) -> Promise<noms a supprimer | null> (Cancel, Echap, clic a cote = null). */
+function buildDeleteArchivesDialog(container) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, { width: "min(420px, 92vw)", padding: "12px 14px", borderColor: TRASH_RED });
+    const title = document.createElement("div");
+    title.textContent = "Delete archives";
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "6px" });
+    const text = document.createElement("div");
+    text.textContent = MAX_ARCHIVES + " archives max: check the ones to delete.";
+    Object.assign(text.style, { color: ORANGE, marginBottom: "6px" });
+    const slot = document.createElement("div");
+    card.append(title, text, slot);
+
+    let resolve = null;
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        finish(null);
+    };
+    function finish(result) {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        const r = resolve;
+        resolve = null;
+        if (r) r(result);
+    }
+    overlay.addEventListener("mousedown", () => finish(null));
+
+    return {
+        open(archives) {
+            if (resolve) finish(null);
+            slot.innerHTML = "";
+            slot.appendChild(checkList(archives, { onCancel: () => finish(null), onDelete: (names) => finish(names) }));
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 420);
+            return new Promise((r) => (resolve = r));
+        },
+        remove() {
+            finish(null);
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
 // Liste des workflows archives (bouton a droite de la cloche)
 // --------------------------------------------------------------------
 function buildArchiveMenu(container) {
@@ -997,9 +1145,11 @@ function buildArchiveMenu(container) {
     const title = document.createElement("div");
     title.textContent = "Open an archived workflow (new tab)";
     Object.assign(title.style, { fontWeight: "bold", color: TITLE_COLOR, padding: "4px 6px 8px" });
-    const list = document.createElement("div");
-    Object.assign(list.style, { maxHeight: "260px", overflowX: "hidden", overflowY: "auto" });
-    card.append(title, list);
+    const note = document.createElement("div");
+    note.textContent = MAX_ARCHIVES + " archives max: check the ones to delete.";
+    Object.assign(note.style, { color: ORANGE, padding: "0 6px 6px" });
+    const slot = document.createElement("div");
+    card.append(title, note, slot);
 
     const onKey = (e) => {
         if (overlay.style.display === "none" || e.key !== "Escape") return;
@@ -1014,28 +1164,29 @@ function buildArchiveMenu(container) {
     overlay.addEventListener("mousedown", close);
 
     return {
-        /** archives = [{name, stamp, of}] ; onPick(archive) a l'ouverture. */
-        open(archives, onPick) {
-            list.innerHTML = "";
-            for (const a of archives) {
-                const row = document.createElement("button");
-                row.type = "button";
-                const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(a.stamp) || [];
-                const when = m.length ? m[3] + "/" + m[2] + "/" + m[1] + " " + m[4] + ":" + m[5] + ":" + m[6] : a.stamp;
-                row.innerHTML = '<span style="color:#9fd6cf">' + escapeHtml(when) + "</span>  " + escapeHtml(a.of);
-                row.title = a.name;
-                Object.assign(row.style, {
-                    display: "block", width: "100%", textAlign: "left", background: "transparent", color: "#ddd",
-                    border: "none", borderRadius: "6px", padding: "6px 8px", cursor: "pointer", fontSize: "12px",
-                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                });
-                row.addEventListener("mouseenter", () => (row.style.background = "#173a37"));
-                row.addEventListener("mouseleave", () => (row.style.background = "transparent"));
-                row.addEventListener("click", () => {
-                    close();
-                    onPick(a);
-                });
-                list.appendChild(row);
+        /**
+         * archives = [{name, stamp, of}] ; onPick(archive) a l'ouverture ;
+         * onDelete(noms) quand la limite est atteinte (cases a cocher + Cancel | Delete).
+         */
+        open(archives, onPick, onDelete) {
+            const open = (a) => {
+                close();
+                onPick(a);
+            };
+            slot.innerHTML = "";
+            const full = !!onDelete && archives.length >= MAX_ARCHIVES;
+            note.style.display = full ? "block" : "none";
+            if (full) {
+                slot.appendChild(checkList(archives, {
+                    onOpen: open,
+                    onCancel: close,
+                    onDelete: (names) => {
+                        close();
+                        onDelete(names);
+                    },
+                }));
+            } else {
+                for (const a of archives) slot.appendChild(archiveRow(a, { onOpen: open }));
             }
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
@@ -1217,7 +1368,8 @@ app.registerExtension({
             const renameDialog = buildRenameMoveDialog(container, { confirm, apply: applyRenameMove });
             const workflowDialog = buildWorkflowDialog(container);
             const archiveMenu = buildArchiveMenu(container);
-            node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu];
+            const deleteDialog = buildDeleteArchivesDialog(container);
+            node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
@@ -1537,14 +1689,41 @@ app.registerExtension({
                 await loadWorkflowInfo();
                 const prev = wfInfo.current ? wfInfo.current.name : "";
                 const diff = diffWorkflows(forCompare(savedWf), forCompare(currentWorkflow()), widgetNames());
-                const result = await workflowDialog.open({ changesHtml: changesHtml(diff), previous: prev, defaultName: s.name });
-                if (!result) return;
+                let name = s.name;
+                let result = null;
+                for (;;) {
+                    const full = wfInfo.archives.length >= MAX_ARCHIVES;
+                    result = await workflowDialog.open({ changesHtml: changesHtml(diff), previous: prev, defaultName: name, full });
+                    if (!result) return;
+                    if (!(result.archive && full)) break;
+                    // Limite atteinte : choisir les archives a supprimer, puis la sauvegarde est reproposee.
+                    name = result.name;
+                    const names = await deleteDialog.open(wfInfo.archives);
+                    if (!names) return;
+                    await deleteArchives(names);
+                }
                 try {
                     const info = await writeWorkflow(result.name, result.archive ? prev : null, true);
                     say("Workflow saved: " + info.name + (info.archived ? " (previous one archived: " + info.archived + ")" : ""), true);
                 } catch (e) {
                     say(e.message);
                 }
+            }
+
+            /** Supprime les archives cochees (Delete de la liste = confirmation), puis relit la liste. */
+            async function deleteArchives(names) {
+                const s = getState();
+                let done = 0;
+                try {
+                    for (const n of names) {
+                        await apiPost("/mmproject/delete_archive", { project: s.path, name: n });
+                        done++;
+                    }
+                    say(done + " archive(s) deleted.", true);
+                } catch (e) {
+                    say(e.message);
+                }
+                await loadWorkflowInfo();
             }
 
             /** Ouvre une archive dans un nouvel onglet de workflow. */
@@ -1567,7 +1746,12 @@ app.registerExtension({
                 else saveWorkflowDirect();
             });
             wfRow.arch.addEventListener("click", () => {
-                if (wfInfo.archives.length) archiveMenu.open(wfInfo.archives, openArchive);
+                if (!wfInfo.archives.length) return;
+                // Delete : suppression puis la sauvegarde du workflow est proposee.
+                archiveMenu.open(wfInfo.archives, openArchive, async (names) => {
+                    await deleteArchives(names);
+                    await workflowStep();
+                });
             });
             // Changements surveilles : la cloche passe a l'orange des qu'il y en a.
             node.__mmprojectTimer = setInterval(() => {
