@@ -177,6 +177,36 @@ export function unusedProjectFiles(paths, state) {
     return paths.filter((p) => !used.has(normPath(p)));
 }
 
+/** Couleurs des groupes de doublons, dans l'ordre d'apparition (puis on recommence). */
+export const DUP_COLORS = ["#3b82f6", "#e0793c", "#8b5cf6", "#22c55e", "#eab308", "#06b6d4"];
+
+/**
+ * Doublons (meme SHA256) parmi des fichiers affiches dans l'ordre :
+ * {chemin: couleur} pour chaque fichier d'un groupe d'au moins deux
+ * fichiers differents ; une couleur par groupe. Un chemin sans empreinte
+ * connue est ignore.
+ */
+export function duplicateColors(paths, hashes) {
+    const seen = new Set();
+    const groups = new Map(); // empreinte -> chemins
+    for (const p of paths) {
+        const key = normPath(p);
+        const h = hashes[p];
+        if (!h || seen.has(key)) continue;
+        seen.add(key);
+        if (!groups.has(h)) groups.set(h, []);
+        groups.get(h).push(p);
+    }
+    const out = {};
+    let n = 0;
+    for (const members of groups.values()) {
+        if (members.length < 2) continue;
+        const color = DUP_COLORS[n++ % DUP_COLORS.length];
+        for (const p of members) out[p] = color;
+    }
+    return out;
+}
+
 /** Le mode a-t-il au moins une reference (une configuration a sauvegarder) ? */
 export function modeHasRefs(state, mode) {
     const n = (k) => (state[k] || []).length;

@@ -305,6 +305,27 @@ try:
             return _project_error(e)
         return web.json_response({"moved": moved})
 
+    @routes.post("/mmproject/import_files")
+    async def mmproject_import_files(request):
+        """Remplacants valides : copies (ou deplaces depuis Archives) dans le dossier du projet."""
+        try:
+            body = await request.json()
+            dsts = await _in_executor(projects.import_files, body.get("project", ""), body.get("folder", ""),
+                                      list(body.get("paths") or []))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"dsts": dsts})
+
+    @routes.post("/mmproject/hashes")
+    async def mmproject_hashes(request):
+        """SHA256 des fichiers demandes (doublons de la galerie)."""
+        try:
+            body = await request.json()
+            hashes = await _in_executor(projects.file_hashes, list(body.get("paths") or []))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"hashes": hashes})
+
     @routes.post("/mmproject/delete_archive")
     async def mmproject_delete_archive(request):
         """Supprime une archive de workflow (deja confirme dans l'UI)."""

@@ -5,7 +5,7 @@ import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, LIST_FOLDERS, projectNameError, parseProjectState,
     saveItems, remapState, mapBySequence, mapByPrefix, configFileName, modeHasRefs,
     UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, mapFolderBySequence, withoutMedia,
-    gallerySession, replaceSelection, unusedProjectFiles,
+    gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
 } from "../web/js/project_paths.js";
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
@@ -174,4 +174,17 @@ test("etat tolerant", () => {
     for (const raw of ["", "{", "[]", "null", '{"root":3,"wfValidated":"yes"}']) {
         assert.deepEqual(parseProjectState(raw), empty);
     }
+});
+
+test("duplicateColors: one colour per group, in order, pool and project together", () => {
+    const h = { "P\\a.png": "1", "P\\b.png": "2", "S\\x.png": "1", "S\\y.png": "3", "S\\z.png": "2",
+        "P\\c.png": "2", "P\\d.png": "4" };
+    const c = duplicateColors(["P\\a.png", "P\\b.png", "P\\c.png", "P\\d.png", "S\\x.png", "S\\y.png", "S\\z.png",
+        "S\\unknown.png"], h);
+    assert.deepEqual(c, {
+        "P\\a.png": DUP_COLORS[0], "S\\x.png": DUP_COLORS[0],
+        "P\\b.png": DUP_COLORS[1], "P\\c.png": DUP_COLORS[1], "S\\z.png": DUP_COLORS[1],
+    });
+    // Le meme fichier deux fois n'est pas un doublon.
+    assert.deepEqual(duplicateColors(["P\\a.png", "p/a.png"], { "P\\a.png": "1", "p/a.png": "1" }), {});
 });

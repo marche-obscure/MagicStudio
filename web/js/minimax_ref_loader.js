@@ -1,7 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
-import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles } from "./project_paths.js";
+import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors } from "./project_paths.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -261,6 +261,11 @@ const HELP_SECTIONS = [
                 "it and frees the locked file. <b>Validate changes</b> applies them all: each new file takes its " +
                 "number and the replaced files go to <b>Archives</b>; <b>Cancel changes</b> (confirmed) puts " +
                 "everything back. Closing with pending replacements asks Validate or Discard.",
+                "On validation the new file enters the project folder: <b>copied</b> from the selected folder (the " +
+                "original stays), <b>moved</b> when it comes from <b>Archives</b>. If its name is taken there it gets " +
+                "<b>_02</b>, <b>_03</b>…; a file that replaces one with the same name keeps its name.",
+                "A small coloured bar under the name marks <b>duplicates</b> (same SHA256 content) among the " +
+                "pending replacements and the files of the project folder: one colour per group of identical files.",
                 "A file still checked without replacement when you close leaves the selection too.",
                 "The selection is full: a message above the line asks you to check below the file to replace, " +
                 "then to pick the new one above.",
@@ -456,6 +461,12 @@ const HELP_SECTIONS_FR = [
                 "libère le fichier verrouillé. <b>Validate changes</b> les applique tous : chaque nouveau fichier " +
                 "prend son numéro et les fichiers remplacés partent dans <b>Archives</b> ; <b>Cancel changes</b> " +
                 "(avec confirmation) remet tout en place. Fermer avec un pool non vide demande Validate ou Discard.",
+                "À la validation, le nouveau fichier entre dans le dossier du projet : <b>copié</b> depuis le " +
+                "dossier choisi (l'original reste), <b>déplacé</b> s'il vient d'<b>Archives</b>. Si son nom y est " +
+                "pris, il reçoit <b>_02</b>, <b>_03</b>… ; un fichier qui en remplace un du même nom garde son nom.",
+                "Une petite barre de couleur sous le nom signale les <b>doublons</b> (même contenu SHA256) entre le " +
+                "pool de remplacements et les fichiers du dossier du projet : une couleur par groupe de fichiers " +
+                "identiques.",
                 "Un fichier encore coché sans remplaçant à la fermeture sort aussi de la sélection.",
                 "Sélection pleine : un message au-dessus du trait invite à cocher en bas le fichier à remplacer, " +
                 "puis à choisir le nouveau en haut.",
@@ -1890,6 +1901,10 @@ function buildGallery(container, ctx) {
     // Remplacements en attente (pool) : {path, old, f, folder}. Le remplacant
     // prend le numero de old a la validation ; old part alors dans Archives.
     let pool = [];
+    // Doublons (pool + dossier du projet) : SHA256 connus et couleur par chemin.
+    let hashes = {};
+    let dupColors = {};
+    let hashing = false;
     const inPool = (path) => pool.some((it) => samePath(it.path, path));
     const poolOf = (old) => pool.find((it) => samePath(it.old, old));
     // Archives du dossier du projet : bouton "View archives" (vert = affichees a la
@@ -2317,7 +2332,7 @@ function buildGallery(container, ctx) {
                 boxRow.appendChild(box);
                 if (isMarked) boxRow.appendChild(document.createTextNode("to replace"));
             }
-            tile.appendChild(boxRow);
+            tile.append(dupBar(path), boxRow);
             tile.addEventListener("click", async () => {
                 // Fichier du projet non selectionne : le clic le selectionne.
                 if (own && !selected) await toggle(path, f, folder);
@@ -2338,6 +2353,39 @@ function buildGallery(container, ctx) {
             previewFile(f, path);
         });
         return tile;
+    }
+
+    /** Barre de la largeur de la vignette : meme couleur = meme contenu (SHA256). */
+    function dupBar(path) {
+        const bar = document.createElement("div");
+        const color = dupColors[path];
+        bar.title = color ? "Same content as the other files with this colour" : "";
+        Object.assign(bar.style, { height: "4px", margin: "0 5px 3px", borderRadius: "2px",
+            background: color || "transparent" });
+        return bar;
+    }
+
+    /** Fichiers compares : le pool puis le dossier du projet. */
+    function dupPaths() {
+        if (!project) return [];
+        return pool.map((it) => it.path).concat(projFiles.filter((f) => canPick(kind, f.kind))
+            .map((f) => joinPath(projDir, f.name)));
+    }
+
+    /** Empreintes manquantes demandees au serveur, puis nouveau rendu. */
+    async function fetchHashes() {
+        const missing = dupPaths().filter((p) => !(p in hashes));
+        if (!missing.length || hashing) return;
+        hashing = true;
+        try {
+            const data = await apiPost("/mmproject/hashes", { paths: missing });
+            missing.forEach((p) => (hashes[p] = (data.hashes || {})[p] || null));
+        } catch (e) {
+            missing.forEach((p) => (hashes[p] = null));
+        } finally {
+            hashing = false;
+        }
+        if (overlay.style.display !== "none") render();
     }
 
     /** Vignette du pool : numero vise, coche verte (valider celui-ci), croix rouge (l'annuler). */
@@ -2366,7 +2414,7 @@ function buildGallery(container, ctx) {
         name.textContent = it.f.name;
         Object.assign(name.style, { padding: "3px 5px", fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden",
             textOverflow: "ellipsis", color: "#fff" });
-        tile.append(thumb, name);
+        tile.append(thumb, name, dupBar(it.path));
         const corner = (html, bg, pos, title, onClick) => {
             const b = document.createElement("button");
             b.type = "button";
@@ -2406,16 +2454,26 @@ function buildGallery(container, ctx) {
     async function applyPool(items) {
         const s = ctx.getState();
         const arr = list(s);
-        for (const it of items) {
-            const at = indexOf(it.old, s);
-            if (at >= 0) arr[at] = it.path;
-        }
+        const at = items.map((it) => indexOf(it.old, s));
+        items.forEach((it, k) => {
+            if (at[k] >= 0) arr[at[k]] = it.path;
+        });
         const inProj = (p) => projFiles.some((f) => samePath(joinPath(projDir, f.name), p));
         const toArchive = unusedProjectFiles(items.map((it) => it.old).filter(inProj), s);
+        // Anciens d'abord : un remplacant du meme nom garde ainsi son nom.
         if (toArchive.length) {
             await apiPost("/mmproject/archive_files", { project: project.path, folder: projFolder, names: toArchive.map(baseName) });
         }
+        // Remplacants dans le dossier du projet : copies, deplaces depuis Archives ("_02" si le nom est pris).
+        const data = await apiPost("/mmproject/import_files", { project: project.path, folder: projFolder,
+            paths: items.map((it) => it.path) });
+        items.forEach((it, k) => {
+            if (at[k] >= 0) arr[at[k]] = data.dsts[k];
+        });
         ctx.setState(s);
+        // Contenus changes sous les memes chemins (remplacant du meme nom) : empreintes relues.
+        hashes = {};
+        if (ctx.resnapProject) ctx.resnapProject(projFolder);
         pool = pool.filter((x) => !items.includes(x));
         await loadProject();
         render();
@@ -2424,11 +2482,16 @@ function buildGallery(container, ctx) {
     const replaceLine = (it) => "number " + (indexOf(it.old) + 1) + ": <b>" + escapeHtml(baseName(it.old)) + "</b> → <b>" +
         escapeHtml(it.f.name) + "</b>";
 
+    /** Ce que fait la validation, sous la liste des remplacements. */
+    const validateNote = (n) => "<div style=\"color:#999;margin-top:6px\">The replaced file" + (n > 1 ? "s go" : " goes") +
+        " to <b>" + escapeHtml(projFolder) + "/Archives</b>; the new " + (n > 1 ? "ones are" : "one is") +
+        " copied into <b>" + escapeHtml(projFolder) + "</b> (moved if " + (n > 1 ? "they come" : "it comes") +
+        " from Archives, <b>_02</b> added if the name is taken).</div>";
+
     async function validateOne(it) {
         const ok = await choice.ask(card, {
             title: "Validate this replacement?",
-            html: "Replace " + replaceLine(it) + ".<div style=\"color:#999;margin-top:6px\">The replaced file goes to <b>" +
-                escapeHtml(projFolder) + "/Archives</b>.</div>",
+            html: "Replace " + replaceLine(it) + "." + validateNote(1),
             buttons: [{ label: "Cancel", value: null }, { label: "Validate", color: GREEN, value: true }],
         });
         if (!ok) return;
@@ -2443,9 +2506,7 @@ function buildGallery(container, ctx) {
         if (!pool.length) return;
         const ok = await choice.ask(card, {
             title: "Validate the changes?",
-            html: pool.length + " replacement(s):<br>" + pool.map(replaceLine).join("<br>") +
-                "<div style=\"color:#999;margin-top:6px\">The replaced files go to <b>" + escapeHtml(projFolder) +
-                "/Archives</b>.</div>",
+            html: pool.length + " replacement(s):<br>" + pool.map(replaceLine).join("<br>") + validateNote(pool.length),
             buttons: [{ label: "Cancel", value: null }, { label: "Validate changes", color: GREEN, value: true }],
         });
         if (!ok) return;
@@ -2495,6 +2556,8 @@ function buildGallery(container, ctx) {
     function render() {
         marked = marked.filter((m) => indexOf(m) >= 0);
         pool = pool.filter((it) => indexOf(it.old) >= 0);
+        dupColors = duplicateColors(dupPaths(), hashes);
+        fetchHashes();
         // Projet relie : Clear viderait l'ordre des fichiers du projet, il est bloque.
         clearBtn.disabled = !!project;
         clearBtn.style.opacity = project ? "0.45" : "1";
@@ -2602,6 +2665,7 @@ function buildGallery(container, ctx) {
 
     /** Relit le dossier du projet (zone du bas). */
     async function loadProject() {
+        hashes = {};
         projFiles = [];
         archFiles = [];
         if (!project) return;
@@ -3842,7 +3906,16 @@ app.registerExtension({
                 }
                 return null;
             };
-            const gallery = buildGallery(container, { getState, setState, getProject });
+            // Remplacements valides dans la galerie : le noeud Projet reprend l'instantane du dossier.
+            const resnapProject = (folder) => {
+                const i = node.outputs.findIndex((o) => o.name === PROJECT_KEY);
+                if (i < 0) return;
+                for (const l of outputLinksOf(node, i)) {
+                    const t = node.graph && node.graph.getNodeById(l.target_id);
+                    if (t && typeof t.mmResnapFolder === "function") t.mmResnapFolder(folder);
+                }
+            };
+            const gallery = buildGallery(container, { getState, setState, getProject, resnapProject });
             const viewer = buildSelectionViewer(container, { getState, setState });
             const clearConfirm = buildConfirmDialog(container);
             const rootDialog = buildRootDialog(container, { getState, setState });
