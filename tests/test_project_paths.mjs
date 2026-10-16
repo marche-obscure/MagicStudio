@@ -5,7 +5,27 @@ import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, LIST_FOLDERS, projectNameError, parseProjectState,
     saveItems, remapState, mapBySequence, mapByPrefix, configFileName, modeHasRefs,
     UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, mapFolderBySequence, withoutMedia,
+    gallerySession, replaceSelection, unusedProjectFiles,
 } from "../web/js/project_paths.js";
+
+test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
+    assert.deepEqual(gallerySession(["a", "b"], ["a", "b", "c"]), { added: ["c"], removed: [], ask: true });
+    // Un fichier decoche : le remplacement est deja choisi.
+    assert.equal(gallerySession(["a", "b"], ["a", "c"]).ask, false);
+    // Premiere selection, ou rien d'ajoute : pas de question.
+    assert.equal(gallerySession([], ["c"]).ask, false);
+    assert.equal(gallerySession(["a"], ["a"]).ask, false);
+    // Casse et separateurs ignores.
+    assert.deepEqual(gallerySession(["C:\\P\\a.png"], ["c:/p/A.png"]).added, []);
+    assert.deepEqual(replaceSelection(["a", "b"], ["a", "c", "b", "d"]), ["c", "d"]);
+});
+
+test("galerie : fichiers du projet plus utilises par aucune liste", () => {
+    const state = { images: ["P\\08.Images\\a.png"], first_frame: ["P/08.Images/f.png"], audios: ["P\\12.Video\\v.mp4"] };
+    assert.deepEqual(unusedProjectFiles(["P\\08.Images\\a.png", "P\\08.Images\\b.png", "P\\08.Images\\f.png"], state),
+        ["P\\08.Images\\b.png"]);
+    assert.deepEqual(unusedProjectFiles(["P\\12.Video\\v.mp4"], state), []);
+});
 
 test("dossiers suivis : ajouts hors du dossier, suppressions depuis l'instantane", () => {
     assert.deepEqual(UPDATE_FOLDERS, ["08.Images", "10.Son", "12.Video", "14.Video-Audio"]);

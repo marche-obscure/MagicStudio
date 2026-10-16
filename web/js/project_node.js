@@ -2003,6 +2003,11 @@ app.registerExtension({
 
             // Appele par le Reference Loader quand son Root folder change.
             node.__mmprojectRefresh = () => loadProjects();
+            // Lu par la galerie du Reference Loader : projet choisi (et existant), sinon null.
+            node.mmProjectInfo = () => {
+                const s = getState();
+                return s.name && projects.includes(s.name) ? { name: s.name, path: s.path } : null;
+            };
 
             node.addDOMWidget("mmproject_ui", "mmproject", container, {
                 serialize: false,

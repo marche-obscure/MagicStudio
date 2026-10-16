@@ -294,6 +294,17 @@ try:
             return _project_error(e)
         return web.json_response(info)
 
+    @routes.post("/mmproject/archive_files")
+    async def mmproject_archive_files(request):
+        """Deplace des fichiers d'un dossier du projet dans son sous-dossier Archives (deja confirme)."""
+        try:
+            body = await request.json()
+            moved = await _in_executor(projects.archive_files, body.get("project", ""), body.get("folder", ""),
+                                       list(body.get("names") or []))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"moved": moved})
+
     @routes.post("/mmproject/delete_archive")
     async def mmproject_delete_archive(request):
         """Supprime une archive de workflow (deja confirme dans l'UI)."""

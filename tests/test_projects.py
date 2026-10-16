@@ -314,6 +314,38 @@ class WorkflowTest(unittest.TestCase):
             projects.read_workflow(self.project, "nope.json")
 
 
+class ArchiveFilesTest(unittest.TestCase):
+    """Fichiers plus utilises : deplaces dans <dossier>/Archives, jamais effaces."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.project = projects.create_project(self.tmp, "Clip")
+        self.img = os.path.join(self.project, "08.Images")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_moves_into_archives_with_free_names(self):
+        write(os.path.join(self.img, "a.png"), b"1")
+        write(os.path.join(self.img, "b.png"), b"2")
+        write(os.path.join(self.img, "Archives", "a.png"), b"old")
+        moved = projects.archive_files(self.project, "08.Images", ["a.png", "b.png"])
+        arch = os.path.join(self.img, "Archives")
+        self.assertEqual(moved, [os.path.join(arch, "a (2).png"), os.path.join(arch, "b.png")])
+        self.assertFalse(os.path.exists(os.path.join(self.img, "a.png")))
+        with open(os.path.join(arch, "a.png"), "rb") as f:
+            self.assertEqual(f.read(), b"old")
+
+    def test_refuses_bad_input_and_moves_nothing(self):
+        write(os.path.join(self.img, "a.png"))
+        for folder, names in [("08.Images", ["../x.png"]), ("Nope", ["a.png"])]:
+            with self.assertRaises(ValueError):
+                projects.archive_files(self.project, folder, names)
+        with self.assertRaises(FileNotFoundError):
+            projects.archive_files(self.project, "08.Images", ["a.png", "missing.png"])
+        self.assertTrue(os.path.isfile(os.path.join(self.img, "a.png")))
+
+
 class SameAsJsTest(unittest.TestCase):
     """La liste des sous-dossiers doit etre la meme cote JS."""
 
