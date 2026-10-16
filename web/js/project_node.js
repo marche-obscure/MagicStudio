@@ -11,6 +11,7 @@ import {
     mapByPrefix, configFileName, modeHasRefs,
 } from "./project_paths.js";
 import { formatConfigJson } from "./config_format.js";
+import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
 // Noeud "MiniMax H3 Project" : cree ou choisit un dossier de projet dans le
 // Root folder recu du MiniMax H3 Reference Loader (entree "project"), ou
@@ -20,7 +21,8 @@ const NODE_NAME = "MiniMaxH3Project";
 // Liste des projets + une ligne par dossier (28 px + 6 px d'ecart) + ligne du bas.
 const FOLDER_ROW_HEIGHT = 28;
 const UI_HEIGHT = 66 + PROJECT_SUBFOLDERS.length * (FOLDER_ROW_HEIGHT + 6) + 4;
-const MIN_WIDTH = 300;
+// Assez large pour « Last save: dd/MM/yyyy at hh:mm:ss » sur la ligne 00.Workflows.
+const MIN_WIDTH = 400;
 
 const PLUS_ICON = svg('<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>', 14);
 const PROJECT_ICON = svg(
@@ -32,6 +34,13 @@ const LINK_ICON = svg(
 const PENCIL_ICON = svg('<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path>', 13);
 const SAVE_ICON = svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>' +
     '<polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline>', 13);
+// Boite d'archives (workflows archives).
+const ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path>' +
+    '<line x1="10" y1="12" x2="14" y2="12"></line>', 12);
+// Couleurs de la cloche du workflow : orange = changements a sauvegarder, vert = a jour.
+const BELL_ORANGE = "#e0793c";
+const BELL_GREEN = "#43a047";
+const WORKFLOWS = "00.Workflows";
 const BELL_ICON = svg(
     '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>', 12);
 
@@ -102,7 +111,8 @@ const HELP_SECTIONS = [
             [iconBadge(SAVE_ICON, PINK), "Save: copy the files of the Reference Loader into the project"],
             [iconBadge(REFRESH_ICON, VIOLET), "Read the list of projects again"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "One row per folder of the project (greyed until a project is picked; its tooltip gives the path)"],
-            [iconBadge(BELL_ICON, INACTIVE_BG), "Small bell of a folder (coming soon)"],
+            [iconBadge(BELL_ICON, BELL_ORANGE), "Bell of 00.Workflows: save the workflow (orange = changes to save, green = saved)"],
+            [iconBadge(ARCHIVE_ICON, VIOLET), "Open an archived workflow in a new tab"],
         ]),
     },
     {
@@ -137,12 +147,35 @@ const HELP_SECTIONS = [
                 "Audio in <b>10.Son</b>;",
                 "saves the configuration of each mode in <b>00.Workflows</b>, named " +
                 "<b>yyyyMMdd-HHmmss_REF2VA_minimax_config.json</b> (and FL2VA);",
-                "makes the Reference Loader use the copies of the project.",
+                "makes the Reference Loader use the copies of the project;",
+                "then saves the workflow (directly the first time, through the bell window when it has changed).",
             ]) +
             hNote("A file already in the project is not copied again; another file with the same name is " +
                 "copied as <b>name (2)</b>.") +
             hTip("Right after creating a project, a first save is offered: all the files are copied to their " +
                 "folders once you confirm."),
+    },
+    {
+        id: "workflow", title: "Workflow", icon: BELL_ICON, color: ORANGE,
+        html: "<p>The workflow is saved in <b>00.Workflows</b>. The bell of that row shows where it stands:</p>" +
+            hList([
+                iconBadge(BELL_ICON, INACTIVE_BG) + " grey: never saved;",
+                iconBadge(BELL_ICON, BELL_ORANGE) + " orange: changes to save (also right after the first save, " +
+                "until you save it once with the bell);",
+                iconBadge(BELL_ICON, BELL_GREEN) + " green: saved, no change since; it turns orange again on " +
+                "the next change (nodes, links, values).",
+            ]) +
+            "<p>Click the bell: the window lists the changes since the last save, asks whether to archive the " +
+            "previous workflow (renamed <b>yyyyMMdd-HHmmss_name.json</b>, date of its last save), and proposes " +
+            "the name of the project, which you can change. <b>Save</b> confirms.</p>" +
+            hList([
+                "The workflow row shows <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
+                iconBadge(ARCHIVE_ICON, VIOLET) + " (right of the bell, active when there are archives) opens an " +
+                "archived workflow in a new tab; the current one is not changed.",
+                "When a project is created, the workflow is saved right away; " + iconBadge(SAVE_ICON, PINK) +
+                " also saves it (through the bell window when it has changed).",
+            ]) +
+            hNote("Moving nodes alone does not turn the bell orange; it is listed as a layout change."),
     },
     {
         id: "rename", title: "Rename or move", icon: PENCIL_ICON, color: VIOLET,
@@ -180,7 +213,8 @@ const HELP_SECTIONS_FR = [
             [iconBadge(SAVE_ICON, PINK), "Save : copier les fichiers du Reference Loader dans le projet"],
             [iconBadge(REFRESH_ICON, VIOLET), "Relire la liste des projets"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "Une ligne par dossier du projet (grisée tant qu'aucun projet n'est choisi ; l'infobulle donne le chemin)"],
-            [iconBadge(BELL_ICON, INACTIVE_BG), "Petite cloche d'un dossier (bientôt)"],
+            [iconBadge(BELL_ICON, BELL_ORANGE), "Cloche de 00.Workflows : sauvegarder le workflow (orange = changements, vert = sauvegardé)"],
+            [iconBadge(ARCHIVE_ICON, VIOLET), "Ouvrir un workflow archivé dans un nouvel onglet"],
         ]),
     },
     {
@@ -217,12 +251,36 @@ const HELP_SECTIONS_FR = [
                 "Audio dans <b>10.Son</b> ;",
                 "enregistre la configuration de chaque mode dans <b>00.Workflows</b>, nommée " +
                 "<b>yyyyMMdd-HHmmss_REF2VA_minimax_config.json</b> (et FL2VA) ;",
-                "fait utiliser au Reference Loader les copies du projet.",
+                "fait utiliser au Reference Loader les copies du projet ;",
+                "puis sauvegarde le workflow (directement la première fois, par la fenêtre de la cloche s'il a changé).",
             ]) +
             hNote("Un fichier déjà dans le projet n'est pas recopié ; un autre fichier de même nom est copié " +
                 "en <b>nom (2)</b>.", "Remarque :") +
             hTip("Juste après la création d'un projet, une première sauvegarde est proposée : tous les fichiers " +
                 "sont copiés dans leurs dossiers une fois confirmé.", "Astuce :"),
+    },
+    {
+        id: "workflow", title: "Workflow",
+        html: "<p>Le workflow est sauvegardé dans <b>00.Workflows</b>. La cloche de cette ligne indique où il en est :</p>" +
+            hList([
+                iconBadge(BELL_ICON, INACTIVE_BG) + " grise : jamais sauvegardé ;",
+                iconBadge(BELL_ICON, BELL_ORANGE) + " orange : changements à sauvegarder (aussi juste après la " +
+                "première sauvegarde, jusqu'à ce que vous le sauvegardiez une fois par la cloche) ;",
+                iconBadge(BELL_ICON, BELL_GREEN) + " verte : sauvegardé, aucun changement depuis ; elle repasse à " +
+                "l'orange au prochain changement (nœuds, liens, valeurs).",
+            ]) +
+            "<p>Cliquez sur la cloche : la fenêtre liste les changements depuis la dernière sauvegarde, demande " +
+            "s'il faut archiver le workflow précédent (renommé <b>yyyyMMdd-HHmmss_nom.json</b>, date de sa " +
+            "dernière sauvegarde) et propose le nom du projet, que vous pouvez changer. <b>Save</b> confirme.</p>" +
+            hList([
+                "La ligne du workflow affiche <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
+                iconBadge(ARCHIVE_ICON, VIOLET) + " (à droite de la cloche, actif s'il y a des archives) ouvre un " +
+                "workflow archivé dans un nouvel onglet ; le workflow actuel ne change pas.",
+                "À la création d'un projet, le workflow est sauvegardé tout de suite ; " + iconBadge(SAVE_ICON, PINK) +
+                " le sauvegarde aussi (par la fenêtre de la cloche s'il a changé).",
+            ]) +
+            hNote("Déplacer des nœuds seulement ne fait pas passer la cloche à l'orange ; c'est listé comme un " +
+                "changement de disposition.", "Remarque :"),
     },
     {
         id: "rename", title: "Renommer ou déplacer",
@@ -756,6 +814,241 @@ function buildRenameMoveDialog(container, ctx) {
 }
 
 // --------------------------------------------------------------------
+// Fenetre "Save the workflow" (cloche de 00.Workflows)
+// --------------------------------------------------------------------
+/**
+ * open({changesHtml, previous, defaultName}) -> Promise<{name, archive}|null>.
+ * previous = nom du workflow deja sauvegarde ("" s'il n'y en a pas) : la
+ * question d'archivage n'apparait que s'il existe.
+ */
+function buildWorkflowDialog(container) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, { width: "min(520px, 92vw)", padding: "12px 14px", borderColor: ORANGE });
+
+    const title = document.createElement("div");
+    title.textContent = "Save the workflow";
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "8px" });
+
+    const changesTitle = document.createElement("div");
+    Object.assign(changesTitle.style, { color: "#9fd6cf", fontWeight: "bold", marginBottom: "4px" });
+    const changes = document.createElement("div");
+    Object.assign(changes.style, {
+        maxHeight: "180px", overflowX: "hidden", overflowY: "auto", padding: "8px 10px", background: "#161616",
+        border: "1px solid #2c2c2c", borderRadius: "8px", lineHeight: "1.5", wordBreak: "break-word",
+    });
+
+    // Archiver l'ancien workflow : interrupteur pilule Overwrite (orange) | Archive it (vert).
+    const archiveBox = document.createElement("div");
+    Object.assign(archiveBox.style, { margin: "10px 0 0" });
+    const archiveLabel = document.createElement("div");
+    Object.assign(archiveLabel.style, { color: "#bbb", marginBottom: "6px", lineHeight: "1.4" });
+    const pill = document.createElement("div");
+    Object.assign(pill.style, {
+        display: "flex", borderRadius: "999px", overflow: "hidden", border: "1px solid #0c3833", height: "24px",
+        width: "200px",
+    });
+    const pillBtn = (text) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = text;
+        Object.assign(b.style, {
+            flex: "1", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold", fontSize: "11px",
+            padding: "0",
+        });
+        pill.appendChild(b);
+        return b;
+    };
+    const noBtn = pillBtn("Overwrite");
+    const yesBtn = pillBtn("Archive it");
+    archiveBox.append(archiveLabel, pill);
+
+    const nameLabel = document.createElement("div");
+    nameLabel.textContent = "Name of the workflow (in 00.Workflows):";
+    Object.assign(nameLabel.style, { color: "#bbb", margin: "10px 0 6px" });
+    const input = document.createElement("input");
+    input.type = "text";
+    Object.assign(input.style, {
+        width: "100%", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "10px",
+        padding: "6px 10px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+    });
+    const error = document.createElement("div");
+    Object.assign(error.style, { color: ORANGE, minHeight: "14px", margin: "6px 0 0" });
+
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const saveBtn = makeTextButton("Save", GREEN);
+    footer.append(cancelBtn, saveBtn);
+    card.append(title, changesTitle, changes, archiveBox, nameLabel, input, error, footer);
+
+    let archive = true;
+    let resolve = null;
+
+    function paintPill() {
+        yesBtn.style.background = archive ? GREEN : INACTIVE_BG;
+        yesBtn.style.color = archive ? "white" : "#888";
+        noBtn.style.background = archive ? INACTIVE_BG : ORANGE;
+        noBtn.style.color = archive ? "#888" : "white";
+    }
+
+    function finish(result) {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        const r = resolve;
+        resolve = null;
+        if (r) r(result);
+    }
+
+    function submit() {
+        const name = input.value.trim().replace(/\.json$/i, "").trim();
+        const err = projectNameError(name).replace("The project name", "The workflow name") ||
+            (/^\d{8}-\d{6}_/.test(name) ? "A workflow name cannot start with a date (kept for the archives)." : "");
+        if (err) {
+            error.textContent = err;
+            input.style.borderColor = ORANGE;
+            return;
+        }
+        finish({ name, archive: archiveBox.style.display !== "none" && archive });
+    }
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            finish(null);
+            return;
+        }
+        if (e.target === input) {
+            e.stopImmediatePropagation();
+            if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+            }
+        }
+    };
+
+    yesBtn.addEventListener("click", () => {
+        archive = true;
+        paintPill();
+    });
+    noBtn.addEventListener("click", () => {
+        archive = false;
+        paintPill();
+    });
+    input.addEventListener("input", () => {
+        error.textContent = "";
+        input.style.borderColor = "#0c3833";
+    });
+    cancelBtn.addEventListener("click", () => finish(null));
+    saveBtn.addEventListener("click", submit);
+    overlay.addEventListener("mousedown", () => finish(null));
+
+    return {
+        open(opts) {
+            if (resolve) finish(null);
+            changesTitle.textContent = opts.previous ? "Changes since the last save of " + opts.previous + ":"
+                : "No saved workflow yet.";
+            changes.innerHTML = opts.changesHtml;
+            changes.style.display = opts.previous ? "block" : "none";
+            archiveBox.style.display = opts.previous ? "block" : "none";
+            archiveLabel.innerHTML = "Archive the previous workflow? It is renamed <b>yyyyMMdd-HHmmss_" +
+                escapeHtml(opts.previous || "") + "</b> (date of its last save).";
+            archive = true;
+            paintPill();
+            input.value = opts.defaultName;
+            input.style.borderColor = "#0c3833";
+            error.textContent = "";
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 520);
+            setTimeout(() => input.focus(), 0);
+            return new Promise((r) => (resolve = r));
+        },
+        remove() {
+            finish(null);
+            overlay.remove();
+        },
+    };
+}
+
+/** Liste HTML des changements (diffWorkflows) pour la fenetre. */
+function changesHtml(d) {
+    if (d.same) return '<span style="color:#888">No change since the last save.</span>';
+    const out = [];
+    const item = (color, text) => out.push('<div><span style="color:' + color + '">●</span> ' + text + "</div>");
+    d.added.forEach((n) => item(GREEN, "Added: <b>" + escapeHtml(n.label) + "</b>"));
+    d.removed.forEach((n) => item("#d32f2f", "Removed: <b>" + escapeHtml(n.label) + "</b>"));
+    d.changed.forEach((c) => item(ORANGE, "<b>" + escapeHtml(c.label) + "</b> · " + escapeHtml(c.field) + ": " +
+        escapeHtml(shortValue(c.before)) + " → " + escapeHtml(shortValue(c.after))));
+    if (d.linksAdded || d.linksRemoved) {
+        item(VIOLET, "Links: " + d.linksAdded + " added, " + d.linksRemoved + " removed");
+    }
+    if (d.layout) item("#888", "Layout changed (nodes moved or resized)");
+    return out.join("");
+}
+
+// --------------------------------------------------------------------
+// Liste des workflows archives (bouton a droite de la cloche)
+// --------------------------------------------------------------------
+function buildArchiveMenu(container) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, { width: "min(380px, 92vw)", padding: "8px", borderColor: VIOLET });
+    const title = document.createElement("div");
+    title.textContent = "Open an archived workflow (new tab)";
+    Object.assign(title.style, { fontWeight: "bold", color: TITLE_COLOR, padding: "4px 6px 8px" });
+    const list = document.createElement("div");
+    Object.assign(list.style, { maxHeight: "260px", overflowX: "hidden", overflowY: "auto" });
+    card.append(title, list);
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close();
+    };
+    function close() {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        /** archives = [{name, stamp, of}] ; onPick(archive) a l'ouverture. */
+        open(archives, onPick) {
+            list.innerHTML = "";
+            for (const a of archives) {
+                const row = document.createElement("button");
+                row.type = "button";
+                const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(a.stamp) || [];
+                const when = m.length ? m[3] + "/" + m[2] + "/" + m[1] + " " + m[4] + ":" + m[5] + ":" + m[6] : a.stamp;
+                row.innerHTML = '<span style="color:#9fd6cf">' + escapeHtml(when) + "</span>  " + escapeHtml(a.of);
+                row.title = a.name;
+                Object.assign(row.style, {
+                    display: "block", width: "100%", textAlign: "left", background: "transparent", color: "#ddd",
+                    border: "none", borderRadius: "6px", padding: "6px 8px", cursor: "pointer", fontSize: "12px",
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                });
+                row.addEventListener("mouseenter", () => (row.style.background = "#173a37"));
+                row.addEventListener("mouseleave", () => (row.style.background = "transparent"));
+                row.addEventListener("click", () => {
+                    close();
+                    onPick(a);
+                });
+                list.appendChild(row);
+            }
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 380);
+        },
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
 // Nodes 2.0 : le widget cache "state" apparait comme une entree, on la masque.
 // --------------------------------------------------------------------
 function hideVueStateInput(node) {
@@ -806,9 +1099,9 @@ app.registerExtension({
             const stateWidget = node.widgets.find((w) => w.name === "state");
             hideWidget(stateWidget);
             const getState = () => parseProjectState(stateWidget.value);
+            // Fusion : les champs non donnes (dossier personnalise, workflow) sont gardes.
             const setState = (s) => {
-                const folder = s.folder !== undefined ? s.folder : getState().folder;
-                stateWidget.value = JSON.stringify({ root: s.root, name: s.name, path: s.path, folder });
+                stateWidget.value = JSON.stringify(Object.assign(getState(), s));
             };
 
             // Dossier des projets actuel (donne par le serveur) et ses projets.
@@ -818,6 +1111,11 @@ app.registerExtension({
             let projects = [];
             let message = "";   // erreur ou avertissement (orange), ou resultat (messageOk)
             let messageOk = false;
+            // Workflow du projet : fichiers de 00.Workflows, workflow courant
+            // ({name, mtime} ou null), son contenu et son empreinte.
+            let wfInfo = { workflows: [], archives: [], current: null };
+            let savedWf = null;
+            let savedSig = null;
             let loadId = 0;
 
             // ---- Interface ----
@@ -891,11 +1189,19 @@ app.registerExtension({
                 Object.assign(label.style, {
                     fontWeight: "bold", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                 });
-                btn.append(icon, label);
+                const last = document.createElement("span");
+                Object.assign(last.style, {
+                    flex: "1", textAlign: "right", color: "#9fd6cf", fontSize: "10px", whiteSpace: "nowrap",
+                    overflow: "hidden", textOverflow: "ellipsis",
+                });
+                btn.append(icon, label, last);
                 const bell = makeIconButton(INACTIVE_BG, BELL_ICON, "");
                 Object.assign(bell.style, { width: "22px", height: "22px", cursor: "default", opacity: "0.6" });
-                row.append(btn, bell);
-                return { name, row, btn, bell };
+                // 00.Workflows : bouton des archives a droite de la cloche ; ailleurs, un espace.
+                const arch = name === WORKFLOWS ? makeIconButton(INACTIVE_BG, ARCHIVE_ICON, "") : document.createElement("span");
+                Object.assign(arch.style, { width: "22px", height: "22px", flex: "0 0 auto" });
+                row.append(btn, bell, arch);
+                return { name, row, btn, bell, arch, last };
             });
 
             container.append(pickRow, ...folderRows.map((f) => f.row), bottom);
@@ -909,7 +1215,10 @@ app.registerExtension({
             });
             const confirm = buildConfirm(container);
             const renameDialog = buildRenameMoveDialog(container, { confirm, apply: applyRenameMove });
-            node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog];
+            const workflowDialog = buildWorkflowDialog(container);
+            const archiveMenu = buildArchiveMenu(container);
+            node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu];
+            const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
              * Dossier des projets : Root folder du Reference Loader branche, sinon
@@ -947,8 +1256,9 @@ app.registerExtension({
                     const path = current ? s.path + sep + f.name : "";
                     f.row.style.opacity = current ? "1" : "0.45";
                     f.btn.title = current ? path : "Pick or create a project first";
-                    f.bell.title = current ? f.name + " - coming soon" : "";
+                    if (f.name !== WORKFLOWS) f.bell.title = current ? f.name + " - coming soon" : "";
                 });
+                renderWorkflow();
 
                 // Bas du noeud : seulement les messages (plus de chemin).
                 let text = message;
@@ -1010,6 +1320,7 @@ app.registerExtension({
             async function openProject(name, quiet) {
                 if (!name) {
                     setState({ root: folder.root, name: "", path: "" });
+                    loadWorkflowInfo();
                     message = "";
                     render();
                     return;
@@ -1017,6 +1328,7 @@ app.registerExtension({
                 try {
                     const data = await apiPost("/mmproject/open", { root: folder.root, name });
                     setState({ root: folder.root, name, path: data.path });
+                    loadWorkflowInfo();
                     if (!quiet) message = "";
                 } catch (e) {
                     message = e.message;
@@ -1043,7 +1355,11 @@ app.registerExtension({
                 }
                 await loadProjects();
                 // Proposee apres la fermeture de la fenetre de creation.
-                setTimeout(() => saveAll(true), 0);
+                // puis le workflow est sauvegarde (cloche orange).
+                setTimeout(async () => {
+                    await saveAll(true);
+                    await saveWorkflowDirect();
+                }, 0);
             }
 
             /**
@@ -1055,20 +1371,20 @@ app.registerExtension({
             async function saveAll(first) {
                 const loader = linkedLoader(node);
                 const s = getState();
-                if (!loader || !s.name) return;
+                if (!loader || !s.name) return "error";
                 const refState = loader.mmGetState();
                 const items = saveItems(refState);
                 const modes = ["ref2va", "fl2va"].filter((m) => modeHasRefs(refState, m));
                 if (!items.length) {
                     if (!first) say("Nothing to save: the Reference Loader has no reference.");
-                    return;
+                    return "none";
                 }
                 let plan;
                 try {
                     plan = (await apiPost("/mmproject/save_plan", { project: s.path, items })).plan;
                 } catch (e) {
                     say(e.message);
-                    return;
+                    return "error";
                 }
                 const count = (a) => plan.filter((x) => x.action === a).length;
                 const byFolder = {};
@@ -1089,7 +1405,7 @@ app.registerExtension({
                     title: first ? "Initialize a first save?" : "Save the project?", html,
                     okLabel: first ? "Copy and save" : "Save", okColor: PINK,
                 });
-                if (!ok) return;
+                if (!ok) return "cancel";
                 say("Saving...", true);
                 try {
                     // Destinations du plan : la configuration pointe deja sur les copies.
@@ -1103,10 +1419,160 @@ app.registerExtension({
                     const same = JSON.stringify(saveItems(latest)) === JSON.stringify(items);
                     if (same) loader.mmSetState(remapState(latest, mapBySequence(data.dsts)));
                     say("Saved: " + count("copy") + " file(s) copied, " + data.configs.length + " configuration(s).", true);
+                    return "saved";
+                } catch (e) {
+                    say(e.message);
+                    return "error";
+                }
+            }
+
+            // ---- Workflow du projet (00.Workflows) ----
+
+            /** Workflow actuel de ComfyUI (objet JSON). */
+            function currentWorkflow() {
+                return JSON.parse(JSON.stringify(app.graph.serialize()));
+            }
+
+            /**
+             * Pour comparer : sans les valeurs des noeuds Projet (leur etat change
+             * quand on sauvegarde, ce n'est pas un changement du workflow).
+             */
+            function forCompare(wf) {
+                if (!wf || !Array.isArray(wf.nodes)) return wf;
+                const copy = Object.assign({}, wf);
+                copy.nodes = wf.nodes.map((n) => (n && n.type === NODE_NAME ? Object.assign({}, n, { widgets_values: [] }) : n));
+                return copy;
+            }
+
+            /** Noms des widgets par noeud (libelles des changements). */
+            function widgetNames() {
+                const out = {};
+                for (const n of app.graph._nodes || []) out[String(n.id)] = (n.widgets || []).map((w) => w.name);
+                return out;
+            }
+
+            /** gris = jamais sauvegarde ; orange = changements (ou pas encore valide) ; vert = a jour. */
+            function bellState() {
+                const s = getState();
+                if (!wfInfo.current || !s.name) return "none";
+                if (!(s.wfValidated && s.wfPath === s.path)) return "orange";
+                return workflowSignature(forCompare(currentWorkflow())) === savedSig ? "green" : "orange";
+            }
+
+            function paintBell() {
+                const s = getState();
+                const current = s.name && projects.includes(s.name);
+                const st = current ? bellState() : "none";
+                const b = wfRow.bell;
+                b.style.background = st === "orange" ? BELL_ORANGE : st === "green" ? BELL_GREEN : INACTIVE_BG;
+                b.style.opacity = current ? "1" : "0.6";
+                b.style.cursor = current ? "pointer" : "default";
+                b.title = !current ? "" : st === "none" ? "Workflow never saved: click to save it"
+                    : st === "green" ? "Workflow saved, no change since the last save"
+                        : "Changes to save: click to compare and save the workflow";
+            }
+
+            function renderWorkflow() {
+                const c = wfInfo.current;
+                wfRow.last.textContent = c ? "Last save: " + formatLastSave(new Date(c.mtime * 1000)) : "";
+                wfRow.last.title = c ? c.name : "";
+                const n = wfInfo.archives.length;
+                setOn(wfRow.arch, n > 0, VIOLET, n ? n + " archived workflow(s): open one in a new tab"
+                    : "No archived workflow yet");
+                paintBell();
+            }
+
+            /** Relit les workflows du projet choisi et le contenu du workflow courant. */
+            async function loadWorkflowInfo() {
+                const s = getState();
+                wfInfo = { workflows: [], archives: [], current: null };
+                savedWf = null;
+                savedSig = null;
+                if (s.name && projects.includes(s.name)) {
+                    try {
+                        const data = await apiGet("/mmproject/workflows?project=" + encodeURIComponent(s.path));
+                        const mine = s.wfPath === s.path && data.workflows.find((w) => w.name === s.wfName);
+                        wfInfo = { workflows: data.workflows, archives: data.archives, current: mine || data.workflows[0] || null };
+                        if (wfInfo.current) {
+                            const res = await fetch("/mmproject/workflow?project=" + encodeURIComponent(s.path) +
+                                "&name=" + encodeURIComponent(wfInfo.current.name), { cache: "no-store" });
+                            savedWf = res.ok ? JSON.parse(await res.text()) : null;
+                            savedSig = workflowSignature(forCompare(savedWf));
+                        }
+                    } catch (e) {
+                        say(e.message);
+                    }
+                }
+                renderWorkflow();
+            }
+
+            /** Ecrit le workflow actuel ; validated = sauvegarde confirmee par la cloche (vert). */
+            async function writeWorkflow(name, archive, validated) {
+                const s = getState();
+                const wf = currentWorkflow();
+                const info = await apiPost("/mmproject/save_workflow", {
+                    project: s.path, name, content: JSON.stringify(wf, null, 2) + "\n", archive: archive || null,
+                });
+                setState({ wfPath: s.path, wfName: info.name, wfValidated: !!validated });
+                await loadWorkflowInfo();
+                return info;
+            }
+
+            /** Premiere sauvegarde du workflow (initialisation, ou Save sans workflow) : cloche orange. */
+            async function saveWorkflowDirect() {
+                const s = getState();
+                if (!s.name) return;
+                try {
+                    const info = await writeWorkflow(s.name, null, false);
+                    say("Workflow saved: " + info.name, true);
                 } catch (e) {
                     say(e.message);
                 }
             }
+
+            /** Cloche : changements, archiver l'ancien ?, nom, puis sauvegarde (cloche verte). */
+            async function workflowStep() {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return;
+                await loadWorkflowInfo();
+                const prev = wfInfo.current ? wfInfo.current.name : "";
+                const diff = diffWorkflows(forCompare(savedWf), forCompare(currentWorkflow()), widgetNames());
+                const result = await workflowDialog.open({ changesHtml: changesHtml(diff), previous: prev, defaultName: s.name });
+                if (!result) return;
+                try {
+                    const info = await writeWorkflow(result.name, result.archive ? prev : null, true);
+                    say("Workflow saved: " + info.name + (info.archived ? " (previous one archived: " + info.archived + ")" : ""), true);
+                } catch (e) {
+                    say(e.message);
+                }
+            }
+
+            /** Ouvre une archive dans un nouvel onglet de workflow. */
+            async function openArchive(a) {
+                const s = getState();
+                try {
+                    const res = await fetch("/mmproject/workflow?project=" + encodeURIComponent(s.path) +
+                        "&name=" + encodeURIComponent(a.name), { cache: "no-store" });
+                    if (!res.ok) throw new Error("Archive not found: " + a.name);
+                    await app.loadGraphData(JSON.parse(await res.text()), true, true, a.name);
+                } catch (e) {
+                    say(e.message);
+                }
+            }
+
+            wfRow.bell.addEventListener("click", () => {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return;
+                if (wfInfo.current) workflowStep();
+                else saveWorkflowDirect();
+            });
+            wfRow.arch.addEventListener("click", () => {
+                if (wfInfo.archives.length) archiveMenu.open(wfInfo.archives, openArchive);
+            });
+            // Changements surveilles : la cloche passe a l'orange des qu'il y en a.
+            node.__mmprojectTimer = setInterval(() => {
+                if (wfInfo.current) paintBell();
+            }, 2500);
 
             /** Renomme ou deplace le projet (deja confirme) ; le Reference Loader suit. */
             async function applyRenameMove(mode, value) {
@@ -1117,7 +1583,10 @@ app.registerExtension({
                 const moved = mode === "move";
                 // Le dossier des projets suit un deplacement : Root folder du Ref Loader relie, sinon le noeud.
                 const custom = moved ? (samePath(data.root, fallbackRoot) ? "" : data.root) : s.folder;
-                setState({ root: data.root, name: data.name, path: data.path, folder: loader && moved ? "" : custom });
+                setState({
+                    root: data.root, name: data.name, path: data.path, folder: loader && moved ? "" : custom,
+                    wfPath: s.wfPath === s.path ? data.path : s.wfPath,
+                });
                 if (loader) {
                     const st = remapState(loader.mmGetState(), mapByPrefix(s.path, data.path));
                     if (moved) st.root = data.root;
@@ -1133,7 +1602,15 @@ app.registerExtension({
                 const s = getState();
                 if (s.name && projects.includes(s.name)) renameDialog.open(s.path);
             });
-            saveBtn.addEventListener("click", () => saveAll(false));
+            // Save : fichiers et configuration, puis le workflow (directement s'il
+            // n'a jamais ete sauvegarde, sinon la fenetre de la cloche s'il a change).
+            saveBtn.addEventListener("click", async () => {
+                const r = await saveAll(false);
+                if (r === "cancel" || r === "error") return;
+                await loadWorkflowInfo();
+                if (!wfInfo.current) await saveWorkflowDirect();
+                else if (bellState() === "orange") await workflowStep();
+            });
             newBtn.addEventListener("click", async () => {
                 await loadProjects();
                 createDialog.open({
@@ -1159,6 +1636,9 @@ app.registerExtension({
                 if (size[0] < MIN_WIDTH) size[0] = MIN_WIDTH;
                 return onResize ? onResize.apply(this, arguments) : undefined;
             };
+            const fitWidth = () => {
+                if (node.size[0] < MIN_WIDTH) node.setSize([MIN_WIDTH, node.size[1]]);
+            };
 
             // Rechargement d'un workflow : liens et etat sont en place, on relit.
             const onConfigure = node.onConfigure;
@@ -1166,12 +1646,14 @@ app.registerExtension({
                 const ret = onConfigure ? onConfigure.apply(this, arguments) : undefined;
                 // Sortie "project" d'une version de test (sens inverse) : retiree avec son lien.
                 while (node.outputs && node.outputs.length) node.removeOutput(node.outputs.length - 1);
+                fitWidth();
                 render();
                 setTimeout(loadProjects, 0);
                 return ret;
             };
 
             render();
+            setTimeout(fitWidth, 0);
             setTimeout(loadProjects, 0);
             vueProjectNodes.add(node);
             watchVue();
@@ -1190,6 +1672,7 @@ app.registerExtension({
         const onRemoved = nodeType.prototype.onRemoved;
         nodeType.prototype.onRemoved = function () {
             vueProjectNodes.delete(this);
+            clearInterval(this.__mmprojectTimer);
             (this.__mmprojectOverlays || []).forEach((o) => o.remove());
             return onRemoved ? onRemoved.apply(this, arguments) : undefined;
         };

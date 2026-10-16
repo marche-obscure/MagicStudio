@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import shutil
+import time
 import tempfile
 import unittest
 
@@ -223,6 +224,70 @@ class RenameMoveTest(unittest.TestCase):
             projects.move_project(self.project, self.tmp)  # meme dossier
         with self.assertRaises(ValueError):
             projects.move_project(self.project, os.path.join(self.project, "08.Images"))  # dans lui-meme
+
+
+class WorkflowTest(unittest.TestCase):
+    """Sauvegarde du workflow dans 00.Workflows, archives yyyyMMdd-HHmmss_nom.json."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.project = projects.create_project(self.tmp, "Clip")
+        self.wf = os.path.join(self.project, "00.Workflows")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_workflow_file_name(self):
+        self.assertEqual(projects.workflow_file_name(" Clip "), "Clip.json")
+        self.assertEqual(projects.workflow_file_name("Clip.json"), "Clip.json")
+        for bad in ["", "a/b", "20261016-153000_Clip", "20261016-153000_REF2VA_minimax_config.json"]:
+            with self.assertRaises(ValueError, msg=bad):
+                projects.workflow_file_name(bad)
+
+    def test_save_list_read(self):
+        info = projects.save_workflow(self.project, "Clip", '{"a": 1}')
+        self.assertEqual(info["name"], "Clip.json")
+        self.assertEqual(projects.read_workflow(self.project, "Clip.json"), '{"a": 1}')
+        write(os.path.join(self.wf, "20261016-153000_REF2VA_minimax_config.json"), b"{}")
+        listing = projects.list_workflows(self.project)
+        self.assertEqual([w["name"] for w in listing["workflows"]], ["Clip.json"])
+        self.assertEqual(listing["archives"], [])
+
+    def test_archive_uses_old_save_time(self):
+        projects.save_workflow(self.project, "Clip", "v1")
+        old = os.path.join(self.wf, "Clip.json")
+        t = time.mktime((2026, 10, 16, 15, 30, 0, 0, 0, -1))
+        os.utime(old, (t, t))
+        info = projects.save_workflow(self.project, "Clip", "v2", archive="Clip.json")
+        self.assertEqual(info["archived"], "20261016-153000_Clip.json")
+        self.assertEqual(projects.read_workflow(self.project, "20261016-153000_Clip.json"), "v1")
+        self.assertEqual(projects.read_workflow(self.project, "Clip.json"), "v2")
+        listing = projects.list_workflows(self.project)
+        self.assertEqual([a["name"] for a in listing["archives"]], ["20261016-153000_Clip.json"])
+        self.assertEqual(listing["archives"][0]["of"], "Clip.json")
+        # Meme seconde : pas d'ecrasement d'une archive.
+        os.utime(os.path.join(self.wf, "Clip.json"), (t, t))
+        info = projects.save_workflow(self.project, "Clip", "v3", archive="Clip.json")
+        self.assertEqual(info["archived"], "20261016-153000_Clip (2).json")
+
+    def test_rename_while_archiving(self):
+        projects.save_workflow(self.project, "Clip", "v1")
+        info = projects.save_workflow(self.project, "Clip final", "v2", archive="Clip.json")
+        self.assertEqual(info["name"], "Clip final.json")
+        self.assertTrue(info["archived"].endswith("_Clip.json"))
+        self.assertFalse(os.path.exists(os.path.join(self.wf, "Clip.json")))
+
+    def test_archives_sorted_newest_first(self):
+        for n in ["20261001-100000_Clip.json", "20261016-100000_Clip.json", "20261010-100000_Other.json"]:
+            write(os.path.join(self.wf, n), b"{}")
+        names = [a["name"] for a in projects.list_workflows(self.project)["archives"]]
+        self.assertEqual(names, ["20261016-100000_Clip.json", "20261010-100000_Other.json", "20261001-100000_Clip.json"])
+
+    def test_read_refuses_paths(self):
+        with self.assertRaises(ValueError):
+            projects.read_workflow(self.project, "../x.json")
+        with self.assertRaises(FileNotFoundError):
+            projects.read_workflow(self.project, "nope.json")
 
 
 class SameAsJsTest(unittest.TestCase):
