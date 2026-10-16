@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
 import {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, INACTIVE_BG,
     svg, iconBadge, hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, REFRESH_ICON, GEAR_ICON, START_ICON,
@@ -23,6 +24,8 @@ const FOLDER_ROW_HEIGHT = 28;
 const UI_HEIGHT = 66 + PROJECT_SUBFOLDERS.length * (FOLDER_ROW_HEIGHT + 6) + 4;
 // Assez large pour « Last save: dd/MM/yyyy at hh:mm:ss » sur la ligne 00.Workflows.
 const MIN_WIDTH = 400;
+// Verification de secours de la cloche (l'evenement graphChanged fait le reste).
+const FALLBACK_CHECK_MS = 30000;
 
 const PLUS_ICON = svg('<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>', 14);
 const PROJECT_ICON = svg(
@@ -1603,18 +1606,21 @@ app.registerExtension({
                 return out;
             }
 
-            /** gris = jamais sauvegarde ; orange = changements (ou pas encore valide) ; vert = a jour. */
-            function bellState() {
+            /**
+             * gris = jamais sauvegarde ; orange = changements (ou pas encore valide) ; vert = a jour.
+             * wf = workflow deja serialise (evenement graphChanged), sinon il est lu.
+             */
+            function bellState(wf) {
                 const s = getState();
                 if (!wfInfo.current || !s.name) return "none";
                 if (!(s.wfValidated && s.wfPath === s.path)) return "orange";
-                return workflowSignature(forCompare(currentWorkflow())) === savedSig ? "green" : "orange";
+                return workflowSignature(forCompare(wf || currentWorkflow())) === savedSig ? "green" : "orange";
             }
 
-            function paintBell() {
+            function paintBell(wf) {
                 const s = getState();
                 const current = s.name && projects.includes(s.name);
-                const st = current ? bellState() : "none";
+                const st = current ? bellState(wf) : "none";
                 const b = wfRow.bell;
                 b.style.background = st === "orange" ? BELL_ORANGE : st === "green" ? BELL_GREEN : INACTIVE_BG;
                 b.style.opacity = current ? "1" : "0.6";
@@ -1753,10 +1759,19 @@ app.registerExtension({
                     await workflowStep();
                 });
             });
-            // Changements surveilles : la cloche passe a l'orange des qu'il y en a.
+            // Changements surveilles sans minuteur rapide : le ChangeTracker de ComfyUI emet
+            // "graphChanged" (workflow deja serialise) a chaque modification de l'onglet actif.
+            const onGraphChanged = (e) => {
+                if (!wfInfo.current || !node.graph) return;
+                const wf = e && e.detail && Array.isArray(e.detail.nodes) ? e.detail : null;
+                paintBell(wf);
+            };
+            api.addEventListener("graphChanged", onGraphChanged);
+            node.__mmprojectUnlisten = () => api.removeEventListener("graphChanged", onGraphChanged);
+            // Secours espace : changements faits par un script, sans action de l'utilisateur.
             node.__mmprojectTimer = setInterval(() => {
                 if (wfInfo.current) paintBell();
-            }, 2500);
+            }, FALLBACK_CHECK_MS);
 
             /** Renomme ou deplace le projet (deja confirme) ; le Reference Loader suit. */
             async function applyRenameMove(mode, value) {
@@ -1857,6 +1872,7 @@ app.registerExtension({
         nodeType.prototype.onRemoved = function () {
             vueProjectNodes.delete(this);
             clearInterval(this.__mmprojectTimer);
+            if (this.__mmprojectUnlisten) this.__mmprojectUnlisten();
             (this.__mmprojectOverlays || []).forEach((o) => o.remove());
             return onRemoved ? onRemoved.apply(this, arguments) : undefined;
         };
