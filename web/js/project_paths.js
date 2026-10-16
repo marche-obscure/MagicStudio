@@ -89,6 +89,64 @@ export function mapByPrefix(oldDir, newDir) {
     };
 }
 
+// Dossiers suivis par leur cloche : ajout / suppression de references du Ref Loader.
+export const UPDATE_FOLDERS = ["08.Images", "10.Son", "12.Video", "14.Video-Audio"];
+
+const normPath = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+const dirOf = (p) => normPath(p).replace(/\/[^/]*$/, "");
+
+/** References du Ref Loader qui vont dans ce dossier (ordre des listes, sans doublon). */
+export function folderPaths(state, folder) {
+    const out = [];
+    for (const list of LISTS) {
+        if (LIST_FOLDERS[list] !== folder) continue;
+        for (const p of state[list] || []) if (!out.includes(p)) out.push(p);
+    }
+    return out;
+}
+
+/** Instantane des dossiers suivis : {dossier: [chemins]} (Save, mise a jour). */
+export function folderSnapshot(state) {
+    const snap = {};
+    for (const f of UPDATE_FOLDERS) snap[f] = folderPaths(state, f);
+    return snap;
+}
+
+/**
+ * Changements d'un dossier suivi : added = references pas encore dans
+ * <projet>/<dossier> ; removed = references de l'instantane retirees du Ref
+ * Loader (sans instantane, aucune). Les fichiers ne sont jamais effaces.
+ */
+export function folderChanges(state, folder, projectPath, snapshot) {
+    const current = folderPaths(state, folder);
+    const dir = normPath(projectPath + "/" + folder);
+    const added = current.filter((p) => dirOf(p) !== dir);
+    const now = new Set(current.map(normPath));
+    const removed = Array.isArray(snapshot) ? snapshot.filter((p) => !now.has(normPath(p))) : [];
+    return { added, removed };
+}
+
+/** fn pour remapState apres la mise a jour d'un dossier : seules ses listes changent. */
+export function mapFolderBySequence(folder, dsts) {
+    let i = 0;
+    return (p, list) => {
+        if (LIST_FOLDERS[list] !== folder) return p;
+        const d = dsts[i++];
+        return d || p;
+    };
+}
+
+/**
+ * Etat du Ref Loader sans ses listes ni rognages : le contenu des dossiers
+ * est suivi par leurs cloches, ce n'est pas une modification du workflow.
+ */
+export function withoutMedia(state) {
+    const s = Object.assign({}, state);
+    for (const list of LISTS) delete s[list];
+    delete s.trims;
+    return s;
+}
+
 /** Le mode a-t-il au moins une reference (une configuration a sauvegarder) ? */
 export function modeHasRefs(state, mode) {
     const n = (k) => (state[k] || []).length;
@@ -146,8 +204,16 @@ export function parseProjectState(raw) {
     const str = (v) => (typeof v === "string" ? v : "");
     // Workflow du projet wfPath : nom du fichier (00.Workflows) et validation
     // par la cloche (cloche orange tant qu'elle n'a pas ete faite).
+    // snap = instantane des dossiers suivis a la derniere mise a jour (projet snapPath).
+    const snap = {};
+    if (data.snap && typeof data.snap === "object" && !Array.isArray(data.snap)) {
+        for (const f of UPDATE_FOLDERS) {
+            if (Array.isArray(data.snap[f])) snap[f] = data.snap[f].filter((p) => typeof p === "string");
+        }
+    }
     return {
         root: str(data.root), name: str(data.name), path: str(data.path), folder: str(data.folder),
         wfPath: str(data.wfPath), wfName: str(data.wfName), wfValidated: data.wfValidated === true,
+        snap, snapPath: str(data.snapPath),
     };
 }

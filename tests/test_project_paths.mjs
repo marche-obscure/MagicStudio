@@ -4,7 +4,50 @@ import assert from "node:assert/strict";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, LIST_FOLDERS, projectNameError, parseProjectState,
     saveItems, remapState, mapBySequence, mapByPrefix, configFileName, modeHasRefs,
+    UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, mapFolderBySequence, withoutMedia,
 } from "../web/js/project_paths.js";
+
+test("dossiers suivis : ajouts hors du dossier, suppressions depuis l'instantane", () => {
+    assert.deepEqual(UPDATE_FOLDERS, ["08.Images", "10.Son", "12.Video", "14.Video-Audio"]);
+    const proj = "C:\\P\\Clip";
+    const state = {
+        images: ["C:\\P\\Clip\\08.Images\\a.png", "D:\\x\\b.png"], first_frame: ["D:\\x\\b.png"],
+        last_frame: ["D:\\x\\c.png"], videos: ["C:\\P\\Clip\\12.Video\\v.mp4"], audios: [],
+    };
+    assert.deepEqual(folderPaths(state, "08.Images"), ["C:\\P\\Clip\\08.Images\\a.png", "D:\\x\\b.png", "D:\\x\\c.png"]);
+    assert.deepEqual(folderChanges(state, "08.Images", proj, null), { added: ["D:\\x\\b.png", "D:\\x\\c.png"], removed: [] });
+    // Casse et separateurs ignores ; une reference retiree est signalee, sans effacer.
+    const snap = ["c:/p/clip/12.video/v.mp4", "C:\\P\\Clip\\12.Video\\old.mp4"];
+    assert.deepEqual(folderChanges(state, "12.Video", proj, snap), { added: [], removed: ["C:\\P\\Clip\\12.Video\\old.mp4"] });
+    assert.deepEqual(folderChanges(state, "10.Son", proj, []), { added: [], removed: [] });
+    // Dossier d'un autre projet ou sous-dossier : a copier.
+    assert.deepEqual(folderChanges({ audios: ["C:\\P\\Clip\\10.Son\\sub\\s.wav"] }, "10.Son", proj, null).added.length, 1);
+    assert.deepEqual(Object.keys(folderSnapshot(state)), UPDATE_FOLDERS);
+    assert.deepEqual(folderSnapshot(state)["10.Son"], []);
+});
+
+test("mise a jour d'un dossier : seules ses listes sont repointees", () => {
+    const state = { images: ["a", "b"], first_frame: ["b"], videos: ["v"], trims: {} };
+    const items = saveItems(state).filter((i) => i.folder === "08.Images");
+    assert.deepEqual(items.map((i) => i.path), ["a", "b", "b"]);
+    const out = remapState(state, mapFolderBySequence("08.Images", ["A", "", "B"]));
+    assert.deepEqual(out.images, ["A", "b"]);
+    assert.deepEqual(out.first_frame, ["B"]);
+    assert.deepEqual(out.videos, ["v"]);
+});
+
+test("etat du Ref Loader sans medias pour comparer le workflow", () => {
+    const s = { mode: "ref2va", root: "R", images: ["a"], videos: [], trims: { video: {} }, audios: ["s"] };
+    assert.deepEqual(withoutMedia(s), { mode: "ref2va", root: "R" });
+    assert.deepEqual(s.images, ["a"]);
+});
+
+test("instantane des dossiers dans l'etat du noeud Projet", () => {
+    const s = parseProjectState(JSON.stringify({ snap: { "08.Images": ["a", 3], "02.Models": ["x"], "10.Son": "no" }, snapPath: "P" }));
+    assert.deepEqual(s.snap, { "08.Images": ["a"] });
+    assert.equal(s.snapPath, "P");
+    assert.deepEqual(parseProjectState("{}").snap, {});
+});
 
 // Memes cas que tests/test_projects.py (meme verdict en Python).
 const VALID_NAMES = ["Clip 01", "Mon projet", "été-2026", "a.b", "x".repeat(100)];
@@ -101,10 +144,10 @@ test("noms refuses", () => {
 });
 
 test("etat tolerant", () => {
-    const empty = { root: "", name: "", path: "", folder: "", wfPath: "", wfName: "", wfValidated: false };
+    const empty = { root: "", name: "", path: "", folder: "", wfPath: "", wfName: "", wfValidated: false, snap: {}, snapPath: "" };
     assert.deepEqual(parseProjectState(
         '{"root":"R","name":"N","path":"P","folder":"F","wfPath":"P","wfName":"N.json","wfValidated":true}'),
-    { root: "R", name: "N", path: "P", folder: "F", wfPath: "P", wfName: "N.json", wfValidated: true });
+    { root: "R", name: "N", path: "P", folder: "F", wfPath: "P", wfName: "N.json", wfValidated: true, snap: {}, snapPath: "" });
     // Etat d'avant le dossier personnalise et le workflow : champs vides.
     assert.deepEqual(parseProjectState('{"root":"R","name":"N","path":"P"}'),
         Object.assign({}, empty, { root: "R", name: "N", path: "P" }));
