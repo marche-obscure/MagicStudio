@@ -2,17 +2,20 @@ import { app } from "../../scripts/app.js";
 import {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, INACTIVE_BG,
     svg, iconBadge, hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, REFRESH_ICON, GEAR_ICON, START_ICON,
+    IMAGE_ICON, VIDEO_ICON, AUDIO_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode,
 } from "./minimax_ref_loader.js";
-import { PROJECT_SUBFOLDERS, projectNameError, parseProjectState } from "./project_paths.js";
+import { PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState } from "./project_paths.js";
 
 // Noeud "MiniMax H3 Project" : cree ou choisit un dossier de projet dans le
 // Root folder recu du MiniMax H3 Reference Loader (entree "project"), ou
 // dans le dossier par defaut <input de ComfyUI>/Projets.
 
 const NODE_NAME = "MiniMaxH3Project";
-const UI_HEIGHT = 66;
+// Liste des projets + 8 lignes de dossiers (28 px + 4 px d'ecart) + ligne du bas.
+const FOLDER_ROW_HEIGHT = 28;
+const UI_HEIGHT = 66 + PROJECT_SUBFOLDERS.length * (FOLDER_ROW_HEIGHT + 4) + 6;
 const MIN_WIDTH = 300;
 
 const PLUS_ICON = svg('<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>', 14);
@@ -22,6 +25,28 @@ const PROJECT_ICON = svg(
 const LINK_ICON = svg(
     '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>' +
     '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>', 13);
+const BELL_ICON = svg(
+    '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>', 12);
+
+// Icone de la pastille de chaque sous-dossier (couleurs : FOLDER_COLORS).
+const FOLDER_ICONS = {
+    // Noeuds relies (workflow).
+    "00.Workflows": svg('<rect x="2" y="3" width="7" height="6" rx="1"></rect><rect x="15" y="15" width="7" height="6" rx="1"></rect>' +
+        '<path d="M9 6h3a3 3 0 0 1 3 3v6"></path>', 14),
+    // Cube (modele).
+    "02.Models": svg('<path d="M21 16V8l-9-5-9 5v8l9 5 9-5z"></path><path d="M3.3 7L12 12l8.7-5"></path><path d="M12 22V12"></path>', 14),
+    // Crayon (texte du prompt).
+    "04.Prompt": svg('<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path>', 14),
+    // Calques (LoRA).
+    "06.LoRA": svg('<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline>' +
+        '<polyline points="2 12 12 17 22 12"></polyline>', 14),
+    "08.Images": IMAGE_ICON,
+    "10.Son": AUDIO_ICON,
+    "40.Rush Videos": VIDEO_ICON,
+    // Image + pellicule (rushs images).
+    "60.Rush Images": svg('<rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M2 8h20M2 16h20"></path>' +
+        '<path d="M6 4v4M10 4v4M14 4v4M18 4v4M6 16v4M10 16v4M14 16v4M18 16v4"></path>', 14),
+};
 
 function samePath(a, b) {
     const norm = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
@@ -46,6 +71,8 @@ async function apiPost(url, body) {
 // Aide (anglais et francais)
 // --------------------------------------------------------------------
 const folderList = PROJECT_SUBFOLDERS.map((f) => "<b>" + f + "</b>").join(", ");
+// Dossiers avec leur pastille, comme dans le noeud.
+const folderBadges = () => hList(PROJECT_SUBFOLDERS.map((f) => iconBadge(FOLDER_ICONS[f], FOLDER_COLORS[f]) + " <b>" + f + "</b>"));
 
 const HELP_SECTIONS = [
     {
@@ -59,12 +86,14 @@ const HELP_SECTIONS = [
         hCard("Buttons of the node", [
             [iconBadge(PLUS_ICON, PINK), "Create a new project (a window asks for the name)"],
             [iconBadge(REFRESH_ICON, VIOLET), "Read the list of projects again"],
+            [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "One row per folder of the project (greyed until a project is picked; its tooltip gives the path)"],
+            [iconBadge(BELL_ICON, INACTIVE_BG), "Small bell of a folder (coming soon)"],
         ]),
     },
     {
         id: "folders", title: "Project folders", icon: PROJECT_ICON, color: VIOLET,
         html: "<p>Every project is a folder with always the same subfolders:</p>" +
-            hList(PROJECT_SUBFOLDERS.map((f) => "<b>" + f + "</b>")) +
+            folderBadges() +
             hNote("A subfolder deleted by mistake is created again when you pick the project.") +
             hTip("A project name cannot contain <b>&lt; &gt; : \" / \\ | ? *</b> nor end with a dot."),
     },
@@ -105,12 +134,14 @@ const HELP_SECTIONS_FR = [
         hCard("Boutons du nœud", [
             [iconBadge(PLUS_ICON, PINK), "Créer un nouveau projet (une fenêtre demande le nom)"],
             [iconBadge(REFRESH_ICON, VIOLET), "Relire la liste des projets"],
+            [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "Une ligne par dossier du projet (grisée tant qu'aucun projet n'est choisi ; l'infobulle donne le chemin)"],
+            [iconBadge(BELL_ICON, INACTIVE_BG), "Petite cloche d'un dossier (bientôt)"],
         ]),
     },
     {
         id: "folders", title: "Dossiers du projet",
         html: "<p>Chaque projet est un dossier avec toujours les mêmes sous-dossiers :</p>" +
-            hList(PROJECT_SUBFOLDERS.map((f) => "<b>" + f + "</b>")) +
+            folderBadges() +
             hNote("Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet.", "Remarque :") +
             hTip("Un nom de projet ne peut pas contenir <b>&lt; &gt; : \" / \\ | ? *</b> ni finir par un point.",
                 "Astuce :"),
@@ -469,7 +500,38 @@ app.registerExtension({
                 color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
             });
             bottom.append(status, reloadBtn, helpBtn);
-            container.append(pickRow, bottom);
+
+            // Une ligne par sous-dossier : bouton (pastille coloree + nom) et
+            // petite cloche. Pas encore d'action : leur role viendra plus tard.
+            const folderRows = PROJECT_SUBFOLDERS.map((name) => {
+                const row = document.createElement("div");
+                Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center", flex: "0 0 auto" });
+                const btn = document.createElement("button");
+                btn.type = "button";
+                Object.assign(btn.style, {
+                    flex: "1", minWidth: "0", display: "flex", alignItems: "center", gap: "8px",
+                    background: INACTIVE_BG, color: "#ddd", border: "1px solid #0c3833", borderRadius: "8px",
+                    padding: "2px 8px 2px 3px", height: FOLDER_ROW_HEIGHT + "px", textAlign: "left", cursor: "default",
+                });
+                const icon = document.createElement("span");
+                icon.innerHTML = FOLDER_ICONS[name];
+                Object.assign(icon.style, {
+                    display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px",
+                    borderRadius: "5px", background: FOLDER_COLORS[name], flex: "0 0 auto",
+                });
+                const label = document.createElement("span");
+                label.textContent = name;
+                Object.assign(label.style, {
+                    fontWeight: "bold", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                });
+                btn.append(icon, label);
+                const bell = makeIconButton(INACTIVE_BG, BELL_ICON, "");
+                Object.assign(bell.style, { width: "22px", height: "22px", cursor: "default", opacity: "0.6" });
+                row.append(btn, bell);
+                return { name, row, btn, bell };
+            });
+
+            container.append(pickRow, ...folderRows.map((f) => f.row), bottom);
 
             const createDialog = buildCreateDialog(container, {
                 create: createProject,
@@ -509,6 +571,15 @@ app.registerExtension({
                 if (s.name && !current) add(s.name, s.name + " (not in this folder)", ORANGE);
                 select.value = s.name;
                 select.style.color = current ? "#ddd" : s.name ? ORANGE : "#888";
+
+                // Lignes des dossiers : grisees sans projet choisi ; infobulle = chemin.
+                const sep = s.path.includes("\\") ? "\\" : "/";
+                folderRows.forEach((f) => {
+                    const path = current ? s.path + sep + f.name : "";
+                    f.row.style.opacity = current ? "1" : "0.45";
+                    f.btn.title = current ? path : "Pick or create a project first";
+                    f.bell.title = current ? f.name + " - coming soon" : "";
+                });
 
                 let text;
                 let color;

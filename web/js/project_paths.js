@@ -6,6 +6,19 @@ export const PROJECT_SUBFOLDERS = [
     "00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son", "40.Rush Videos", "60.Rush Images",
 ];
 
+// Couleur de la pastille de chaque sous-dossier dans le noeud (Images, Son et
+// Rush Videos reprennent les couleurs Images, Audio et Video du Ref Loader).
+export const FOLDER_COLORS = {
+    "00.Workflows": "#43a047",
+    "02.Models": "#3d6fd3",
+    "04.Prompt": "#c9a227",
+    "06.LoRA": "#d35fa8",
+    "08.Images": "#6a5fd3",
+    "10.Son": "#3eaca5",
+    "40.Rush Videos": "#e0793c",
+    "60.Rush Images": "#8e7fe0",
+};
+
 const MAX_NAME_LENGTH = 100;
 const INVALID_CHARS = '<>:"/\\|?*';
 const RESERVED = new Set(["CON", "PRN", "AUX", "NUL"]);

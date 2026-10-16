@@ -1,7 +1,7 @@
 // node --test tests/test_project_paths.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PROJECT_SUBFOLDERS, projectNameError, parseProjectState } from "../web/js/project_paths.js";
+import { PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState } from "../web/js/project_paths.js";
 
 // Memes cas que tests/test_projects.py (meme verdict en Python).
 const VALID_NAMES = ["Clip 01", "Mon projet", "été-2026", "a.b", "x".repeat(100)];
@@ -12,6 +12,12 @@ test("huit sous-dossiers numerotes", () => {
     assert.deepEqual(PROJECT_SUBFOLDERS, [
         "00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son", "40.Rush Videos", "60.Rush Images",
     ]);
+});
+
+test("une couleur par sous-dossier", () => {
+    assert.deepEqual(Object.keys(FOLDER_COLORS), PROJECT_SUBFOLDERS);
+    for (const c of Object.values(FOLDER_COLORS)) assert.match(c, /^#[0-9a-f]{6}$/);
+    assert.equal(new Set(Object.values(FOLDER_COLORS)).size, PROJECT_SUBFOLDERS.length);
 });
 
 test("noms valides", () => {
