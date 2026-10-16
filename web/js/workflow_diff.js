@@ -11,12 +11,23 @@ function nodesOf(wf) {
     return map;
 }
 
-/** Liens sous forme "origine:slot>cible:slot" (format tableau ou objet). */
+/**
+ * Liens sous forme "origine:slot>cible:slot" (format tableau ou objet). Le
+ * slot est designe par son nom quand le noeud le donne : des sorties
+ * dynamiques (Reference Loader) decalent les numeros sans changer le lien.
+ */
 function linksOf(wf) {
+    const nodes = nodesOf(wf);
+    const slot = (id, kind, i) => {
+        const n = nodes.get(String(id));
+        const s = n && Array.isArray(n[kind]) ? n[kind][i] : null;
+        return s && s.name ? s.name : i;
+    };
+    const key = (o, os, t, ts) => o + ":" + slot(o, "outputs", os) + ">" + t + ":" + slot(t, "inputs", ts);
     const set = new Set();
     for (const l of (wf && Array.isArray(wf.links) ? wf.links : [])) {
-        if (Array.isArray(l)) set.add(l[1] + ":" + l[2] + ">" + l[3] + ":" + l[4]);
-        else if (l && typeof l === "object") set.add(l.origin_id + ":" + l.origin_slot + ">" + l.target_id + ":" + l.target_slot);
+        if (Array.isArray(l)) set.add(key(l[1], l[2], l[3], l[4]));
+        else if (l && typeof l === "object") set.add(key(l.origin_id, l.origin_slot, l.target_id, l.target_slot));
     }
     return set;
 }

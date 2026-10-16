@@ -9,7 +9,8 @@ import {
 } from "./minimax_ref_loader.js";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
-    mapByPrefix, configFileName, modeHasRefs,
+    mapByPrefix, configFileName, modeHasRefs, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
+    mapFolderBySequence, withoutMedia,
 } from "./project_paths.js";
 import { formatConfigJson } from "./config_format.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
@@ -19,6 +20,7 @@ import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./
 // dans le dossier par defaut <input de ComfyUI>/Projets.
 
 const NODE_NAME = "MiniMaxH3Project";
+const REF_LOADER_NAME = "MiniMaxH3RefLoader";
 // Liste des projets + une ligne par dossier (28 px + 6 px d'ecart) + ligne du bas.
 const FOLDER_ROW_HEIGHT = 28;
 const UI_HEIGHT = 66 + PROJECT_SUBFOLDERS.length * (FOLDER_ROW_HEIGHT + 6) + 4;
@@ -127,6 +129,7 @@ const HELP_SECTIONS = [
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "One row per folder of the project (greyed until a project is picked; its tooltip gives the path)"],
             [iconBadge(BELL_ICON, BELL_ORANGE), "Bell of 00.Workflows: save the workflow (orange = changes to save, green = saved)"],
             [iconBadge(WARN_ICON, INACTIVE_BG), "Left of 00.Workflows: the workflow has changed and is not saved yet (gone once saved)"],
+            [iconBadge(BELL_ICON, BELL_ORANGE), "Bell of 08.Images, 10.Son, 12.Video, 14.Video-Audio: references added or removed in the Reference Loader; click to update the folder"],
             [iconBadge(ARCHIVE_ICON, VIOLET), "Open an archived workflow in a new tab"],
         ]),
     },
@@ -134,6 +137,14 @@ const HELP_SECTIONS = [
         id: "folders", title: "Project folders", icon: PROJECT_ICON, color: VIOLET,
         html: "<p>Every project is a folder with always the same subfolders:</p>" +
             folderBadges() +
+            "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> and <b>14.Video-Audio</b> follow the lists of the " +
+            "Reference Loader. When a reference is added or removed there, " + iconBadge(WARN_ICON, INACTIVE_BG) +
+            " appears left of the folder and its " + iconBadge(BELL_ICON, BELL_ORANGE) + " turns orange. Click the " +
+            "bell: the window lists the files to copy and the references removed, and <b>Update</b> copies the new " +
+            "files (the Reference Loader then uses the copies). Removed references are only taken into account: " +
+            "no file is deleted. The bell goes back to grey and the sign goes away.</p>" +
+            hNote("This is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
+                "ignores the content of the lists of the Reference Loader.") +
             hNote("A subfolder deleted by mistake is created again when you pick the project.") +
             hTip("A project name cannot contain <b>&lt; &gt; : \" / \\ | ? *</b> nor end with a dot."),
     },
@@ -234,6 +245,7 @@ const HELP_SECTIONS_FR = [
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "Une ligne par dossier du projet (grisée tant qu'aucun projet n'est choisi ; l'infobulle donne le chemin)"],
             [iconBadge(BELL_ICON, BELL_ORANGE), "Cloche de 00.Workflows : sauvegarder le workflow (orange = changements, vert = sauvegardé)"],
             [iconBadge(WARN_ICON, INACTIVE_BG), "À gauche de 00.Workflows : le workflow a changé et n'est pas encore sauvegardé (disparaît une fois sauvegardé)"],
+            [iconBadge(BELL_ICON, BELL_ORANGE), "Cloche de 08.Images, 10.Son, 12.Video, 14.Video-Audio : références ajoutées ou retirées dans le Reference Loader ; cliquez pour mettre le dossier à jour"],
             [iconBadge(ARCHIVE_ICON, VIOLET), "Ouvrir un workflow archivé dans un nouvel onglet"],
         ]),
     },
@@ -241,6 +253,15 @@ const HELP_SECTIONS_FR = [
         id: "folders", title: "Dossiers du projet",
         html: "<p>Chaque projet est un dossier avec toujours les mêmes sous-dossiers :</p>" +
             folderBadges() +
+            "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> et <b>14.Video-Audio</b> suivent les listes du " +
+            "Reference Loader. Quand une référence y est ajoutée ou retirée, " + iconBadge(WARN_ICON, INACTIVE_BG) +
+            " apparaît à gauche du dossier et sa " + iconBadge(BELL_ICON, BELL_ORANGE) + " passe à l'orange. Cliquez " +
+            "sur la cloche : la fenêtre liste les fichiers à copier et les références retirées, et <b>Update</b> " +
+            "copie les nouveaux fichiers (le Reference Loader utilise ensuite les copies). Les références retirées " +
+            "sont seulement prises en compte : aucun fichier n'est effacé. La cloche redevient grise et le sigle " +
+            "disparaît.</p>" +
+            hNote("Ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
+                "00.Workflows ignore le contenu des listes du Reference Loader.", "Remarque :") +
             hNote("Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet.", "Remarque :") +
             hTip("Un nom de projet ne peut pas contenir <b>&lt; &gt; : \" / \\ | ? *</b> ni finir par un point.",
                 "Astuce :"),
@@ -1367,7 +1388,7 @@ app.registerExtension({
                 // Place du sigle d'avertissement sur toutes les lignes (boutons alignes) ;
                 // seul 00.Workflows l'affiche, quand le workflow a change sans etre sauvegarde.
                 const warn = document.createElement("span");
-                if (name === WORKFLOWS) warn.innerHTML = WARN_ICON;
+                if (name === WORKFLOWS || UPDATE_FOLDERS.includes(name)) warn.innerHTML = WARN_ICON;
                 Object.assign(warn.style, {
                     width: WARN_WIDTH + "px", height: "22px", flex: "0 0 auto", display: "flex", alignItems: "center",
                     justifyContent: "center", visibility: "hidden", cursor: "help",
@@ -1429,9 +1450,12 @@ app.registerExtension({
                     const path = current ? s.path + sep + f.name : "";
                     f.row.style.opacity = current ? "1" : "0.45";
                     f.btn.title = current ? path : "Pick or create a project first";
-                    if (f.name !== WORKFLOWS) f.bell.title = current ? f.name + " - coming soon" : "";
+                    if (f.name !== WORKFLOWS && !UPDATE_FOLDERS.includes(f.name)) {
+                        f.bell.title = current ? f.name + " - coming soon" : "";
+                    }
                 });
                 renderWorkflow();
+                paintFolders();
 
                 // Bas du noeud : seulement les messages (plus de chemin).
                 let text = message;
@@ -1591,6 +1615,8 @@ app.registerExtension({
                     const latest = loader.mmGetState();
                     const same = JSON.stringify(saveItems(latest)) === JSON.stringify(items);
                     if (same) loader.mmSetState(remapState(latest, mapBySequence(data.dsts)));
+                    setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: getState().path });
+                    paintFolders();
                     say("Saved: " + count("copy") + " file(s) copied, " + data.configs.length + " configuration(s).", true);
                     return "saved";
                 } catch (e) {
@@ -1613,7 +1639,19 @@ app.registerExtension({
             function forCompare(wf) {
                 if (!wf || !Array.isArray(wf.nodes)) return wf;
                 const copy = Object.assign({}, wf);
-                copy.nodes = wf.nodes.map((n) => (n && n.type === NODE_NAME ? Object.assign({}, n, { widgets_values: [] }) : n));
+                copy.nodes = wf.nodes.map((n) => {
+                    if (n && n.type === NODE_NAME) return Object.assign({}, n, { widgets_values: [] });
+                    // Contenu des listes du Ref Loader : suivi par les cloches des dossiers (choix utilisateur).
+                    if (n && n.type === REF_LOADER_NAME && Array.isArray(n.widgets_values)) {
+                        try {
+                            const st = withoutMedia(JSON.parse(n.widgets_values[0] || "{}"));
+                            return Object.assign({}, n, { widgets_values: [JSON.stringify(st)].concat(n.widgets_values.slice(1)) });
+                        } catch (e) {
+                            return n;
+                        }
+                    }
+                    return n;
+                });
                 return copy;
             }
 
@@ -1657,6 +1695,94 @@ app.registerExtension({
                 b.title = !current ? "" : st === "none" ? "Workflow never saved: click to save it"
                     : st === "green" ? "Workflow saved, no change since the last save"
                         : "Changes to save: click to compare and save the workflow";
+            }
+
+            // ---- Dossiers suivis (08.Images, 10.Son, 12.Video, 14.Video-Audio) ----
+
+            /** Instantane du dossier a la derniere mise a jour (null si aucun pour ce projet). */
+            function snapshotOf(s, f) {
+                return s.snapPath === s.path && Array.isArray(s.snap[f]) ? s.snap[f] : null;
+            }
+
+            /** Avertissement + cloche orange quand des references sont ajoutees ou retirees. */
+            function paintFolders() {
+                const s = getState();
+                const current = s.name && projects.includes(s.name);
+                const loader = current ? linkedLoader(node) : null;
+                const refState = loader ? loader.mmGetState() : null;
+                // Premier passage sur ce projet : l'etat actuel sert de reference pour les suppressions.
+                if (refState && s.snapPath !== s.path) {
+                    setState({ snap: folderSnapshot(refState), snapPath: s.path });
+                    return paintFolders();
+                }
+                for (const f of folderRows) {
+                    if (!UPDATE_FOLDERS.includes(f.name)) continue;
+                    const ch = refState ? folderChanges(refState, f.name, s.path, snapshotOf(s, f.name)) : null;
+                    const changed = !!ch && (ch.added.length > 0 || ch.removed.length > 0);
+                    const tip = !changed ? "" : (ch.added.length ? ch.added.length + " new reference(s) to copy" : "") +
+                        (ch.added.length && ch.removed.length ? ", " : "") +
+                        (ch.removed.length ? ch.removed.length + " reference(s) removed in the Reference Loader" : "");
+                    f.warn.style.visibility = changed ? "visible" : "hidden";
+                    f.warn.title = changed ? f.name + " has changed and is not updated yet: " + tip : "";
+                    f.bell.style.background = changed ? BELL_ORANGE : INACTIVE_BG;
+                    f.bell.style.opacity = changed ? "1" : "0.6";
+                    f.bell.style.cursor = changed ? "pointer" : "default";
+                    f.bell.title = !current ? "" : !loader ? "Link a Reference Loader to follow " + f.name
+                        : changed ? tip + ": click to update " + f.name : f.name + " is up to date";
+                }
+            }
+
+            const baseName = (p) => String(p).split(/[\\/]/).pop();
+            const nameList = (paths) => {
+                const shown = paths.slice(0, 8).map((p) => escapeHtml(baseName(p))).join(", ");
+                return shown + (paths.length > 8 ? ", … (+" + (paths.length - 8) + ")" : "");
+            };
+
+            /** Cloche d'un dossier suivi : copie des ajouts (confirmee), prise en compte des retraits. */
+            async function updateFolder(f) {
+                const loader = linkedLoader(node);
+                const s = getState();
+                if (!loader || !s.name || !projects.includes(s.name)) return;
+                const refState = loader.mmGetState();
+                const ch = folderChanges(refState, f, s.path, snapshotOf(s, f));
+                if (!ch.added.length && !ch.removed.length) return;
+                const items = saveItems(refState).filter((i) => i.folder === f);
+                let plan = [];
+                try {
+                    if (ch.added.length) plan = (await apiPost("/mmproject/save_plan", { project: s.path, items })).plan;
+                } catch (e) {
+                    say(e.message);
+                    return;
+                }
+                const copies = plan.filter((x) => x.action === "copy");
+                const missing = plan.filter((x) => x.action === "missing");
+                const html = (copies.length ? copies.length + " file(s) to copy into <b>" + escapeHtml(f) + "</b>: " +
+                    nameList(copies.map((x) => x.src)) : "No file to copy") +
+                    (missing.length ? '<br><span style="color:' + ORANGE + '">' + missing.length +
+                        " missing on disk (not copied): " + nameList(missing.map((x) => x.src)) + "</span>" : "") +
+                    (ch.removed.length ? "<br>" + ch.removed.length + " reference(s) removed in the Reference Loader: " +
+                        nameList(ch.removed) + '<br><span style="color:#999">The files stay in the folder.</span>' : "") +
+                    (copies.length ? '<div style="color:#999;margin-top:8px">Then the Reference Loader uses the copies ' +
+                        "of the project.</div>" : "");
+                const ok = await confirm.ask({ title: "Update " + f + "?", html, okLabel: "Update", okColor: BELL_ORANGE });
+                if (!ok) return;
+                try {
+                    if (copies.length) {
+                        const data = await apiPost("/mmproject/save", { project: s.path, items, configs: [] });
+                        // Le Reference Loader a pu changer pendant la confirmation : on repart de son etat.
+                        const latest = loader.mmGetState();
+                        const same = JSON.stringify(saveItems(latest).filter((i) => i.folder === f)) === JSON.stringify(items);
+                        if (same) loader.mmSetState(remapState(latest, mapFolderBySequence(f, data.dsts)));
+                    }
+                    const now = getState();
+                    const snap = Object.assign({}, now.snapPath === now.path ? now.snap : {});
+                    snap[f] = folderPaths(loader.mmGetState(), f);
+                    setState({ snap, snapPath: now.path });
+                    say(f + " updated: " + copies.length + " file(s) copied.", true);
+                } catch (e) {
+                    say(e.message);
+                }
+                paintFolders();
             }
 
             function renderWorkflow() {
@@ -1794,17 +1920,21 @@ app.registerExtension({
             // change, et peut ne rien emettre ; une relecture peu apres chaque geste
             // (souris relachee, touche, saisie) donne l'etat final.
             let recheck = null;
+            /** Cloche du workflow et cloches des dossiers suivis. */
+            const refreshIndicators = (wf) => {
+                if (!node.graph) return;
+                if (wfInfo.current) paintBell(wf);
+                paintFolders();
+            };
             const scheduleRecheck = () => {
-                if (!wfInfo.current || !node.graph) return;
+                if (!node.graph) return;
                 clearTimeout(recheck);
-                recheck = setTimeout(() => {
-                    if (wfInfo.current && node.graph) paintBell();
-                }, RECHECK_MS);
+                recheck = setTimeout(() => refreshIndicators(), RECHECK_MS);
             };
             const onGraphChanged = (e) => {
-                if (!wfInfo.current || !node.graph) return;
+                if (!node.graph) return;
                 const wf = e && e.detail && Array.isArray(e.detail.nodes) ? e.detail : null;
-                paintBell(wf);
+                refreshIndicators(wf);
                 scheduleRecheck();
             };
             const GESTURES = ["pointerup", "keyup", "change"];
@@ -1816,9 +1946,10 @@ app.registerExtension({
                 clearTimeout(recheck);
             };
             // Secours espace : changements faits par un script, sans action de l'utilisateur.
-            node.__mmprojectTimer = setInterval(() => {
-                if (wfInfo.current) paintBell();
-            }, FALLBACK_CHECK_MS);
+            node.__mmprojectTimer = setInterval(() => refreshIndicators(), FALLBACK_CHECK_MS);
+            for (const f of folderRows) {
+                if (UPDATE_FOLDERS.includes(f.name)) f.bell.addEventListener("click", () => updateFolder(f.name));
+            }
 
             /** Renomme ou deplace le projet (deja confirme) ; le Reference Loader suit. */
             async function applyRenameMove(mode, value) {
@@ -1832,6 +1963,9 @@ app.registerExtension({
                 setState({
                     root: data.root, name: data.name, path: data.path, folder: loader && moved ? "" : custom,
                     wfPath: s.wfPath === s.path ? data.path : s.wfPath,
+                    snap: s.snapPath === s.path ? Object.fromEntries(Object.entries(s.snap)
+                        .map(([f, list]) => [f, list.map(mapByPrefix(s.path, data.path))])) : {},
+                    snapPath: s.snapPath === s.path ? data.path : "",
                 });
                 if (loader) {
                     const st = remapState(loader.mmGetState(), mapByPrefix(s.path, data.path));

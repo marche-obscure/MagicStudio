@@ -74,6 +74,19 @@ test("liens au format objet", () => {
     assert.equal(diffWorkflows(a, base()).same, true);
 });
 
+test("liens compares par nom de slot : sortie decalee = meme lien", () => {
+    const wf = (slot, outs) => ({
+        nodes: [{ id: 1, type: "L", outputs: outs }, { id: 2, type: "P", inputs: [{ name: "project" }] }],
+        links: [[1, 1, slot, 2, 0, "T"]],
+    });
+    const a = wf(4, [{ name: "a" }, { name: "b" }, { name: "c" }, { name: "d" }, { name: "project" }]);
+    const b = wf(5, [{ name: "a" }, { name: "b" }, { name: "c" }, { name: "d" }, { name: "e" }, { name: "project" }]);
+    assert.equal(workflowSignature(a), workflowSignature(b));
+    assert.equal(diffWorkflows(a, b).same, true);
+    const c = wf(3, a.nodes[0].outputs);
+    assert.notEqual(workflowSignature(a), workflowSignature(c));
+});
+
 test("fichier vide ou invalide : tout est ajoute", () => {
     const d = diffWorkflows(null, base());
     assert.equal(d.added.length, 2);
