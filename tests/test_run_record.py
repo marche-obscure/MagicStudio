@@ -152,8 +152,8 @@ class RunFileTest(unittest.TestCase):
         data = rr.finish_run(path, [{"filename": "big_00001.mp4", "type": "output"},
                                     {"filename": "small_00001.mp4", "type": "output"}], "done", self.out)
         self.assertEqual(data["outputs"], [
-            {"source": big, "copy": "40.Rush Videos/20261017_153000_run.mp4", "size": "1216x672", "copy_size": "960x530"},
-            {"source": small, "copy": "40.Rush Videos/20261017_153000_run_02.mp4", "size": "320x176"},
+            {"source": big, "kind": "video", "copy": "40.Rush Videos/20261017_153000_run.mp4", "size": "1216x672", "copy_size": "960x530"},
+            {"source": small, "kind": "video", "copy": "40.Rush Videos/20261017_153000_run_02.mp4", "size": "320x176"},
         ])
         done = os.path.join(self.p, "40.Rush Videos", "20261017_153000_run.mp4")
         with av.open(done) as c:
@@ -169,7 +169,7 @@ class RunFileTest(unittest.TestCase):
         make_video(own, 1216, 672, frames=2, audio=False)
         path = rr.start_run(self.p, "p", PROMPT, self.when)
         data = rr.finish_run(path, [{"filename": "clip_00001.mp4", "fullpath": own}], "done", self.out)
-        self.assertEqual(data["outputs"], [{"source": own, "copy": "40.Rush Videos/clip_00001.mp4",
+        self.assertEqual(data["outputs"], [{"source": own, "kind": "video", "copy": "40.Rush Videos/clip_00001.mp4",
                                             "size": "1216x672", "in_place": True}])
         self.assertEqual(os.listdir(os.path.join(self.p, "40.Rush Videos")), ["clip_00001.mp4"])
         self.assertEqual(rr.video_size(own), (1216, 672))
@@ -269,6 +269,36 @@ class RunFileTest(unittest.TestCase):
         # Seul le fichier nouveau est garde (l'ancien, renvoye par le cache, est ignore).
         self.assertEqual([os.path.basename(o["source"]) for o in res["outputs"]], ["ComfyUI_00002_.png"])
         self.assertIsNone(res["outputs"][0]["copy"])
+
+    def test_kind_and_list_runs(self):
+        src_img = os.path.join(self.out, "ComfyUI_00001_.png")
+        src_vid = os.path.join(self.root, "elsewhere", "v.mp4")
+        write(src_img, b"i")
+        write(src_vid, b"v")
+        path = rr.start_run(self.p, "a bunny", PROMPT, self.when)
+        data = rr.finish_run(path, [{"filename": "ComfyUI_00001_.png", "type": "output"},
+                                    {"filename": "v.mp4", "fullpath": src_vid}], "done", self.out)
+        self.assertEqual([o["kind"] for o in data["outputs"]], ["image", "video"])
+        # Ancien JSON sans kind (deduit de l'extension), plus ancien ; fichier qui n'est pas un Run : ignore.
+        old = os.path.join(self.p, "04.Prompt", "20261017_120000_run.json")
+        with open(old, "w", encoding="utf-8") as f:
+            json.dump({"date": "2026-10-17 12:00:00", "prompt": "old", "cfg": None, "cfg_from": "Math",
+                       "status": "done", "outputs": [{"source": "Z:/gone.webm", "copy": "40.Rush Videos/x.webm"}]}, f)
+        write(os.path.join(self.p, "04.Prompt", "notes.json"), b"{}")
+        runs = rr.list_runs(self.p)
+        self.assertEqual([r["file"] for r in runs], ["20261017_153000_run.json", "20261017_120000_run.json"])
+        self.assertEqual(runs[0]["prompt"], "a bunny")
+        img, vid = runs[0]["outputs"]
+        self.assertEqual((img["kind"], img["source_exists"], img["copy"], img["folder"]), ("image", True, "", self.out))
+        self.assertEqual(vid["kind"], "video")
+        self.assertEqual(vid["copy"], os.path.join(self.p, "40.Rush Videos", "20261017_153000_run.mp4"))
+        self.assertTrue(vid["copy_exists"])
+        self.assertEqual(runs[1]["cfg_from"], "Math")
+        self.assertEqual(runs[1]["outputs"][0]["kind"], "video")
+        self.assertFalse(runs[1]["outputs"][0]["source_exists"])
+        self.assertFalse(runs[1]["outputs"][0]["copy_exists"])
+        with self.assertRaises(FileNotFoundError):
+            rr.list_runs(os.path.join(self.root, "nope"))
 
     def test_error_status_and_bad_files(self):
         path = rr.start_run(self.p, "p", PROMPT, self.when)

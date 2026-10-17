@@ -234,7 +234,7 @@ def finish_run(run_file, files, status, output_dir):
     rush = os.path.join(project, RUSH_VIDEOS)
     for src in new:
         ext = os.path.splitext(src)[1].lower()
-        out = {"source": src, "copy": None}
+        out = {"source": src, "kind": "video" if ext in VIDEO_EXTS else "image", "copy": None}
         if ext in VIDEO_EXTS:
             size = video_size(src)
             if size:
@@ -343,6 +343,52 @@ def _source_path(item, output_dir, root):
         return None
     src = os.path.abspath(os.path.join(output_dir, item.get("subfolder") or "", name))
     return src if os.path.normcase(src).startswith(root + os.sep) and os.path.isfile(src) else None
+
+
+def output_kind(output):
+    """"video" ou "image" : champ kind, sinon extension (anciens JSON)."""
+    if output.get("kind") in ("video", "image"):
+        return output["kind"]
+    ext = os.path.splitext(output.get("copy") or output.get("source") or "")[1].lower()
+    return "video" if ext in VIDEO_EXTS else "image" if ext in IMAGE_EXTS else None
+
+
+def list_runs(project):
+    """
+    Runs du projet, le plus recent d'abord (fenetres 04.Prompt, 40.Rush Videos,
+    60.Rush Images) : JSON de 04.Prompt avec, pour chaque sortie, kind,
+    source et son dossier, copy en chemin complet, et si ces fichiers existent.
+    """
+    if not project or not os.path.isdir(project):
+        raise FileNotFoundError("Project folder not found: %s" % project)
+    folder = os.path.join(project, PROMPT_FOLDER)
+    names = sorted((n for n in os.listdir(folder) if _RUN_NAME.match(n)), reverse=True) if os.path.isdir(folder) else []
+    runs = []
+    for name in names:
+        try:
+            with open(os.path.join(folder, name), "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        run = {k: data.get(k) for k in ("date", "mode", "prompt", "cfg", "steps", "seed", "status")}
+        run.update({k: data[k] for k in ("cfg_from", "steps_from", "seed_from") if data.get(k)})
+        run["file"] = name
+        outs = []
+        for o in data.get("outputs") or []:
+            if not isinstance(o, dict) or not output_kind(o):
+                continue
+            src = o.get("source") or ""
+            copy = os.path.join(project, *o["copy"].split("/")) if o.get("copy") else ""
+            out = {"kind": output_kind(o), "source": src, "folder": os.path.dirname(src),
+                   "source_exists": bool(src) and os.path.isfile(src),
+                   "copy": copy, "copy_exists": bool(copy) and os.path.isfile(copy)}
+            out.update({k: o[k] for k in ("size", "copy_size", "in_place", "resize_error") if o.get(k)})
+            outs.append(out)
+        run["outputs"] = outs
+        runs.append(run)
+    return runs
 
 
 def _run_start(data):

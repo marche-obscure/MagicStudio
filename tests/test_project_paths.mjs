@@ -7,7 +7,37 @@ import {
     UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, mapFolderBySequence, withoutMedia,
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
+    runDateText, runsOfKind, runSummary, outputFile, rushItems,
 } from "../web/js/project_paths.js";
+
+const RUNS = [
+    { date: "2026-10-17 15:06:41", outputs: [
+        { kind: "video", source: "F:/r/v.mp4", source_exists: true, copy: "P/40.Rush Videos/a.mp4", copy_exists: true }] },
+    { date: "2026-10-17 14:00:00", outputs: [
+        { kind: "image", source: "G:/o/i.png", source_exists: true, copy: "", copy_exists: false },
+        { kind: "video", source: "F:/r/w.mp4", source_exists: true, copy: "P/40.Rush Videos/b.mp4", copy_exists: false }] },
+    { date: "2026-10-17 13:00:00", outputs: [] },
+];
+
+test("Runs : date, filtre, texte des boutons", () => {
+    assert.equal(runDateText("2026-10-17 15:06:41"), "17/10/2026 15:06:41");
+    assert.equal(runDateText("bad"), "bad");
+    assert.equal(runsOfKind(RUNS, null).length, 3);
+    assert.deepEqual(runsOfKind(RUNS, "image").map((r) => r.date), ["2026-10-17 14:00:00"]);
+    assert.equal(runSummary(RUNS, "04.Prompt"), "Last run: 17/10/2026 15:06:41 | Runs: 3");
+    assert.equal(runSummary(RUNS, "40.Rush Videos"), "Last run: 17/10/2026 15:06:41 | Runs: 2");
+    assert.equal(runSummary(RUNS, "60.Rush Images"), "Last run: 17/10/2026 14:00:00 | Runs: 1");
+    assert.equal(runSummary([], "04.Prompt"), "");
+});
+
+test("Runs : vignettes de 40 / 60 = fichiers cites et presents", () => {
+    assert.equal(outputFile(RUNS[0].outputs[0]), "P/40.Rush Videos/a.mp4");
+    assert.equal(outputFile(RUNS[1].outputs[1]), "");          // copie absente
+    assert.equal(outputFile(RUNS[1].outputs[0]), "G:/o/i.png"); // image : original
+    assert.deepEqual(rushItems(RUNS, "40.Rush Videos").map((x) => x.file), ["P/40.Rush Videos/a.mp4"]);
+    assert.deepEqual(rushItems(RUNS, "60.Rush Images").map((x) => x.file), ["G:/o/i.png"]);
+    assert.equal(rushItems(RUNS, "60.Rush Images")[0].run, RUNS[1]);
+});
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
     assert.deepEqual(gallerySession(["a", "b"], ["a", "b", "c"]), { added: ["c"], removed: [], ask: true });

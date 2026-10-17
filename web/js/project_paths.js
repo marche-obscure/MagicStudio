@@ -373,6 +373,50 @@ export function orderedFolderFiles(paths, refState, folder) {
     return items.map((x) => ({ path: x.path, badge: x.badge }));
 }
 
+// Dossiers des Runs (choix utilisateur) : 04.Prompt = tous les Runs, 40 = videos, 60 = images.
+export const RUN_FOLDERS = { "04.Prompt": null, "40.Rush Videos": "video", "60.Rush Images": "image" };
+
+/** Date d'un JSON de Run "2026-10-17 15:06:41" -> "17/10/2026 15:06:41". */
+export function runDateText(date) {
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2}:\d{2})$/.exec(String(date || ""));
+    return m ? m[3] + "/" + m[2] + "/" + m[1] + " " + m[4] : String(date || "");
+}
+
+/** Runs ayant au moins une sortie du type (null = tous), ordre garde. */
+export function runsOfKind(runs, kind) {
+    return (runs || []).filter((r) => !kind || (r.outputs || []).some((o) => o.kind === kind));
+}
+
+/** Texte du bouton 04 / 40 / 60 : "Last run: dd/MM/yyyy hh:mm:ss | Runs: n", "" sans Run. */
+export function runSummary(runs, folder) {
+    const list = runsOfKind(runs, RUN_FOLDERS[folder] || null);
+    return list.length ? "Last run: " + runDateText(list[0].date) + " | Runs: " + list.length : "";
+}
+
+/** Fichier montre pour une sortie : video = copie de 40.Rush Videos, image = original ; "" si absent. */
+export function outputFile(o) {
+    if (!o) return "";
+    if (o.kind === "video") return o.copy_exists ? o.copy : "";
+    return o.source_exists ? o.source : "";
+}
+
+/**
+ * Vignettes de 40.Rush Videos / 60.Rush Images (choix utilisateur) : seulement
+ * les sorties citees par les JSON et presentes, [{file, run, output}], Run le
+ * plus recent d'abord.
+ */
+export function rushItems(runs, folder) {
+    const kind = RUN_FOLDERS[folder];
+    const items = [];
+    for (const run of runs || []) {
+        for (const o of run.outputs || []) {
+            const file = o.kind === kind ? outputFile(o) : "";
+            if (file) items.push({ file, run, output: o });
+        }
+    }
+    return items;
+}
+
 /** Nom du nouvel onglet quand la structure du workflow differe : "<nom>-copie". */
 export function copyTabName(name) {
     return String(name || "workflow").replace(/\.json$/i, "") + "-copie";
