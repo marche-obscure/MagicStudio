@@ -138,6 +138,96 @@ def run_params(prompt):
     return out
 
 
+_MODEL_KEYS = (("unet_name", "diffusion_model"), ("ckpt_name", "diffusion_model"), ("vae_name", "vae"))
+
+
+def _number(prompt, value):
+    v, _src = resolve(prompt, value)
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _text(prompt, value):
+    v, _src = resolve(prompt, value)
+    return v if isinstance(v, str) and v else None
+
+
+def _chosen_branch(prompt, inputs):
+    """Switch : nom de l'entree de la branche NON choisie (a ne pas suivre), None sinon ou si indecidable."""
+    for t, f in _BRANCHES:
+        if t in inputs and f in inputs:
+            for key in _SWITCH_KEYS:
+                if key in inputs:
+                    cond, _src = resolve(prompt, inputs[key])
+                    if isinstance(cond, bool):
+                        return f if cond else t
+    return None
+
+
+def _manager_loras(value):
+    """LoRA actives d'une liste LoraManager ([{name, strength, clipStrength, active}] ou {"__value__": [...]})."""
+    if isinstance(value, dict):
+        value = value.get("__value__")
+    out = []
+    for lora in value if isinstance(value, list) else []:
+        if isinstance(lora, dict) and lora.get("active") and lora.get("name"):
+            strength = lora.get("strength")
+            clip = lora.get("clipStrength", strength)
+            out.append({"name": str(lora["name"]), "strength_model": strength, "strength_clip": clip})
+    return out
+
+
+def run_models(prompt):
+    """
+    Modeles et LoRA utilises par le Run (choix utilisateur) : noeuds en amont
+    des decodeurs VAE et des samplers, en suivant seulement la branche choisie
+    des switchs ; unet_name / ckpt_name -> diffusion_model, clip_name* ->
+    text_encoder, vae_name -> vae, lora_name -> loras (forces), liste loras de
+    LoraManager -> seulement les LoRA actives, lora_N de Power Lora Loader
+    ({on, lora, strength}) -> seulement celles allumees.
+    """
+    out = {"diffusion_model": [], "text_encoder": [], "vae": [], "loras": []}
+    if not isinstance(prompt, dict):
+        return out
+    ids = sorted(prompt, key=_sort_key)
+    node = lambda i: prompt.get(i) or {}
+    starts = [i for i in ids if "VAEDecode" in str(node(i).get("class_type") or "")
+              or {"cfg", "steps"} <= set(node(i).get("inputs") or {})] or ids
+    seen, stack = set(), list(starts)
+    while stack:
+        i = str(stack.pop())
+        if i in seen or i not in prompt:
+            continue
+        seen.add(i)
+        inputs = node(i).get("inputs") or {}
+        skip = _chosen_branch(prompt, inputs)
+        stack.extend(str(v[0]) for k, v in inputs.items() if k != skip and _is_link(v))
+    for i in [x for x in ids if x in seen]:
+        inputs = node(i).get("inputs") or {}
+        for key, group in _MODEL_KEYS:
+            name = _text(prompt, inputs[key]) if key in inputs else None
+            if name and name not in out[group]:
+                out[group].append(name)
+        for key in sorted(k for k in inputs if k.startswith("clip_name")):
+            name = _text(prompt, inputs[key])
+            if name and name not in out["text_encoder"]:
+                out["text_encoder"].append(name)
+        if "lora_name" in inputs:
+            name = _text(prompt, inputs["lora_name"])
+            if name:
+                out["loras"].append({
+                    "name": name,
+                    "strength_model": _number(prompt, inputs.get("strength_model", inputs.get("strength"))),
+                    "strength_clip": _number(prompt, inputs["strength_clip"]) if "strength_clip" in inputs else None})
+        if "loras" in inputs:
+            out["loras"].extend(_manager_loras(inputs["loras"]))
+        for key in sorted(k for k in inputs if k.startswith("lora_") and isinstance(inputs[k], dict)):
+            lora = inputs[key]
+            if lora.get("on") and lora.get("lora"):
+                out["loras"].append({"name": str(lora["lora"]), "strength_model": lora.get("strength"),
+                                     "strength_clip": lora.get("strengthTwo")})
+    return out
+
+
 def run_mode(prompt):
     """REF2VA / FL2VA du Reference Loader du Run (etat JSON de son entree state), sinon None."""
     if not isinstance(prompt, dict):
@@ -171,6 +261,7 @@ def start_run(project, text, prompt=None, when=None):
             "project": os.path.basename(os.path.abspath(project)), "mode": run_mode(prompt),
             "prompt": text}
     data.update(run_params(prompt))
+    data["models"] = run_models(prompt)
     data.update({"status": "running", "outputs": []})
     _write(path, data)
     return path
@@ -375,6 +466,8 @@ def list_runs(project):
             continue
         run = {k: data.get(k) for k in ("date", "mode", "prompt", "cfg", "steps", "seed", "status")}
         run.update({k: data[k] for k in ("cfg_from", "steps_from", "seed_from") if data.get(k)})
+        if isinstance(data.get("models"), dict):
+            run["models"] = data["models"]
         run["file"] = name
         outs = []
         for index, o in enumerate(data.get("outputs") or []):
