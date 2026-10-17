@@ -385,6 +385,10 @@ class FolderFilesTest(unittest.TestCase):
         out = projects.folder_files(self.p, ["08.Images", "10.Son"])
         self.assertEqual(out["08.Images"], [os.path.join(img, "A.png"), os.path.join(img, "b.png")])
         self.assertEqual(out["10.Son"], [])
+        arch = projects.folder_files(self.p, ["08.Images", "10.Son"], "Archives")
+        self.assertEqual(arch, {"08.Images": [os.path.join(img, "Archives", "old.png")], "10.Son": []})
+        with self.assertRaises(ValueError):
+            projects.folder_files(self.p, ["08.Images"], "..")
         with self.assertRaises(ValueError):
             projects.folder_files(self.p, ["99.Project-Config"])
         with self.assertRaises(FileNotFoundError):

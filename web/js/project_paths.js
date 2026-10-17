@@ -350,6 +350,29 @@ export function restoreItems(report, checked) {
     return out;
 }
 
+/**
+ * Fenetre de visualisation d'un dossier : fichiers de sa racine dans l'ordre
+ * du Reference Loader, [{path, badge}] ; numeros de la premiere liste
+ * (Images, Audio...), puis F / L (First / Last frame), puis les fichiers
+ * sans numero (badge "") par nom.
+ */
+export function orderedFolderFiles(paths, refState, folder) {
+    const lists = MEDIA_FOLDERS[folder] || [];
+    const rank = new Map();
+    lists.forEach((list, li) => {
+        ((refState && refState[list]) || []).forEach((p, i) => {
+            const key = normPath(p);
+            const badge = list === "first_frame" ? "F" : list === "last_frame" ? "L" : String(i + 1);
+            if (!rank.has(key)) rank.set(key, { order: li * 1000 + i, badge });
+            else rank.get(key).badge += " · " + badge;
+        });
+    });
+    const base = (p) => String(p).split(/[\\/]/).pop().toLowerCase();
+    const items = paths.map((p) => Object.assign({ path: p }, rank.get(normPath(p)) || { order: Infinity, badge: "" }));
+    items.sort((a, b) => (a.order === b.order ? 0 : a.order < b.order ? -1 : 1) || base(a.path).localeCompare(base(b.path)));
+    return items.map((x) => ({ path: x.path, badge: x.badge }));
+}
+
 /** Nom du nouvel onglet quand la structure du workflow differe : "<nom>-copie". */
 export function copyTabName(name) {
     return String(name || "workflow").replace(/\.json$/i, "") + "-copie";

@@ -11,7 +11,7 @@ import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
-    copyTabName, unusedProjectFiles,
+    copyTabName, unusedProjectFiles, orderedFolderFiles,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -154,6 +154,11 @@ const HELP_SECTIONS = [
             "file of the folder that no list of the Reference Loader uses anymore (removed references included): " +
             "no file is deleted, and they no longer show in the gallery of the project. The bell also turns orange " +
             "when the folder keeps such unused files. Then the bell goes back to grey and the sign goes away.</p>" +
+            "<p>Click the button of 08.Images, 10.Son, 12.Video or 14.Video-Audio to view the folder (view " +
+            "only, <b>Close</b>, Escape or a click outside closes it): first its files, in the order of the " +
+            "Reference Loader with their number (<b>F</b> / <b>L</b> = First / Last frame; files without number " +
+            "last, greyed), then a frame with the files of <b>Archives</b>; both rows scroll sideways. Click a " +
+            "thumbnail to see it large in the <b>Preview</b> window.</p>" +
             "<p>Duplicates: the <b>Archives</b> folder of 08.Images, 10.Son, 12.Video and 14.Video-Audio is read " +
             "(even when the folder itself is empty) and its files are compared by SHA256. When identical copies " +
             "are found, " + iconBadge(DUP_ICON, BELL_ORANGE) + " appears right of the bell. It opens the window " +
@@ -309,6 +314,12 @@ const HELP_SECTIONS_FR = [
             "plus (références retirées comprises) : aucun fichier n'est effacé, et ils ne s'affichent plus dans la " +
             "galerie du projet. La cloche passe aussi à l'orange quand le dossier garde de tels fichiers " +
             "inutilisés. Ensuite la cloche redevient grise et le sigle disparaît.</p>" +
+            "<p>Cliquez sur le bouton de 08.Images, 10.Son, 12.Video ou 14.Video-Audio pour voir le dossier " +
+            "(visualisation seulement, <b>Close</b>, Échap ou un clic à côté la ferme) : d'abord ses fichiers, " +
+            "dans l'ordre du Reference Loader avec leur numéro (<b>F</b> / <b>L</b> = First / Last frame ; les " +
+            "fichiers sans numéro à la fin, grisés), puis un cadre avec les fichiers d'<b>Archives</b> ; les deux " +
+            "lignes défilent horizontalement. Cliquez sur une vignette pour la voir en grand dans la fenêtre " +
+            "<b>Preview</b>.</p>" +
             "<p>Doublons : le dossier <b>Archives</b> de 08.Images, 10.Son, 12.Video et 14.Video-Audio est lu " +
             "(même quand le dossier lui-même est vide) et ses fichiers sont comparés par SHA256. Quand des copies " +
             "identiques sont trouvées, " + iconBadge(DUP_ICON, BELL_ORANGE) + " apparaît à droite de la cloche. Il " +
@@ -1715,6 +1726,122 @@ function buildDuplicatesDialog(container) {
     };
 }
 
+// --------------------------------------------------------------------
+// Fenetre de visualisation d'un dossier (bouton de 08.Images ... 14.Video-Audio) :
+// fichiers de la racine (numero du Ref Loader) et de Archives ; Close seulement.
+// --------------------------------------------------------------------
+function buildFolderViewer(container) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, {
+        width: "min(860px, 94vw)", padding: "12px 14px", borderColor: VIOLET, display: "flex",
+        flexDirection: "column", gap: "8px", maxHeight: "86vh",
+    });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR });
+    const rootLabel = document.createElement("div");
+    Object.assign(rootLabel.style, { color: "#9fd6cf", fontWeight: "bold" });
+    const rootRow = document.createElement("div");
+    const archLabel = document.createElement("div");
+    Object.assign(archLabel.style, { color: "#9fd6cf", fontWeight: "bold" });
+    const archFrame = document.createElement("div");
+    Object.assign(archFrame.style, {
+        padding: "8px", background: "#161616", border: "1px solid " + VIOLET, borderRadius: "8px",
+    });
+    const archRow = document.createElement("div");
+    archFrame.appendChild(archRow);
+    for (const row of [rootRow, archRow]) {
+        Object.assign(row.style, {
+            display: "flex", gap: "10px", overflowX: "auto", overflowY: "hidden", paddingBottom: "6px", minHeight: "60px",
+        });
+    }
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end" });
+    const closeBtn = makeTextButton("Close", INACTIVE_BG);
+    footer.appendChild(closeBtn);
+    card.append(title, rootLabel, rootRow, archLabel, archFrame, footer);
+    const preview = buildPreviewWindow();
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (preview.isOpen()) preview.close();
+        else close();
+    };
+    function close() {
+        preview.close();
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        rootRow.innerHTML = "";
+        archRow.innerHTML = "";
+    }
+    closeBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
+
+    function tile(path, badge, kind, shown, dim) {
+        const t = document.createElement("div");
+        Object.assign(t.style, {
+            position: "relative", width: "120px", padding: "5px", borderRadius: "8px", background: "#1f1f1f",
+            border: "1px solid " + (dim ? "#333" : BELL_ORANGE), cursor: "pointer", flex: "0 0 auto",
+            boxSizing: "border-box", opacity: dim ? "0.6" : "1",
+        });
+        const sep = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+        t.appendChild(dupThumb(path.slice(0, sep), path.slice(sep + 1), kind, 108));
+        if (badge) {
+            const b = document.createElement("div");
+            b.textContent = badge;
+            Object.assign(b.style, {
+                position: "absolute", top: "8px", left: "8px", minWidth: "18px", height: "18px", padding: "0 4px",
+                borderRadius: "9px", background: BELL_ORANGE, color: "white", fontWeight: "bold", fontSize: "11px",
+                display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box",
+            });
+            t.appendChild(b);
+        }
+        const name = document.createElement("div");
+        name.textContent = baseOf(path);
+        name.title = baseOf(path);
+        Object.assign(name.style, { fontSize: "11px", marginTop: "4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+        t.appendChild(name);
+        t.addEventListener("click", () => preview.show(path, kind, shown, card));
+        return t;
+    }
+
+    return {
+        /** open(folder, projectName, rootFiles [{path, badge}], archivePaths) */
+        open(folder, projectName, rootFiles, archivePaths) {
+            const kind = PREVIEW_KIND[folder];
+            title.textContent = folder + " – " + projectName;
+            rootLabel.textContent = folder + " (" + rootFiles.length + " file(s))";
+            archLabel.textContent = "Archives (" + archivePaths.length + " file(s))";
+            rootRow.innerHTML = "";
+            archRow.innerHTML = "";
+            for (const f of rootFiles) {
+                rootRow.appendChild(tile(f.path, f.badge, kind, folder + "/" + baseOf(f.path), !f.badge));
+            }
+            for (const p of archivePaths) {
+                archRow.appendChild(tile(p, "", kind, folder + "/Archives/" + baseOf(p), false));
+            }
+            const empty = (row, text) => {
+                if (row.children.length) return;
+                const d = document.createElement("div");
+                d.textContent = text;
+                Object.assign(d.style, { color: "#888", alignSelf: "center" });
+                row.appendChild(d);
+            };
+            empty(rootRow, "No file in " + folder + ".");
+            empty(archRow, "No file in Archives.");
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 860);
+        },
+        remove() {
+            close();
+            preview.remove();
+            overlay.remove();
+        },
+    };
+}
+
 /** open(report, projectPath) -> Promise<dossiers coches | null> (Cancel, Echap, clic a cote = null). */
 function buildLoadDialog(container) {
     const { overlay, card } = makeOverlay();
@@ -2095,8 +2222,9 @@ app.registerExtension({
             const deleteDialog = buildDeleteArchivesDialog(container);
             const loadDialog = buildLoadDialog(container);
             const duplicatesDialog = buildDuplicatesDialog(container);
+            const folderViewer = buildFolderViewer(container);
             node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog,
-                loadDialog, duplicatesDialog];
+                loadDialog, duplicatesDialog, folderViewer];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
@@ -2134,7 +2262,10 @@ app.registerExtension({
                 folderRows.forEach((f) => {
                     const path = current ? s.path + sep + f.name : "";
                     f.row.style.opacity = current ? "1" : "0.45";
-                    f.btn.title = current ? path : "Pick or create a project first";
+                    const viewable = current && UPDATE_FOLDERS.includes(f.name);
+                    f.btn.title = viewable ? "Show the files of " + f.name + " (" + path + ")"
+                        : current ? path : "Pick or create a project first";
+                    f.btn.style.cursor = viewable ? "pointer" : "default";
                     if (f.name !== WORKFLOWS && !UPDATE_FOLDERS.includes(f.name)) {
                         f.bell.title = current ? f.name + " - coming soon" : "";
                     }
@@ -2429,6 +2560,21 @@ app.registerExtension({
                     f.arch.style.visibility = groups.length ? "visible" : "hidden";
                     f.arch.title = groups.length ? groups.length + " duplicate group(s) in " + f.name + "/Archives (" +
                         copies + " extra cop" + (copies > 1 ? "ies" : "y") + "): click to see them" : "";
+                }
+            }
+
+            /** Fenetre de visualisation d'un dossier : racine (ordre du Ref Loader) et Archives. */
+            async function showFolder(f) {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return;
+                try {
+                    const data = await apiGet("/mmproject/folder_files?project=" + encodeURIComponent(s.path) +
+                        "&folders=" + encodeURIComponent(f) + "&archives=1");
+                    const loader = linkedLoader(node);
+                    const rootFiles = orderedFolderFiles(data.files[f] || [], loader ? loader.mmGetState() : null, f);
+                    folderViewer.open(f, s.name, rootFiles, (data.archives || {})[f] || []);
+                } catch (e) {
+                    say(e.message);
                 }
             }
 
@@ -2748,6 +2894,7 @@ app.registerExtension({
                 if (UPDATE_FOLDERS.includes(f.name)) {
                     f.bell.addEventListener("click", () => updateFolder(f.name));
                     f.arch.addEventListener("click", () => duplicatesStep(f.name));
+                    f.btn.addEventListener("click", () => showFolder(f.name));
                 }
             }
 

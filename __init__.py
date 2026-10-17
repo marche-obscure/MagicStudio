@@ -320,14 +320,21 @@ try:
 
     @routes.get("/mmproject/folder_files")
     async def mmproject_folder_files(request):
-        """Fichiers a la racine des dossiers demandes (folders = noms separes par |)."""
+        """
+        Fichiers a la racine des dossiers demandes (folders = noms separes par |) ;
+        archives=1 : aussi ceux de leur dossier Archives.
+        """
         q = request.rel_url.query
         try:
             folders = [f for f in q.get("folders", "").split("|") if f]
             files = await _in_executor(projects.folder_files, q.get("project", ""), folders)
+            out = {"files": files}
+            if q.get("archives") == "1":
+                out["archives"] = await _in_executor(projects.folder_files, q.get("project", ""), folders,
+                                                     projects.ARCHIVE_FOLDER)
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"files": files})
+        return web.json_response(out)
 
     @routes.get("/mmproject/archive_duplicates")
     async def mmproject_archive_duplicates(request):
