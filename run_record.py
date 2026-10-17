@@ -187,12 +187,16 @@ def _check_run_file(path):
     return os.path.dirname(folder)
 
 
+RUN_START_MARGIN = 2
+
+
 def finish_run(run_file, files, status, output_dir):
     """
     Fin du Run : files = [{filename, subfolder, type}] des sorties (seulement
     type "output", sous output_dir). Seuls les fichiers NOUVEAUX comptent :
     ceux qu'un Run precedent du projet a deja enregistres (renvoyes par le
-    cache de ComfyUI) sont ignores (choix utilisateur). Images -> 60.Rush
+    cache de ComfyUI) sont ignores (choix utilisateur), sauf s'ils ont ete
+    ecrits pendant ce Run (date de modification). Images -> 60.Rush
     Images, videos -> 40.Rush Videos, copiees sous le nom du JSON ("_02"...
     pour les suivantes) ; le JSON recoit status et outputs. Aucun fichier
     nouveau alors que le Run en a renvoye, ou Run arrete sans fichier : le
@@ -208,14 +212,12 @@ def finish_run(run_file, files, status, output_dir):
     root = os.path.normcase(os.path.abspath(output_dir))
     sources = []
     for item in files or []:
-        if not isinstance(item, dict) or item.get("type", "output") != "output":
-            continue
-        src = os.path.abspath(os.path.join(output_dir, item.get("subfolder") or "", item.get("filename") or ""))
-        key = os.path.normcase(src)
-        if key.startswith(root + os.sep) and os.path.isfile(src) and key not in {os.path.normcase(x) for x in sources}:
+        src = _source_path(item, output_dir, root)
+        if src and os.path.normcase(src) not in {os.path.normcase(x) for x in sources}:
             sources.append(src)
     known = _known_sources(run_file)
-    new = [src for src in sources if os.path.normcase(src) not in known]
+    started = _run_start(data)
+    new = [src for src in sources if os.path.normcase(src) not in known or _written_since(src, started)]
     if not new and (sources or data["status"] == "error"):
         os.remove(run_file)
         same = known.get(os.path.normcase(sources[0])) if sources else None
@@ -238,6 +240,50 @@ def finish_run(run_file, files, status, output_dir):
     data["outputs"] = outputs
     _write(run_file, data)
     return data
+
+
+def _source_path(item, output_dir, root):
+    """
+    Vrai chemin d'un fichier renvoye par un noeud de sauvegarde, sinon None :
+    "fullpath" (Video Helper Suite) ou "folder" (Pixaroma Save Video, dossier
+    choisi hors de output) + nom : images et videos existantes seulement ;
+    sinon output_dir / subfolder / nom (type "output", sous output_dir).
+    Les apercus (type "temp") sont ignores.
+    """
+    if not isinstance(item, dict) or item.get("type", "output") == "temp":
+        return None
+    name = item.get("filename") or ""
+    direct = item.get("fullpath") or (os.path.join(item["folder"], name) if item.get("folder") and name else "")
+    if direct:
+        src = os.path.abspath(direct)
+        ext = os.path.splitext(src)[1].lower()
+        return src if (ext in IMAGE_EXTS or ext in VIDEO_EXTS) and os.path.isfile(src) else None
+    if item.get("type", "output") != "output" or not name:
+        return None
+    src = os.path.abspath(os.path.join(output_dir, item.get("subfolder") or "", name))
+    return src if os.path.normcase(src).startswith(root + os.sep) and os.path.isfile(src) else None
+
+
+def _run_start(data):
+    """Debut du Run (date du JSON, a la seconde), None si illisible."""
+    try:
+        return time.mktime(time.strptime(data.get("date") or "", DATE_FORMAT))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _written_since(src, started):
+    """
+    Fichier ecrit pendant le Run (meme s'il reprend le nom d'un fichier deja
+    enregistre, ex. compteur de SaveImage reparti a 00001) : date de
+    modification >= debut du Run (2 s de marge : date a la seconde, nom decale).
+    """
+    if started is None:
+        return False
+    try:
+        return os.path.getmtime(src) >= started - RUN_START_MARGIN
+    except OSError:
+        return False
 
 
 def _known_sources(run_file):
