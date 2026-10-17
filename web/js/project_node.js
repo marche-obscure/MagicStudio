@@ -21,6 +21,9 @@ import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./
 // dans le dossier par defaut <input de ComfyUI>/Projets.
 
 const NODE_NAME = "MiniMaxH3Project";
+// Entree reliee a la sortie model_link de MultiFiles Select (choix utilisateur).
+const MODELS_LINK = "models_link";
+const FILE_SELECT_TYPE = "MultiFileSelect";
 const REF_LOADER_NAME = "MiniMaxH3RefLoader";
 // Liste des projets + une ligne par dossier (28 px + 6 px d'ecart) + ligne du bas.
 const FOLDER_ROW_HEIGHT = 28;
@@ -321,6 +324,13 @@ const HELP_SECTIONS = [
                 "cache of ComfyUI, older than the run) is ignored, but a file written during the run counts even if it " +
                 "takes the name of an old one; a run without any new file, or that stops without any file, is not " +
                 "recorded: its JSON is removed and nothing is copied.",
+                "optional <b>models_link</b> input: wire the <b>model_link</b> output of <b>MultiFiles Select</b>. " +
+                "Its fields give the models of the run for 02.Models (diffusion_models, text_encoders, vae), with " +
+                "<b>position</b> = number of the field; not wired: the models are read in the graph (position 0). " +
+                "The LoRA are always read in the graph. When MultiFiles Select has no save folder, it gets " +
+                "<b>&lt;project&gt;/02.Models</b>, which follows the project; a folder chosen by hand is never " +
+                "replaced, and nothing changes when the link is removed;",
+                "while a run of this node is in progress, <b>Load</b> and <b>Save</b> are locked.",
             ]) +
             hNote("No project picked, or text_prompt not wired: nothing is recorded. The window of ComfyUI must " +
                 "stay open until the end of the run for the files to be copied."),
@@ -553,6 +563,13 @@ const HELP_SECTIONS_FR = [
                 "(renvoyé par le cache de ComfyUI, plus ancien que le Run) est ignoré, mais un fichier écrit pendant " +
                 "le Run compte même s'il reprend le nom d'un ancien ; un Run sans fichier nouveau, ou qui s'arrête sans " +
                 "fichier, n'est pas enregistré : son JSON est retiré et rien n'est copié.",
+                "entrée optionnelle <b>models_link</b> : branchez la sortie <b>model_link</b> de <b>MultiFiles " +
+                "Select</b>. Ses champs donnent les modèles du Run pour 02.Models (diffusion_models, text_encoders, " +
+                "vae), avec <b>position</b> = numéro du champ ; non branchée : modèles lus dans le graphe (position " +
+                "0). Les LoRA sont toujours lues dans le graphe. Sans dossier de sauvegarde, MultiFiles Select " +
+                "reçoit <b>&lt;projet&gt;/02.Models</b>, qui suit le projet ; un dossier choisi à la main n'est " +
+                "jamais remplacé, et rien ne change au débranchement ;",
+                "pendant un Run de ce nœud, <b>Load</b> et <b>Save</b> sont verrouillés.",
             ]) +
             hNote("Aucun projet choisi, ou text_prompt non branchée : rien n'est enregistré. La fenêtre de ComfyUI " +
                 "doit rester ouverte jusqu'à la fin du Run pour que les fichiers soient copiés.", "Remarque :"),
@@ -2214,8 +2231,14 @@ function buildRunViewer(container, onMove) {
             'text-align:right;word-break:break-all">' + escapeHtml(baseOf(name)) + (extra ? '<span style="color:#9fd6cf">' +
             extra + "</span>" : "") + "</span></div>";
         if (key === "models") {
-            return [].concat((m.diffusion_model || []).map((n) => row("Model", n)),
-                (m.text_encoder || []).map((n) => row("Text encoder", n)), (m.vae || []).map((n) => row("VAE", n)));
+            // {position, name} (position = champ de MultiFiles Select, 0 = lu dans le graphe) ; ancien format : texte.
+            const item = (label) => (n) => {
+                const name = typeof n === "string" ? n : String((n && n.name) || "");
+                const pos = n && typeof n === "object" && n.position ? " #" + n.position : "";
+                return row(label + pos, name);
+            };
+            return [].concat((m.diffusion_model || []).map(item("Model")),
+                (m.text_encoder || []).map(item("Text encoder")), (m.vae || []).map(item("VAE")));
         }
         const num = (v) => (typeof v === "number" ? String(Math.round(v * 1000) / 1000) : "?");
         return (m.loras || []).map((l) => row("LoRA", String(l.name), " — " + num(l.strength_model) +
@@ -2714,6 +2737,8 @@ app.registerExtension({
             let folderFiles = {};
             // Fichiers de <dossier>/Archives des dossiers suivis : {dossier: [chemins]}.
             let archiveFiles = {};
+            // Runs en cours de ce noeud (prompt_id) : Load et Save verrouilles.
+            const runLock = new Set();
             // Runs enregistres (04.Prompt), le plus recent d'abord : boutons et fenetres 04 / 40 / 60.
             let runList = [];
             // Doublons de <dossier>/Archives : {dossier: [{sha, files}]} ; Corbeille disponible (Windows).
@@ -2905,15 +2930,51 @@ app.registerExtension({
                 status.title = tip;
 
                 // Crayon : un projet choisi ; Save : un projet et un Reference Loader relie.
+                // Load et Save verrouilles pendant un Run de ce noeud (choix utilisateur).
+                const locked = runLock.size > 0;
+                const LOCKED = "Run in progress: Load and Save are locked";
                 const canSave = current && !!linkedLoader(node);
                 setOn(editBtn, current, VIOLET, current ? "Rename or move the project" : "Pick a project first");
-                setOn(saveBtn, canSave, PINK, !current ? "Pick a project first"
-                    : !canSave ? "Wire the project output of the Reference Loader first"
+                setOn(saveBtn, canSave && !locked, PINK, !current ? "Pick a project first"
+                    : !canSave ? "Wire the project output of the Reference Loader first" : locked ? LOCKED
                         : "Save: copy the files of the Reference Loader into the project, save the workflow and " +
                         "the configuration of the project (" + configPathOf(s.name) + ")");
-                setOn(loadBtn, current, PINK, current
-                    ? "Load: check the files, then load the saved configuration of the project (" + configPathOf(s.name) + ")"
-                    : "Pick a project first");
+                setOn(loadBtn, current && !locked, PINK, !current ? "Pick a project first" : locked ? LOCKED
+                    : "Load: check the files, then load the saved configuration of the project (" + configPathOf(s.name) + ")");
+                syncModelsLink();
+            }
+
+            /** MultiFiles Select relie a l'entree models_link, null sinon. */
+            function linkedFileSelect() {
+                const input = (node.inputs || []).find((i) => i.name === MODELS_LINK);
+                const g = node.graph;
+                if (!input || input.link == null || !g) return null;
+                const link = g.links && (typeof g.links.get === "function" ? g.links.get(input.link) : g.links[input.link]);
+                const src = link ? g.getNodeById(link.origin_id) : null;
+                return src && src.type === FILE_SELECT_TYPE ? src : null;
+            }
+
+            /**
+             * Dossier de sauvegarde de MultiFiles Select relie (choix utilisateur) : vide =
+             * <projet>/02.Models ; rempli ainsi, il suit le projet ; un dossier choisi a la
+             * main n'est jamais remplace ; rien ne change au debranchement.
+             */
+            function syncModelsLink() {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return;
+                const fs = linkedFileSelect();
+                if (!fs) return;
+                const sep = s.path.includes("\\") ? "\\" : "/";
+                const target = s.path + sep + "02.Models";
+                fs.properties = fs.properties || {};
+                const cur = String(fs.properties.saveFolder || "").trim();
+                const auto = String(fs.properties.mmAutoSaveFolder || "");
+                if (cur === target || (cur && cur !== auto)) return;
+                fs.properties.saveFolder = target;
+                fs.properties.mmAutoSaveFolder = target;
+                const w = (fs.widgets || []).find((x) => x.name === "save_folder");
+                if (w) w.value = target;
+                if (fs.graph && fs.graph.setDirtyCanvas) fs.graph.setDirtyCanvas(true, true);
             }
 
             function setOn(btn, on, color, title) {
@@ -3580,6 +3641,7 @@ app.registerExtension({
                 if (!node.graph) return;
                 if (wfInfo.current) paintBell(wf);
                 paintFolders();
+                syncModelsLink();
             };
             const scheduleRecheck = () => {
                 if (!node.graph) return;
@@ -3600,6 +3662,32 @@ app.registerExtension({
             // Le noeud ecrit 04.Prompt/yyyyMMdd_HHmmss_run.json au Run (ui.mmrun) ; les
             // fichiers des noeuds de sortie du meme Run sont notes, puis associes a la fin.
             const runs = new Map(); // prompt_id -> {file, files}
+            // Runs en cours qui contiennent ce noeud : Load et Save verrouilles. Un Run deja
+            // termine avant la reponse de /queue (Run tres court) n'est jamais verrouille.
+            const endedRuns = [];
+            const onRunStart = async (e) => {
+                const id = e && e.detail && e.detail.prompt_id;
+                if (!id) return;
+                try {
+                    const q = await apiGet("/queue");
+                    const item = (q.queue_running || []).find((x) => x[1] === id);
+                    const p = item && item[2];
+                    if (endedRuns.includes(id)) return;
+                    if (p && p[String(node.id)] && p[String(node.id)].class_type === NODE_NAME) {
+                        runLock.add(id);
+                        render();
+                    }
+                } catch (err) {
+                    // file d'attente illisible : pas de verrou
+                }
+            };
+            const unlockRun = (e) => {
+                const id = e && e.detail && e.detail.prompt_id;
+                if (!id) return;
+                endedRuns.push(id);
+                if (endedRuns.length > 16) endedRuns.shift();
+                if (runLock.delete(id)) render();
+            };
             const runOf = (id) => {
                 if (!runs.has(id)) runs.set(id, { file: "", files: [] });
                 while (runs.size > 8) runs.delete(runs.keys().next().value);
@@ -3627,6 +3715,7 @@ app.registerExtension({
                 }
             };
             const onRunEnd = (status) => async (e) => {
+                unlockRun(e);
                 const id = e && e.detail && e.detail.prompt_id;
                 const run = id && runs.get(id);
                 if (!run) return;
@@ -3650,6 +3739,7 @@ app.registerExtension({
             const onSuccess = onRunEnd("done");
             const onError = onRunEnd("error");
             api.addEventListener("executed", onExecuted);
+            api.addEventListener("execution_start", onRunStart);
             api.addEventListener("execution_success", onSuccess);
             api.addEventListener("execution_error", onError);
             api.addEventListener("execution_interrupted", onError);
@@ -3657,6 +3747,7 @@ app.registerExtension({
                 api.removeEventListener("graphChanged", onGraphChanged);
                 GESTURES.forEach((t) => document.removeEventListener(t, scheduleRecheck, true));
                 api.removeEventListener("executed", onExecuted);
+                api.removeEventListener("execution_start", onRunStart);
                 api.removeEventListener("execution_success", onSuccess);
                 api.removeEventListener("execution_error", onError);
                 api.removeEventListener("execution_interrupted", onError);

@@ -97,6 +97,9 @@ class MiniMaxH3Project:
             "optional": {
                 "project": (PROJECT_TYPE,),
                 "text_prompt": ("STRING", {"forceInput": True}),
+                # Sortie model_link de MultiFiles Select (choix utilisateur) : ses champs
+                # donnent les modeles du Run (02.Models), avec leur position.
+                "models_link": ("STRING", {"forceInput": True}),
             },
             "hidden": {"prompt": "PROMPT"},
         }
@@ -118,7 +121,7 @@ class MiniMaxH3Project:
         # ce qui ne fait rien sans text_prompt.
         return float("nan")
 
-    def run(self, state, project=None, text_prompt=None, prompt=None):
+    def run(self, state, project=None, text_prompt=None, models_link=None, prompt=None):
         # Sans text_prompt : rien a faire (le dossier se gere dans l'interface).
         if text_prompt is None:
             return {}

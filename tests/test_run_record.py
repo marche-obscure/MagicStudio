@@ -51,6 +51,11 @@ def make_video(path, width, height, frames=6, audio=True):
                 out.mux(p)
 
 
+def P0(name):
+    """Modele lu dans le graphe (sans models_link) : position 0."""
+    return {"position": 0, "name": name}
+
+
 def read_json(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -131,9 +136,9 @@ class RunParamsTest(unittest.TestCase):
             "99": {"class_type": "LoraLoader", "inputs": {"model": ["194", 0], "lora_name": "unused.safetensors"}},  # hors chemin
         }
         m = rr.run_models(prompt)
-        self.assertEqual(m["diffusion_model"], ["h3\\unet.safetensors"])
-        self.assertEqual(m["text_encoder"], ["qwen.safetensors"])
-        self.assertEqual(m["vae"], ["video_vae.safetensors", "audio_vae.safetensors"])
+        self.assertEqual(m["diffusion_model"], [P0("h3\\unet.safetensors")])
+        self.assertEqual(m["text_encoder"], [P0("qwen.safetensors")])
+        self.assertEqual(m["vae"], [P0("video_vae.safetensors"), P0("audio_vae.safetensors")])
         self.assertEqual(m["loras"], [
             {"name": "turbo.safetensors", "strength_model": 1, "strength_clip": None},
             {"name": "bounce", "strength_model": 0.7, "strength_clip": 0.7},
@@ -168,17 +173,45 @@ class RunParamsTest(unittest.TestCase):
             "227": {"class_type": "VAEDecodeAudio", "inputs": {"samples": ["225", 0], "vae": ["213", 0]}},
         }
         m = rr.run_models(prompt)
-        self.assertEqual(m["diffusion_model"], ["H3\\unet.safetensors"])
-        self.assertEqual(m["text_encoder"], ["qwen.safetensors"])
-        self.assertEqual(m["vae"], ["video_vae.safetensors", "audio_vae.safetensors"])
+        self.assertEqual(m["diffusion_model"], [P0("H3\\unet.safetensors")])
+        self.assertEqual(m["text_encoder"], [P0("qwen.safetensors")])
+        self.assertEqual(m["vae"], [P0("video_vae.safetensors"), P0("audio_vae.safetensors")])
         self.assertEqual(m["loras"], [{"name": "turbo.safetensors", "strength_model": 1, "strength_clip": None}])
-        # Sortie 12 -> field_12 (pas field_1 / field_2).
-        self.assertEqual(rr.resolve_file(prompt, ["240", 11]), "twelve.safetensors")
+        # MultiFiles Select : sortie 6 = model_link (dossier), Option 1 / 2 = field_6 / field_7.
+        select["inputs"]["field_6"] = "six.safetensors"
+        self.assertIsNone(rr.resolve_file(prompt, ["240", 5]))
+        self.assertEqual(rr.resolve_file(prompt, ["240", 6]), "six.safetensors")
+        # Autre noeud a champs numerotes : sortie N -> champ *_N.
+        prompt["241"] = {"class_type": "OtherSelect", "inputs": dict(select["inputs"])}
+        self.assertEqual(rr.resolve_file(prompt, ["241", 11]), "twelve.safetensors")
         # Switch vers un nom de fichier : branche choisie.
         prompt["30"] = {"class_type": "PrimitiveBoolean", "inputs": {"value": False}}
         prompt["31"] = {"class_type": "Switch", "inputs": {"switch": ["30", 0], "on_true": ["240", 0], "on_false": ["240", 1]}}
         self.assertEqual(rr.resolve_file(prompt, ["31", 0]), "qwen.safetensors")
         self.assertIsNone(rr.resolve_file(prompt, ["999", 0]))
+
+    def test_models_from_multi_file_select_linked_to_the_project(self):
+        prompt = {
+            "240": {"class_type": "MultiFileSelect", "inputs": {
+                "model_type_1": "diffusion_models", "field_1": "H3\\unet.safetensors",
+                "model_type_2": "text_encoders", "field_2": "qwen.safetensors",
+                "model_type_3": "vae", "field_3": "video_vae.safetensors",
+                "model_type_4": "vae", "field_4": "audio_vae.safetensors",
+                "model_type_5": "loras", "field_5": "turbo.safetensors",
+                "model_type_6": "", "field_6": "", "save_folder": "P/02.Models"}},
+            "194": {"class_type": "UNETLoader", "inputs": {"unet_name": "other.safetensors"}},
+            "225": {"class_type": "KSampler", "inputs": {"model": ["194", 0], "steps": 8, "cfg": 1}},
+            "1": {"class_type": "MiniMaxH3Project", "inputs": {"state": "{}", "models_link": ["240", 5]}},
+        }
+        m = rr.run_models(prompt)
+        self.assertEqual(m["diffusion_model"], [{"position": 1, "name": "H3\\unet.safetensors"}])
+        self.assertEqual(m["text_encoder"], [{"position": 2, "name": "qwen.safetensors"}])
+        self.assertEqual(m["vae"], [{"position": 3, "name": "video_vae.safetensors"},
+                                    {"position": 4, "name": "audio_vae.safetensors"}])
+        self.assertEqual(m["loras"], [])        # les LoRA restent lus dans le graphe
+        # Non relie : le graphe, position 0.
+        del prompt["1"]["inputs"]["models_link"]
+        self.assertEqual(rr.run_models(prompt)["diffusion_model"], [P0("other.safetensors")])
 
     def test_nothing_found(self):
         self.assertEqual(rr.run_params({"1": {"class_type": "X", "inputs": {"text": "a"}}}),
@@ -461,7 +494,7 @@ class RunFileTest(unittest.TestCase):
         self.assertRegex(os.path.basename(rr.registry_file(self.p, "models")), r"^20261017_153000_models\.json$")
         self.assertRegex(os.path.basename(rr.registry_file(self.p, "lora")), r"^20261017_153000_LoRA\.json$")
         self.assertEqual((reg_m["DernierIndiceMODELS"], reg_m["IndiceEnCoursMODELS"]), (1, 1))
-        self.assertEqual(reg_m["MODELS"][0]["vae"], ["v1", "v2"])
+        self.assertEqual(reg_m["MODELS"][0]["vae"], [P0("v1"), P0("v2")])
         reg_l = rr.read_registry(self.p, "lora")
         self.assertEqual(reg_l["LoRA"][0]["ListeName"], {
             "LoRA01": {"name": "bounce", "strength_model": 0.7, "strength_clip": 0.7},
@@ -485,7 +518,7 @@ class RunFileTest(unittest.TestCase):
         # Fenetres : detail relu dans les registres.
         runs = {r["file"]: r for r in rr.list_runs(self.p)}
         detail = runs["20261017_153400_run.json"]["models"]
-        self.assertEqual(detail["diffusion_model"], ["u.safetensors"])
+        self.assertEqual(detail["diffusion_model"], [P0("u.safetensors")])
         self.assertEqual(detail["loras"], [{"name": "bounce", "strength_model": 0.8, "strength_clip": 0.8}])
 
     def test_error_status_and_bad_files(self):
