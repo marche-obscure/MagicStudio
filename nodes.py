@@ -9,10 +9,12 @@ servent, dans l'ordre de media.layout_keys(), et leur donne leur vrai type
 (IMAGE ou AUDIO) pour les branchements.
 """
 
+import json
 import os
 
 from . import media
 from . import projects
+from . import run_record
 
 
 class AnyType(str):
@@ -81,8 +83,9 @@ class MiniMaxH3Project:
     Dossier de projet (00.Workflows ... 60.Rush Images) choisi ou cree dans
     l'interface JS (web/js/project_node.js), dans le Root folder recu du
     MiniMax H3 Reference Loader (entree "project"), sinon dans
-    <input de ComfyUI>/Projets. Tout se fait dans l'interface : le noeud
-    n'a pas de sortie.
+    <input de ComfyUI>/Projets. Le dossier se gere dans l'interface ; avec
+    l'entree text_prompt branchee, chaque Run est enregistre dans
+    04.Prompt (voir run_record.py). Le noeud n'a pas de sortie.
     """
 
     @classmethod
@@ -93,10 +96,14 @@ class MiniMaxH3Project:
             },
             "optional": {
                 "project": (PROJECT_TYPE,),
+                "text_prompt": ("STRING", {"forceInput": True}),
             },
+            "hidden": {"prompt": "PROMPT"},
         }
 
     RETURN_TYPES = ()
+    # Noeud de sortie : execute a chaque Run pour l'enregistrer (choix utilisateur).
+    OUTPUT_NODE = True
     FUNCTION = "run"
     CATEGORY = "loaders/minimax"
     DESCRIPTION = (
@@ -104,6 +111,24 @@ class MiniMaxH3Project:
         "10.Son, 40.Rush Videos, 60.Rush Images) in the root folder of the MiniMax H3 Reference Loader."
     )
 
-    def run(self, state, project=None):
-        # Rien a calculer : le dossier est cree depuis l'interface.
-        return ()
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # Chaque Run est enregistre, meme avec le meme prompt. ComfyUI ne donne pas ici
+        # les entrees branchees (text_prompt) : le noeud s'execute donc a chaque Run,
+        # ce qui ne fait rien sans text_prompt.
+        return float("nan")
+
+    def run(self, state, project=None, text_prompt=None, prompt=None):
+        # Sans text_prompt : rien a faire (le dossier se gere dans l'interface).
+        if text_prompt is None:
+            return {}
+        try:
+            path = (json.loads(state or "{}") or {}).get("path") or ""
+        except (TypeError, ValueError):
+            path = ""
+        if not path or not os.path.isdir(path):
+            print("[MiniMax H3 Project] No project picked: this run is not recorded.")
+            return {}
+        run_file = run_record.start_run(path, text_prompt, prompt)
+        # Lu par l'interface : a la fin du Run, les fichiers generes sont associes a ce JSON.
+        return {"ui": {"mmrun": [run_file]}}

@@ -16,6 +16,7 @@ import traceback
 from . import media
 from . import projects
 from . import project_config
+from . import run_record
 from .nodes import MiniMaxH3RefLoader, MiniMaxH3Project, default_projects_root
 
 NODE_CLASS_MAPPINGS = {
@@ -357,6 +358,18 @@ try:
         except Exception as e:
             return _project_error(e)
         return web.json_response({"deleted": names})
+
+    @routes.post("/mmproject/run_done")
+    async def mmproject_run_done(request):
+        """Fin d'un Run enregistre : fichiers generes copies dans les rushs et listes dans son JSON."""
+        try:
+            import folder_paths
+            body = await request.json()
+            data = await _in_executor(run_record.finish_run, body.get("run_file", ""), list(body.get("files") or []),
+                                      body.get("status", ""), folder_paths.get_output_directory())
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
 
     @routes.post("/mmproject/hashes")
     async def mmproject_hashes(request):
