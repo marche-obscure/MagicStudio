@@ -275,11 +275,13 @@ const HELP_SECTIONS = [
                 "<b>Clear</b> is greyed out: the order of the files of the project cannot be emptied at once; " +
                 "check the files to replace instead.",
                 "On closing (Done, ✕, Escape): new files added to an existing selection ask <b>Add</b> (keep the " +
-                "current files) or <b>Replace</b> (only the new ones stay).",
+                "current files) or <b>Replace</b> (only the new ones stay). <b>Cancel</b> there cancels all the " +
+                "changes made in the window (the selection goes back to what it was when you opened it, replacements " +
+                "already validated stay) and closes it.",
             ]) +
             hNote("no unused file stays in the project: the files of its folder that no list of the node uses " +
                 "anymore go to <b>Archives</b> inside that folder (e.g. 08.Images/Archives), after a confirmation. " +
-                "Cancel goes back to the gallery. Nothing is ever deleted."),
+                "Cancel in that window goes back to the gallery. Nothing is ever deleted."),
     },
     {
         id: "selection", title: "Selection", icon: EYE_ICON, color: VIOLET,
@@ -476,11 +478,13 @@ const HELP_SECTIONS_FR = [
                 "<b>Clear</b> est grisé : l'ordre des fichiers du projet ne peut pas être vidé d'un coup ; cochez " +
                 "plutôt les fichiers à remplacer.",
                 "À la fermeture (Done, ✕, Échap) : de nouveaux fichiers ajoutés à une sélection existante " +
-                "demandent <b>Add</b> (garder les fichiers actuels) ou <b>Replace</b> (seuls les nouveaux restent).",
+                "demandent <b>Add</b> (garder les fichiers actuels) ou <b>Replace</b> (seuls les nouveaux restent). " +
+                "<b>Cancel</b> y annule toutes les modifications faites dans la fenêtre (la sélection revient à " +
+                "celle de l'ouverture, les remplacements déjà validés restent) et la ferme.",
             ]) +
             hNote("aucun fichier inutilisé ne reste dans le projet : les fichiers de son dossier qu'aucune liste " +
                 "du nœud n'utilise plus partent dans <b>Archives</b> de ce dossier (ex. 08.Images/Archives), après " +
-                "confirmation. Cancel revient à la galerie. Rien n'est jamais effacé.", NOTE_FR),
+                "confirmation. Cancel dans cette fenêtre revient à la galerie. Rien n'est jamais effacé.", NOTE_FR),
     },
     {
         id: "selection", title: "Sélection",
@@ -2469,6 +2473,8 @@ function buildGallery(container, ctx) {
             paths: items.map((it) => it.path) });
         items.forEach((it, k) => {
             if (at[k] >= 0) arr[at[k]] = data.dsts[k];
+            const i0 = initial.findIndex((p) => samePath(p, it.old));
+            if (i0 >= 0) initial[i0] = data.dsts[k];
         });
         ctx.setState(s);
         // Contenus changes sous les memes chemins (remplacant du meme nom) : empreintes relues.
@@ -2811,18 +2817,28 @@ function buildGallery(container, ctx) {
             let next = final;
             if (sess.ask) {
                 const answer = await choice.ask(card, {
-                    title: "Add or replace?",
+                    title: "Add, replace or cancel?",
                     html: sess.added.length + " new file(s) picked. <b>Add</b> them to the current selection (" +
                         initial.length + "), or <b>Replace</b> the current selection with them?" +
                         '<div style="color:#999;margin-top:6px">With Replace, the files of the project that are not ' +
-                        "used anymore go to <b>" + escapeHtml(projFolder) + "/Archives</b>.</div>",
+                        "used anymore go to <b>" + escapeHtml(projFolder) + "/Archives</b>.</div>" +
+                        '<div style="color:#999;margin-top:4px">Cancel: cancels all the changes made in this window.</div>',
                     buttons: [
                         { label: "Cancel", value: null },
                         { label: "Replace", color: ORANGE, value: "replace" },
                         { label: "Add", color: PINK, value: "add" },
                     ],
                 });
-                if (!answer) return;
+                if (!answer) {
+                    // Cancel (choix utilisateur) : selection de l'ouverture, rien d'archive, fenetre fermee.
+                    const back = ctx.getState();
+                    back[LIST_KEYS[kind]] = initial.slice();
+                    ctx.setState(back);
+                    pool = [];
+                    marked = [];
+                    close();
+                    return;
+                }
                 if (answer === "replace") next = replaceSelection(initial, final);
             }
             s[LIST_KEYS[kind]] = next;
