@@ -2682,7 +2682,13 @@ function buildGallery(container, ctx) {
             Object.assign(none.style, { gridColumn: "1 / -1", color: "#888", padding: "2px" });
             grid.appendChild(none);
         }
-        own.forEach((f) => grid.appendChild(makeTile(f, projDir, full, true)));
+        // Rangees par numero de selection, puis les fichiers sans numero par nom (choix utilisateur).
+        const rank = (f) => {
+            const i = indexOf(joinPath(projDir, f.name));
+            return i >= 0 ? i : Infinity;
+        };
+        own.slice().sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
+            .forEach((f) => grid.appendChild(makeTile(f, projDir, full, true)));
     }
 
     /** Relit le dossier du projet (zone du bas). */
