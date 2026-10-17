@@ -349,16 +349,33 @@ class ArchiveFilesTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def test_moves_into_archives_with_free_names(self):
+    def test_moves_into_archives_with_date_prefix(self):
+        # yyyyMMdd_HHmmss_<nom sans "(x)"> (date de l'archivage) ; nom pris : une seconde de plus.
+        when = time.mktime((2026, 10, 17, 15, 30, 0, 0, 0, -1))
         write(os.path.join(self.img, "a.png"), b"1")
-        write(os.path.join(self.img, "b.png"), b"2")
+        write(os.path.join(self.img, "TalonHaut-01 (2) (2) (2).png"), b"2")
         write(os.path.join(self.img, "Archives", "a.png"), b"old")
-        moved = projects.archive_files(self.project, "08.Images", ["a.png", "b.png"])
+        moved = projects.archive_files(self.project, "08.Images", ["a.png", "TalonHaut-01 (2) (2) (2).png"], when)
         arch = os.path.join(self.img, "Archives")
-        self.assertEqual(moved, [os.path.join(arch, "a (2).png"), os.path.join(arch, "b.png")])
+        self.assertEqual(moved, [os.path.join(arch, "20261017_153000_a.png"),
+                                 os.path.join(arch, "20261017_153000_TalonHaut-01.png")])
         self.assertFalse(os.path.exists(os.path.join(self.img, "a.png")))
         with open(os.path.join(arch, "a.png"), "rb") as f:
             self.assertEqual(f.read(), b"old")
+        write(os.path.join(self.img, "a (3).png"), b"3")
+        again = projects.archive_files(self.project, "08.Images", ["a (3).png"], when)
+        self.assertEqual(again, [os.path.join(arch, "20261017_153001_a.png")])
+
+    def test_clean_archive_name(self):
+        self.assertEqual(projects.clean_archive_name("20261017_153000_TalonHaut-01 (2) (2).png"), "TalonHaut-01.png")
+        self.assertEqual(projects.clean_archive_name("shot (12).mp4"), "shot.mp4")
+        self.assertEqual(projects.clean_archive_name("b1_02.png"), "b1_02.png")
+        self.assertEqual(projects.clean_archive_name("(2).png"), "(2).png")
+
+    def test_back_from_archives_gets_its_name(self):
+        arch = os.path.join(self.img, "Archives", "20261017_153000_a.png")
+        write(arch, b"a")
+        self.assertEqual(projects.import_files(self.project, "08.Images", [arch]), [os.path.join(self.img, "a.png")])
 
     def test_refuses_bad_input_and_moves_nothing(self):
         write(os.path.join(self.img, "a.png"))
@@ -417,13 +434,17 @@ class ArchiveDuplicatesTest(unittest.TestCase):
         self.add("x_03.png", b"X", 300)
         self.add("y_02.png", b"X", 100)       # tous avec suffixe : le plus ancien
         self.add("solo.png", b"S", 100)
+        self.add("20261017_100000_s (2).png", b"S", 50)   # date mais "(x)" : pas prioritaire
+        self.add("20261017_110000_s.png", b"S", 400)      # date sans "(x)" : garde
         write(os.path.join(self.p, "08.Images", "a.png"), b"A")   # racine : ignoree
         groups = projects.archive_duplicates(self.p, ["08.Images", "10.Son"])
         self.assertEqual(groups["10.Son"], [])
         g = groups["08.Images"]
-        self.assertEqual([[f["name"] for f in x["files"]] for x in g],
-                         [["a.png", "a (2).png", "a_02.png"], ["y_02.png", "x_03.png"]])
-        self.assertEqual([[f["keep"] for f in x["files"]] for x in g], [[True, False, False], [True, False]])
+        self.assertEqual([[f["name"] for f in x["files"]] for x in g], [
+            ["20261017_110000_s.png", "solo.png", "20261017_100000_s (2).png"],
+            ["a.png", "a (2).png", "a_02.png"], ["y_02.png", "x_03.png"]])
+        self.assertEqual([[f["keep"] for f in x["files"]] for x in g],
+                         [[True, False, False], [True, False, False], [True, False]])
         self.assertEqual(g[0]["files"][0]["size"], 1)
 
     def test_delete_keeps_one_copy_per_checked_group(self):
@@ -434,7 +455,9 @@ class ArchiveDuplicatesTest(unittest.TestCase):
         sha_a = projects.file_hash(os.path.join(self.arch, "a.png"))
         deleted = projects.delete_duplicates(self.p, "08.Images", [sha_a, "unknown"], False)
         self.assertEqual(deleted, ["a (2).png"])
-        self.assertEqual(sorted(os.listdir(self.arch)), ["a.png", "x (2).png", "x.png"])
+        # Exemplaire garde sans date : renomme avec la date du fichier en prefixe.
+        kept = time.strftime("%Y%m%d_%H%M%S", time.localtime(300)) + "_a.png"
+        self.assertEqual(sorted(os.listdir(self.arch)), sorted([kept, "x (2).png", "x.png"]))
         # Plus de doublon pour A : rien a supprimer.
         self.assertEqual(projects.delete_duplicates(self.p, "08.Images", [sha_a], False), [])
         self.assertEqual(len(projects.archive_duplicates(self.p, ["08.Images"])["08.Images"]), 1)

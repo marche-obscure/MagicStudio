@@ -162,12 +162,17 @@ const HELP_SECTIONS = [
             "Reference Loader with their number (<b>F</b> / <b>L</b> = First / Last frame; files without number " +
             "last, greyed), then a frame with the files of <b>Archives</b>; both rows scroll sideways. Click a " +
             "thumbnail to see it large in the <b>Preview</b> window.</p>" +
+            "<p>A file that goes to <b>Archives</b> is named <b>yyyyMMdd_HHmmss_name.ext</b> (date of the " +
+            "archiving, <b>(2)</b>-like numbers removed; a name already taken gets the next second). Coming back " +
+            "from Archives, it takes its name again without the date.</p>" +
             "<p>Duplicates: the <b>Archives</b> folder of 08.Images, 10.Son, 12.Video and 14.Video-Audio is read " +
             "(even when the folder itself is empty) and its files are compared by SHA256. When identical copies " +
             "are found, " + iconBadge(DUP_ICON, BELL_ORANGE) + " appears right of the bell. It opens the window " +
             "<b>Duplicates</b>: one thumbnail per group with its number of copies and a check box; click a " +
             "thumbnail to see all its copies below (number, total size, size freed). One copy always stays in " +
-            "Archives (the name without <b>(2)</b> or <b>_02</b>, otherwise the oldest). <b>Delete (x) file(s)</b> " +
+            "Archives (a dated name without <b>(x)</b>, then a name without <b>(2)</b> or <b>_02</b>, otherwise the " +
+            "oldest); after the deletion it is named <b>yyyyMMdd_HHmmss_name.ext</b> (its date kept, or the date " +
+            "of the file added instead of the <b>(x)</b>). <b>Delete (x) file(s)</b> " +
             "(at least one box checked) asks <b>Cancel</b>, <b>Move to Recycle Bin</b> (Windows) or <b>Delete " +
             "permanently</b>; groups without duplicates then leave the window.</p>" +
             hNote("This is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
@@ -327,13 +332,18 @@ const HELP_SECTIONS_FR = [
             "fichiers sans numéro à la fin, grisés), puis un cadre avec les fichiers d'<b>Archives</b> ; les deux " +
             "lignes défilent horizontalement. Cliquez sur une vignette pour la voir en grand dans la fenêtre " +
             "<b>Preview</b>.</p>" +
+            "<p>Un fichier qui part dans <b>Archives</b> est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> (date de " +
+            "l'archivage, numéros du type <b>(2)</b> retirés ; un nom déjà pris prend la seconde suivante). En " +
+            "revenant d'Archives, il reprend son nom sans la date.</p>" +
             "<p>Doublons : le dossier <b>Archives</b> de 08.Images, 10.Son, 12.Video et 14.Video-Audio est lu " +
             "(même quand le dossier lui-même est vide) et ses fichiers sont comparés par SHA256. Quand des copies " +
             "identiques sont trouvées, " + iconBadge(DUP_ICON, BELL_ORANGE) + " apparaît à droite de la cloche. Il " +
             "ouvre la fenêtre <b>Duplicates</b> : une vignette par groupe avec son nombre de copies et une case à " +
             "cocher ; cliquez sur une vignette pour voir toutes ses copies en dessous (nombre, taille totale, place " +
-            "libérée). Un exemplaire reste toujours dans Archives (le nom sans <b>(2)</b> ni <b>_02</b>, sinon le " +
-            "plus ancien). <b>Delete (x) file(s)</b> (au moins une case cochée) demande <b>Cancel</b>, <b>Move to " +
+            "libérée). Un exemplaire reste toujours dans Archives (un nom daté sans <b>(x)</b>, puis un nom sans " +
+            "<b>(2)</b> ni <b>_02</b>, sinon le plus ancien) ; après la suppression il est nommé " +
+            "<b>yyyyMMdd_HHmmss_nom.ext</b> (sa date gardée, ou la date du fichier ajoutée à la place des " +
+            "<b>(x)</b>). <b>Delete (x) file(s)</b> (au moins une case cochée) demande <b>Cancel</b>, <b>Move to " +
             "Recycle Bin</b> (Windows) ou <b>Delete permanently</b> ; les groupes sans doublon quittent ensuite la " +
             "fenêtre.</p>" +
             hNote("Ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +

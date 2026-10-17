@@ -267,8 +267,10 @@ def _archive_match(project, folder, name, sha, cache):
     same = [n for n, h in cache[folder] if h == sha]
     if not same:
         return None
-    stem = os.path.splitext(name)[0].lower()
-    same.sort(key=lambda n: (n.lower() != name.lower(), not n.lower().startswith(stem), n.lower()))
+    # Meme nom, puis meme nom d'origine (yyyyMMdd_HHmmss_nom, "(x)" retires), le plus recent d'abord.
+    clean = projects.clean_archive_name(name).lower()
+    same.sort(key=lambda n: n.lower(), reverse=True)
+    same.sort(key=lambda n: (n.lower() != name.lower(), projects.clean_archive_name(n).lower() != clean))
     return same[0]
 
 
