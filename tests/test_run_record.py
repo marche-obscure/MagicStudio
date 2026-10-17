@@ -300,6 +300,69 @@ class RunFileTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             rr.list_runs(os.path.join(self.root, "nope"))
 
+    def _run_with(self, outputs):
+        path = rr.start_run(self.p, "p", PROMPT, self.when)
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data.update({"status": "done", "outputs": outputs})
+        rr._write(path, data)
+        return os.path.basename(path)
+
+    def test_move_image_to_rush_images(self):
+        src = os.path.join(self.out, "ComfyUI_00001_.png")
+        write(src, b"img")
+        write(os.path.join(self.p, "60.Rush Images", "20261017_153000_run.png"), b"other")  # nom pris
+        name = self._run_with([{"source": src, "kind": "image", "copy": None}])
+        self.assertFalse(rr.list_runs(self.p)[0]["outputs"][0]["in_project"])
+        res = rr.move_output(self.p, name, 0)
+        dst = os.path.join(self.p, "60.Rush Images", "20261017_153000_run_02.png")
+        self.assertEqual(res, {"source": dst, "copy": "60.Rush Images/20261017_153000_run_02.png", "moved_from": src})
+        self.assertFalse(os.path.exists(src))
+        with open(dst, "rb") as f:
+            self.assertEqual(f.read(), b"img")
+        out = rr.list_runs(self.p)[0]["outputs"][0]
+        self.assertTrue(out["in_project"])
+        self.assertEqual(out["source"], dst)
+        with self.assertRaises(ValueError):          # deja dans 60
+            rr.move_output(self.p, name, 0)
+
+    def test_move_video_replaces_reduced_copy(self):
+        src = os.path.join(self.root, "rush", "Video_001.webm")
+        write(src, b"full")
+        copy = os.path.join(self.p, "40.Rush Videos", "20261017_153000_run.mp4")
+        write(copy, b"small")
+        name = self._run_with([{"source": src, "kind": "video", "copy": "40.Rush Videos/20261017_153000_run.mp4",
+                                "size": "1216x672", "copy_size": "960x530"}])
+        rr.move_output(self.p, name, 0)
+        self.assertEqual(os.listdir(os.path.join(self.p, "40.Rush Videos")), ["20261017_153000_run.webm"])
+        self.assertFalse(os.path.exists(src))
+        with open(os.path.join(self.p, "04.Prompt", name), "r", encoding="utf-8") as f:
+            o = json.load(f)["outputs"][0]
+        self.assertEqual(o["copy"], "40.Rush Videos/20261017_153000_run.webm")
+        self.assertEqual(o["moved_from"], src)
+        self.assertNotIn("copy_size", o)
+        self.assertEqual(o["size"], "1216x672")
+
+    def test_move_failure_keeps_original(self):
+        src = os.path.join(self.out, "a.png")
+        write(src, b"img")
+        name = self._run_with([{"source": src, "kind": "image", "copy": None}])
+        old = rr.file_sha256
+        calls = []
+        rr.file_sha256 = lambda p: calls.append(p) or ("x" if p.endswith(".part") else "y")
+        try:
+            with self.assertRaises(IOError):
+                rr.move_output(self.p, name, 0)
+        finally:
+            rr.file_sha256 = old
+        self.assertTrue(os.path.isfile(src))
+        self.assertEqual(os.listdir(os.path.join(self.p, "60.Rush Images")), [])
+        with self.assertRaises(ValueError):
+            rr.move_output(self.p, name, 5)
+        os.remove(src)
+        with self.assertRaises(FileNotFoundError):
+            rr.move_output(self.p, name, 0)
+
     def test_error_status_and_bad_files(self):
         path = rr.start_run(self.p, "p", PROMPT, self.when)
         # Arrete sans fichier : pas enregistre.

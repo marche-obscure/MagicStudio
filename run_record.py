@@ -8,6 +8,7 @@ text_prompt), sans import ComfyUI (testable seul) :
   dans le dossier choisi par l'utilisateur ; le JSON liste les deux.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -376,19 +377,97 @@ def list_runs(project):
         run.update({k: data[k] for k in ("cfg_from", "steps_from", "seed_from") if data.get(k)})
         run["file"] = name
         outs = []
-        for o in data.get("outputs") or []:
+        for index, o in enumerate(data.get("outputs") or []):
             if not isinstance(o, dict) or not output_kind(o):
                 continue
             src = o.get("source") or ""
             copy = os.path.join(project, *o["copy"].split("/")) if o.get("copy") else ""
-            out = {"kind": output_kind(o), "source": src, "folder": os.path.dirname(src),
+            kind = output_kind(o)
+            out = {"index": index, "kind": kind, "source": src, "folder": os.path.dirname(src),
                    "source_exists": bool(src) and os.path.isfile(src),
-                   "copy": copy, "copy_exists": bool(copy) and os.path.isfile(copy)}
+                   "copy": copy, "copy_exists": bool(copy) and os.path.isfile(copy),
+                   # Original deja dans son dossier du projet (pastille verte) : video -> 40, image -> 60.
+                   "in_project": bool(src) and _same_dir(os.path.dirname(src), _rush_dir(project, kind))}
             out.update({k: o[k] for k in ("size", "copy_size", "in_place", "resize_error") if o.get(k)})
             outs.append(out)
         run["outputs"] = outs
         runs.append(run)
     return runs
+
+
+def _rush_dir(project, kind):
+    return os.path.join(project, RUSH_VIDEOS if kind == "video" else RUSH_IMAGES)
+
+
+def _same_dir(a, b):
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def move_output(project, run_name, index):
+    """
+    Deplace l'original d'une sortie dans son dossier du projet (choix
+    utilisateur, en 3 temps) : video -> 40.Rush Videos (remplace la copie,
+    une seule version gardee : l'original), image -> 60.Rush Images (nom du
+    JSON, "_02"... si pris). 1) copie dans un fichier .part, 2) SHA256 de la
+    copie = celui de l'original, 3) la copie prend sa place, l'ancienne copie
+    est retiree, puis l'original est supprime. Toute erreur avant la
+    suppression laisse l'original intact (fichier .part retire). Le JSON
+    recoit source / copy (nouveau chemin) et moved_from.
+    """
+    run_file = os.path.join(project or "", PROMPT_FOLDER, os.path.basename(run_name or ""))
+    _check_run_file(run_file)
+    with open(run_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    outputs = data.get("outputs") or []
+    if not isinstance(index, int) or not 0 <= index < len(outputs) or not isinstance(outputs[index], dict):
+        raise ValueError("Output not found in %s" % os.path.basename(run_file))
+    o = outputs[index]
+    kind = output_kind(o)
+    src = o.get("source") or ""
+    if kind not in ("video", "image"):
+        raise ValueError("Not a video or an image: %s" % src)
+    if not src or not os.path.isfile(src):
+        raise FileNotFoundError("Original not found: %s" % src)
+    folder = _rush_dir(project, kind)
+    if _same_dir(os.path.dirname(src), folder):
+        raise ValueError("Already in %s" % os.path.basename(folder))
+    os.makedirs(folder, exist_ok=True)
+    ext = os.path.splitext(src)[1]
+    old_copy = os.path.join(project, *o["copy"].split("/")) if o.get("copy") else ""
+    if kind == "video" and old_copy:
+        dst = os.path.splitext(old_copy)[0] + ext
+    else:
+        base = os.path.splitext(os.path.basename(run_file))[0]
+        dst, n = os.path.join(folder, base + ext), 1
+        while os.path.exists(dst):
+            n += 1
+            dst = os.path.join(folder, "%s_%02d%s" % (base, n, ext))
+    part = dst + ".part"
+    try:
+        shutil.copy2(src, part)
+        if file_sha256(part) != file_sha256(src):
+            raise IOError("The copy differs from the original (SHA256)")
+        os.replace(part, dst)
+    finally:
+        if os.path.exists(part):
+            os.remove(part)
+    if old_copy and not _same_dir(old_copy, dst) and os.path.isfile(old_copy) and _same_dir(os.path.dirname(old_copy), folder):
+        os.remove(old_copy)
+    os.remove(src)
+    rel = os.path.basename(folder) + "/" + os.path.basename(dst)
+    o.update({"source": dst, "copy": rel, "moved_from": src, "in_place": True})
+    for key in ("copy_size", "resize_error"):
+        o.pop(key, None)
+    _write(run_file, data)
+    return {"source": dst, "copy": rel, "moved_from": src}
 
 
 def _run_start(data):
