@@ -154,6 +154,9 @@ const HELP_SECTIONS = [
             "file of the folder that no list of the Reference Loader uses anymore (removed references included): " +
             "no file is deleted, and they no longer show in the gallery of the project. The bell also turns orange " +
             "when the folder keeps such unused files. Then the bell goes back to grey and the sign goes away.</p>" +
+            "<p>The row of 08.Images, 10.Son, 12.Video and 14.Video-Audio shows <b>Use: n/x | Orphelins: m | In " +
+            "Archives: y</b>: n of the x files of the folder are used by the Reference Loader, m orphan files (no " +
+            "number, not archived yet; shown in orange, gone once Update has archived them), y files in Archives.</p>" +
             "<p>Click the button of 08.Images, 10.Son, 12.Video or 14.Video-Audio to view the folder (view " +
             "only, <b>Close</b>, Escape or a click outside closes it): first its files, in the order of the " +
             "Reference Loader with their number (<b>F</b> / <b>L</b> = First / Last frame; files without number " +
@@ -314,6 +317,10 @@ const HELP_SECTIONS_FR = [
             "plus (références retirées comprises) : aucun fichier n'est effacé, et ils ne s'affichent plus dans la " +
             "galerie du projet. La cloche passe aussi à l'orange quand le dossier garde de tels fichiers " +
             "inutilisés. Ensuite la cloche redevient grise et le sigle disparaît.</p>" +
+            "<p>La ligne de 08.Images, 10.Son, 12.Video et 14.Video-Audio affiche <b>Use: n/x | Orphelins: m | " +
+            "In Archives: y</b> : n des x fichiers du dossier sont utilisés par le Reference Loader, m fichiers " +
+            "orphelins (sans numéro, pas encore archivés ; en orange, disparaît une fois archivés par Update), y " +
+            "fichiers dans Archives.</p>" +
             "<p>Cliquez sur le bouton de 08.Images, 10.Son, 12.Video ou 14.Video-Audio pour voir le dossier " +
             "(visualisation seulement, <b>Close</b>, Échap ou un clic à côté la ferme) : d'abord ses fichiers, " +
             "dans l'ordre du Reference Loader avec leur numéro (<b>F</b> / <b>L</b> = First / Last frame ; les " +
@@ -2099,6 +2106,8 @@ app.registerExtension({
             let loadId = 0;
             // Fichiers a la racine des dossiers suivis du projet choisi : {dossier: [chemins]}.
             let folderFiles = {};
+            // Fichiers de <dossier>/Archives des dossiers suivis : {dossier: [chemins]}.
+            let archiveFiles = {};
             // Doublons de <dossier>/Archives : {dossier: [{sha, files}]} ; Corbeille disponible (Windows).
             let dupGroups = {};
             let trashOk = false;
@@ -2526,15 +2535,20 @@ app.registerExtension({
                 const s = getState();
                 if (!s.name || !projects.includes(s.name)) {
                     folderFiles = {};
+                    archiveFiles = {};
                     paintFolders();
                     return;
                 }
                 try {
                     const data = await apiGet("/mmproject/folder_files?project=" + encodeURIComponent(s.path) +
-                        "&folders=" + encodeURIComponent(UPDATE_FOLDERS.join("|")));
-                    if (getState().path === s.path) folderFiles = data.files || {};
+                        "&folders=" + encodeURIComponent(UPDATE_FOLDERS.join("|")) + "&archives=1");
+                    if (getState().path === s.path) {
+                        folderFiles = data.files || {};
+                        archiveFiles = data.archives || {};
+                    }
                 } catch (e) {
                     folderFiles = {};
+                    archiveFiles = {};
                 }
                 try {
                     const data = await apiGet("/mmproject/archive_duplicates?project=" + encodeURIComponent(s.path) +
@@ -2641,6 +2655,25 @@ app.registerExtension({
                     f.bell.style.cursor = changed ? "pointer" : "default";
                     f.bell.title = !current ? "" : !loader ? "Link a Reference Loader to follow " + f.name
                         : changed ? tip + ": click to update " + f.name : f.name + " is up to date";
+                    // A droite du nom : "Use: n/x | Orphelins: m | In Archives: y" (choix utilisateur ;
+                    // Orphelins = fichiers de la racine sans numero, pas encore archives, cache a 0).
+                    const files = current ? folderFiles[f.name] : null;
+                    if (!Array.isArray(files)) {
+                        f.last.textContent = "";
+                        f.last.title = "";
+                        continue;
+                    }
+                    const inArch = (archiveFiles[f.name] || []).length;
+                    const parts = refState ? ["Use: " + (files.length - unused.length) + "/" + files.length]
+                        : ["Files: " + files.length];
+                    if (unused.length) parts.push("Orphelins: " + unused.length);
+                    parts.push("In Archives: " + inArch);
+                    f.last.textContent = parts.join(" | ");
+                    f.last.style.color = unused.length ? BELL_ORANGE : "#9fd6cf";
+                    f.last.title = (refState ? (files.length - unused.length) + " of the " + files.length +
+                        " file(s) of " + f.name + " used by the Reference Loader" : files.length + " file(s) in " + f.name) +
+                        (unused.length ? "; " + unused.length + " orphan file(s) (no number, not archived yet): " +
+                            unused.map(baseOf).join(", ") : "") + "; " + inArch + " file(s) in " + f.name + "/Archives";
                 }
             }
 
