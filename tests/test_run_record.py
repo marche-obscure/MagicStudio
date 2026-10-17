@@ -143,6 +143,43 @@ class RunParamsTest(unittest.TestCase):
         self.assertEqual([x["name"] for x in rr.run_models(prompt)["loras"]], ["bounce", "p1.safetensors"])
         self.assertEqual(rr.run_models(None), {"diffusion_model": [], "text_encoder": [], "vae": [], "loras": []})
 
+    def test_file_names_given_by_links(self):
+        # Workflow reel : noms donnes par "MODELS/CLIP/VAE/LoRA : File Select" (MultiFileSelect, sortie N -> field_N).
+        select = {"class_type": "MultiFileSelect", "inputs": {
+            "origin_dir": "G:\\models\\loras", "selected_dir": "minimaxh3/reducesteps", "output_mode": "Relatif",
+            "model_type_1": "diffusion_models", "field_1": "H3\\unet.safetensors",
+            "model_type_2": "text_encoders", "field_2": "qwen.safetensors",
+            "model_type_3": "vae", "field_3": "video_vae.safetensors",
+            "model_type_4": "vae", "field_4": "audio_vae.safetensors",
+            "model_type_5": "loras", "field_5": "turbo.safetensors",
+            "model_type_12": "loras", "field_12": "twelve.safetensors"}}
+        prompt = {
+            "240": select,
+            "194": {"class_type": "UNETLoader", "inputs": {"unet_name": ["240", 0], "weight_dtype": "default"}},
+            "195": {"class_type": "CLIPLoader", "inputs": {"clip_name": ["240", 1], "type": "minimax"}},
+            "196": {"class_type": "VAELoader", "inputs": {"vae_name": ["240", 2]}},
+            "213": {"class_type": "VAELoader", "inputs": {"vae_name": ["240", 3]}},
+            "250": {"class_type": "Reroute-like", "inputs": {"any": ["240", 4]}},
+            "269": {"class_type": "LoraLoaderModelOnly", "inputs": {"model": ["194", 0], "lora_name": ["250", 0],
+                                                                   "strength_model": 1}},
+            "225": {"class_type": "KSampler", "inputs": {"model": ["269", 0], "positive": ["10", 0], "seed": 1, "steps": 8, "cfg": 1}},
+            "10": {"class_type": "TextEncode", "inputs": {"clip": ["195", 0], "text": "x"}},
+            "226": {"class_type": "VAEDecode", "inputs": {"samples": ["225", 0], "vae": ["196", 0]}},
+            "227": {"class_type": "VAEDecodeAudio", "inputs": {"samples": ["225", 0], "vae": ["213", 0]}},
+        }
+        m = rr.run_models(prompt)
+        self.assertEqual(m["diffusion_model"], ["H3\\unet.safetensors"])
+        self.assertEqual(m["text_encoder"], ["qwen.safetensors"])
+        self.assertEqual(m["vae"], ["video_vae.safetensors", "audio_vae.safetensors"])
+        self.assertEqual(m["loras"], [{"name": "turbo.safetensors", "strength_model": 1, "strength_clip": None}])
+        # Sortie 12 -> field_12 (pas field_1 / field_2).
+        self.assertEqual(rr.resolve_file(prompt, ["240", 11]), "twelve.safetensors")
+        # Switch vers un nom de fichier : branche choisie.
+        prompt["30"] = {"class_type": "PrimitiveBoolean", "inputs": {"value": False}}
+        prompt["31"] = {"class_type": "Switch", "inputs": {"switch": ["30", 0], "on_true": ["240", 0], "on_false": ["240", 1]}}
+        self.assertEqual(rr.resolve_file(prompt, ["31", 0]), "qwen.safetensors")
+        self.assertIsNone(rr.resolve_file(prompt, ["999", 0]))
+
     def test_nothing_found(self):
         self.assertEqual(rr.run_params({"1": {"class_type": "X", "inputs": {"text": "a"}}}),
                          {"cfg": None, "steps": None, "seed": None})

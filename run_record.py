@@ -146,7 +146,45 @@ def _number(prompt, value):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
-def _text(prompt, value):
+# Regle 1 (choix utilisateur) : un nom de fichier donne par un lien est cherche
+# en remontant les liens jusqu'au nom du fichier (methode resolve_file).
+# Regle 2 : une valeur donnee par un lien (STEPS / CFG / SEED...) garde la
+# methode resolve. Regle 3 : l'emplacement des fichiers du Run garde la methode
+# _source_path.
+MODEL_EXTS = (".safetensors", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".sft", ".onnx")
+
+
+def _is_file_name(v):
+    return isinstance(v, str) and v.strip().lower().endswith(MODEL_EXTS)
+
+
+def resolve_file(prompt, value, depth=0):
+    """
+    Nom de fichier d'une entree (regle 1) : valeur directe ; sinon en remontant
+    le lien : noeud a champs numerotes (sortie N -> champ "*_N" qui est un nom
+    de fichier, ex. MultiFileSelect "File Select"), seul nom de fichier d'un
+    noeud sans lien, branche choisie d'un switch, noeud de passage (une seule
+    entree reliee), enfin la methode des valeurs (resolve) ; None sinon.
+    """
+    if not _is_link(value):
+        return value.strip() if isinstance(value, str) and value.strip() else None
+    node = prompt.get(str(value[0])) or {}
+    inputs = node.get("inputs") or {}
+    if depth >= MAX_DEPTH or not node:
+        return None
+    numbered = [v for k, v in inputs.items() if re.search(r"(?:^|_)%d$" % (value[1] + 1), k) and _is_file_name(v)]
+    if len(numbered) == 1:
+        return numbered[0].strip()
+    links = [v for v in inputs.values() if _is_link(v)]
+    files = [v for v in inputs.values() if _is_file_name(v)]
+    if len(files) == 1 and not links:
+        return files[0].strip()
+    skip = _chosen_branch(prompt, inputs)
+    if skip:
+        chosen = next(t if skip == f else f for t, f in _BRANCHES if skip in (t, f))
+        return resolve_file(prompt, inputs[chosen], depth + 1)
+    if len(links) == 1:
+        return resolve_file(prompt, links[0], depth + 1)
     v, _src = resolve(prompt, value)
     return v if isinstance(v, str) and v else None
 
@@ -204,15 +242,15 @@ def run_models(prompt):
     for i in [x for x in ids if x in seen]:
         inputs = node(i).get("inputs") or {}
         for key, group in _MODEL_KEYS:
-            name = _text(prompt, inputs[key]) if key in inputs else None
+            name = resolve_file(prompt, inputs[key]) if key in inputs else None
             if name and name not in out[group]:
                 out[group].append(name)
         for key in sorted(k for k in inputs if k.startswith("clip_name")):
-            name = _text(prompt, inputs[key])
+            name = resolve_file(prompt, inputs[key])
             if name and name not in out["text_encoder"]:
                 out["text_encoder"].append(name)
         if "lora_name" in inputs:
-            name = _text(prompt, inputs["lora_name"])
+            name = resolve_file(prompt, inputs["lora_name"])
             if name:
                 out["loras"].append({
                     "name": name,
