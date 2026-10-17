@@ -194,7 +194,9 @@ const HELP_SECTIONS = [
             "<p>Click the bell: the window lists the changes since the last save, asks whether to archive the " +
             "previous workflow (moved to <b>00.Workflows/Archives</b> as <b>yyyyMMdd-HHmmss_name.json</b>, date " +
             "of its last save; the archives button lists that folder), and proposes " +
-            "the name of the project, which you can change. <b>Save</b> confirms.</p>" +
+            "the name of the project, which you can change. With <b>Archive it</b> the button is <b>Save</b> " +
+            "(green), with <b>Overwrite</b> it becomes <b>Overwrite</b> (orange). After saving the window stays " +
+            "open with the changes read again; only <b>Close</b> closes it.</p>" +
             hList([
                 "The workflow row shows <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
                 iconBadge(ARCHIVE_ICON, VIOLET) + " (right of the bell, active when there are archives) opens an " +
@@ -314,7 +316,9 @@ const HELP_SECTIONS_FR = [
             "<p>Cliquez sur la cloche : la fenêtre liste les changements depuis la dernière sauvegarde, demande " +
             "s'il faut archiver le workflow précédent (déplacé dans <b>00.Workflows/Archives</b> sous " +
             "<b>yyyyMMdd-HHmmss_nom.json</b>, date de sa dernière sauvegarde ; le bouton d'archives liste ce " +
-            "dossier) et propose le nom du projet, que vous pouvez changer. <b>Save</b> confirme.</p>" +
+            "dossier) et propose le nom du projet, que vous pouvez changer. Avec <b>Archive it</b> le bouton est " +
+            "<b>Save</b> (vert), avec <b>Overwrite</b> il devient <b>Overwrite</b> (orange). Après " +
+            "l'enregistrement la fenêtre reste ouverte avec les changements relus ; seul <b>Close</b> la ferme.</p>" +
             hList([
                 "La ligne du workflow affiche <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
                 iconBadge(ARCHIVE_ICON, VIOLET) + " (à droite de la cloche, actif s'il y a des archives) ouvre un " +
@@ -927,7 +931,8 @@ function buildWorkflowDialog(container) {
 
     const footer = document.createElement("div");
     Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" });
-    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    // Seul Close ferme la fenetre (choix utilisateur) ; apres un enregistrement elle reste ouverte.
+    const cancelBtn = makeTextButton("Close", INACTIVE_BG);
     const saveBtn = makeTextButton("Save", GREEN);
     footer.append(cancelBtn, saveBtn);
     card.append(title, changesTitle, changes, archiveBox, nameLabel, input, error, footer);
@@ -942,34 +947,44 @@ function buildWorkflowDialog(container) {
         noBtn.style.background = archive ? INACTIVE_BG : ORANGE;
         noBtn.style.color = archive ? "#888" : "white";
         limitNote.style.display = full && archive ? "block" : "none";
+        // Bouton principal : Save (vert) avec Archive it, Overwrite (orange) sinon.
+        const over = archiveBox.style.display !== "none" && !archive;
+        saveBtn.textContent = over ? "Overwrite" : "Save";
+        saveBtn.style.background = over ? ORANGE : GREEN;
     }
 
+    /** null = Close (fenetre fermee) ; sinon la fenetre reste ouverte jusqu'au prochain open(). */
     function finish(result) {
-        overlay.style.display = "none";
-        window.removeEventListener("keydown", onKey, true);
+        if (result === null) {
+            overlay.style.display = "none";
+            window.removeEventListener("keydown", onKey, true);
+        }
         const r = resolve;
         resolve = null;
         if (r) r(result);
     }
 
     function submit() {
+        if (!resolve) return; // enregistrement en cours
         const name = input.value.trim().replace(/\.json$/i, "").trim();
         const err = projectNameError(name).replace("The project name", "The workflow name") ||
             (/^\d{8}-\d{6}_/.test(name) ? "A workflow name cannot start with a date (kept for the archives)." : "");
         if (err) {
+            error.style.color = ORANGE;
             error.textContent = err;
             input.style.borderColor = ORANGE;
             return;
         }
+        error.style.color = "#999";
+        error.textContent = "Saving...";
         finish({ name, archive: archiveBox.style.display !== "none" && archive });
     }
 
     const onKey = (e) => {
         if (overlay.style.display === "none") return;
+        // Echap ne ferme pas cette fenetre (seul Close la ferme).
         if (e.key === "Escape") {
             e.preventDefault();
-            e.stopImmediatePropagation();
-            finish(null);
             return;
         }
         if (e.target === input) {
@@ -995,12 +1010,16 @@ function buildWorkflowDialog(container) {
     });
     cancelBtn.addEventListener("click", () => finish(null));
     saveBtn.addEventListener("click", submit);
-    overlay.addEventListener("mousedown", () => finish(null));
 
     return {
-        /** opts.full = la limite d'archives est atteinte (note sous la pilule). */
+        /**
+         * opts.full = la limite d'archives est atteinte (note sous la pilule) ;
+         * opts.again = fenetre deja ouverte (apres un enregistrement) : choix de la
+         * pilule garde ; opts.message = {text, ok} sous le nom.
+         */
         open(opts) {
             if (resolve) finish(null);
+            const again = !!opts.again && overlay.style.display !== "none";
             changesTitle.textContent = opts.previous ? "Changes since the last save of " + opts.previous + ":"
                 : "No saved workflow yet.";
             changes.innerHTML = opts.changesHtml;
@@ -1008,15 +1027,18 @@ function buildWorkflowDialog(container) {
             archiveBox.style.display = opts.previous ? "block" : "none";
             archiveLabel.innerHTML = "Archive the previous workflow? It goes to <b>00.Workflows/Archives</b> as " +
                 "<b>yyyyMMdd-HHmmss_" + escapeHtml(opts.previous || "") + "</b> (date of its last save).";
-            archive = true;
+            if (!again) archive = true;
             full = !!opts.full;
             paintPill();
             input.value = opts.defaultName;
             input.style.borderColor = "#0c3833";
-            error.textContent = "";
-            overlay.style.display = "block";
-            window.addEventListener("keydown", onKey, true);
-            positionCardNextToNode(card, container, 520);
+            error.style.color = opts.message && opts.message.ok ? GREEN : ORANGE;
+            error.textContent = opts.message ? opts.message.text : "";
+            if (!again) {
+                overlay.style.display = "block";
+                window.addEventListener("keydown", onKey, true);
+                positionCardNextToNode(card, container, 520);
+            }
             setTimeout(() => input.focus(), 0);
             return new Promise((r) => (resolve = r));
         },
@@ -1849,27 +1871,41 @@ app.registerExtension({
             async function workflowStep() {
                 const s = getState();
                 if (!s.name || !projects.includes(s.name)) return;
-                await loadWorkflowInfo();
-                const prev = wfInfo.current ? wfInfo.current.name : "";
-                const diff = diffWorkflows(forCompare(savedWf), forCompare(currentWorkflow()), widgetNames());
                 let name = s.name;
-                let result = null;
+                let message = null;
+                let again = false;
+                // Seul Close ferme la fenetre : apres chaque enregistrement (ou suppression
+                // d'archives) elle est relue et reste ouverte.
                 for (;;) {
+                    await loadWorkflowInfo();
+                    const prev = wfInfo.current ? wfInfo.current.name : "";
+                    const diff = diffWorkflows(forCompare(savedWf), forCompare(currentWorkflow()), widgetNames());
                     const full = wfInfo.archives.length >= MAX_ARCHIVES;
-                    result = await workflowDialog.open({ changesHtml: changesHtml(diff), previous: prev, defaultName: name, full });
+                    const result = await workflowDialog.open({ changesHtml: changesHtml(diff), previous: prev,
+                        defaultName: name, full, message, again });
+                    again = true;
                     if (!result) return;
-                    if (!(result.archive && full)) break;
-                    // Limite atteinte : choisir les archives a supprimer, puis la sauvegarde est reproposee.
                     name = result.name;
-                    const names = await deleteDialog.open(wfInfo.archives);
-                    if (!names) return;
-                    await deleteArchives(names);
-                }
-                try {
-                    const info = await writeWorkflow(result.name, result.archive ? prev : null, true);
-                    say("Workflow saved: " + info.name + (info.archived ? " (previous one archived: " + info.archived + ")" : ""), true);
-                } catch (e) {
-                    say(e.message);
+                    if (result.archive && full) {
+                        // Limite atteinte : choisir les archives a supprimer, puis retour a la fenetre.
+                        const names = await deleteDialog.open(wfInfo.archives);
+                        message = null;
+                        if (names) {
+                            await deleteArchives(names);
+                            message = { text: names.length + " archive(s) deleted: Save again to archive.", ok: true };
+                        }
+                        continue;
+                    }
+                    try {
+                        const info = await writeWorkflow(result.name, result.archive ? prev : null, true);
+                        const text = "Workflow saved: " + info.name +
+                            (info.archived ? " (previous one archived: " + info.archived + ")" : "");
+                        say(text, true);
+                        message = { text, ok: true };
+                    } catch (e) {
+                        say(e.message);
+                        message = { text: e.message, ok: false };
+                    }
                 }
             }
 
