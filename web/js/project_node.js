@@ -3,16 +3,16 @@ import { api } from "../../scripts/api.js";
 import {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, INACTIVE_BG,
     svg, iconBadge, hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, REFRESH_ICON, GEAR_ICON, START_ICON,
-    IMAGE_ICON, VIDEO_ICON, AUDIO_ICON,
+    IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, EYE_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode,
 } from "./minimax_ref_loader.js";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
-    mapByPrefix, configFileName, modeHasRefs, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
-    mapFolderBySequence, withoutMedia,
+    mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
+    mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
+    copyTabName,
 } from "./project_paths.js";
-import { formatConfigJson } from "./config_format.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
 // Noeud "MiniMax H3 Project" : cree ou choisit un dossier de projet dans le
@@ -111,6 +111,11 @@ async function apiPost(url, body) {
 const folderList = PROJECT_SUBFOLDERS.map((f) => "<b>" + f + "</b>").join(", ");
 // Dossiers avec leur pastille, comme dans le noeud.
 const folderBadges = () => hList(PROJECT_SUBFOLDERS.map((f) => iconBadge(FOLDER_ICONS[f], FOLDER_COLORS[f]) + " <b>" + f + "</b>"));
+// Boutons texte du bas du noeud (Load, Save), comme dans le noeud.
+const textBadge = (t) => '<span style="display:inline-block;background:' + PINK + ';color:white;font-weight:bold;' +
+    'font-size:11px;border-radius:5px;padding:0 7px;line-height:18px">' + t + "</span>";
+// Fichiers de la configuration du projet (Load / Save).
+const CONFIG_PATH = "99.Project-Config/Project-Config.json";
 
 const HELP_SECTIONS = [
     {
@@ -124,7 +129,8 @@ const HELP_SECTIONS = [
         hCard("Buttons of the node", [
             [iconBadge(PENCIL_ICON, VIOLET), "Rename or move the project"],
             [iconBadge(PLUS_ICON, PINK), "Create a new project (a window asks for the name)"],
-            [iconBadge(SAVE_ICON, PINK), "Save: copy the files of the Reference Loader into the project"],
+            [textBadge("Load"), "Load: check the files, then load the saved configuration of the project"],
+            [textBadge("Save"), "Save: copy the files of the Reference Loader into the project, save the workflow and the configuration of the project"],
             [iconBadge(REFRESH_ICON, VIOLET), "Read the list of projects again"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "One row per folder of the project (greyed until a project is picked; its tooltip gives the path)"],
             [iconBadge(BELL_ICON, BELL_ORANGE), "Bell of 00.Workflows: save the workflow (orange = changes to save, green = saved)"],
@@ -146,6 +152,8 @@ const HELP_SECTIONS = [
             hNote("This is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
                 "ignores the content of the lists of the Reference Loader.") +
             hNote("A subfolder deleted by mistake is created again when you pick the project.") +
+            hNote("<b>99.Project-Config</b> (configuration of the project, with its <b>Archives</b> folder) is " +
+                "created with the project but has no row in the node.") +
             hTip("A project name cannot contain <b>&lt; &gt; : \" / \\ | ? *</b> nor end with a dot."),
     },
     {
@@ -164,22 +172,43 @@ const HELP_SECTIONS = [
         hNote("The tooltip of a folder row gives its path; the bottom line of the node only shows messages."),
     },
     {
-        id: "save", title: "Save", icon: SAVE_ICON, color: PINK,
-        html: "<p>" + iconBadge(SAVE_ICON, PINK) + " needs a project and the Reference Loader wired. It shows " +
+        id: "save", title: "Load and Save", icon: SAVE_ICON, color: PINK,
+        html: "<p>" + textBadge("Save") + " needs a project and the Reference Loader wired. It shows " +
             "what it will do and asks for a confirmation, then:</p>" +
             hList([
                 "copies the files of the Reference Loader (both modes) into the project: Images, First and Last " +
                 "frame in <b>08.Images</b>, Video in <b>12.Video</b>, Video/Audio in <b>14.Video-Audio</b>, " +
                 "Audio in <b>10.Son</b>;",
-                "saves the configuration of each mode in <b>00.Workflows</b>, named " +
-                "<b>yyyyMMdd-HHmmss_REF2VA_minimax_config.json</b> (and FL2VA);",
                 "makes the Reference Loader use the copies of the project;",
-                "then saves the workflow (directly the first time, through the bell window when it has changed).",
+                "saves the workflow (directly the first time, through the bell window when it has changed);",
+                "then saves the configuration of the project in <b>" + CONFIG_PATH + "</b>: every folder (even " +
+                "empty) with its files, their index (number in the Reference Loader, rank by name elsewhere) and " +
+                "the SHA256 of the files of 00.Workflows, 04.Prompt, 08.Images, 10.Son, 12.Video and 14.Video-Audio. " +
+                "The previous one goes to <b>99.Project-Config/Archives</b> as " +
+                "<b>yyyyMMdd-HHmmss_Project-Config.json</b>, never overwritten.",
             ]) +
-            hNote("A file already in the project is not copied again; another file with the same name is " +
-                "copied as <b>name (2)</b>.") +
-            hTip("Right after creating a project, a first save is offered: all the files are copied to their " +
-                "folders once you confirm."),
+            hNote("Every file of 08.Images, 10.Son, 12.Video and 14.Video-Audio must be used by the Reference " +
+                "Loader (its number is its index): otherwise the configuration is not saved and the files are listed.") +
+            "<p>" + textBadge("Load") + " first compares every file with the configuration, without changing " +
+            "anything. A file that is missing or different is looked for in the <b>Archives</b> of its folder " +
+            "(same SHA256). The window <b>Load the project</b> then shows each folder:</p>" +
+            hList([
+                "<b style=\"color:" + GREEN + "\">✓</b> same file, <b style=\"color:#d32f2f\">✗</b> missing or " +
+                "different; under it, <b>→ found in Archives</b> with " + iconBadge(EYE_ICON, VIOLET) + " to view it " +
+                "(images, videos, sounds);",
+                "a check box (checked) for 00.Workflows, 08.Images, 10.Son, 12.Video and 14.Video-Audio: " +
+                "uncheck what must not be loaded;",
+                "04.Prompt is only checked: loading the workflow may lose the changes of the prompt in progress; " +
+                "02.Models, 06.LoRA, 40.Rush Videos and 60.Rush Images are information only.",
+            ]) +
+            "<p><b>Load</b> puts back the files found in Archives (a file already there under that name goes " +
+            "to Archives first) and fills the Reference Loader for the checked folders. The workflow:</p>" +
+            hList([
+                "same structure (nodes and links) as the current one: the current workflow is replaced;",
+                "another structure: the current workflow is never replaced, the saved one opens in a new tab " +
+                "<b>name-copie</b> (the window lists the nodes and links in more or missing);",
+                "unchecked: nothing opens, the folders checked go to the Reference Loader of this tab.",
+            ]),
     },
     {
         id: "workflow", title: "Workflow", icon: BELL_ICON, color: ORANGE,
@@ -205,7 +234,7 @@ const HELP_SECTIONS = [
                 "delete, then <b>Delete</b> deletes them and proposes the save (<b>Cancel</b> closes the window). " +
                 "In the bell window, <b>Save</b> with <b>Archive it</b> opens this list first; <b>Overwrite</b> " +
                 "saves directly.",
-                "When a project is created, the workflow is saved right away; " + iconBadge(SAVE_ICON, PINK) +
+                "When a project is created, the workflow is saved right away; " + textBadge("Save") +
                 " also saves it (through the bell window when it has changed).",
             ]) +
             hNote("Moving nodes alone does not turn the bell orange; it is listed as a layout change."),
@@ -243,7 +272,8 @@ const HELP_SECTIONS_FR = [
         hCard("Boutons du nœud", [
             [iconBadge(PENCIL_ICON, VIOLET), "Renommer ou déplacer le projet"],
             [iconBadge(PLUS_ICON, PINK), "Créer un nouveau projet (une fenêtre demande le nom)"],
-            [iconBadge(SAVE_ICON, PINK), "Save : copier les fichiers du Reference Loader dans le projet"],
+            [textBadge("Load"), "Load : vérifier les fichiers, puis charger la configuration sauvegardée du projet"],
+            [textBadge("Save"), "Save : copier les fichiers du Reference Loader dans le projet, sauvegarder le workflow et la configuration du projet"],
             [iconBadge(REFRESH_ICON, VIOLET), "Relire la liste des projets"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "Une ligne par dossier du projet (grisée tant qu'aucun projet n'est choisi ; l'infobulle donne le chemin)"],
             [iconBadge(BELL_ICON, BELL_ORANGE), "Cloche de 00.Workflows : sauvegarder le workflow (orange = changements, vert = sauvegardé)"],
@@ -266,6 +296,8 @@ const HELP_SECTIONS_FR = [
             hNote("Ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
                 "00.Workflows ignore le contenu des listes du Reference Loader.", "Remarque :") +
             hNote("Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet.", "Remarque :") +
+            hNote("<b>99.Project-Config</b> (configuration du projet, avec son dossier <b>Archives</b>) est créé " +
+                "avec le projet mais n'a pas de ligne dans le nœud.", "Remarque :") +
             hTip("Un nom de projet ne peut pas contenir <b>&lt; &gt; : \" / \\ | ? *</b> ni finir par un point.",
                 "Astuce :"),
     },
@@ -286,22 +318,44 @@ const HELP_SECTIONS_FR = [
             "les messages.", "Remarque :"),
     },
     {
-        id: "save", title: "Save",
-        html: "<p>" + iconBadge(SAVE_ICON, PINK) + " demande un projet et le Reference Loader relié. Il montre " +
+        id: "save", title: "Load et Save",
+        html: "<p>" + textBadge("Save") + " demande un projet et le Reference Loader relié. Il montre " +
             "ce qu'il va faire et demande une confirmation, puis :</p>" +
             hList([
                 "copie les fichiers du Reference Loader (les deux modes) dans le projet : Images, First et Last " +
                 "frame dans <b>08.Images</b>, Video dans <b>12.Video</b>, Video/Audio dans <b>14.Video-Audio</b>, " +
                 "Audio dans <b>10.Son</b> ;",
-                "enregistre la configuration de chaque mode dans <b>00.Workflows</b>, nommée " +
-                "<b>yyyyMMdd-HHmmss_REF2VA_minimax_config.json</b> (et FL2VA) ;",
                 "fait utiliser au Reference Loader les copies du projet ;",
-                "puis sauvegarde le workflow (directement la première fois, par la fenêtre de la cloche s'il a changé).",
+                "sauvegarde le workflow (directement la première fois, par la fenêtre de la cloche s'il a changé) ;",
+                "puis enregistre la configuration du projet dans <b>" + CONFIG_PATH + "</b> : tous les dossiers " +
+                "(même vides) avec leurs fichiers, leur indice (numéro dans le Reference Loader, rang par nom " +
+                "ailleurs) et le SHA256 des fichiers de 00.Workflows, 04.Prompt, 08.Images, 10.Son, 12.Video et " +
+                "14.Video-Audio. L'ancienne part dans <b>99.Project-Config/Archives</b> sous " +
+                "<b>yyyyMMdd-HHmmss_Project-Config.json</b>, jamais écrasée.",
             ]) +
-            hNote("Un fichier déjà dans le projet n'est pas recopié ; un autre fichier de même nom est copié " +
-                "en <b>nom (2)</b>.", "Remarque :") +
-            hTip("Juste après la création d'un projet, une première sauvegarde est proposée : tous les fichiers " +
-                "sont copiés dans leurs dossiers une fois confirmé.", "Astuce :"),
+            hNote("Chaque fichier de 08.Images, 10.Son, 12.Video et 14.Video-Audio doit être utilisé par le " +
+                "Reference Loader (son numéro est son indice) : sinon la configuration n'est pas enregistrée et " +
+                "les fichiers sont listés.", "Remarque :") +
+            "<p>" + textBadge("Load") + " compare d'abord chaque fichier à la configuration, sans rien modifier. " +
+            "Un fichier manquant ou différent est cherché dans le dossier <b>Archives</b> de son dossier (même " +
+            "SHA256). La fenêtre <b>Load the project</b> montre ensuite chaque dossier :</p>" +
+            hList([
+                "<b style=\"color:" + GREEN + "\">✓</b> fichier identique, <b style=\"color:#d32f2f\">✗</b> manquant " +
+                "ou différent ; dessous, <b>→ found in Archives</b> avec " + iconBadge(EYE_ICON, VIOLET) + " pour le " +
+                "voir (images, vidéos, sons) ;",
+                "une case (cochée) pour 00.Workflows, 08.Images, 10.Son, 12.Video et 14.Video-Audio : décochez " +
+                "ce qui ne doit pas être chargé ;",
+                "04.Prompt est seulement vérifié : charger le workflow peut perdre les modifications du prompt en " +
+                "cours ; 02.Models, 06.LoRA, 40.Rush Videos et 60.Rush Images sont pour information.",
+            ]) +
+            "<p><b>Load</b> remet en place les fichiers retrouvés dans Archives (un fichier déjà présent sous ce " +
+            "nom part d'abord dans Archives) et remplit le Reference Loader pour les dossiers cochés. Le workflow :</p>" +
+            hList([
+                "même structure (nœuds et liaisons) que l'actuel : le workflow en cours est remplacé ;",
+                "autre structure : le workflow en cours n'est jamais remplacé, celui sauvegardé s'ouvre dans un " +
+                "nouvel onglet <b>nom-copie</b> (la fenêtre liste les nœuds et liaisons en plus ou manquants) ;",
+                "décoché : rien ne s'ouvre, les dossiers cochés vont dans le Reference Loader de cet onglet.",
+            ]),
     },
     {
         id: "workflow", title: "Workflow",
@@ -327,7 +381,7 @@ const HELP_SECTIONS_FR = [
                 "supprimer, puis <b>Delete</b> les supprime et propose la sauvegarde (<b>Cancel</b> ferme la " +
                 "fenêtre). Dans la fenêtre de la cloche, <b>Save</b> avec <b>Archive it</b> ouvre d'abord cette " +
                 "liste ; <b>Overwrite</b> sauvegarde directement.",
-                "À la création d'un projet, le workflow est sauvegardé tout de suite ; " + iconBadge(SAVE_ICON, PINK) +
+                "À la création d'un projet, le workflow est sauvegardé tout de suite ; " + textBadge("Save") +
                 " le sauvegarde aussi (par la fenêtre de la cloche s'il a changé).",
             ]) +
             hNote("Déplacer des nœuds seulement ne fait pas passer la cloche à l'orange ; c'est listé comme un " +
@@ -630,6 +684,7 @@ function buildConfirm(container) {
             text.innerHTML = opts.html || "";
             okBtn.textContent = opts.okLabel || "OK";
             okBtn.style.background = opts.okColor || GREEN;
+            cancelBtn.style.display = opts.noCancel ? "none" : "";
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 420);
@@ -1258,6 +1313,235 @@ function buildArchiveMenu(container) {
 }
 
 // --------------------------------------------------------------------
+// Fenetre "Load the project" (bouton Load) : verification avant toute
+// modification ; une case par dossier chargeable (cochee) ; Load = confirmation.
+// --------------------------------------------------------------------
+const PREVIEW_KIND = { "08.Images": "image", "10.Son": "audio", "12.Video": "video", "14.Video-Audio": "video" };
+const MARK_OK = '<b style="color:' + GREEN + '">✓</b>';
+const MARK_BAD = '<b style="color:#d32f2f">✗</b>';
+const MARK_WARN = '<b style="color:' + ORANGE + '">⚠</b>';
+const FOLDER_INFO = {
+    "02.Models": "not loaded: no node of the project uses them",
+    "06.LoRA": "not loaded: no node of the project uses them",
+    "40.Rush Videos": "information only",
+    "60.Rush Images": "information only",
+};
+const LIST_LABEL = { first_frame: "first frame", last_frame: "last frame" };
+const PROMPT_WARNING = "Loading the workflow may lose the changes of the prompt in progress.";
+
+/** Lignes HTML des noeuds et liaisons en plus (+) ou manquants (−). */
+function structureHtml(d, plusLabel, minusLabel) {
+    const out = [];
+    const part = (items, label, color, sign) => {
+        if (!items.length) return;
+        const shown = items.slice(0, 12).map((x) => escapeHtml(x)).join(", ");
+        out.push('<div><span style="color:' + color + '">' + sign + "</span> " + label + ": " + shown +
+            (items.length > 12 ? ", … (+" + (items.length - 12) + ")" : "") + "</div>");
+    };
+    part(d.nodes_added, plusLabel + " (nodes)", GREEN, "+");
+    part(d.nodes_missing, minusLabel + " (nodes)", "#d32f2f", "−");
+    part(d.links_added, plusLabel + " (links)", GREEN, "+");
+    part(d.links_missing, minusLabel + " (links)", "#d32f2f", "−");
+    return out.join("");
+}
+
+/** open(report, projectPath) -> Promise<dossiers coches | null> (Cancel, Echap, clic a cote = null). */
+function buildLoadDialog(container) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, {
+        width: "min(560px, 94vw)", padding: "12px 14px", borderColor: PINK, display: "flex",
+        flexDirection: "column", maxHeight: "86vh",
+    });
+    const title = document.createElement("div");
+    title.textContent = "Load the project";
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "4px" });
+    const sub = document.createElement("div");
+    Object.assign(sub.style, { color: "#999", marginBottom: "8px" });
+    const body = document.createElement("div");
+    Object.assign(body.style, {
+        flex: "1 1 auto", minHeight: "0", overflowX: "hidden", overflowY: "auto", padding: "6px 10px",
+        background: "#161616", border: "1px solid #2c2c2c", borderRadius: "8px", lineHeight: "1.5",
+        wordBreak: "break-word",
+    });
+    const note = document.createElement("div");
+    note.textContent = "Load replaces the current files of the checked folders.";
+    Object.assign(note.style, { color: "#999", margin: "8px 0 0" });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const loadBtn = makeTextButton("Load", PINK);
+    footer.append(cancelBtn, loadBtn);
+    card.append(title, sub, body, note, footer);
+
+    let resolve = null;
+    let boxes = [];
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        finish(null);
+    };
+    function finish(result) {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        body.innerHTML = ""; // arrete les lecteurs ouverts
+        const r = resolve;
+        resolve = null;
+        if (r) r(result);
+    }
+    const checkedFolders = () => boxes.filter((b) => b.box.checked && !b.box.disabled).map((b) => b.folder);
+    function paintLoad() {
+        const on = checkedFolders().length > 0;
+        loadBtn.disabled = !on;
+        loadBtn.style.opacity = on ? "1" : "0.45";
+        loadBtn.style.cursor = on ? "pointer" : "default";
+        boxes.forEach((b) => b.onChange && b.onChange());
+    }
+    cancelBtn.addEventListener("click", () => finish(null));
+    loadBtn.addEventListener("click", () => {
+        if (!loadBtn.disabled) finish(checkedFolders());
+    });
+    overlay.addEventListener("mousedown", () => finish(null));
+
+    const div = (html, style) => {
+        const d = document.createElement("div");
+        if (html) d.innerHTML = html;
+        if (style) Object.assign(d.style, style);
+        return d;
+    };
+
+    /** Ligne d'un fichier : ✓ / ✗ (⚠ pour le prompt), puis l'archive retrouvee avec son oeil. */
+    function fileLine(f, x, projectPath) {
+        const wrap = div("", { padding: "1px 0 1px 26px" });
+        const ok = x.status === "ok";
+        const mark = ok ? MARK_OK : f.kind === "prompt" ? MARK_WARN : MARK_BAD;
+        const extra = (x.Liste && LIST_LABEL[x.Liste] ? " · " + LIST_LABEL[x.Liste] : "") +
+            (f.kind === "media" ? " · #" + x.Indice : "") + (ok ? "" : " (" + x.status + ")");
+        wrap.appendChild(div(mark + " " + escapeHtml(x.nom) + '<span style="color:#888">' + escapeHtml(extra) + "</span>"));
+        if (ok || !(f.kind === "media" || f.kind === "workflow")) return wrap;
+        if (!x.archive) {
+            wrap.appendChild(div("→ not found in Archives", { color: "#888", paddingLeft: "16px" }));
+            return wrap;
+        }
+        const line = div("→ found in Archives: <b>" + escapeHtml(x.archive) + "</b>",
+            { color: "#9fd6cf", paddingLeft: "16px", display: "flex", alignItems: "center", gap: "6px" });
+        const kind = PREVIEW_KIND[f.folder];
+        if (kind) {
+            const eye = makeIconButton(VIOLET, EYE_ICON, "View the file found in Archives");
+            Object.assign(eye.style, { width: "20px", height: "20px" });
+            const view = div("", { display: "none", padding: "4px 0 4px 16px" });
+            eye.addEventListener("click", () => {
+                if (view.style.display !== "none") {
+                    view.style.display = "none";
+                    view.innerHTML = "";
+                    return;
+                }
+                const el = document.createElement(kind === "image" ? "img" : kind);
+                if (kind !== "image") el.controls = true;
+                el.src = "/mmrefloader/media?file=" + encodeURIComponent(joinDir(joinDir(joinDir(projectPath,
+                    f.folder), "Archives"), x.archive));
+                Object.assign(el.style, kind === "audio" ? { width: "95%" }
+                    : { maxWidth: "100%", maxHeight: "200px", display: "block", borderRadius: "6px" });
+                view.innerHTML = "";
+                view.appendChild(el);
+                view.style.display = "block";
+            });
+            line.appendChild(eye);
+            wrap.append(line, view);
+        } else {
+            wrap.appendChild(line);
+        }
+        return wrap;
+    }
+
+    /** Bloc du workflow : fichier sauvegarde vs disque, puis remplace ou nouvel onglet. */
+    function workflowHtml(wf) {
+        if (!wf) return '<div style="color:#888">No project workflow in the configuration.</div>';
+        if (!wf.source) {
+            return '<div style="color:#d32f2f">The workflow file is missing and not in Archives: it cannot be loaded.</div>';
+        }
+        let html = "";
+        if (wf.changes && !wf.changes.same) {
+            html += '<div style="color:#bbb">Saved workflow → file:</div>' +
+                structureHtml(wf.changes, "In more since the save", "Missing since the save");
+        }
+        if (wf.same) {
+            html += '<div style="color:' + GREEN + '">Same structure (nodes and links): the current workflow is replaced.</div>';
+        } else {
+            html += '<div style="color:' + ORANGE + '">Different structure: the current workflow is kept, the saved ' +
+                "one opens in a new tab <b>" + escapeHtml(copyTabName(wf.name)) + "</b>.</div>" +
+                (wf.diff ? structureHtml(wf.diff, "Only in the saved workflow", "Only in the current workflow") : "");
+        }
+        return html;
+    }
+
+    return {
+        open(report, projectPath) {
+            if (resolve) finish(null);
+            sub.textContent = "Saved on " + (report.datemodifi || "?") + " · mode " + (report.mode || "?");
+            body.innerHTML = "";
+            boxes = [];
+            let promptWarn = null;
+            for (const f of report.folders || []) {
+                const block = div("", { padding: "4px 0", borderBottom: "1px solid #222" });
+                const head = document.createElement("label");
+                Object.assign(head.style, { display: "flex", alignItems: "center", gap: "6px" });
+                const loadable = LOADABLE_FOLDERS.includes(f.folder);
+                const box = document.createElement("input");
+                box.type = "checkbox";
+                Object.assign(box.style, { margin: "0", width: "14px", height: "14px", flex: "0 0 auto" });
+                if (loadable) {
+                    const wfLost = f.kind === "workflow" && !(report.workflow && report.workflow.source);
+                    box.checked = !wfLost;
+                    box.disabled = wfLost;
+                    head.style.cursor = wfLost ? "default" : "pointer";
+                } else {
+                    box.style.visibility = "hidden";
+                }
+                const bad = f.files.filter((x) => x.status !== "ok").length;
+                const info = FOLDER_INFO[f.folder];
+                head.appendChild(box);
+                head.insertAdjacentHTML("beforeend", iconBadge(FOLDER_ICONS[f.folder], FOLDER_COLORS[f.folder]) +
+                    " <b>" + escapeHtml(f.folder) + '</b><span style="color:#888">' + f.count + " file(s)" +
+                    (info ? " · " + info : "") + "</span>" +
+                    (bad && !info ? '<span style="color:' + (f.kind === "prompt" ? ORANGE : "#d32f2f") + '">' +
+                        bad + (f.kind === "prompt" ? " changed" : " to check") + "</span>" : ""));
+                block.appendChild(head);
+                if (!info) for (const x of f.files) block.appendChild(fileLine(f, x, projectPath));
+                if (f.kind === "workflow") block.appendChild(div(workflowHtml(report.workflow), { paddingLeft: "26px" }));
+                if (f.kind === "prompt") {
+                    promptWarn = div(MARK_WARN + " " + PROMPT_WARNING, { color: ORANGE, paddingLeft: "26px" });
+                    block.appendChild(promptWarn);
+                }
+                body.appendChild(block);
+                if (loadable) {
+                    const entry = { folder: f.folder, box };
+                    box.addEventListener("change", paintLoad);
+                    boxes.push(entry);
+                }
+            }
+            // Avertissement du prompt : seulement si le workflow sera charge.
+            const wfBox = boxes.find((b) => b.folder === WORKFLOWS);
+            if (wfBox && promptWarn) {
+                const warn = promptWarn;
+                wfBox.onChange = () => (warn.style.display = wfBox.box.checked && !wfBox.box.disabled ? "block" : "none");
+            } else if (promptWarn) {
+                promptWarn.style.display = "none";
+            }
+            paintLoad();
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 560);
+            return new Promise((r) => (resolve = r));
+        },
+        remove() {
+            finish(null);
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
 // Nodes 2.0 : le widget cache "state" apparait comme une entree, on la masque.
 // --------------------------------------------------------------------
 function hideVueStateInput(node) {
@@ -1362,8 +1646,14 @@ app.registerExtension({
                 flex: "1", minWidth: "0", fontSize: "11px", whiteSpace: "nowrap", overflow: "hidden",
                 textOverflow: "ellipsis",
             });
-            const saveBtn = makeIconButton(PINK, SAVE_ICON, "Save");
-            saveBtn.style.width = saveBtn.style.height = "22px";
+            // Load et Save : configuration du projet (99.Project-Config).
+            const smallText = (text) => {
+                const b = makeTextButton(text, PINK);
+                Object.assign(b.style, { height: "22px", padding: "0 10px", fontSize: "11px", flex: "0 0 auto" });
+                return b;
+            };
+            const loadBtn = smallText("Load");
+            const saveBtn = smallText("Save");
             const reloadBtn = makeIconButton(VIOLET, REFRESH_ICON, "Read the list of projects again");
             reloadBtn.style.width = reloadBtn.style.height = "22px";
             const helpBtn = document.createElement("button");
@@ -1373,7 +1663,7 @@ app.registerExtension({
                 width: "22px", height: "22px", borderRadius: "50%", border: "none", background: PINK,
                 color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
             });
-            bottom.append(status, saveBtn, reloadBtn, helpBtn);
+            bottom.append(status, loadBtn, saveBtn, reloadBtn, helpBtn);
 
             // Une ligne par sous-dossier : bouton (pastille coloree + nom) et
             // petite cloche. Pas encore d'action : leur role viendra plus tard.
@@ -1435,7 +1725,9 @@ app.registerExtension({
             const workflowDialog = buildWorkflowDialog(container);
             const archiveMenu = buildArchiveMenu(container);
             const deleteDialog = buildDeleteArchivesDialog(container);
-            node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog];
+            const loadDialog = buildLoadDialog(container);
+            node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog,
+                loadDialog];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
@@ -1497,7 +1789,11 @@ app.registerExtension({
                 setOn(editBtn, current, VIOLET, current ? "Rename or move the project" : "Pick a project first");
                 setOn(saveBtn, canSave, PINK, !current ? "Pick a project first"
                     : !canSave ? "Wire the project output of the Reference Loader first"
-                        : "Save: copy the files of the Reference Loader into the project and save its configuration");
+                        : "Save: copy the files of the Reference Loader into the project, save the workflow and " +
+                        "the configuration of the project (" + CONFIG_PATH + ")");
+                setOn(loadBtn, current, PINK, current
+                    ? "Load: check the files, then load the saved configuration of the project (" + CONFIG_PATH + ")"
+                    : "Pick a project first");
             }
 
             function setOn(btn, on, color, title) {
@@ -1578,16 +1874,17 @@ app.registerExtension({
                 // Proposee apres la fermeture de la fenetre de creation.
                 // puis le workflow est sauvegarde (cloche orange).
                 setTimeout(async () => {
-                    await saveAll(true);
+                    const r = await saveAll(true);
                     await saveWorkflowDirect();
+                    if (r !== "cancel" && r !== "error") await saveProjectConfig();
                 }, 0);
             }
 
             /**
              * Save : copie les fichiers du Reference Loader dans les dossiers du
-             * projet, enregistre sa configuration (par mode) dans 00.Workflows,
-             * puis le Reference Loader pointe sur les copies. first = premiere
-             * sauvegarde proposee juste apres la creation du projet.
+             * projet, puis le Reference Loader pointe sur les copies (la
+             * configuration du projet est ecrite ensuite par saveProjectConfig).
+             * first = premiere sauvegarde proposee juste apres la creation du projet.
              */
             async function saveAll(first) {
                 const loader = linkedLoader(node);
@@ -1595,7 +1892,6 @@ app.registerExtension({
                 if (!loader || !s.name) return "error";
                 const refState = loader.mmGetState();
                 const items = saveItems(refState);
-                const modes = ["ref2va", "fl2va"].filter((m) => modeHasRefs(refState, m));
                 if (!items.length) {
                     if (!first) say("Nothing to save: the Reference Loader has no reference.");
                     return "none";
@@ -1610,8 +1906,6 @@ app.registerExtension({
                 const count = (a) => plan.filter((x) => x.action === a).length;
                 const byFolder = {};
                 plan.filter((x) => x.action === "copy").forEach((x) => (byFolder[x.folder] = (byFolder[x.folder] || 0) + 1));
-                const now = new Date();
-                const names = modes.map((m) => configFileName(now, m));
                 const lines = Object.entries(byFolder).map(([f, n]) => n + " → <b>" + f + "</b>");
                 const html = (first
                     ? "<b>All the files of the Reference Loader will be copied to their folders in the project.</b><br>"
@@ -1620,7 +1914,8 @@ app.registerExtension({
                     (count("skip") ? "<br>" + count("skip") + " already in the project" : "") +
                     (count("missing") ? '<br><span style="color:' + ORANGE + '">' + count("missing") +
                         " missing on disk (not copied)</span>" : "") +
-                    "<br>Configuration in <b>00.Workflows</b>: " + names.map(escapeHtml).join(", ") +
+                    "<br>Then the workflow, and the configuration of the project in <b>" + CONFIG_PATH + "</b> (the " +
+                    "previous one goes to its Archives)." +
                     '<div style="color:#999;margin-top:8px">Then the Reference Loader uses the copies of the project.</div>';
                 const ok = await confirm.ask({
                     title: first ? "Initialize a first save?" : "Save the project?", html,
@@ -1629,19 +1924,14 @@ app.registerExtension({
                 if (!ok) return "cancel";
                 say("Saving...", true);
                 try {
-                    // Destinations du plan : la configuration pointe deja sur les copies.
-                    const planned = remapState(refState, mapBySequence(plan.map((x) => x.dst)));
-                    const configs = modes.map((m, i) => ({
-                        name: names[i], content: formatConfigJson(Object.assign({}, planned, { mode: m })),
-                    }));
-                    const data = await apiPost("/mmproject/save", { project: s.path, items, configs });
+                    const data = await apiPost("/mmproject/save", { project: s.path, items, configs: [] });
                     // Le Reference Loader a pu changer pendant la confirmation : on repart de son etat.
                     const latest = loader.mmGetState();
                     const same = JSON.stringify(saveItems(latest)) === JSON.stringify(items);
                     if (same) loader.mmSetState(remapState(latest, mapBySequence(data.dsts)));
                     setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: getState().path });
                     paintFolders();
-                    say("Saved: " + count("copy") + " file(s) copied, " + data.configs.length + " configuration(s).", true);
+                    say("Saved: " + count("copy") + " file(s) copied.", true);
                     return "saved";
                 } catch (e) {
                     say(e.message);
@@ -2020,15 +2310,149 @@ app.registerExtension({
                 const s = getState();
                 if (s.name && projects.includes(s.name)) renameDialog.open(s.path);
             });
-            // Save : fichiers et configuration, puis le workflow (directement s'il
-            // n'a jamais ete sauvegarde, sinon la fenetre de la cloche s'il a change).
+            // ---- Configuration du projet (99.Project-Config) ----
+
+            /**
+             * Ecrit Project-Config.json (l'ancien part dans Archives). Un fichier
+             * d'un dossier de medias sans indice arrete la sauvegarde : liste affichee.
+             */
+            async function saveProjectConfig() {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return false;
+                const loader = linkedLoader(node);
+                const st = loader ? loader.mmGetState() : {};
+                let res;
+                let data = null;
+                try {
+                    res = await fetch("/mmproject/config/save", {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            project: s.path, refs: configRefs(st), trims: st.trims || {}, mode: st.mode || "ref2va",
+                            workflow: wfInfo.current ? wfInfo.current.name : "",
+                        }),
+                    });
+                    data = await res.json();
+                } catch (e) {
+                    say(e.message);
+                    return false;
+                }
+                if (res.ok) {
+                    say("Saved: configuration of the project" + (data.archived ? " (previous one archived: " +
+                        data.archived + ")" : "") + ".", true);
+                    return true;
+                }
+                say((data && data.error) || "HTTP error " + res.status);
+                const errors = (data && data.errors) || [];
+                if (errors.length) {
+                    const shown = errors.slice(0, 20).map((e) => "<div>" + MARK_BAD + " " + escapeHtml(e) + "</div>").join("");
+                    await confirm.ask({
+                        title: "Project configuration not saved",
+                        html: "Every file of <b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> and <b>14.Video-Audio</b> " +
+                            "needs an index: use it in the Reference Loader, or move it to the Archives folder." +
+                            '<div style="margin-top:8px">' + shown + (errors.length > 20 ? "<div>… (+" +
+                            (errors.length - 20) + ")</div>" : "") + "</div>",
+                        okLabel: "OK", okColor: ORANGE, noCancel: true,
+                    });
+                }
+                return false;
+            }
+
+            /** Reference Loader d'un workflow serialise : celui relie au noeud Projet, sinon le premier. */
+            function loaderNodeOf(wf) {
+                const nodes = Array.isArray(wf.nodes) ? wf.nodes : [];
+                const proj = nodes.find((n) => n && n.type === NODE_NAME);
+                const input = proj && (proj.inputs || []).find((i) => i.name === "project" && i.link != null);
+                if (input) {
+                    const link = (wf.links || []).find((l) => (Array.isArray(l) ? l[0] : l && l.id) === input.link);
+                    const origin = link && (Array.isArray(link) ? link[1] : link.origin_id);
+                    const n = nodes.find((x) => x && x.id === origin && x.type === REF_LOADER_NAME);
+                    if (n) return n;
+                }
+                return nodes.find((n) => n && n.type === REF_LOADER_NAME) || null;
+            }
+
+            /**
+             * Load : verification (rien n'est modifie), fenetre "Load the project"
+             * (confirmation), remise en place depuis Archives, puis chargement :
+             * workflow de meme structure = remplace celui de l'onglet ; autre
+             * structure = nouvel onglet "<nom>-copie" ; decoche = medias dans le
+             * Reference Loader de cet onglet.
+             */
+            async function loadProject() {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return;
+                let report;
+                say("Checking the files of the project...", true);
+                try {
+                    report = await apiPost("/mmproject/config/check", { project: s.path, current: currentWorkflow() });
+                } catch (e) {
+                    say(e.message);
+                    return;
+                }
+                say("");
+                const checked = await loadDialog.open(report, s.path);
+                if (!checked) return;
+                try {
+                    const items = restoreItems(report, checked);
+                    if (items.length) await apiPost("/mmproject/config/restore", { project: s.path, items });
+                    const restored = items.length ? " " + items.length + " file(s) put back from Archives." : "";
+                    const media = checked.filter((f) => MEDIA_FOLDERS[f]);
+                    const wf = report.workflow;
+                    if (checked.includes(WORKFLOWS) && wf && wf.source) {
+                        const res = await fetch("/mmproject/workflow?project=" + encodeURIComponent(s.path) +
+                            "&name=" + encodeURIComponent(wf.name), { cache: "no-store" });
+                        if (!res.ok) throw new Error("Workflow not found: " + wf.name);
+                        const data = JSON.parse(await res.text());
+                        const ln = media.length ? loaderNodeOf(data) : null;
+                        if (ln && Array.isArray(ln.widgets_values)) {
+                            let st = {};
+                            try {
+                                st = JSON.parse(ln.widgets_values[0] || "{}");
+                            } catch (e) {
+                                st = {};
+                            }
+                            ln.widgets_values[0] = JSON.stringify(loadedState(st, report, s.path, media));
+                        }
+                        if (wf.same) {
+                            // Meme structure : l'onglet actuel recoit la configuration sauvegardee.
+                            const active = app.extensionManager && app.extensionManager.workflow &&
+                                app.extensionManager.workflow.activeWorkflow;
+                            await app.loadGraphData(data, true, true, active || null);
+                        } else {
+                            await app.loadGraphData(data, true, true, copyTabName(wf.name));
+                            say("Loaded in a new tab: " + copyTabName(wf.name) + "." + restored, true);
+                        }
+                        return;
+                    }
+                    if (media.length) {
+                        const loader = linkedLoader(node);
+                        if (!loader) {
+                            say("Wire the project output of the Reference Loader to load its files." + restored);
+                            return;
+                        }
+                        loader.mmSetState(loadedState(loader.mmGetState(), report, s.path, media));
+                        setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: s.path });
+                        paintFolders();
+                    }
+                    say("Project loaded." + restored, true);
+                } catch (e) {
+                    say(e.message);
+                }
+            }
+
+            // Save : fichiers, le workflow (directement s'il n'a jamais ete
+            // sauvegarde, sinon la fenetre de la cloche s'il a change), puis la
+            // configuration du projet.
             saveBtn.addEventListener("click", async () => {
                 const r = await saveAll(false);
                 if (r === "cancel" || r === "error") return;
                 await loadWorkflowInfo();
                 if (!wfInfo.current) await saveWorkflowDirect();
                 else if (bellState() === "orange") await workflowStep();
+                await loadWorkflowInfo();
+                await saveProjectConfig();
             });
+            loadBtn.addEventListener("click", () => loadProject());
             newBtn.addEventListener("click", async () => {
                 await loadProjects();
                 createDialog.open({

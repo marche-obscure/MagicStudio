@@ -4361,7 +4361,7 @@ app.registerExtension({
 export {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, MARK_RED, INACTIVE_BG, INACTIVE_FG,
     svg, iconBadge, hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, REFRESH_ICON, CLOSE_ICON, GEAR_ICON,
-    START_ICON, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, TRASH_ICON,
+    START_ICON, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, TRASH_ICON, EYE_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode, PROJECT_TYPE,
 };

@@ -6,6 +6,7 @@ import {
     saveItems, remapState, mapBySequence, mapByPrefix, configFileName, modeHasRefs,
     UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, mapFolderBySequence, withoutMedia,
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
+    MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName,
 } from "../web/js/project_paths.js";
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
@@ -187,4 +188,67 @@ test("duplicateColors: one colour per group, in order, pool and project together
     });
     // Le meme fichier deux fois n'est pas un doublon.
     assert.deepEqual(duplicateColors(["P\\a.png", "p/a.png"], { "P\\a.png": "1", "p/a.png": "1" }), {});
+});
+
+test("configuration : listes envoyees a Save", () => {
+    const st = { images: ["a"], videos: ["v"], first_frame: [], other: 1 };
+    assert.deepEqual(configRefs(st), {
+        images: ["a"], videos: ["v"], video_audios: [], audios: [], first_frame: [], last_frame: [],
+    });
+});
+
+test("Load : listes des dossiers coches, ordre des indices, rognages, fichiers perdus sautes", () => {
+    const report = {
+        mode: "FL2VA",
+        folders: [
+            { folder: "08.Images", kind: "media", files: [
+                { nom: "b.png", Liste: "images", Indice: 2, status: "ok" },
+                { nom: "a.png", Liste: "images", Indice: 1, status: "changed", archive: null },
+                { nom: "lost.png", Liste: "images", Indice: 3, status: "missing", archive: null },
+                { nom: "a.png", Liste: "first_frame", Indice: 1, status: "missing", archive: "a.png" },
+            ] },
+            { folder: "12.Video", kind: "media", files: [
+                { nom: "s.mp4", Liste: "videos", Indice: 1, status: "ok", trim: [5, 7] },
+            ] },
+            { folder: "10.Son", kind: "media", files: [{ nom: "x.wav", Liste: "audios", Indice: 1, status: "ok" }] },
+        ],
+    };
+    const base = { mode: "ref2va", images: ["old.png"], audios: ["keep.wav"], videos: ["C:\\o.mp4"],
+        trims: { video: { "c:/o.mp4": [1, 2] } }, root: "R" };
+    const s = loadedState(base, report, "C:\\P", ["08.Images", "12.Video"]);
+    assert.deepEqual(s.images, ["C:\\P\\08.Images\\a.png", "C:\\P\\08.Images\\b.png"]);
+    assert.deepEqual(s.first_frame, ["C:\\P\\08.Images\\a.png"]);
+    assert.deepEqual(s.last_frame, []);
+    assert.deepEqual(s.videos, ["C:\\P\\12.Video\\s.mp4"]);
+    assert.deepEqual(s.trims.video, { "c:/p/12.video/s.mp4": [5, 7] });
+    assert.deepEqual(s.audios, ["keep.wav"]);   // 10.Son non coche
+    assert.equal(s.mode, "fl2va");
+    assert.equal(s.root, "R");
+    assert.deepEqual(base.images, ["old.png"]);  // copie
+    // Aucun dossier de medias coche : mode inchange.
+    assert.equal(loadedState(base, report, "C:\\P", ["00.Workflows"]).mode, "ref2va");
+});
+
+test("Load : fichiers a remettre en place depuis Archives", () => {
+    const report = { folders: [
+        { folder: "00.Workflows", kind: "workflow", files: [{ nom: "C.json", status: "changed", archive: "2026_C.json" }] },
+        { folder: "04.Prompt", kind: "prompt", files: [{ nom: "p.txt", status: "changed", archive: "p.txt" }] },
+        { folder: "08.Images", kind: "media", files: [
+            { nom: "a.png", status: "missing", archive: "a.png" },
+            { nom: "A.png", status: "missing", archive: "a.png" },
+            { nom: "b.png", status: "ok", archive: null },
+            { nom: "c.png", status: "changed", archive: null },
+        ] },
+        { folder: "10.Son", kind: "media", files: [{ nom: "x.wav", status: "missing", archive: "x.wav" }] },
+    ] };
+    assert.deepEqual(restoreItems(report, ["00.Workflows", "04.Prompt", "08.Images"]), [
+        { folder: "00.Workflows", archive: "2026_C.json", nom: "C.json" },
+        { folder: "08.Images", archive: "a.png", nom: "a.png" },
+    ]);
+    assert.equal(copyTabName("Clip.json"), "Clip-copie");
+});
+
+test("dossiers chargeables et dossiers des medias", () => {
+    assert.deepEqual(LOADABLE_FOLDERS, ["00.Workflows", "08.Images", "10.Son", "12.Video", "14.Video-Audio"]);
+    for (const f of Object.keys(MEDIA_FOLDERS)) assert.ok(PROJECT_SUBFOLDERS.includes(f));
 });

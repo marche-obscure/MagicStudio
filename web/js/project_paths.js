@@ -277,3 +277,80 @@ export function parseProjectState(raw) {
         snap, snapPath: str(data.snapPath),
     };
 }
+
+// ---- Configuration du projet (99.Project-Config) : Load / Save ----
+
+// Dossiers des listes du Ref Loader (meme table que project_config.MEDIA en Python).
+export const MEDIA_FOLDERS = {
+    "08.Images": ["images", "first_frame", "last_frame"],
+    "10.Son": ["audios"],
+    "12.Video": ["videos"],
+    "14.Video-Audio": ["video_audios"],
+};
+// Dossiers chargeables (une case chacun dans la fenetre Load).
+export const LOADABLE_FOLDERS = ["00.Workflows", "08.Images", "10.Son", "12.Video", "14.Video-Audio"];
+
+/** Listes du Ref Loader envoyees a Save (chemins des fichiers du projet). */
+export function configRefs(state) {
+    const out = {};
+    for (const list of LISTS) out[list] = (state[list] || []).slice();
+    return out;
+}
+
+function joinPath(dir, ...parts) {
+    const sep = String(dir).includes("\\") || !String(dir).includes("/") ? "\\" : "/";
+    return [String(dir).replace(/[\\/]+$/, ""), ...parts].join(sep);
+}
+
+/**
+ * Load : etat du Ref Loader avec les listes des dossiers coches remplacees
+ * par la configuration (ordre des indices, rognages repris). Un fichier
+ * manquant et introuvable dans Archives est saute. Le mode suit la
+ * configuration des qu'un dossier de medias est coche.
+ */
+export function loadedState(base, report, projectPath, checked) {
+    const s = JSON.parse(JSON.stringify(base || {}));
+    s.trims = s.trims || {};
+    let any = false;
+    for (const f of report.folders || []) {
+        const lists = MEDIA_FOLDERS[f.folder];
+        if (!lists || !checked.includes(f.folder)) continue;
+        any = true;
+        for (const list of lists) {
+            const kind = TRIM_OF_LIST[list];
+            if (kind && s.trims[kind]) for (const p of s[list] || []) delete s.trims[kind][trimKey(p)];
+            const items = (f.files || []).filter((x) => x.Liste === list && (x.status !== "missing" || x.archive))
+                .sort((a, b) => a.Indice - b.Indice);
+            s[list] = items.map((x) => joinPath(projectPath, f.folder, x.nom));
+            if (!kind) continue;
+            items.forEach((x, i) => {
+                if (!Array.isArray(x.trim) || x.trim.length !== 2) return;
+                s.trims[kind] = s.trims[kind] || {};
+                s.trims[kind][trimKey(s[list][i])] = [x.trim[0], x.trim[1]];
+            });
+        }
+    }
+    if (any && report.mode) s.mode = report.mode === "FL2VA" ? "fl2va" : "ref2va";
+    return s;
+}
+
+/** Load : fichiers a remettre en place depuis Archives (dossiers coches, sans doublon). */
+export function restoreItems(report, checked) {
+    const out = [];
+    const seen = new Set();
+    for (const f of report.folders || []) {
+        if (!checked.includes(f.folder) || !(f.kind === "media" || f.kind === "workflow")) continue;
+        for (const x of f.files || []) {
+            const key = f.folder + "/" + String(x.nom).toLowerCase();
+            if (x.status === "ok" || !x.archive || seen.has(key)) continue;
+            seen.add(key);
+            out.push({ folder: f.folder, archive: x.archive, nom: x.nom });
+        }
+    }
+    return out;
+}
+
+/** Nom du nouvel onglet quand la structure du workflow differe : "<nom>-copie". */
+export function copyTabName(name) {
+    return String(name || "workflow").replace(/\.json$/i, "") + "-copie";
+}
