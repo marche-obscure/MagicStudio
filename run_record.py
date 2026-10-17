@@ -158,6 +158,12 @@ def _is_file_name(v):
     return isinstance(v, str) and v.strip().lower().endswith(MODEL_EXTS)
 
 
+# MultiFiles Select : sortie -> champ (la 6e sortie "model_link" donne le
+# dossier de sauvegarde, puis Option 1 / Option 2 = field_6 / field_7).
+MULTI_FILE_SELECT = "MultiFileSelect"
+_MULTI_SELECT_FIELDS = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 6: 6, 7: 7}
+
+
 def resolve_file(prompt, value, depth=0):
     """
     Nom de fichier d'une entree (regle 1) : valeur directe ; sinon en remontant
@@ -172,6 +178,10 @@ def resolve_file(prompt, value, depth=0):
     inputs = node.get("inputs") or {}
     if depth >= MAX_DEPTH or not node:
         return None
+    if node.get("class_type") == MULTI_FILE_SELECT:
+        n = _MULTI_SELECT_FIELDS.get(value[1])
+        v = inputs.get("field_%d" % n) if n else None
+        return v.strip() if isinstance(v, str) and v.strip() else None
     numbered = [v for k, v in inputs.items() if re.search(r"(?:^|_)%d$" % (value[1] + 1), k) and _is_file_name(v)]
     if len(numbered) == 1:
         return numbered[0].strip()
@@ -212,6 +222,43 @@ def _manager_loras(value):
             clip = lora.get("clipStrength", strength)
             out.append({"name": str(lora["name"]), "strength_model": strength, "strength_clip": clip})
     return out
+
+
+PROJECT_NODE = "MiniMaxH3Project"
+# Type de dossier de MultiFiles Select (model_type_N) -> groupe de 02.Models ; les
+# autres types (loras...) sont ignores : les LoRA restent lus dans le graphe.
+FILE_SELECT_GROUPS = {"diffusion_models": "diffusion_model", "unet": "diffusion_model",
+                      "checkpoints": "diffusion_model", "text_encoders": "text_encoder", "clip": "text_encoder",
+                      "vae": "vae"}
+
+
+def linked_file_select(prompt):
+    """Noeud relie a l'entree models_link du noeud Project du Run, None sinon."""
+    for i in sorted(prompt or {}, key=_sort_key):
+        node = prompt.get(i) or {}
+        link = (node.get("inputs") or {}).get("models_link") if node.get("class_type") == PROJECT_NODE else None
+        if _is_link(link):
+            return prompt.get(str(link[0]))
+    return None
+
+
+def file_select_models(node):
+    """Champs de MultiFiles Select -> {groupe: [{position, name}]} (position = numero du champ)."""
+    inputs = (node or {}).get("inputs") or {}
+    out = {g: [] for g in _MODEL_GROUPS}
+    for n in range(1, 8):
+        path, mtype = inputs.get("field_%d" % n), inputs.get("model_type_%d" % n)
+        group = FILE_SELECT_GROUPS.get(mtype.strip().lower()) if isinstance(mtype, str) else None
+        if group and isinstance(path, str) and path.strip():
+            out[group].append({"position": n, "name": path.strip()})
+    return out
+
+
+def model_item(v):
+    """Entree d'un groupe de 02.Models : {position, name} (ancien format texte : position 0)."""
+    if isinstance(v, dict):
+        return {"position": v.get("position") or 0, "name": v.get("name")}
+    return {"position": 0, "name": v}
 
 
 def run_models(prompt):
@@ -263,6 +310,14 @@ def run_models(prompt):
             if lora.get("on") and lora.get("lora"):
                 out["loras"].append({"name": str(lora["lora"]), "strength_model": lora.get("strength"),
                                      "strength_clip": lora.get("strengthTwo")})
+    # Modeles (choix utilisateur) : champs de MultiFiles Select relie a models_link
+    # (position = numero du champ), sinon lus dans le graphe (position 0).
+    fs = linked_file_select(prompt)
+    if fs and fs.get("class_type") == MULTI_FILE_SELECT:
+        out.update(file_select_models(fs))
+    else:
+        for g in _MODEL_GROUPS:
+            out[g] = [model_item(n) for n in out[g]]
     return out
 
 
@@ -659,7 +714,8 @@ def lora_list(entry):
 
 def _config_key(kind, config):
     if kind == "models":
-        return tuple(tuple(config.get(g) or []) for g in _MODEL_GROUPS)
+        return tuple(tuple((model_item(x)["position"], model_item(x)["name"]) for x in config.get(g) or [])
+                     for g in _MODEL_GROUPS)
     return tuple(sorted((repr((l.get("name"), l.get("strength_model"), l.get("strength_clip"))) for l in config)))
 
 
@@ -696,7 +752,7 @@ def register_config(project, kind, config, mode=None, now=None, when=None):
             last = index = max([last] + [int(e.get(idx_key) or 0) for e in entries]) + 1
             entry = {idx_key: index, "datecreat": now, "datemodifi": now}
             if kind == "models":
-                entry.update({g: list(config.get(g) or []) for g in _MODEL_GROUPS})
+                entry.update({g: [model_item(x) for x in config.get(g) or []] for g in _MODEL_GROUPS})
             else:
                 entry["ListeName"] = {"LoRA%02d" % (i + 1): {"name": l.get("name"), "strength_model": l.get("strength_model"),
                                                             "strength_clip": l.get("strength_clip")}
