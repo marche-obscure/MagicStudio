@@ -119,7 +119,10 @@ const folderBadges = () => hList(PROJECT_SUBFOLDERS.map((f) => iconBadge(FOLDER_
 const textBadge = (t) => '<span style="display:inline-block;background:' + PINK + ';color:white;font-weight:bold;' +
     'font-size:11px;border-radius:5px;padding:0 7px;line-height:18px">' + t + "</span>";
 // Fichiers de la configuration du projet (Load / Save).
-const CONFIG_PATH = "99.Project-Config/Project-Config.json";
+// Noms des fichiers du projet (choix utilisateur) : workflows_<projet>.json, config_projets_<projet>.json.
+const CONFIG_PATH = "99.Project-Config/config_projets_&lt;project&gt;.json";
+const configPathOf = (project) => "99.Project-Config/config_projets_" + project + ".json";
+const workflowNameOf = (project) => "workflows_" + project;
 
 const HELP_SECTIONS = [
     {
@@ -172,7 +175,10 @@ const HELP_SECTIONS = [
             "<b>Original</b>), the <b>Prompt</b> text and a thumbnail of the output (‹ › when there are several). " +
             "Click <b>40.Rush Videos</b> or <b>60.Rush Images</b>: the videos (copies in 40.Rush Videos) or the " +
             "images (originals) named in the JSON of the runs, newest on the left, scrolling sideways; below, " +
-            "the Configuration and the Prompt of the run of the picked thumbnail. Under the Configuration, two " +
+            "the Configuration and the Prompt of the run of the picked thumbnail. At the end of a recorded run, the " +
+            "models and the LoRA go into the registries <b>02.Models/yyyyMMdd_HHmmss_models.json</b> and " +
+            "<b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (a known set keeps its index, a new one gets the next " +
+            "index) and the JSON of the run keeps their indices. Under the Configuration, two " +
             "folded blocks <b>Models</b> and <b>LoRA</b> (number in brackets): a click unfolds one (the other " +
             "folds) and shows the diffusion model, text encoder and VAE, or the LoRA with their strength, " +
             "captured when the run starts (only what the run really uses: the chosen branch of a switch, the " +
@@ -232,11 +238,12 @@ const HELP_SECTIONS = [
                 "Audio in <b>10.Son</b>;",
                 "makes the Reference Loader use the copies of the project;",
                 "saves the workflow (directly the first time, through the bell window when it has changed);",
-                "then saves the configuration of the project in <b>" + CONFIG_PATH + "</b>: every folder (even " +
+                "then saves the configuration of the project in <b>" + CONFIG_PATH + "</b> (02.Models and 06.LoRA: " +
+                "current index of their registry): every folder (even " +
                 "empty) with its files, their index (number in the Reference Loader, rank by name elsewhere) and " +
                 "the SHA256 of the files of 00.Workflows, 04.Prompt, 08.Images, 10.Son, 12.Video and 14.Video-Audio. " +
                 "The previous one goes to <b>99.Project-Config/Archives</b> as " +
-                "<b>yyyyMMdd-HHmmss_Project-Config.json</b>, never overwritten.",
+                "<b>yyyyMMdd-HHmmss_config_projets_&lt;project&gt;.json</b>, never overwritten.",
             ]) +
             hNote("Every file of 08.Images, 10.Son, 12.Video and 14.Video-Audio must be used by the Reference " +
                 "Loader (its number is its index): otherwise the configuration is not saved and the files are listed.") +
@@ -393,7 +400,10 @@ const HELP_SECTIONS_FR = [
             "la vidéo, dossier de l'<b>Original</b>), le texte du <b>Prompt</b> et une vignette de la sortie (‹ › " +
             "s'il y en a plusieurs). Clic sur <b>40.Rush Videos</b> ou <b>60.Rush Images</b> : les vidéos (copies " +
             "de 40.Rush Videos) ou les images (originaux) citées dans les JSON des Runs, la plus récente à gauche, " +
-            "défilement horizontal ; en dessous, la Configuration et le Prompt du Run de la vignette choisie. Sous la " +
+            "défilement horizontal ; en dessous, la Configuration et le Prompt du Run de la vignette choisie. À la fin " +
+            "d'un Run enregistré, les modèles et les LoRA vont dans les registres <b>02.Models/yyyyMMdd_HHmmss_models.json</b> " +
+            "et <b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (un ensemble connu garde son indice, un nouveau prend " +
+            "l'indice suivant) et le JSON du Run garde leurs indices. Sous la " +
             "Configuration, deux blocs repliés <b>Models</b> et <b>LoRA</b> (nombre entre parenthèses) : un clic en " +
             "déplie un (l'autre se replie) et affiche le modèle de diffusion, l'encodeur de texte et les VAE, ou les " +
             "LoRA avec leur force, captés au lancement du Run (seulement ce que le Run utilise : branche choisie d'un " +
@@ -457,11 +467,12 @@ const HELP_SECTIONS_FR = [
                 "Audio dans <b>10.Son</b> ;",
                 "fait utiliser au Reference Loader les copies du projet ;",
                 "sauvegarde le workflow (directement la première fois, par la fenêtre de la cloche s'il a changé) ;",
-                "puis enregistre la configuration du projet dans <b>" + CONFIG_PATH + "</b> : tous les dossiers " +
+                "puis enregistre la configuration du projet dans <b>" + CONFIG_PATH + "</b> (02.Models et 06.LoRA : " +
+                "indice en cours de leur registre) : tous les dossiers " +
                 "(même vides) avec leurs fichiers, leur indice (numéro dans le Reference Loader, rang par nom " +
                 "ailleurs) et le SHA256 des fichiers de 00.Workflows, 04.Prompt, 08.Images, 10.Son, 12.Video et " +
                 "14.Video-Audio. L'ancienne part dans <b>99.Project-Config/Archives</b> sous " +
-                "<b>yyyyMMdd-HHmmss_Project-Config.json</b>, jamais écrasée.",
+                "<b>yyyyMMdd-HHmmss_config_projets_&lt;projet&gt;.json</b>, jamais écrasée.",
             ]) +
             hNote("Chaque fichier de 08.Images, 10.Son, 12.Video et 14.Video-Audio doit être utilisé par le " +
                 "Reference Loader (son numéro est son indice) : sinon la configuration n'est pas enregistrée et " +
@@ -2899,9 +2910,9 @@ app.registerExtension({
                 setOn(saveBtn, canSave, PINK, !current ? "Pick a project first"
                     : !canSave ? "Wire the project output of the Reference Loader first"
                         : "Save: copy the files of the Reference Loader into the project, save the workflow and " +
-                        "the configuration of the project (" + CONFIG_PATH + ")");
+                        "the configuration of the project (" + configPathOf(s.name) + ")");
                 setOn(loadBtn, current, PINK, current
-                    ? "Load: check the files, then load the saved configuration of the project (" + CONFIG_PATH + ")"
+                    ? "Load: check the files, then load the saved configuration of the project (" + configPathOf(s.name) + ")"
                     : "Pick a project first");
             }
 
@@ -3025,7 +3036,7 @@ app.registerExtension({
                     (count("skip") ? "<br>" + count("skip") + " already in the project" : "") +
                     (count("missing") ? '<br><span style="color:' + ORANGE + '">' + count("missing") +
                         " missing on disk (not copied)</span>" : "") +
-                    "<br>Then the workflow, and the configuration of the project in <b>" + CONFIG_PATH + "</b> (the " +
+                    "<br>Then the workflow, and the configuration of the project in <b>" + escapeHtml(configPathOf(s.name)) + "</b> (the " +
                     "previous one goes to its Archives)." +
                     '<div style="color:#999;margin-top:8px">Then the Reference Loader uses the copies of the project.</div>';
                 const ok = await confirm.ask({
@@ -3466,7 +3477,7 @@ app.registerExtension({
                 const s = getState();
                 if (!s.name) return;
                 try {
-                    const info = await writeWorkflow(s.name, null, false);
+                    const info = await writeWorkflow(workflowNameOf(s.name), null, false);
                     say("Workflow saved: " + info.name, true);
                 } catch (e) {
                     say(e.message);
@@ -3477,7 +3488,7 @@ app.registerExtension({
             async function workflowStep() {
                 const s = getState();
                 if (!s.name || !projects.includes(s.name)) return;
-                let name = s.name;
+                let name = workflowNameOf(s.name);
                 let message = null;
                 let again = false;
                 // Seul Close ferme la fenetre : apres chaque enregistrement (ou suppression
@@ -3699,7 +3710,7 @@ app.registerExtension({
             // ---- Configuration du projet (99.Project-Config) ----
 
             /**
-             * Ecrit Project-Config.json (l'ancien part dans Archives). Un fichier
+             * Ecrit config_projets_<projet>.json (l'ancien part dans Archives). Un fichier
              * d'un dossier de medias sans indice arrete la sauvegarde : liste affichee.
              */
             async function saveProjectConfig() {

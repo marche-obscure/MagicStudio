@@ -437,6 +437,57 @@ class RunFileTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             rr.move_output(self.p, name, 0)
 
+    def test_registries_at_the_end_of_the_run(self):
+        img = os.path.join(self.out, "a.png")
+        models = {"diffusion_model": ["u.safetensors"], "text_encoder": ["t.safetensors"], "vae": ["v1", "v2"],
+                  "loras": [{"name": "bounce", "strength_model": 0.7, "strength_clip": 0.7},
+                            {"name": "turbo", "strength_model": 1, "strength_clip": None}]}
+
+        def run(when_offset, m, content):
+            path = rr.start_run(self.p, "p", PROMPT, self.when + when_offset)
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            data["models"] = m
+            rr._write(path, data)
+            write(img, content)
+            os.utime(img, (self.when + when_offset + 1, self.when + when_offset + 1))
+            return rr.finish_run(path, [{"filename": "a.png", "type": "output"}], "done", self.out,
+                                 now="2026-10-17 15:%02d:00" % (30 + when_offset // 60))
+
+        first = run(0, models, b"1")
+        self.assertEqual((first["models"], first["loras"]), ([{"indiceMODELS": 1}], [{"indiceLoRA": 1}]))
+        self.assertEqual(list(first)[list(first).index("models") + 1], "loras")
+        reg_m = rr.read_registry(self.p, "models")
+        self.assertRegex(os.path.basename(rr.registry_file(self.p, "models")), r"^20261017_153000_models\.json$")
+        self.assertRegex(os.path.basename(rr.registry_file(self.p, "lora")), r"^20261017_153000_LoRA\.json$")
+        self.assertEqual((reg_m["DernierIndiceMODELS"], reg_m["IndiceEnCoursMODELS"]), (1, 1))
+        self.assertEqual(reg_m["MODELS"][0]["vae"], ["v1", "v2"])
+        reg_l = rr.read_registry(self.p, "lora")
+        self.assertEqual(reg_l["LoRA"][0]["ListeName"], {
+            "LoRA01": {"name": "bounce", "strength_model": 0.7, "strength_clip": 0.7},
+            "LoRA02": {"name": "turbo", "strength_model": 1, "strength_clip": None}})
+        # Meme ensemble (LoRA dans un autre ordre) : memes indices, datemodifi mise a jour.
+        same = dict(models, loras=list(reversed(models["loras"])))
+        second = run(120, same, b"2")
+        self.assertEqual((second["models"], second["loras"]), ([{"indiceMODELS": 1}], [{"indiceLoRA": 1}]))
+        reg_l = rr.read_registry(self.p, "lora")
+        self.assertEqual((len(reg_l["LoRA"]), reg_l["LoRA"][0]["datemodifi"]), (1, "2026-10-17 15:32:00"))
+        # Force modifiee : nouvelle entree LoRA ; modeles inchanges.
+        changed = dict(models, loras=[{"name": "bounce", "strength_model": 0.8, "strength_clip": 0.8}])
+        third = run(240, changed, b"3")
+        self.assertEqual((third["models"], third["loras"]), ([{"indiceMODELS": 1}], [{"indiceLoRA": 2}]))
+        reg_l = rr.read_registry(self.p, "lora")
+        self.assertEqual((reg_l["DernierIndiceLoRA"], reg_l["IndiceEnCoursLoRA"]), (2, 2))
+        # Sans LoRA : liste vide, indice en cours 0.
+        fourth = run(360, dict(models, loras=[]), b"4")
+        self.assertEqual(fourth["loras"], [])
+        self.assertEqual(rr.current_index(self.p, "lora"), 0)
+        # Fenetres : detail relu dans les registres.
+        runs = {r["file"]: r for r in rr.list_runs(self.p)}
+        detail = runs["20261017_153400_run.json"]["models"]
+        self.assertEqual(detail["diffusion_model"], ["u.safetensors"])
+        self.assertEqual(detail["loras"], [{"name": "bounce", "strength_model": 0.8, "strength_clip": 0.8}])
+
     def test_error_status_and_bad_files(self):
         path = rr.start_run(self.p, "p", PROMPT, self.when)
         # Arrete sans fichier : pas enregistre.

@@ -222,6 +222,11 @@ def rename_project(path, new_name):
         raise FileExistsError('A project or file named "%s" already exists.' % new_name)
     new_path = os.path.join(parent, new_name)
     os.rename(path, new_path)
+    # Les fichiers nommes d'apres le projet suivent son nouveau nom.
+    old_name = os.path.basename(os.path.abspath(path))
+    migrate_project_names(new_path)
+    for folder, fn in ((CONFIG_FOLDER, project_workflow_name), (PROJECT_CONFIG_DIR, project_config_name)):
+        _rename_if_free(os.path.join(new_path, folder), fn(old_name), fn(new_name))
     return new_path
 
 
@@ -256,6 +261,38 @@ _STAMPED = re.compile(r"^(\d{8}-\d{6})_(.+)$")
 _CONFIG = re.compile(r"^\d{8}-\d{6}_(REF2VA|FL2VA)_minimax_config\.json$", re.IGNORECASE)
 # Archives de workflow gardees par projet (choix utilisateur : 5 au plus).
 MAX_ARCHIVES = 5
+
+
+# Noms des fichiers du projet (choix utilisateur, 17/10/2026) :
+# 00.Workflows/workflows_<projet>.json, 99.Project-Config/config_projets_<projet>.json.
+def project_workflow_name(project_name):
+    return "workflows_%s.json" % project_name
+
+
+def project_config_name(project_name):
+    return "config_projets_%s.json" % project_name
+
+
+def _rename_if_free(folder, old, new):
+    """old -> new dans folder si old existe et new est libre ; True si renomme."""
+    src, dst = os.path.join(folder, old), os.path.join(folder, new)
+    if old == new or not os.path.isfile(src) or os.path.exists(dst):
+        return False
+    os.rename(src, dst)
+    return True
+
+
+def migrate_project_names(project):
+    """
+    Anciens noms -> nouveaux (choix utilisateur) : 00.Workflows/<projet>.json ->
+    workflows_<projet>.json, 99.Project-Config/Project-Config.json ->
+    config_projets_<projet>.json (seulement si le nouveau nom est libre).
+    """
+    if not project or not os.path.isdir(project):
+        return
+    name = os.path.basename(os.path.abspath(project))
+    _rename_if_free(os.path.join(project, CONFIG_FOLDER), name + ".json", project_workflow_name(name))
+    _rename_if_free(os.path.join(project, PROJECT_CONFIG_DIR), "Project-Config.json", project_config_name(name))
 
 
 def workflow_file_name(name):
@@ -319,6 +356,7 @@ def list_workflows(project):
     Les configurations du Ref Loader ne sont pas listees.
     """
     _migrate_archives(project)
+    migrate_project_names(project)
     folder = _workflow_dir(project)
     workflows, archives = [], []
     if os.path.isdir(folder):
@@ -361,6 +399,10 @@ def save_workflow(project, name, content, archive=None):
     os.makedirs(folder, exist_ok=True)
     name = workflow_file_name(name)
     archived = None
+    migrate_project_names(project)
+    pname = os.path.basename(os.path.abspath(project))
+    if archive == pname + ".json" and not os.path.isfile(os.path.join(folder, archive)):
+        archive = project_workflow_name(pname)
     if archive:
         old = _safe_file(folder, archive)
         if os.path.isfile(old):

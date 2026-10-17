@@ -1,5 +1,5 @@
 """
-Configuration du projet (99.Project-Config/Project-Config.json) du noeud
+Configuration du projet (99.Project-Config/config_projets_<projet>.json) du noeud
 MiniMaxH3Project, sans import ComfyUI (testable seule) :
 - Save : etat de tous les dossiers du projet (sauf 99) ; l'ancienne
   configuration part dans 99.Project-Config/Archives (jamais ecrasee) ;
@@ -14,12 +14,18 @@ import shutil
 import time
 
 try:  # dans ComfyUI (paquet) ; seul pour les tests
-    from . import projects
+    from . import projects, run_record
 except ImportError:
     import projects
+    import run_record
 
 CONFIG_DIR = projects.PROJECT_CONFIG_DIR
-CONFIG_FILE = "Project-Config.json"
+# Ancien nom (renomme de lui-meme) ; nouveau nom : config_projets_<projet>.json (choix utilisateur).
+OLD_CONFIG_FILE = "Project-Config.json"
+
+
+def config_file(project):
+    return projects.project_config_name(os.path.basename(os.path.abspath(project)))
 FORMAT = "MiniMax H3 Reference Loader"
 WORKFLOWS = "00.Workflows"
 PROMPT = "04.Prompt"
@@ -165,8 +171,16 @@ def build_config(project, refs, trims=None, mode="ref2va", workflow="", datecrea
         "ProjectDir": project,
     }
     errors = []
+    # 02.Models / 06.LoRA (choix utilisateur) : indice en cours du registre, 0 et Valide false sans registre.
+    registry_blocks = {run_record.MODELS_FOLDER: ("models", "IndiceEnCoursMODELS"),
+                       run_record.LORA_FOLDER: ("lora", "IndiceEnCoursLoRA")}
     for folder in projects.SUBFOLDERS:
         d = os.path.join(project, folder)
+        if folder in registry_blocks:
+            kind, key = registry_blocks[folder]
+            exists = run_record.registry_file(project, kind) is not None
+            out[folder] = [{"Valide": exists, key: run_record.current_index(project, kind) if exists else 0}]
+            continue
         hashed = folder in HASHED
         entries = []
         if folder in MEDIA:
@@ -211,13 +225,15 @@ def build_config(project, refs, trims=None, mode="ref2va", workflow="", datecrea
 
 def save_config(project, refs, trims=None, mode="ref2va", workflow=""):
     """
-    Ecrit 99.Project-Config/Project-Config.json ; l'ancien part d'abord dans
-    99.Project-Config/Archives sous yyyyMMdd-HHmmss_Project-Config.json (date
+    Ecrit 99.Project-Config/config_projets_<projet>.json ; l'ancien part d'abord dans
+    99.Project-Config/Archives sous yyyyMMdd-HHmmss_config_projets_<projet>.json (date
     de sa derniere sauvegarde, "(2)" si le nom est pris : jamais ecrase).
     Renvoie {path, archived}. Erreur (ConfigError) : rien n'est touche.
     """
     ensure_config_dir(project)
-    path = os.path.join(config_dir(project), CONFIG_FILE)
+    projects.migrate_project_names(project)
+    name = config_file(project)
+    path = os.path.join(config_dir(project), name)
     old = _read_json(path) if os.path.isfile(path) else None
     datecreat = old.get("datecreat") if isinstance(old, dict) and isinstance(old.get("datecreat"), str) else None
     cfg = build_config(project, refs, trims, mode, workflow, datecreat)
@@ -225,7 +241,7 @@ def save_config(project, refs, trims=None, mode="ref2va", workflow=""):
     if os.path.isfile(path):
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(os.path.getmtime(path)))
         arch = os.path.join(config_dir(project), projects.ARCHIVE_FOLDER)
-        archived = projects._free_name(arch, "%s_%s" % (stamp, CONFIG_FILE))
+        archived = projects._free_name(arch, "%s_%s" % (stamp, name))
         shutil.move(path, os.path.join(arch, archived))
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
@@ -236,12 +252,17 @@ def save_config(project, refs, trims=None, mode="ref2va", workflow=""):
 # Load : verification (rien n'est modifie)
 # ----------------------------------------------------------------------
 def read_config(project):
-    path = os.path.join(config_dir(project), CONFIG_FILE)
+    projects.migrate_project_names(project)
+    name = config_file(project)
+    path = os.path.join(config_dir(project), name)
     if not os.path.isfile(path):
-        raise FileNotFoundError("No project configuration saved yet (%s/%s)." % (CONFIG_DIR, CONFIG_FILE))
+        old = os.path.join(config_dir(project), OLD_CONFIG_FILE)
+        if not os.path.isfile(old):
+            raise FileNotFoundError("No project configuration saved yet (%s/%s)." % (CONFIG_DIR, name))
+        path, name = old, OLD_CONFIG_FILE
     cfg = _read_json(path)
     if not isinstance(cfg, dict) or cfg.get("format") != FORMAT:
-        raise ValueError("%s is not a project configuration." % CONFIG_FILE)
+        raise ValueError("%s is not a project configuration." % name)
     return cfg
 
 
