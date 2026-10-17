@@ -192,7 +192,8 @@ const HELP_SECTIONS = [
                 "the next change (nodes, links, values).",
             ]) +
             "<p>Click the bell: the window lists the changes since the last save, asks whether to archive the " +
-            "previous workflow (renamed <b>yyyyMMdd-HHmmss_name.json</b>, date of its last save), and proposes " +
+            "previous workflow (moved to <b>00.Workflows/Archives</b> as <b>yyyyMMdd-HHmmss_name.json</b>, date " +
+            "of its last save; the archives button lists that folder), and proposes " +
             "the name of the project, which you can change. <b>Save</b> confirms.</p>" +
             hList([
                 "The workflow row shows <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
@@ -311,8 +312,9 @@ const HELP_SECTIONS_FR = [
                 "l'orange au prochain changement (nœuds, liens, valeurs).",
             ]) +
             "<p>Cliquez sur la cloche : la fenêtre liste les changements depuis la dernière sauvegarde, demande " +
-            "s'il faut archiver le workflow précédent (renommé <b>yyyyMMdd-HHmmss_nom.json</b>, date de sa " +
-            "dernière sauvegarde) et propose le nom du projet, que vous pouvez changer. <b>Save</b> confirme.</p>" +
+            "s'il faut archiver le workflow précédent (déplacé dans <b>00.Workflows/Archives</b> sous " +
+            "<b>yyyyMMdd-HHmmss_nom.json</b>, date de sa dernière sauvegarde ; le bouton d'archives liste ce " +
+            "dossier) et propose le nom du projet, que vous pouvez changer. <b>Save</b> confirme.</p>" +
             hList([
                 "La ligne du workflow affiche <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
                 iconBadge(ARCHIVE_ICON, VIOLET) + " (à droite de la cloche, actif s'il y a des archives) ouvre un " +
@@ -1004,8 +1006,8 @@ function buildWorkflowDialog(container) {
             changes.innerHTML = opts.changesHtml;
             changes.style.display = opts.previous ? "block" : "none";
             archiveBox.style.display = opts.previous ? "block" : "none";
-            archiveLabel.innerHTML = "Archive the previous workflow? It is renamed <b>yyyyMMdd-HHmmss_" +
-                escapeHtml(opts.previous || "") + "</b> (date of its last save).";
+            archiveLabel.innerHTML = "Archive the previous workflow? It goes to <b>00.Workflows/Archives</b> as " +
+                "<b>yyyyMMdd-HHmmss_" + escapeHtml(opts.previous || "") + "</b> (date of its last save).";
             archive = true;
             full = !!opts.full;
             paintPill();
@@ -1892,7 +1894,7 @@ app.registerExtension({
                 const s = getState();
                 try {
                     const res = await fetch("/mmproject/workflow?project=" + encodeURIComponent(s.path) +
-                        "&name=" + encodeURIComponent(a.name), { cache: "no-store" });
+                        "&name=" + encodeURIComponent(a.name) + "&archive=1", { cache: "no-store" });
                     if (!res.ok) throw new Error("Archive not found: " + a.name);
                     await app.loadGraphData(JSON.parse(await res.text()), true, true, a.name);
                 } catch (e) {

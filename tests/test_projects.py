@@ -233,6 +233,7 @@ class WorkflowTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.project = projects.create_project(self.tmp, "Clip")
         self.wf = os.path.join(self.project, "00.Workflows")
+        self.arch = os.path.join(self.wf, "Archives")
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -260,7 +261,9 @@ class WorkflowTest(unittest.TestCase):
         os.utime(old, (t, t))
         info = projects.save_workflow(self.project, "Clip", "v2", archive="Clip.json")
         self.assertEqual(info["archived"], "20261016-153000_Clip.json")
-        self.assertEqual(projects.read_workflow(self.project, "20261016-153000_Clip.json"), "v1")
+        self.assertTrue(os.path.isfile(os.path.join(self.arch, "20261016-153000_Clip.json")))
+        self.assertFalse(os.path.exists(os.path.join(self.wf, "20261016-153000_Clip.json")))
+        self.assertEqual(projects.read_workflow(self.project, "20261016-153000_Clip.json", archive=True), "v1")
         self.assertEqual(projects.read_workflow(self.project, "Clip.json"), "v2")
         listing = projects.list_workflows(self.project)
         self.assertEqual([a["name"] for a in listing["archives"]], ["20261016-153000_Clip.json"])
@@ -279,13 +282,13 @@ class WorkflowTest(unittest.TestCase):
 
     def test_archives_sorted_newest_first(self):
         for n in ["20261001-100000_Clip.json", "20261016-100000_Clip.json", "20261010-100000_Other.json"]:
-            write(os.path.join(self.wf, n), b"{}")
+            write(os.path.join(self.arch, n), b"{}")
         names = [a["name"] for a in projects.list_workflows(self.project)["archives"]]
         self.assertEqual(names, ["20261016-100000_Clip.json", "20261010-100000_Other.json", "20261001-100000_Clip.json"])
 
     def test_at_most_five_archives(self):
         for i in range(projects.MAX_ARCHIVES):
-            write(os.path.join(self.wf, "2026100%d-100000_Clip.json" % (i + 1)), b"{}")
+            write(os.path.join(self.arch, "2026100%d-100000_Clip.json" % (i + 1)), b"{}")
         projects.save_workflow(self.project, "Clip", "v1")
         with self.assertRaises(ValueError):
             projects.save_workflow(self.project, "Clip", "v2", archive="Clip.json")
@@ -300,12 +303,33 @@ class WorkflowTest(unittest.TestCase):
     def test_delete_archive_only(self):
         projects.save_workflow(self.project, "Clip", "v1")
         write(os.path.join(self.wf, "20261016-153000_REF2VA_minimax_config.json"), b"{}")
-        for bad in ["Clip.json", "20261016-153000_REF2VA_minimax_config.json", "../20261016-153000_x.json"]:
+        for bad in ["notes.txt", "../20261016-153000_x.json"]:
             with self.assertRaises(ValueError, msg=bad):
                 projects.delete_archive(self.project, bad)
-        with self.assertRaises(FileNotFoundError):
-            projects.delete_archive(self.project, "20261016-153000_Nope.json")
+        # Les fichiers de la racine ne sont jamais touches.
+        for root_file in ["Clip.json", "20261016-153000_REF2VA_minimax_config.json", "20261016-153000_Nope.json"]:
+            with self.assertRaises(FileNotFoundError, msg=root_file):
+                projects.delete_archive(self.project, root_file)
         self.assertTrue(os.path.isfile(os.path.join(self.wf, "Clip.json")))
+        write(os.path.join(self.arch, "old.json"), b"{}")
+        projects.delete_archive(self.project, "old.json")
+        self.assertFalse(os.path.exists(os.path.join(self.arch, "old.json")))
+
+    def test_old_archives_move_into_archives_folder(self):
+        write(os.path.join(self.wf, "Clip.json"), b"{}")
+        write(os.path.join(self.wf, "20261016-153000_Clip.json"), b"old")
+        write(os.path.join(self.wf, "20261016-153000_REF2VA_minimax_config.json"), b"{}")
+        write(os.path.join(self.arch, "20261016-153000_Clip.json"), b"there")
+        write(os.path.join(self.arch, "manual.json"), b"{}")
+        listing = projects.list_workflows(self.project)
+        self.assertEqual([w["name"] for w in listing["workflows"]], ["Clip.json"])
+        self.assertEqual(sorted(a["name"] for a in listing["archives"]),
+                         ["20261016-153000_Clip (2).json", "20261016-153000_Clip.json", "manual.json"])
+        self.assertTrue(os.path.isfile(os.path.join(self.wf, "20261016-153000_REF2VA_minimax_config.json")))
+        self.assertEqual(projects.read_workflow(self.project, "20261016-153000_Clip (2).json", archive=True), "old")
+        manual = [a for a in listing["archives"] if a["name"] == "manual.json"][0]
+        self.assertEqual(manual["of"], "manual.json")
+        self.assertRegex(manual["stamp"], r"^\d{8}-\d{6}$")
 
     def test_read_refuses_paths(self):
         with self.assertRaises(ValueError):

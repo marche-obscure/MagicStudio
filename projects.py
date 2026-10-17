@@ -240,8 +240,9 @@ def move_project(path, dest_parent):
 # ----------------------------------------------------------------------
 # Workflow du projet (00.Workflows) et ses archives
 # ----------------------------------------------------------------------
-# Archive : yyyyMMdd-HHmmss_<nom du workflow>.json ; configuration du Ref
-# Loader : yyyyMMdd-HHmmss_REF2VA|FL2VA_minimax_config.json (pas un workflow).
+# Archive : 00.Workflows/Archives/yyyyMMdd-HHmmss_<nom du workflow>.json ;
+# configuration du Ref Loader : yyyyMMdd-HHmmss_REF2VA|FL2VA_minimax_config.json
+# a la racine de 00.Workflows (pas un workflow).
 _STAMPED = re.compile(r"^(\d{8}-\d{6})_(.+)$")
 _CONFIG = re.compile(r"^\d{8}-\d{6}_(REF2VA|FL2VA)_minimax_config\.json$", re.IGNORECASE)
 # Archives de workflow gardees par projet (choix utilisateur : 5 au plus).
@@ -265,6 +266,36 @@ def _workflow_dir(project):
     return os.path.join(project, CONFIG_FOLDER)
 
 
+def _archive_dir(project):
+    return os.path.join(_workflow_dir(project), "Archives")
+
+
+def _free_name(folder, name):
+    """name, sinon "stem (2).ext", "stem (3).ext"... libre dans folder."""
+    stem, ext = os.path.splitext(name)
+    n = 1
+    while True:
+        candidate = name if n == 1 else "%s (%d)%s" % (stem, n, ext)
+        if not os.path.exists(os.path.join(folder, candidate)):
+            return candidate
+        n += 1
+
+
+def _migrate_archives(project):
+    """Anciennes archives datees laissees a la racine de 00.Workflows : deplacees dans Archives."""
+    folder = _workflow_dir(project)
+    if not os.path.isdir(folder):
+        return
+    old = [e.name for e in os.scandir(folder) if e.is_file() and e.name.lower().endswith(".json")
+           and _STAMPED.match(e.name) and not _CONFIG.match(e.name)]
+    if not old:
+        return
+    dst = _archive_dir(project)
+    os.makedirs(dst, exist_ok=True)
+    for name in old:
+        shutil.move(os.path.join(folder, name), os.path.join(dst, _free_name(dst, name)))
+
+
 def _safe_file(folder, name):
     if not name or os.path.basename(name) != name:
         raise ValueError("Invalid file name: %s" % name)
@@ -273,30 +304,36 @@ def _safe_file(folder, name):
 
 def list_workflows(project):
     """
-    {"workflows": [{name, mtime}] (plus recent d'abord),
-     "archives": [{name, mtime, stamp, of}] (plus recente d'abord)}.
+    {"workflows": [{name, mtime}] (racine de 00.Workflows, plus recent d'abord),
+     "archives": [{name, mtime, stamp, of}] (tout .json de 00.Workflows/Archives,
+     plus recente d'abord ; sans date dans le nom, stamp = date du fichier)}.
     Les configurations du Ref Loader ne sont pas listees.
     """
+    _migrate_archives(project)
     folder = _workflow_dir(project)
     workflows, archives = [], []
     if os.path.isdir(folder):
         for e in os.scandir(folder):
             if not e.is_file() or not e.name.lower().endswith(".json") or _CONFIG.match(e.name):
                 continue
+            workflows.append({"name": e.name, "mtime": e.stat().st_mtime})
+    arch = _archive_dir(project)
+    if os.path.isdir(arch):
+        for e in os.scandir(arch):
+            if not e.is_file() or not e.name.lower().endswith(".json"):
+                continue
             mtime = e.stat().st_mtime
             m = _STAMPED.match(e.name)
-            if m:
-                archives.append({"name": e.name, "mtime": mtime, "stamp": m.group(1), "of": m.group(2)})
-            else:
-                workflows.append({"name": e.name, "mtime": mtime})
+            stamp = m.group(1) if m else time.strftime("%Y%m%d-%H%M%S", time.localtime(mtime))
+            archives.append({"name": e.name, "mtime": mtime, "stamp": stamp, "of": m.group(2) if m else e.name})
     workflows.sort(key=lambda w: -w["mtime"])
-    archives.sort(key=lambda a: a["name"], reverse=True)
+    archives.sort(key=lambda a: (a["stamp"], a["name"]), reverse=True)
     return {"workflows": workflows, "archives": archives}
 
 
-def read_workflow(project, name):
-    """Texte d'un workflow (ou d'une archive) de 00.Workflows."""
-    path = _safe_file(_workflow_dir(project), name)
+def read_workflow(project, name, archive=False):
+    """Texte d'un workflow de 00.Workflows, ou d'une archive de 00.Workflows/Archives."""
+    path = _safe_file(_archive_dir(project) if archive else _workflow_dir(project), name)
     if not os.path.isfile(path):
         raise FileNotFoundError("Workflow not found: %s" % name)
     with open(path, encoding="utf-8") as f:
@@ -306,8 +343,9 @@ def read_workflow(project, name):
 def save_workflow(project, name, content, archive=None):
     """
     Ecrit le workflow 'name' dans 00.Workflows. archive = nom du workflow
-    precedent a archiver d'abord : renomme yyyyMMdd-HHmmss_<nom>.json avec
-    la date de sa derniere sauvegarde ("nom (2)" si cette archive existe).
+    precedent a archiver d'abord : deplace dans 00.Workflows/Archives sous
+    yyyyMMdd-HHmmss_<nom>.json avec la date de sa derniere sauvegarde
+    ("nom (2)" si cette archive existe).
     Renvoie {name, mtime, archived}.
     """
     folder = _workflow_dir(project)
@@ -320,14 +358,10 @@ def save_workflow(project, name, content, archive=None):
             if len(list_workflows(project)["archives"]) >= MAX_ARCHIVES:
                 raise ValueError("%d archives max: delete one before archiving." % MAX_ARCHIVES)
             stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(os.path.getmtime(old)))
-            stem, ext = os.path.splitext(archive)
-            n = 1
-            while True:
-                candidate = "%s_%s%s" % (stamp, stem, ext) if n == 1 else "%s_%s (%d)%s" % (stamp, stem, n, ext)
-                if not os.path.exists(os.path.join(folder, candidate)):
-                    break
-                n += 1
-            os.rename(old, os.path.join(folder, candidate))
+            arch = _archive_dir(project)
+            os.makedirs(arch, exist_ok=True)
+            candidate = _free_name(arch, "%s_%s" % (stamp, archive))
+            shutil.move(old, os.path.join(arch, candidate))
             archived = candidate
     path = os.path.join(folder, name)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -450,10 +484,10 @@ def file_hashes(paths):
 
 
 def delete_archive(project, name):
-    """Supprime une archive yyyyMMdd-HHmmss_nom.json (jamais un workflow ni une configuration)."""
-    if not _STAMPED.match(name or "") or _CONFIG.match(name) or not name.lower().endswith(".json"):
+    """Supprime un .json de 00.Workflows/Archives (jamais un fichier de la racine)."""
+    if not (name or "").lower().endswith(".json"):
         raise ValueError("Not an archived workflow: %s" % name)
-    path = _safe_file(_workflow_dir(project), name)
+    path = _safe_file(_archive_dir(project), name)
     if not os.path.isfile(path):
         raise FileNotFoundError("Archive not found: %s" % name)
     os.remove(path)

@@ -278,7 +278,8 @@ try:
         """Contenu d'un workflow (ou d'une archive) du projet."""
         q = request.rel_url.query
         try:
-            text = await _in_executor(projects.read_workflow, q.get("project", ""), q.get("name", ""))
+            text = await _in_executor(projects.read_workflow, q.get("project", ""), q.get("name", ""),
+                                      q.get("archive") == "1")
         except Exception as e:
             return _project_error(e)
         return web.Response(text=text, content_type="application/json")
