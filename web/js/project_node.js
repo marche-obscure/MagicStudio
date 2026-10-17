@@ -11,7 +11,7 @@ import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
-    copyTabName, unusedProjectFiles, orderedFolderFiles,
+    copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
@@ -156,7 +156,9 @@ const HELP_SECTIONS = [
             "no file is deleted, and they no longer show in the gallery of the project. The bell also turns orange " +
             "when the folder keeps such unused files. Then the bell goes back to grey and the sign goes away.</p>" +
             "<p>The row of 08.Images, 10.Son, 12.Video and 14.Video-Audio shows <b>Use: n/x | Orphelins: m | In " +
-            "Archives: y</b>: n of the x files of the folder are used by the Reference Loader, m orphan files (no " +
+            "Archives: y</b>: n files of the folder are used by the Reference Loader out of x, the most it accepts " +
+            "for this folder (08.Images: 9 in Ref2VA, 2 in FL2VA = first + last frame; 10.Son, 12.Video, " +
+            "14.Video-Audio: 3), m orphan files (no " +
             "number, not archived yet; shown in orange, gone once Update has archived them), y files in Archives.</p>" +
             "<p>Click the button of 08.Images, 10.Son, 12.Video or 14.Video-Audio to view the folder (view " +
             "only, <b>Close</b>, Escape or a click outside closes it): first its files, in the order of the " +
@@ -373,7 +375,9 @@ const HELP_SECTIONS_FR = [
             "galerie du projet. La cloche passe aussi à l'orange quand le dossier garde de tels fichiers " +
             "inutilisés. Ensuite la cloche redevient grise et le sigle disparaît.</p>" +
             "<p>La ligne de 08.Images, 10.Son, 12.Video et 14.Video-Audio affiche <b>Use: n/x | Orphelins: m | " +
-            "In Archives: y</b> : n des x fichiers du dossier sont utilisés par le Reference Loader, m fichiers " +
+            "In Archives: y</b> : n fichiers du dossier sont utilisés par le Reference Loader sur x, le maximum " +
+            "qu'il accepte pour ce dossier (08.Images : 9 en Ref2VA, 2 en FL2VA = première + dernière image ; " +
+            "10.Son, 12.Video, 14.Video-Audio : 3), m fichiers " +
             "orphelins (sans numéro, pas encore archivés ; en orange, disparaît une fois archivés par Update), y " +
             "fichiers dans Archives.</p>" +
             "<p>Cliquez sur le bouton de 08.Images, 10.Son, 12.Video ou 14.Video-Audio pour voir le dossier " +
@@ -3330,14 +3334,15 @@ app.registerExtension({
                         continue;
                     }
                     const inArch = (archiveFiles[f.name] || []).length;
-                    const parts = refState ? ["Use: " + (files.length - unused.length) + "/" + files.length]
-                        : ["Files: " + files.length];
+                    // "Use: x/y" (choix utilisateur) : x utilises, y = maximum du dossier pour le mode.
+                    const use = refState ? folderUse(files, refState, f.name) : null;
+                    const parts = use ? ["Use: " + use.used + "/" + use.max] : ["Files: " + files.length];
                     if (unused.length) parts.push("Orphelins: " + unused.length);
                     parts.push("In Archives: " + inArch);
                     f.last.textContent = parts.join(" | ");
                     f.last.style.color = unused.length ? BELL_ORANGE : "#9fd6cf";
-                    f.last.title = (refState ? (files.length - unused.length) + " of the " + files.length +
-                        " file(s) of " + f.name + " used by the Reference Loader" : files.length + " file(s) in " + f.name) +
+                    f.last.title = (use ? use.used + " used of " + use.max + " max (" + use.mode + "); " + files.length +
+                        " file(s) in " + f.name : files.length + " file(s) in " + f.name) +
                         (unused.length ? "; " + unused.length + " orphan file(s) (no number, not archived yet): " +
                             unused.map(baseOf).join(", ") : "") + "; " + inArch + " file(s) in " + f.name + "/Archives";
                 }

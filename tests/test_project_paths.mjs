@@ -7,8 +7,19 @@ import {
     UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, mapFolderBySequence, withoutMedia,
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
-    runDateText, runsOfKind, runSummary, outputFile, rushItems,
+    runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse,
 } from "../web/js/project_paths.js";
+
+test("Use: x/y : utilises par le mode actuel / maximum du dossier", () => {
+    const st = { mode: "ref2va", images: ["P/08.Images/a.png", "P/08.Images/b.png"], first_frame: ["P/08.Images/c.png"],
+        last_frame: [], audios: ["P/10.Son/s.wav"], videos: [], video_audios: [] };
+    const imgs = ["P/08.Images/a.png", "P/08.Images/b.png", "P/08.Images/c.png", "P/08.Images/d.png"];
+    assert.deepEqual(folderUse(imgs, st, "08.Images"), { used: 2, max: 9, mode: "Ref2VA" });
+    assert.deepEqual(folderUse(imgs, Object.assign({}, st, { mode: "fl2va" }), "08.Images"), { used: 1, max: 2, mode: "FL2VA" });
+    assert.equal(folderUse(["p/10.son/S.wav"], st, "10.Son").used, 1);   // casse et separateurs ignores
+    assert.equal(folderUse([], st, "12.Video").max, 3);
+    assert.equal(folderUse([], st, "14.Video-Audio").max, 3);
+});
 
 const RUNS = [
     { date: "2026-10-17 15:06:41", outputs: [
