@@ -2636,16 +2636,14 @@ function buildGallery(container, ctx) {
             pool.forEach((it) => strip.appendChild(poolTile(it)));
             grid.appendChild(strip);
         }
-        // Dossier du projet plein : choisir en bas le fichier a remplacer.
-        {
-            // Toujours la meme place (vide sans message) : les vignettes ne bougent pas.
+        // Dossier du projet plein : choisir en bas le fichier a remplacer. Pas de place
+        // reservee sans message (choix utilisateur : eviter l'ascenseur).
+        if (full && !marked.length) {
             const msg = document.createElement("div");
-            msg.innerHTML = !full || marked.length ? ""
-                : "The selection is full: <b>check below</b> the file to replace, then pick the new one above: it " +
+            msg.innerHTML = "The selection is full: <b>check below</b> the file to replace, then pick the new one above: it " +
                 "takes the same number, and the replaced file will be archived in <b>" + escapeHtml(projFolder) +
                 "/Archives</b> of the project.";
-            Object.assign(msg.style, { gridColumn: "1 / -1", color: ORANGE, padding: "8px 2px 0", lineHeight: "1.4",
-                minHeight: "62px", boxSizing: "border-box" });
+            Object.assign(msg.style, { gridColumn: "1 / -1", color: ORANGE, padding: "2px 2px 0", lineHeight: "1.35" });
             grid.appendChild(msg);
         }
         const sep = document.createElement("div");
