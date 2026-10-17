@@ -1432,19 +1432,33 @@ function buildPreviewWindow() {
         borderRadius: "8px", minHeight: "120px", maxHeight: "70vh", overflow: "hidden",
     });
     card.append(head, body);
+    // Le fond laisse passer les clics : avec l'apercu ouvert, les vignettes de la
+    // fenetre en dessous restent cliquables ; son clic a cote ferme l'apercu.
+    overlay.style.pointerEvents = "none";
+    card.style.pointerEvents = "auto";
 
+    let current = "";
     function close() {
         overlay.style.display = "none";
         body.innerHTML = ""; // arrete la lecture
+        current = "";
     }
     closeBtn.addEventListener("click", close);
-    overlay.addEventListener("mousedown", close);
 
     return {
         isOpen: () => overlay.style.display !== "none",
         close,
+        /**
+         * Clic sur une vignette : meme fichier deja affiche = fermeture ; sinon
+         * l'apercu s'ouvre ou change seulement de contenu.
+         */
+        toggle(file, kind, shown, anchor) {
+            if (overlay.style.display !== "none" && current === file) close();
+            else this.show(file, kind, shown, anchor);
+        },
         /** show(cheminAbsolu, "image" | "video" | "audio", cheminAffiche, carteDeReference) */
         show(file, kind, shown, anchor) {
+            current = file;
             title.textContent = file.split(/[\\/]/).pop();
             path.textContent = shown;
             body.innerHTML = "";
@@ -1793,7 +1807,7 @@ function buildFolderViewer(container) {
         archRow.innerHTML = "";
     }
     closeBtn.addEventListener("click", close);
-    overlay.addEventListener("mousedown", close);
+    overlay.addEventListener("mousedown", () => (preview.isOpen() ? preview.close() : close()));
 
     function tile(path, badge, kind, shown, dim) {
         const t = document.createElement("div");
@@ -1819,7 +1833,7 @@ function buildFolderViewer(container) {
         name.title = baseOf(path);
         Object.assign(name.style, { fontSize: "11px", marginTop: "4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
         t.appendChild(name);
-        t.addEventListener("click", () => preview.show(path, kind, shown, card));
+        t.addEventListener("click", () => preview.toggle(path, kind, shown, card));
         return t;
     }
 
@@ -1919,7 +1933,7 @@ function buildLoadDialog(container) {
     loadBtn.addEventListener("click", () => {
         if (!loadBtn.disabled) finish(checkedFolders());
     });
-    overlay.addEventListener("mousedown", () => finish(null));
+    overlay.addEventListener("mousedown", () => (preview.isOpen() ? preview.close() : finish(null)));
 
     const div = (html, style) => {
         const d = document.createElement("div");
@@ -1949,7 +1963,7 @@ function buildLoadDialog(container) {
             Object.assign(eye.style, { width: "20px", height: "20px" });
             eye.addEventListener("click", () => {
                 const file = joinDir(joinDir(joinDir(projectPath, f.folder), "Archives"), x.archive);
-                preview.show(file, kind, f.folder + "/Archives/" + x.archive, card);
+                preview.toggle(file, kind, f.folder + "/Archives/" + x.archive, card);
             });
             line.appendChild(eye);
         }
