@@ -26,6 +26,31 @@ def write(path, data=b"x"):
         f.write(data)
 
 
+def make_video(path, width, height, frames=6, audio=True):
+    """Petite video H.264 (+ son AAC) pour les tests de reduction."""
+    import av
+    import numpy as np
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with av.open(path, "w") as out:
+        v = out.add_stream("libx264", rate=24)
+        v.width, v.height, v.pix_fmt = width, height, "yuv420p"
+        a = out.add_stream("aac", rate=44100) if audio else None
+        for i in range(frames):
+            img = np.full((height, width, 3), (i * 40) % 255, dtype=np.uint8)
+            for p in v.encode(av.VideoFrame.from_ndarray(img, format="rgb24")):
+                out.mux(p)
+        for p in v.encode(None):
+            out.mux(p)
+        if a is not None:
+            for i in range(5):
+                f = av.AudioFrame.from_ndarray(np.zeros((1, 1024), dtype=np.float32), format="fltp", layout="mono")
+                f.sample_rate, f.pts = 44100, i * 1024
+                for p in a.encode(f):
+                    out.mux(p)
+            for p in a.encode(None):
+                out.mux(p)
+
+
 def read_json(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -109,6 +134,59 @@ class RunFileTest(unittest.TestCase):
         # Meme seconde : la suivante.
         self.assertTrue(rr.start_run(self.p, "b", PROMPT, self.when).endswith("20261017_153001_run.json"))
 
+    def test_fit_size(self):
+        self.assertEqual(rr.fit_size(1216, 672), (960, 530))
+        self.assertEqual(rr.fit_size(672, 1216), (300, 544))
+        self.assertEqual(rr.fit_size(1920, 1080), (960, 540))
+        self.assertIsNone(rr.fit_size(960, 544))
+        self.assertIsNone(rr.fit_size(640, 480))
+        self.assertEqual(rr.fit_size(1000, 544), (960, 522))
+
+    def test_big_video_is_reduced_small_one_copied(self):
+        import av
+        big = os.path.join(self.out, "big_00001.mp4")
+        small = os.path.join(self.out, "small_00001.mp4")
+        make_video(big, 1216, 672)
+        make_video(small, 320, 176, audio=False)
+        path = rr.start_run(self.p, "p", PROMPT, self.when)
+        data = rr.finish_run(path, [{"filename": "big_00001.mp4", "type": "output"},
+                                    {"filename": "small_00001.mp4", "type": "output"}], "done", self.out)
+        self.assertEqual(data["outputs"], [
+            {"source": big, "copy": "40.Rush Videos/20261017_153000_run.mp4", "size": "1216x672", "copy_size": "960x530"},
+            {"source": small, "copy": "40.Rush Videos/20261017_153000_run_02.mp4", "size": "320x176"},
+        ])
+        done = os.path.join(self.p, "40.Rush Videos", "20261017_153000_run.mp4")
+        with av.open(done) as c:
+            self.assertEqual((c.streams.video[0].codec_context.width, c.streams.video[0].codec_context.height), (960, 530))
+            self.assertEqual(c.streams.video[0].frames, 6)
+            self.assertEqual([s.codec_context.name for s in c.streams.audio], ["aac"])
+        self.assertEqual(rr.video_size(big), (1216, 672))     # original intact
+        self.assertEqual(sorted(os.listdir(os.path.join(self.p, "40.Rush Videos"))),
+                         ["20261017_153000_run.mp4", "20261017_153000_run_02.mp4"])
+
+    def test_video_saved_in_rush_folder_is_left_alone(self):
+        own = os.path.join(self.p, "40.Rush Videos", "clip_00001.mp4")
+        make_video(own, 1216, 672, frames=2, audio=False)
+        path = rr.start_run(self.p, "p", PROMPT, self.when)
+        data = rr.finish_run(path, [{"filename": "clip_00001.mp4", "fullpath": own}], "done", self.out)
+        self.assertEqual(data["outputs"], [{"source": own, "copy": "40.Rush Videos/clip_00001.mp4",
+                                            "size": "1216x672", "in_place": True}])
+        self.assertEqual(os.listdir(os.path.join(self.p, "40.Rush Videos")), ["clip_00001.mp4"])
+        self.assertEqual(rr.video_size(own), (1216, 672))
+
+    def test_failed_reduction_falls_back_to_copy(self):
+        src = os.path.join(self.out, "big.mp4")
+        make_video(src, 1216, 672, frames=2, audio=False)
+        old = rr.resize_video
+        rr.resize_video = lambda *a: (_ for _ in ()).throw(RuntimeError("no encoder"))
+        try:
+            data = rr.finish_run(rr.start_run(self.p, "p", PROMPT, self.when),
+                                 [{"filename": "big.mp4", "type": "output"}], "done", self.out)
+        finally:
+            rr.resize_video = old
+        self.assertEqual(data["outputs"][0]["copy"], "40.Rush Videos/20261017_153000_run.mp4")
+        self.assertEqual(data["outputs"][0]["resize_error"], "no encoder")
+
     def test_finish_copies_outputs_to_rushes(self):
         path = rr.start_run(self.p, "p", PROMPT, self.when)
         write(os.path.join(self.out, "ComfyUI_00001_.png"), b"i1")
@@ -126,11 +204,10 @@ class RunFileTest(unittest.TestCase):
         ]
         data = rr.finish_run(path, files, "done", self.out)
         self.assertEqual(data["status"], "done")
-        self.assertEqual([o["copy"] for o in data["outputs"]], [
-            "60.Rush Images/20261017_153000_run.png", "60.Rush Images/20261017_153000_run_02.png",
-            "40.Rush Videos/20261017_153000_run.mp4", None])
-        with open(os.path.join(self.p, "60.Rush Images", "20261017_153000_run_02.png"), "rb") as f:
-            self.assertEqual(f.read(), b"i2")
+        # Images citees sans copie (choix utilisateur) ; video illisible : copiee telle quelle.
+        self.assertEqual([o["copy"] for o in data["outputs"]], [None, None, "40.Rush Videos/20261017_153000_run.mp4", None])
+        self.assertEqual(data["outputs"][1]["source"], os.path.join(self.out, "sub", "ComfyUI_00002_.png"))
+        self.assertEqual(os.listdir(os.path.join(self.p, "60.Rush Images")), [])
         self.assertEqual(read_json(path)["outputs"], data["outputs"])
         # Deja termine : rien n'est refait.
         again = rr.finish_run(path, [], "error", self.out)
@@ -167,7 +244,7 @@ class RunFileTest(unittest.TestCase):
         os.utime(src, (self.when + 5, self.when + 5))
         res = rr.finish_run(rr.start_run(self.p, "p", PROMPT, self.when), files, "done", self.out)
         self.assertEqual(res["status"], "done")
-        self.assertEqual(res["outputs"][0]["copy"], "60.Rush Images/20261017_153000_run.png")
+        self.assertEqual(res["outputs"][0]["source"], src)
 
     def test_unchanged_run_is_not_recorded(self):
         write(os.path.join(self.out, "ComfyUI_00001_.png"), b"i1")
@@ -181,7 +258,7 @@ class RunFileTest(unittest.TestCase):
         res = rr.finish_run(second, files, "done", self.out)
         self.assertEqual(res, {"skipped": True, "same_as": "20261017_153000_run.json", "status": "done"})
         self.assertFalse(os.path.exists(second))
-        self.assertEqual(os.listdir(os.path.join(self.p, "60.Rush Images")), ["20261017_153000_run.png"])
+        self.assertEqual(os.listdir(os.path.join(self.p, "60.Rush Images")), [])
         # Nouveau fichier : enregistre.
         write(os.path.join(self.out, "ComfyUI_00002_.png"), b"i2")
         third = rr.start_run(self.p, "p", PROMPT, self.when)
@@ -191,7 +268,7 @@ class RunFileTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(third))
         # Seul le fichier nouveau est garde (l'ancien, renvoye par le cache, est ignore).
         self.assertEqual([os.path.basename(o["source"]) for o in res["outputs"]], ["ComfyUI_00002_.png"])
-        self.assertEqual(res["outputs"][0]["copy"], "60.Rush Images/20261017_153001_run.png")
+        self.assertIsNone(res["outputs"][0]["copy"])
 
     def test_error_status_and_bad_files(self):
         path = rr.start_run(self.p, "p", PROMPT, self.when)
