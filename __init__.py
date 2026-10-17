@@ -405,7 +405,7 @@ try:
 
     @routes.post("/mmproject/config/save")
     async def mmproject_config_save(request):
-        """Ecrit Project-Config.json (l'ancien dans Archives) ; errors = fichiers sans indice."""
+        """Ecrit config_projets_<projet>.json (l'ancien dans Archives) ; errors = fichiers sans indice."""
         try:
             body = await request.json()
             info = await _in_executor(project_config.save_config, body.get("project", ""), body.get("refs") or {},

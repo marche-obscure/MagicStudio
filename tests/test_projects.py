@@ -231,7 +231,7 @@ class WorkflowTest(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.project = projects.create_project(self.tmp, "Clip")
+        self.project = projects.create_project(self.tmp, "Proj")
         self.wf = os.path.join(self.project, "00.Workflows")
         self.arch = os.path.join(self.wf, "Archives")
 
@@ -314,6 +314,22 @@ class WorkflowTest(unittest.TestCase):
         write(os.path.join(self.arch, "old.json"), b"{}")
         projects.delete_archive(self.project, "old.json")
         self.assertFalse(os.path.exists(os.path.join(self.arch, "old.json")))
+
+    def test_project_files_renamed_and_follow_the_project(self):
+        # Ancien nom -> workflows_<projet>.json, Project-Config.json -> config_projets_<projet>.json.
+        p = projects.create_project(self.tmp, "Lapin")
+        write(os.path.join(p, "00.Workflows", "Lapin.json"), b"wf")
+        write(os.path.join(p, "99.Project-Config", "Project-Config.json"), b"cfg")
+        self.assertEqual([w["name"] for w in projects.list_workflows(p)["workflows"]], ["workflows_Lapin.json"])
+        self.assertTrue(os.path.isfile(os.path.join(p, "99.Project-Config", "config_projets_Lapin.json")))
+        # Archive demandee sous l'ancien nom : celle du nouveau nom.
+        info = projects.save_workflow(p, "workflows_Lapin", "v2", archive="Lapin.json")
+        self.assertTrue(info["archived"].endswith("_workflows_Lapin.json"))
+        # Le renommage du projet renomme les deux fichiers.
+        new = projects.rename_project(p, "Lapin blanc")
+        self.assertTrue(os.path.isfile(os.path.join(new, "00.Workflows", "workflows_Lapin blanc.json")))
+        self.assertTrue(os.path.isfile(os.path.join(new, "99.Project-Config", "config_projets_Lapin blanc.json")))
+        self.assertFalse(os.path.exists(os.path.join(new, "00.Workflows", "workflows_Lapin.json")))
 
     def test_old_archives_move_into_archives_folder(self):
         write(os.path.join(self.wf, "Clip.json"), b"{}")

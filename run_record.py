@@ -324,7 +324,7 @@ def _check_run_file(path):
 RUN_START_MARGIN = 2
 
 
-def finish_run(run_file, files, status, output_dir):
+def finish_run(run_file, files, status, output_dir, now=None):
     """
     Fin du Run : files = [{filename, subfolder, type}] des sorties (seulement
     type "output", sous output_dir). Seuls les fichiers NOUVEAUX comptent :
@@ -359,6 +359,10 @@ def finish_run(run_file, files, status, output_dir):
         os.remove(run_file)
         same = known.get(os.path.normcase(sources[0])) if sources else None
         return {"skipped": True, "same_as": same, "status": data["status"]}
+    try:
+        data = _register_run(project, data, now)
+    except Exception as e:  # registre illisible : le Run garde son bloc complet
+        data["registry_error"] = str(e) or e.__class__.__name__
     base = os.path.splitext(os.path.basename(run_file))[0]
     outputs, n = [], 0
     rush = os.path.join(project, RUSH_VIDEOS)
@@ -494,6 +498,7 @@ def list_runs(project):
     folder = os.path.join(project, PROMPT_FOLDER)
     names = sorted((n for n in os.listdir(folder) if _RUN_NAME.match(n)), reverse=True) if os.path.isdir(folder) else []
     runs = []
+    regs = {k: read_registry(project, k) for k in REGISTRIES}
     for name in names:
         try:
             with open(os.path.join(folder, name), "r", encoding="utf-8") as f:
@@ -504,8 +509,9 @@ def list_runs(project):
             continue
         run = {k: data.get(k) for k in ("date", "mode", "prompt", "cfg", "steps", "seed", "status")}
         run.update({k: data[k] for k in ("cfg_from", "steps_from", "seed_from") if data.get(k)})
-        if isinstance(data.get("models"), dict):
-            run["models"] = data["models"]
+        models = run_models_of(project, data, regs)
+        if models is not None:
+            run["models"] = models
         run["file"] = name
         outs = []
         for index, o in enumerate(data.get("outputs") or []):
@@ -599,6 +605,164 @@ def move_output(project, run_name, index):
         o.pop(key, None)
     _write(run_file, data)
     return {"source": dst, "copy": rel, "moved_from": src}
+
+
+# ----------------------------------------------------------------------
+# Registres des modeles et des LoRA (choix utilisateur, 17/10/2026) :
+# 02.Models/yyyyMMdd_HHmmss_models.json et 06.LoRA/yyyyMMdd_HHmmss_LoRA.json
+# (un fichier par dossier, date de sa creation). Une entree MODELS = un
+# ensemble diffusion_model + text_encoder + vae ; une entree LoRA = la liste
+# des LoRA d'un Run (ListeName : LoRA01, LoRA02... avec leurs forces). A la
+# fin d'un Run enregistre : ensemble deja connu = son indice (datemodifi mis
+# a jour), sinon dernier indice + 1 ; le JSON du Run garde seulement
+# "models": [{"indiceMODELS": x}] et "loras": [{"indiceLoRA": y}].
+# ----------------------------------------------------------------------
+MODELS_FOLDER = "02.Models"
+LORA_FOLDER = "06.LoRA"
+REGISTRY_FORMAT = "MiniMax H3 Reference Loader"
+_MODEL_GROUPS = ("diffusion_model", "text_encoder", "vae")
+# kind -> (dossier, suffixe du fichier, liste, indice d'entree, dernier indice, indice en cours)
+REGISTRIES = {
+    "models": (MODELS_FOLDER, "models", "MODELS", "IndiceMODELS", "DernierIndiceMODELS", "IndiceEnCoursMODELS"),
+    "lora": (LORA_FOLDER, "LoRA", "LoRA", "IndiceLoRA", "DernierIndiceLoRA", "IndiceEnCoursLoRA"),
+}
+
+
+def registry_file(project, kind):
+    """Chemin du registre existant (02.Models / 06.LoRA), None s'il n'existe pas encore."""
+    folder, suffix = REGISTRIES[kind][:2]
+    d = os.path.join(project, folder)
+    pat = re.compile(r"^\d{8}_\d{6}_%s\.json$" % suffix, re.IGNORECASE)
+    names = sorted(n for n in os.listdir(d) if pat.match(n)) if os.path.isdir(d) else []
+    return os.path.join(d, names[0]) if names else None
+
+
+def read_registry(project, kind):
+    path = registry_file(project, kind)
+    if not path:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def lora_list(entry):
+    """LoRA d'une entree du registre LoRA (ListeName, ordre LoRA01, LoRA02...)."""
+    liste = entry.get("ListeName") if isinstance(entry, dict) else None
+    if not isinstance(liste, dict):
+        return []
+    return [v for _k, v in sorted(liste.items()) if isinstance(v, dict)]
+
+
+def _config_key(kind, config):
+    if kind == "models":
+        return tuple(tuple(config.get(g) or []) for g in _MODEL_GROUPS)
+    return tuple(sorted((repr((l.get("name"), l.get("strength_model"), l.get("strength_clip"))) for l in config)))
+
+
+def _entry_key(kind, entry):
+    return _config_key(kind, entry if kind == "models" else lora_list(entry))
+
+
+def register_config(project, kind, config, mode=None, now=None, when=None):
+    """
+    Indice de l'ensemble 'config' dans le registre 'kind' ("models" : dict des
+    trois listes ; "lora" : liste [{name, strength_model, strength_clip}]) :
+    ensemble deja present = son indice (datemodifi = now), sinon nouvelle
+    entree (dernier indice + 1). L'indice en cours devient cet indice (0 pour
+    un ensemble vide, sans entree ; pas de registre cree pour lui).
+    """
+    folder, suffix, list_key, idx_key, last_key, cur_key = REGISTRIES[kind]
+    now = now or time.strftime(DATE_FORMAT)
+    empty = not any(config.get(g) for g in _MODEL_GROUPS) if kind == "models" else not config
+    path = registry_file(project, kind)
+    if empty and not path:
+        return 0
+    data = read_registry(project, kind) if path else None
+    data = data or {}
+    entries = [e for e in data.get(list_key) or [] if isinstance(e, dict)]
+    last = int(data.get(last_key) or 0)
+    index = 0
+    if not empty:
+        key = _config_key(kind, config)
+        found = next((e for e in entries if _entry_key(kind, e) == key), None)
+        if found:
+            index = found.get(idx_key) or 0
+            found["datemodifi"] = now
+        else:
+            last = index = max([last] + [int(e.get(idx_key) or 0) for e in entries]) + 1
+            entry = {idx_key: index, "datecreat": now, "datemodifi": now}
+            if kind == "models":
+                entry.update({g: list(config.get(g) or []) for g in _MODEL_GROUPS})
+            else:
+                entry["ListeName"] = {"LoRA%02d" % (i + 1): {"name": l.get("name"), "strength_model": l.get("strength_model"),
+                                                            "strength_clip": l.get("strength_clip")}
+                                      for i, l in enumerate(config)}
+            entries.append(entry)
+    out = {"Project": os.path.basename(os.path.abspath(project)), "format": REGISTRY_FORMAT, "version": 1,
+           "mode": mode or data.get("mode"), "ProjectDir": project, last_key: last, cur_key: index, list_key: entries}
+    if not path:
+        d = os.path.join(project, folder)
+        os.makedirs(d, exist_ok=True)
+        stamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(when if when is not None else time.time()))
+        path = os.path.join(d, "%s_%s.json" % (stamp, suffix))
+    _write(path, out)
+    return index
+
+
+def current_index(project, kind):
+    """Indice en cours du registre (0 sans registre)."""
+    data = read_registry(project, kind)
+    return int((data or {}).get(REGISTRIES[kind][5]) or 0)
+
+
+def _register_run(project, data, now=None):
+    """Bloc "models" capture au lancement -> indices des registres (models / loras) dans le JSON du Run."""
+    captured = data.get("models")
+    if not isinstance(captured, dict):
+        return data
+    when = _run_start(data)
+    mi = register_config(project, "models", {g: captured.get(g) or [] for g in _MODEL_GROUPS},
+                         data.get("mode"), now, when)
+    li = register_config(project, "lora", list(captured.get("loras") or []), data.get("mode"), now, when)
+    out = {}
+    for k, v in data.items():
+        if k == "loras":
+            continue
+        if k == "models":
+            out["models"] = [{"indiceMODELS": mi}] if mi else []
+            out["loras"] = [{"indiceLoRA": li}] if li else []
+        else:
+            out[k] = v
+    return out
+
+
+def run_models_of(project, data, registries=None):
+    """Detail des modeles / LoRA d'un JSON de Run : bloc complet (en cours, anciens), sinon lu dans les registres."""
+    m = data.get("models")
+    if isinstance(m, dict):
+        return m
+    if not isinstance(m, list):
+        return None
+    regs = registries if registries is not None else {k: read_registry(project, k) for k in REGISTRIES}
+    out = {"diffusion_model": [], "text_encoder": [], "vae": [], "loras": []}
+
+    def entry(kind, index):
+        reg = regs.get(kind) or {}
+        _f, _s, list_key, idx_key = REGISTRIES[kind][:4]
+        return next((e for e in reg.get(list_key) or [] if isinstance(e, dict) and e.get(idx_key) == index), None)
+
+    for ref in m:
+        e = entry("models", (ref or {}).get("indiceMODELS")) if isinstance(ref, dict) else None
+        for g in _MODEL_GROUPS:
+            out[g].extend((e or {}).get(g) or [])
+    for ref in data.get("loras") or []:
+        e = entry("lora", ref.get("indiceLoRA")) if isinstance(ref, dict) else None
+        out["loras"].extend(lora_list(e))
+    return out
 
 
 def _run_start(data):

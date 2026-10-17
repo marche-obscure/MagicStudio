@@ -38,7 +38,7 @@ def wf_json(nodes, links):
 class ProjectConfigTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
-        self.p = projects.create_project(self.root, "Clip")
+        self.p = projects.create_project(self.root, "Proj")
         self.f = lambda folder, name="": os.path.join(self.p, folder, name) if name else os.path.join(self.p, folder)
 
     def tearDown(self):
@@ -65,7 +65,7 @@ class ProjectConfigTest(unittest.TestCase):
         write(self.f("04.Prompt", "p.txt"), b"P")
         write(self.f("08.Images", "Archives/old.png"), b"O")
         cfg = pc.build_config(self.p, refs, trims, "ref2va", now="2026-10-17 10:00:00")
-        self.assertEqual(cfg["Project"], "Clip")
+        self.assertEqual(cfg["Project"], "Proj")
         self.assertEqual(cfg["mode"], "REF2VA")
         self.assertEqual(cfg["datecreat"], "2026-10-17 10:00:00")
         self.assertEqual(cfg["ProjectDir"], self.p)
@@ -82,9 +82,8 @@ class ProjectConfigTest(unittest.TestCase):
         self.assertEqual(cfg["12.Video"][0]["video 1"][0]["trim"], [5, 7])
         self.assertEqual(cfg["14.Video-Audio"], [{"Valide": False, "NbVideo": 0}])
         self.assertEqual(cfg["10.Son"], [{"Valide": False, "NbSon": 0}])
-        models = cfg["02.Models"][0]["fichier 1"][0]
-        self.assertEqual((models["Indice"], models["nom"]), (1, "m.safetensors"))
-        self.assertNotIn("SHA256", models)
+        # 02.Models : indice en cours du registre (aucun registre ici), plus la liste des fichiers.
+        self.assertEqual(cfg["02.Models"], [{"Valide": False, "IndiceEnCoursMODELS": 0}])
         self.assertIn("SHA256", cfg["04.Prompt"][0]["fichier 1"][0])
 
     def test_workflow_entries_have_structure_and_active_flag(self):
@@ -99,16 +98,28 @@ class ProjectConfigTest(unittest.TestCase):
         self.assertEqual(clip["Links"], ["#4:0 -> #7:0"])
         self.assertNotIn("Actif", wf["fichier 2"][0])
 
+    def test_models_and_lora_blocks(self):
+        import run_record as rr
+        cfg = pc.build_config(self.p, {})
+        self.assertEqual(cfg["02.Models"], [{"Valide": False, "IndiceEnCoursMODELS": 0}])
+        self.assertEqual(cfg["06.LoRA"], [{"Valide": False, "IndiceEnCoursLoRA": 0}])
+        rr.register_config(self.p, "models", {"diffusion_model": ["u"], "text_encoder": [], "vae": []}, "REF2VA")
+        rr.register_config(self.p, "models", {"diffusion_model": ["v"], "text_encoder": [], "vae": []}, "REF2VA")
+        rr.register_config(self.p, "lora", [{"name": "b", "strength_model": 0.7, "strength_clip": 0.7}], "REF2VA")
+        cfg = pc.build_config(self.p, {})
+        self.assertEqual(cfg["02.Models"], [{"Valide": True, "IndiceEnCoursMODELS": 2}])
+        self.assertEqual(cfg["06.LoRA"], [{"Valide": True, "IndiceEnCoursLoRA": 1}])
+
     def test_file_without_index_stops_the_save(self):
         refs, trims = self.refs()
         pc.save_config(self.p, refs, trims)
-        before = read(os.path.join(self.p, "99.Project-Config", "Project-Config.json"))
+        before = read(os.path.join(self.p, "99.Project-Config", "config_projets_Proj.json"))
         with self.assertRaises(pc.ConfigError) as ctx:
             pc.save_config(self.p, {"images": refs["images"]}, trims)
         self.assertEqual(len(ctx.exception.errors), 1)
         self.assertIn("12.Video/shot.mp4", ctx.exception.errors[0])
         # Rien n'est ecrit ni archive.
-        self.assertEqual(read(os.path.join(self.p, "99.Project-Config", "Project-Config.json")), before)
+        self.assertEqual(read(os.path.join(self.p, "99.Project-Config", "config_projets_Proj.json")), before)
         self.assertEqual(os.listdir(os.path.join(self.p, "99.Project-Config", "Archives")), [])
 
     def test_unused_file_in_media_folder_is_an_error(self):
@@ -127,7 +138,7 @@ class ProjectConfigTest(unittest.TestCase):
         created = json.loads(read(path))["datecreat"]
         os.utime(path, (1792218600, 1792218600))
         second = pc.save_config(self.p, refs, trims)
-        self.assertRegex(second["archived"], r"^\d{8}-\d{6}_Project-Config\.json$")
+        self.assertRegex(second["archived"], r"^\d{8}-\d{6}_config_projets_Proj\.json$")
         os.utime(path, (1792218600, 1792218600))
         third = pc.save_config(self.p, refs, trims)
         self.assertEqual(third["archived"], second["archived"].replace(".json", " (2).json"))
