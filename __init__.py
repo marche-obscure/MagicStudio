@@ -371,6 +371,15 @@ try:
             return _project_error(e)
         return web.json_response(data)
 
+    @routes.get("/mmproject/runs")
+    async def mmproject_runs(request):
+        """Runs enregistres du projet (04.Prompt), le plus recent d'abord."""
+        try:
+            runs = await _in_executor(run_record.list_runs, request.rel_url.query.get("project", "").strip())
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"runs": runs})
+
     @routes.post("/mmproject/hashes")
     async def mmproject_hashes(request):
         """SHA256 des fichiers demandes (doublons de la galerie)."""

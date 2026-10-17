@@ -12,6 +12,7 @@ import {
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
     copyTabName, unusedProjectFiles, orderedFolderFiles,
+    RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -162,6 +163,16 @@ const HELP_SECTIONS = [
             "Reference Loader with their number (<b>F</b> / <b>L</b> = First / Last frame; files without number " +
             "last, greyed), then a frame with the files of <b>Archives</b>; both rows scroll sideways. Click a " +
             "thumbnail to see it large in the <b>Preview</b> window.</p>" +
+            "<p>The rows of 04.Prompt, 40.Rush Videos and 60.Rush Images show <b>Last run: dd/MM/yyyy hh:mm:ss | " +
+            "Runs: n</b> once runs are recorded (40: runs with a video, 60: runs with an image). Click " +
+            "<b>04.Prompt</b>: a filter <b>All / Video / Image</b> and the list of the runs (newest first), then " +
+            "a <b>Configuration</b> frame (date, mode, Steps, CFG, Seed, status, size of the video, folder of the " +
+            "<b>Original</b>), the <b>Prompt</b> text and a thumbnail of the output (‹ › when there are several). " +
+            "Click <b>40.Rush Videos</b> or <b>60.Rush Images</b>: the videos (copies in 40.Rush Videos) or the " +
+            "images (originals) named in the JSON of the runs, newest on the left, scrolling sideways; below, " +
+            "the Configuration and the Prompt of the run of the picked thumbnail. Click a thumbnail to see it " +
+            "in the <b>Preview</b> window (the same thumbnail again closes it); ✕, Escape or a click outside " +
+            "closes the window.</p>" +
             "<p>A file that goes to <b>Archives</b> is named <b>yyyyMMdd_HHmmss_name.ext</b> (date of the " +
             "archiving, <b>(2)</b>-like numbers removed; a name already taken gets the next second). Coming back " +
             "from Archives, it takes its name again without the date.</p>" +
@@ -359,6 +370,16 @@ const HELP_SECTIONS_FR = [
             "fichiers sans numéro à la fin, grisés), puis un cadre avec les fichiers d'<b>Archives</b> ; les deux " +
             "lignes défilent horizontalement. Cliquez sur une vignette pour la voir en grand dans la fenêtre " +
             "<b>Preview</b>.</p>" +
+            "<p>Les lignes de 04.Prompt, 40.Rush Videos et 60.Rush Images affichent <b>Last run: dd/MM/yyyy " +
+            "hh:mm:ss | Runs: n</b> dès qu'un Run est enregistré (40 : Runs avec une vidéo, 60 : Runs avec une " +
+            "image). Clic sur <b>04.Prompt</b> : un filtre <b>All / Video / Image</b> et la liste des Runs (le plus " +
+            "récent d'abord), puis un cadre <b>Configuration</b> (date, mode, Steps, CFG, Seed, status, taille de " +
+            "la vidéo, dossier de l'<b>Original</b>), le texte du <b>Prompt</b> et une vignette de la sortie (‹ › " +
+            "s'il y en a plusieurs). Clic sur <b>40.Rush Videos</b> ou <b>60.Rush Images</b> : les vidéos (copies " +
+            "de 40.Rush Videos) ou les images (originaux) citées dans les JSON des Runs, la plus récente à gauche, " +
+            "défilement horizontal ; en dessous, la Configuration et le Prompt du Run de la vignette choisie. Clic " +
+            "sur une vignette = fenêtre <b>Preview</b> (la même vignette la referme) ; ✕, Échap ou un clic à côté " +
+            "ferme la fenêtre.</p>" +
             "<p>Un fichier qui part dans <b>Archives</b> est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> (date de " +
             "l'archivage, numéros du type <b>(2)</b> retirés ; un nom déjà pris prend la seconde suivante). En " +
             "revenant d'Archives, il reprend son nom sans la date.</p>" +
@@ -1928,6 +1949,300 @@ function buildFolderViewer(container) {
     };
 }
 
+// --------------------------------------------------------------------
+// Fenetres des Runs (boutons 04.Prompt, 40.Rush Videos, 60.Rush Images) :
+// 04 = filtre All / Video / Image + liste des Runs, cadres Configuration,
+// Prompt et vignette ; 40 / 60 = vignettes des sorties citees par les JSON
+// (defilement horizontal), puis Configuration et Prompt du Run. Clic sur une
+// vignette = fenetre Preview a droite (meme vignette = fermeture).
+// --------------------------------------------------------------------
+const RUN_FILTERS = [["all", "All"], ["video", "Video"], ["image", "Image"]];
+
+/** Dossier et nom d'un chemin complet. */
+function splitPath(path) {
+    const sep = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+    return [path.slice(0, sep), path.slice(sep + 1)];
+}
+
+/** Lignes du cadre Configuration d'un Run (et de la sortie montree). */
+function runConfigHtml(run, out) {
+    const row = (k, v, tip) => '<div style="display:flex;justify-content:space-between;gap:10px;line-height:1.7"' +
+        (tip ? ' title="' + escapeHtml(tip) + '"' : "") + '><span style="color:#999;flex:0 0 auto">' + k +
+        '</span><span style="text-align:right;word-break:break-all">' + v + "</span></div>";
+    const val = (key) => run[key] !== null && run[key] !== undefined ? escapeHtml(String(run[key]))
+        : '<span style="color:' + ORANGE + '">null' + (run[key + "_from"] ? " (" + escapeHtml(run[key + "_from"]) + ")" : "") + "</span>";
+    const color = run.status === "done" ? GREEN : run.status === "error" ? "#d32f2f" : ORANGE;
+    let h = row("Run", escapeHtml(runDateText(run.date)) + (run.mode ? " – " + escapeHtml(run.mode) : "")) +
+        row("Steps", val("steps")) + row("CFG", val("cfg")) + row("Seed", val("seed")) +
+        row("Status", '<span style="color:' + color + '">' + escapeHtml(run.status || "?") + "</span>");
+    if (!out) return h + row("Output", '<span style="color:#888">none</span>');
+    if (out.size) h += row("Size", escapeHtml(out.size + (out.copy_size ? " → " + out.copy_size : "")));
+    h += row("Original", '<span style="font-family:monospace;font-size:11px">' + escapeHtml(out.folder || "?") + "</span>" +
+        (out.source_exists ? "" : ' <span style="color:' + ORANGE + '">(missing)</span>'), out.source);
+    if (out.resize_error) h += row("Resize", '<span style="color:' + ORANGE + '">' + escapeHtml(out.resize_error) + "</span>");
+    return h;
+}
+
+function buildRunViewer(container) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, {
+        width: "min(760px, 94vw)", padding: "12px 14px", borderColor: VIOLET, display: "flex",
+        flexDirection: "column", gap: "8px", maxHeight: "86vh",
+    });
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "8px" });
+    const title = document.createElement("div");
+    Object.assign(title.style, { flex: "1", fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR });
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
+    Object.assign(closeBtn.style, { width: "22px", height: "22px" });
+    head.append(title, closeBtn);
+
+    // 04.Prompt : filtre et liste des Runs.
+    const pick = document.createElement("div");
+    Object.assign(pick.style, { display: "flex", alignItems: "center", gap: "6px" });
+    const filterBtns = RUN_FILTERS.map(([key, text]) => {
+        const b = makeTextButton(text, INACTIVE_BG);
+        b.dataset.filter = key;
+        return b;
+    });
+    const listLabel = document.createElement("span");
+    listLabel.textContent = "Runs";
+    Object.assign(listLabel.style, { color: "#9fd6cf", fontWeight: "bold", marginLeft: "8px" });
+    const select = document.createElement("select");
+    Object.assign(select.style, {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833",
+        borderRadius: "6px", padding: "3px 6px", fontSize: "12px",
+    });
+    pick.append(...filterBtns, listLabel, select);
+
+    // 40 / 60 : vignettes.
+    const strip = document.createElement("div");
+    Object.assign(strip.style, {
+        display: "flex", gap: "10px", overflowX: "auto", overflowY: "hidden", padding: "2px 2px 8px",
+        minHeight: "60px", borderBottom: "2px solid " + VIOLET,
+    });
+
+    const frame = (text) => {
+        const box = document.createElement("div");
+        Object.assign(box.style, {
+            padding: "8px 10px", background: "#161616", border: "1px solid #2c2c2c", borderRadius: "8px", minWidth: "0",
+        });
+        const label = document.createElement("div");
+        label.textContent = text;
+        Object.assign(label.style, { color: "#9fd6cf", fontWeight: "bold", fontSize: "11px", marginBottom: "4px" });
+        const body = document.createElement("div");
+        box.append(label, body);
+        return { box, label, body };
+    };
+    const conf = frame("Configuration");
+    const prompt = frame("Prompt");
+    Object.assign(prompt.body.style, {
+        whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: "1.5", overflowY: "auto", maxHeight: "28vh",
+        userSelect: "text", cursor: "text",
+    });
+    const thumb = frame("Output");
+    Object.assign(thumb.body.style, { display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" });
+    const left = document.createElement("div");
+    Object.assign(left.style, { display: "flex", flexDirection: "column", gap: "8px", minWidth: "0" });
+    left.append(conf.box, prompt.box);
+    const grid = document.createElement("div");
+    Object.assign(grid.style, { display: "grid", gap: "8px", alignItems: "start", minHeight: "0", overflowY: "auto" });
+    grid.append(left, thumb.box);
+    card.append(head, pick, strip, grid);
+    const preview = buildPreviewWindow();
+
+    let runs = [];
+    let folder = "";
+    let filter = "all";
+    let runIndex = 0;
+    let outIndex = 0;
+    let rushIndex = 0;
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (preview.isOpen()) preview.close();
+        else close();
+    };
+    function close() {
+        preview.close();
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        strip.innerHTML = "";
+        thumb.body.innerHTML = "";
+    }
+    closeBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", () => (preview.isOpen() ? preview.close() : close()));
+
+    const shownOf = (file) => folder === "40.Rush Videos" || /[\\/]40\.Rush Videos[\\/]/.test(file)
+        ? "40.Rush Videos/" + baseOf(file) : file;
+    const showPreview = (file, kind) => preview.toggle(file, kind, shownOf(file), card);
+
+    // ---- 04.Prompt ----
+    const filteredRuns = () => runsOfKind(runs, filter === "all" ? null : filter);
+    function renderPrompt() {
+        filterBtns.forEach((b) => {
+            const on = b.dataset.filter === filter;
+            b.style.background = on ? VIOLET : INACTIVE_BG;
+            b.style.fontWeight = on ? "bold" : "normal";
+        });
+        const list = filteredRuns();
+        select.innerHTML = "";
+        list.forEach((r, i) => {
+            const o = document.createElement("option");
+            o.value = String(i);
+            const kinds = [...new Set((r.outputs || []).map((x) => x.kind))];
+            o.textContent = runDateText(r.date) + " – " + (r.mode || "?") + " – " + (kinds.join(" / ") || "no output");
+            o.style.background = "#111";
+            select.appendChild(o);
+        });
+        if (!list.length) {
+            const o = document.createElement("option");
+            o.textContent = "No run" + (filter === "all" ? "" : " with a " + filter);
+            select.appendChild(o);
+            conf.body.innerHTML = '<span style="color:#888">No run recorded.</span>';
+            prompt.body.textContent = "";
+            thumb.body.innerHTML = "";
+            return;
+        }
+        runIndex = Math.min(runIndex, list.length - 1);
+        select.value = String(runIndex);
+        showRun(list[runIndex]);
+    }
+    function showRun(run) {
+        const outs = (run.outputs || []).filter((o) => filter === "all" || o.kind === filter);
+        outIndex = Math.min(outIndex, Math.max(0, outs.length - 1));
+        const out = outs[outIndex];
+        conf.body.innerHTML = runConfigHtml(run, out);
+        prompt.body.textContent = run.prompt || "";
+        thumb.body.innerHTML = "";
+        const file = outputFile(out);
+        if (!out || !file) {
+            const d = document.createElement("div");
+            d.textContent = !out ? "No output" : out.kind === "video" ? "Copy not found in 40.Rush Videos" : "Original not found";
+            Object.assign(d.style, { color: "#888", padding: "40px 0" });
+            thumb.body.appendChild(d);
+        } else {
+            const [dir, name] = splitPath(file);
+            const t = dupThumb(dir, name, out.kind, 300);
+            Object.assign(t.style, { width: "100%", height: "auto", aspectRatio: "16 / 10", cursor: "pointer" });
+            t.title = "Preview " + name;
+            t.addEventListener("click", () => showPreview(file, out.kind));
+            const n = document.createElement("div");
+            n.textContent = name;
+            Object.assign(n.style, { fontSize: "11px", color: "#999", wordBreak: "break-all", textAlign: "center" });
+            thumb.body.append(t, n);
+        }
+        if (outs.length > 1) {
+            const nav = document.createElement("div");
+            Object.assign(nav.style, { display: "flex", alignItems: "center", gap: "8px" });
+            const prev = makeTextButton("‹", INACTIVE_BG);
+            const next = makeTextButton("›", INACTIVE_BG);
+            const count = document.createElement("span");
+            count.textContent = outIndex + 1 + "/" + outs.length;
+            prev.addEventListener("click", () => {
+                outIndex = (outIndex + outs.length - 1) % outs.length;
+                showRun(run);
+            });
+            next.addEventListener("click", () => {
+                outIndex = (outIndex + 1) % outs.length;
+                showRun(run);
+            });
+            nav.append(prev, count, next);
+            thumb.body.appendChild(nav);
+        }
+    }
+    filterBtns.forEach((b) => b.addEventListener("click", () => {
+        filter = b.dataset.filter;
+        runIndex = 0;
+        outIndex = 0;
+        preview.close();
+        renderPrompt();
+    }));
+    select.addEventListener("change", () => {
+        runIndex = Number(select.value) || 0;
+        outIndex = 0;
+        preview.close();
+        const list = filteredRuns();
+        if (list[runIndex]) showRun(list[runIndex]);
+    });
+
+    // ---- 40.Rush Videos / 60.Rush Images ----
+    function renderRush() {
+        const items = rushItems(runs, folder);
+        strip.innerHTML = "";
+        if (!items.length) {
+            const d = document.createElement("div");
+            d.textContent = "No " + (RUN_FOLDERS[folder] || "file") + " recorded by a run.";
+            Object.assign(d.style, { color: "#888", alignSelf: "center" });
+            strip.appendChild(d);
+            conf.body.innerHTML = "";
+            prompt.body.textContent = "";
+            return;
+        }
+        rushIndex = Math.min(rushIndex, items.length - 1);
+        items.forEach((it, i) => {
+            const t = document.createElement("div");
+            Object.assign(t.style, {
+                width: "120px", padding: "5px", borderRadius: "8px", background: "#1f1f1f", cursor: "pointer",
+                flex: "0 0 auto", boxSizing: "border-box",
+                border: i === rushIndex ? "2px solid " + VIOLET : "1px solid #333",
+            });
+            const [dir, name] = splitPath(it.file);
+            t.appendChild(dupThumb(dir, name, it.output.kind, 108));
+            const label = document.createElement("div");
+            label.textContent = runDateText(it.run.date);
+            label.title = name;
+            Object.assign(label.style, { fontSize: "11px", marginTop: "4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+            t.appendChild(label);
+            t.addEventListener("click", () => {
+                if (rushIndex !== i) {
+                    rushIndex = i;
+                    renderRush();
+                }
+                showPreview(it.file, it.output.kind);
+            });
+            strip.appendChild(t);
+        });
+        const it = items[rushIndex];
+        conf.label.textContent = "Configuration – " + baseOf(it.file);
+        conf.body.innerHTML = runConfigHtml(it.run, it.output);
+        prompt.body.textContent = it.run.prompt || "";
+    }
+
+    return {
+        /** open(folder "04.Prompt" | "40.Rush Videos" | "60.Rush Images", projectName, runs) */
+        open(name, projectName, list) {
+            const same = folder === name && overlay.style.display !== "none";
+            folder = name;
+            runs = list || [];
+            if (!same) {
+                runIndex = 0;
+                outIndex = 0;
+                rushIndex = 0;
+            }
+            const promptMode = name === "04.Prompt";
+            title.textContent = name + " – " + projectName;
+            conf.label.textContent = "Configuration";
+            pick.style.display = promptMode ? "flex" : "none";
+            strip.style.display = promptMode ? "none" : "flex";
+            thumb.box.style.display = promptMode ? "block" : "none";
+            grid.style.gridTemplateColumns = promptMode ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)";
+            if (promptMode) renderPrompt();
+            else renderRush();
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 760);
+        },
+        remove() {
+            close();
+            preview.remove();
+            overlay.remove();
+        },
+    };
+}
+
 /** open(report, projectPath) -> Promise<dossiers coches | null> (Cancel, Echap, clic a cote = null). */
 function buildLoadDialog(container) {
     const { overlay, card } = makeOverlay();
@@ -2187,6 +2502,8 @@ app.registerExtension({
             let folderFiles = {};
             // Fichiers de <dossier>/Archives des dossiers suivis : {dossier: [chemins]}.
             let archiveFiles = {};
+            // Runs enregistres (04.Prompt), le plus recent d'abord : boutons et fenetres 04 / 40 / 60.
+            let runList = [];
             // Doublons de <dossier>/Archives : {dossier: [{sha, files}]} ; Corbeille disponible (Windows).
             let dupGroups = {};
             let trashOk = false;
@@ -2311,8 +2628,9 @@ app.registerExtension({
             const loadDialog = buildLoadDialog(container);
             const duplicatesDialog = buildDuplicatesDialog(container);
             const folderViewer = buildFolderViewer(container);
+            const runViewer = buildRunViewer(container);
             node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog,
-                loadDialog, duplicatesDialog, folderViewer];
+                loadDialog, duplicatesDialog, folderViewer, runViewer];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
@@ -2350,8 +2668,8 @@ app.registerExtension({
                 folderRows.forEach((f) => {
                     const path = current ? s.path + sep + f.name : "";
                     f.row.style.opacity = current ? "1" : "0.45";
-                    const viewable = current && UPDATE_FOLDERS.includes(f.name);
-                    f.btn.title = viewable ? "Show the files of " + f.name + " (" + path + ")"
+                    const viewable = current && (UPDATE_FOLDERS.includes(f.name) || f.name in RUN_FOLDERS);
+                    f.btn.title = viewable ? (f.name in RUN_FOLDERS ? "Show the runs of " : "Show the files of ") + f.name + " (" + path + ")"
                         : current ? path : "Pick or create a project first";
                     f.btn.style.cursor = viewable ? "pointer" : "default";
                     if (f.name !== WORKFLOWS && !UPDATE_FOLDERS.includes(f.name)) {
@@ -2615,9 +2933,11 @@ app.registerExtension({
                 if (!s.name || !projects.includes(s.name)) {
                     folderFiles = {};
                     archiveFiles = {};
+                    runList = [];
                     paintFolders();
                     return;
                 }
+                await loadRuns(s);
                 try {
                     const data = await apiGet("/mmproject/folder_files?project=" + encodeURIComponent(s.path) +
                         "&folders=" + encodeURIComponent(UPDATE_FOLDERS.join("|")) + "&archives=1");
@@ -2640,6 +2960,25 @@ app.registerExtension({
                     dupGroups = {};
                 }
                 paintFolders();
+            }
+
+            /** Runs enregistres du projet (boutons 04 / 40 / 60). */
+            async function loadRuns(s) {
+                try {
+                    const data = await apiGet("/mmproject/runs?project=" + encodeURIComponent(s.path));
+                    if (getState().path === s.path) runList = data.runs || [];
+                } catch (e) {
+                    runList = [];
+                }
+            }
+
+            /** Fenetre des Runs (04 / 40 / 60), relue a chaque ouverture. */
+            async function showRuns(f) {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return;
+                await loadRuns(s);
+                paintFolders();
+                runViewer.open(f, s.name, runList);
             }
 
             /** Bouton des doublons a droite de la cloche : visible quand <dossier>/Archives en a. */
@@ -2718,6 +3057,12 @@ app.registerExtension({
                     return paintFolders();
                 }
                 for (const f of folderRows) {
+                    if (f.name in RUN_FOLDERS) {
+                        // "Last run: dd/MM/yyyy hh:mm:ss | Runs: n" (choix utilisateur).
+                        f.last.textContent = current ? runSummary(runList, f.name) : "";
+                        f.last.title = f.last.textContent;
+                        f.last.style.color = "#9fd6cf";
+                    }
                     if (!UPDATE_FOLDERS.includes(f.name)) continue;
                     const ch = refState ? folderChanges(refState, f.name, s.path, snapshotOf(s, f.name)) : null;
                     const unused = unusedOf(f.name, refState);
@@ -3070,6 +3415,7 @@ app.registerExtension({
                     f.arch.addEventListener("click", () => duplicatesStep(f.name));
                     f.btn.addEventListener("click", () => showFolder(f.name));
                 }
+                if (f.name in RUN_FOLDERS) f.btn.addEventListener("click", () => showRuns(f.name));
             }
 
             /** Renomme ou deplace le projet (deja confirme) ; le Reference Loader suit. */
