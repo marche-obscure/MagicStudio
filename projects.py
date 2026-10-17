@@ -16,8 +16,12 @@ import time
 SUBFOLDERS = ("00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son",
               "12.Video", "14.Video-Audio", "40.Rush Videos", "60.Rush Images")
 
-# Dossier des configurations JSON du Ref Loader enregistrees par Save.
+# Dossier des configurations JSON du Ref Loader (anciennes versions de Save).
 CONFIG_FOLDER = "00.Workflows"
+
+# Configuration du projet (Load / Save du noeud) : creee avec le projet et son
+# dossier Archives, sans ligne dans le noeud (voir project_config.py).
+PROJECT_CONFIG_DIR = "99.Project-Config"
 
 # Nom du dossier racine par defaut, cree dans le dossier input de ComfyUI.
 DEFAULT_ROOT_NAME = "Projets"
@@ -67,6 +71,10 @@ def ensure_project(path):
         if not os.path.isdir(full):
             os.makedirs(full, exist_ok=True)
             created.append(sub)
+    arch = os.path.join(path, PROJECT_CONFIG_DIR, "Archives")
+    if not os.path.isdir(arch):
+        os.makedirs(arch, exist_ok=True)
+        created.append(PROJECT_CONFIG_DIR)
     return created
 
 

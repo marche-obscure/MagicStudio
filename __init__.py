@@ -15,6 +15,7 @@ import traceback
 
 from . import media
 from . import projects
+from . import project_config
 from .nodes import MiniMaxH3RefLoader, MiniMaxH3Project, default_projects_root
 
 NODE_CLASS_MAPPINGS = {
@@ -326,6 +327,42 @@ try:
         except Exception as e:
             return _project_error(e)
         return web.json_response({"hashes": hashes})
+
+    # ------ Configuration du projet (99.Project-Config) : Save et Load ------
+
+    @routes.post("/mmproject/config/save")
+    async def mmproject_config_save(request):
+        """Ecrit Project-Config.json (l'ancien dans Archives) ; errors = fichiers sans indice."""
+        try:
+            body = await request.json()
+            info = await _in_executor(project_config.save_config, body.get("project", ""), body.get("refs") or {},
+                                      body.get("trims") or {}, body.get("mode", ""), body.get("workflow", ""))
+        except project_config.ConfigError as e:
+            return web.json_response({"error": str(e), "errors": e.errors}, status=400)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(info)
+
+    @routes.post("/mmproject/config/check")
+    async def mmproject_config_check(request):
+        """Load, avant toute modification : SHA256, archives, structure du workflow."""
+        try:
+            body = await request.json()
+            report = await _in_executor(project_config.check_config, body.get("project", ""), body.get("current"))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(report)
+
+    @routes.post("/mmproject/config/restore")
+    async def mmproject_config_restore(request):
+        """Load confirme : fichiers retrouves remis en place depuis Archives."""
+        try:
+            body = await request.json()
+            done = await _in_executor(project_config.restore_files, body.get("project", ""),
+                                      list(body.get("items") or []))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"restored": done})
 
     @routes.post("/mmproject/delete_archive")
     async def mmproject_delete_archive(request):
