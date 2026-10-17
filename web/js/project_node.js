@@ -11,7 +11,7 @@ import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
-    copyTabName,
+    copyTabName, unusedProjectFiles,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -147,8 +147,10 @@ const HELP_SECTIONS = [
             "Reference Loader. When a reference is added or removed there, " + iconBadge(WARN_ICON, INACTIVE_BG) +
             " appears left of the folder and its " + iconBadge(BELL_ICON, BELL_ORANGE) + " turns orange. Click the " +
             "bell: the window lists the files to copy and the references removed, and <b>Update</b> copies the new " +
-            "files (the Reference Loader then uses the copies). Removed references are only taken into account: " +
-            "no file is deleted. The bell goes back to grey and the sign goes away.</p>" +
+            "files (the Reference Loader then uses the copies) and moves to <b>&lt;folder&gt;/Archives</b> every " +
+            "file of the folder that no list of the Reference Loader uses anymore (removed references included): " +
+            "no file is deleted, and they no longer show in the gallery of the project. The bell also turns orange " +
+            "when the folder keeps such unused files. Then the bell goes back to grey and the sign goes away.</p>" +
             hNote("This is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
                 "ignores the content of the lists of the Reference Loader.") +
             hNote("A subfolder deleted by mistake is created again when you pick the project.") +
@@ -290,9 +292,11 @@ const HELP_SECTIONS_FR = [
             "Reference Loader. Quand une référence y est ajoutée ou retirée, " + iconBadge(WARN_ICON, INACTIVE_BG) +
             " apparaît à gauche du dossier et sa " + iconBadge(BELL_ICON, BELL_ORANGE) + " passe à l'orange. Cliquez " +
             "sur la cloche : la fenêtre liste les fichiers à copier et les références retirées, et <b>Update</b> " +
-            "copie les nouveaux fichiers (le Reference Loader utilise ensuite les copies). Les références retirées " +
-            "sont seulement prises en compte : aucun fichier n'est effacé. La cloche redevient grise et le sigle " +
-            "disparaît.</p>" +
+            "copie les nouveaux fichiers (le Reference Loader utilise ensuite les copies) et déplace dans " +
+            "<b>&lt;dossier&gt;/Archives</b> chaque fichier du dossier qu'aucune liste du Reference Loader n'utilise " +
+            "plus (références retirées comprises) : aucun fichier n'est effacé, et ils ne s'affichent plus dans la " +
+            "galerie du projet. La cloche passe aussi à l'orange quand le dossier garde de tels fichiers " +
+            "inutilisés. Ensuite la cloche redevient grise et le sigle disparaît.</p>" +
             hNote("Ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
                 "00.Workflows ignore le contenu des listes du Reference Loader.", "Remarque :") +
             hNote("Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet.", "Remarque :") +
@@ -1610,6 +1614,8 @@ app.registerExtension({
             let savedWf = null;
             let savedSig = null;
             let loadId = 0;
+            // Fichiers a la racine des dossiers suivis du projet choisi : {dossier: [chemins]}.
+            let folderFiles = {};
 
             // ---- Interface ----
             const container = document.createElement("div");
@@ -1838,6 +1844,7 @@ app.registerExtension({
                 if (!name) {
                     setState({ root: folder.root, name: "", path: "" });
                     loadWorkflowInfo();
+                    loadFolderFiles();
                     message = "";
                     render();
                     return;
@@ -1846,6 +1853,7 @@ app.registerExtension({
                     const data = await apiPost("/mmproject/open", { root: folder.root, name });
                     setState({ root: folder.root, name, path: data.path });
                     loadWorkflowInfo();
+                    loadFolderFiles();
                     if (!quiet) message = "";
                 } catch (e) {
                     message = e.message;
@@ -1932,6 +1940,7 @@ app.registerExtension({
                     setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: getState().path });
                     paintFolders();
                     say("Saved: " + count("copy") + " file(s) copied.", true);
+                    loadFolderFiles();
                     return "saved";
                 } catch (e) {
                     say(e.message);
@@ -2018,7 +2027,33 @@ app.registerExtension({
                 return s.snapPath === s.path && Array.isArray(s.snap[f]) ? s.snap[f] : null;
             }
 
-            /** Avertissement + cloche orange quand des references sont ajoutees ou retirees. */
+            /** Relit les fichiers des dossiers suivis du projet choisi, puis les cloches. */
+            async function loadFolderFiles() {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) {
+                    folderFiles = {};
+                    paintFolders();
+                    return;
+                }
+                try {
+                    const data = await apiGet("/mmproject/folder_files?project=" + encodeURIComponent(s.path) +
+                        "&folders=" + encodeURIComponent(UPDATE_FOLDERS.join("|")));
+                    if (getState().path === s.path) folderFiles = data.files || {};
+                } catch (e) {
+                    folderFiles = {};
+                }
+                paintFolders();
+            }
+
+            /** Fichiers du dossier que plus aucune liste du Reference Loader n'utilise (a archiver). */
+            function unusedOf(f, refState) {
+                return refState && Array.isArray(folderFiles[f]) ? unusedProjectFiles(folderFiles[f], refState) : [];
+            }
+
+            /**
+             * Avertissement + cloche orange quand des references sont ajoutees ou
+             * retirees, ou quand le dossier garde des fichiers inutilises.
+             */
             function paintFolders() {
                 const s = getState();
                 const current = s.name && projects.includes(s.name);
@@ -2032,10 +2067,13 @@ app.registerExtension({
                 for (const f of folderRows) {
                     if (!UPDATE_FOLDERS.includes(f.name)) continue;
                     const ch = refState ? folderChanges(refState, f.name, s.path, snapshotOf(s, f.name)) : null;
-                    const changed = !!ch && (ch.added.length > 0 || ch.removed.length > 0);
-                    const tip = !changed ? "" : (ch.added.length ? ch.added.length + " new reference(s) to copy" : "") +
-                        (ch.added.length && ch.removed.length ? ", " : "") +
-                        (ch.removed.length ? ch.removed.length + " reference(s) removed in the Reference Loader" : "");
+                    const unused = unusedOf(f.name, refState);
+                    const changed = !!ch && (ch.added.length > 0 || ch.removed.length > 0 || unused.length > 0);
+                    const tip = !changed ? "" : [
+                        ch.added.length ? ch.added.length + " new reference(s) to copy" : "",
+                        ch.removed.length ? ch.removed.length + " reference(s) removed in the Reference Loader" : "",
+                        unused.length ? unused.length + " unused file(s) to archive" : "",
+                    ].filter(Boolean).join(", ");
                     f.warn.style.visibility = changed ? "visible" : "hidden";
                     f.warn.title = changed ? f.name + " has changed and is not updated yet: " + tip : "";
                     f.bell.style.background = changed ? BELL_ORANGE : INACTIVE_BG;
@@ -2052,14 +2090,20 @@ app.registerExtension({
                 return shown + (paths.length > 8 ? ", … (+" + (paths.length - 8) + ")" : "");
             };
 
-            /** Cloche d'un dossier suivi : copie des ajouts (confirmee), prise en compte des retraits. */
+            /**
+             * Cloche d'un dossier suivi : copie des ajouts et archivage des fichiers
+             * que le Reference Loader n'utilise plus (references retirees comprises),
+             * dans <dossier>/Archives ; le tout confirme, rien n'est efface.
+             */
             async function updateFolder(f) {
                 const loader = linkedLoader(node);
                 const s = getState();
                 if (!loader || !s.name || !projects.includes(s.name)) return;
+                await loadFolderFiles();
                 const refState = loader.mmGetState();
                 const ch = folderChanges(refState, f, s.path, snapshotOf(s, f));
-                if (!ch.added.length && !ch.removed.length) return;
+                const unused = unusedOf(f, refState);
+                if (!ch.added.length && !ch.removed.length && !unused.length) return;
                 const items = saveItems(refState).filter((i) => i.folder === f);
                 let plan = [];
                 try {
@@ -2075,12 +2119,19 @@ app.registerExtension({
                     (missing.length ? '<br><span style="color:' + ORANGE + '">' + missing.length +
                         " missing on disk (not copied): " + nameList(missing.map((x) => x.src)) + "</span>" : "") +
                     (ch.removed.length ? "<br>" + ch.removed.length + " reference(s) removed in the Reference Loader: " +
-                        nameList(ch.removed) + '<br><span style="color:#999">The files stay in the folder.</span>' : "") +
+                        nameList(ch.removed) : "") +
+                    (unused.length ? "<br>→ moved to <b>" + escapeHtml(f) + "/Archives</b>: " + nameList(unused) +
+                        '<br><span style="color:#999">Files no list of the Reference Loader uses anymore; nothing is ' +
+                        "deleted.</span>" : "") +
                     (copies.length ? '<div style="color:#999;margin-top:8px">Then the Reference Loader uses the copies ' +
                         "of the project.</div>" : "");
                 const ok = await confirm.ask({ title: "Update " + f + "?", html, okLabel: "Update", okColor: BELL_ORANGE });
                 if (!ok) return;
                 try {
+                    // Archives d'abord : un fichier copie peut reprendre le nom d'un fichier archive.
+                    if (unused.length) {
+                        await apiPost("/mmproject/archive_files", { project: s.path, folder: f, names: unused.map(baseName) });
+                    }
                     if (copies.length) {
                         const data = await apiPost("/mmproject/save", { project: s.path, items, configs: [] });
                         // Le Reference Loader a pu changer pendant la confirmation : on repart de son etat.
@@ -2092,11 +2143,12 @@ app.registerExtension({
                     const snap = Object.assign({}, now.snapPath === now.path ? now.snap : {});
                     snap[f] = folderPaths(loader.mmGetState(), f);
                     setState({ snap, snapPath: now.path });
-                    say(f + " updated: " + copies.length + " file(s) copied.", true);
+                    say(f + " updated: " + copies.length + " file(s) copied" +
+                        (unused.length ? ", " + unused.length + " archived" : "") + ".", true);
                 } catch (e) {
                     say(e.message);
                 }
-                paintFolders();
+                await loadFolderFiles();
             }
 
             function renderWorkflow() {
@@ -2274,7 +2326,10 @@ app.registerExtension({
                 clearTimeout(recheck);
             };
             // Secours espace : changements faits par un script, sans action de l'utilisateur.
-            node.__mmprojectTimer = setInterval(() => refreshIndicators(), FALLBACK_CHECK_MS);
+            node.__mmprojectTimer = setInterval(() => {
+                refreshIndicators();
+                loadFolderFiles();
+            }, FALLBACK_CHECK_MS);
             for (const f of folderRows) {
                 if (UPDATE_FOLDERS.includes(f.name)) f.bell.addEventListener("click", () => updateFolder(f.name));
             }
@@ -2432,8 +2487,8 @@ app.registerExtension({
                         }
                         loader.mmSetState(loadedState(loader.mmGetState(), report, s.path, media));
                         setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: s.path });
-                        paintFolders();
                     }
+                    loadFolderFiles();
                     say("Project loaded." + restored, true);
                 } catch (e) {
                     say(e.message);
@@ -2473,7 +2528,7 @@ app.registerExtension({
                 const snap = Object.assign({}, now.snapPath === now.path ? now.snap : {});
                 snap[f] = folderPaths(loader.mmGetState(), f);
                 setState({ snap, snapPath: now.path });
-                paintFolders();
+                loadFolderFiles();
             };
             // Lu par la galerie du Reference Loader : projet choisi (et existant), sinon null.
             node.mmProjectInfo = () => {

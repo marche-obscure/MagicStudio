@@ -370,6 +370,27 @@ class ArchiveFilesTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(self.img, "a.png")))
 
 
+class FolderFilesTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.p = projects.create_project(self.root, "Clip")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_root_files_only_sorted(self):
+        img = os.path.join(self.p, "08.Images")
+        for n in ["b.png", "A.png", ".hidden", "Archives/old.png"]:
+            write(os.path.join(img, n))
+        out = projects.folder_files(self.p, ["08.Images", "10.Son"])
+        self.assertEqual(out["08.Images"], [os.path.join(img, "A.png"), os.path.join(img, "b.png")])
+        self.assertEqual(out["10.Son"], [])
+        with self.assertRaises(ValueError):
+            projects.folder_files(self.p, ["99.Project-Config"])
+        with self.assertRaises(FileNotFoundError):
+            projects.folder_files(os.path.join(self.root, "nope"), ["08.Images"])
+
+
 class ImportFilesTest(unittest.TestCase):
     """Remplacants valides : copies (deplaces depuis Archives) dans le dossier du projet."""
 
