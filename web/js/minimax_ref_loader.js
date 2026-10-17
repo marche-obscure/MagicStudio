@@ -1,7 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
-import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors } from "./project_paths.js";
+import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState } from "./project_paths.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -266,7 +266,14 @@ const HELP_SECTIONS = [
                 "<b>_02</b>, <b>_03</b>…; a file that replaces one with the same name keeps its name.",
                 "A small coloured bar under the name marks <b>duplicates</b> (same SHA256 content) among the " +
                 "pending replacements and the files of the project folder: one colour per group of identical files.",
-                "A file still checked without replacement when you close leaves the selection too.",
+                "Only one file can wait for its replacement: while a checked file has none, the other boxes are " +
+                "greyed out; pick its replacement above or uncheck it.",
+                "Closing with a checked file that has no replacement asks <b>Cancel</b> (back to the gallery) or " +
+                "<b>Continue</b>: that file stays as it was, the pending replacements are applied and the window " +
+                "closes (no Add or Replace question).",
+                "On closing, <b>every file of the list goes to its folder of the project</b> (08.Images, 12.Video, " +
+                "14.Video-Audio, 10.Son): copied from elsewhere (the original stays), moved from <b>Archives</b>, " +
+                "<b>_02</b> added if the name is taken; the trims follow.",
                 "The selection is full: a message above the line asks you to check below the file to replace, " +
                 "then to pick the new one above.",
                 "When the <b>Archives</b> folder of the project folder has files, a <b>View archives</b> button " +
@@ -469,7 +476,14 @@ const HELP_SECTIONS_FR = [
                 "Une petite barre de couleur sous le nom signale les <b>doublons</b> (même contenu SHA256) entre le " +
                 "pool de remplacements et les fichiers du dossier du projet : une couleur par groupe de fichiers " +
                 "identiques.",
-                "Un fichier encore coché sans remplaçant à la fermeture sort aussi de la sélection.",
+                "Un seul fichier peut attendre son remplaçant : tant qu'un fichier coché n'en a pas, les autres " +
+                "cases sont grisées ; choisissez son remplaçant en haut ou décochez-le.",
+                "Fermer avec un fichier coché sans remplaçant demande <b>Cancel</b> (retour à la galerie) ou " +
+                "<b>Continue</b> : ce fichier reste tel quel, les remplacements en attente sont appliqués et la " +
+                "fenêtre se ferme (sans question Add ou Replace).",
+                "À la fermeture, <b>tous les fichiers de la liste vont dans leur dossier du projet</b> (08.Images, " +
+                "12.Video, 14.Video-Audio, 10.Son) : copiés d'ailleurs (l'original reste), déplacés depuis " +
+                "<b>Archives</b>, <b>_02</b> ajouté si le nom est pris ; les rognages suivent.",
                 "Sélection pleine : un message au-dessus du trait invite à cocher en bas le fichier à remplacer, " +
                 "puis à choisir le nouveau en haut.",
                 "Quand le dossier <b>Archives</b> du dossier du projet contient des fichiers, un bouton <b>View " +
@@ -2194,7 +2208,7 @@ function buildGallery(container, ctx) {
     function toggleMark(path) {
         const i = marked.findIndex((m) => samePath(m, path));
         if (i >= 0) marked.splice(i, 1);
-        else marked.push(path);
+        else if (!marked.length) marked.push(path); // une seule a la fois (choix utilisateur)
         render();
     }
 
@@ -2327,10 +2341,14 @@ function buildGallery(container, ctx) {
                 const box = document.createElement("input");
                 box.type = "checkbox";
                 box.checked = isMarked;
-                box.title = isMarked ? "To replace: the " + (order === 0 ? "next" : "#" + (order + 1) + " next") +
+                // Un fichier coche attend son remplacant : les autres cases sont bloquees.
+                const blocked = !isMarked && marked.length > 0;
+                box.disabled = blocked;
+                box.title = blocked ? "Pick a replacement for the checked file first, or uncheck it" : isMarked ? "To replace: the " + (order === 0 ? "next" : "#" + (order + 1) + " next") +
                     " file you pick above takes number " + (idx + 1) + "; this one goes to Archives"
                     : "Check to replace this file: the next file you pick above takes number " + (idx + 1);
-                Object.assign(box.style, { width: "15px", height: "15px", margin: "0", accentColor: MARK_RED, cursor: "pointer" });
+                Object.assign(box.style, { width: "15px", height: "15px", margin: "0", accentColor: MARK_RED,
+                    cursor: blocked ? "not-allowed" : "pointer", opacity: blocked ? "0.35" : "1" });
                 box.addEventListener("click", (e) => e.stopPropagation());
                 box.addEventListener("change", () => toggleMark(path));
                 boxRow.appendChild(box);
@@ -2792,6 +2810,27 @@ function buildGallery(container, ctx) {
         if (closing) return;
         closing = true;
         try {
+            // Continue : pas de question Add / Replace ensuite (les ajouts sont gardes).
+            let direct = false;
+            if (marked.length) {
+                const names = marked.map((m) => escapeHtml(baseName(m)));
+                const go = await choice.ask(card, {
+                    title: "Marked files without replacement",
+                    html: marked.length + " file(s) marked to replace have no replacement file: " + names.join(", ") +
+                        '<div style="color:#999;margin-top:6px">Continue: they stay as they were' +
+                        (pool.length ? ", the " + pool.length + " pending replacement(s) are applied (replaced files " +
+                            "archived)" : "") + ", and the files of the selection go to <b>" + escapeHtml(projFolder) +
+                        "</b>.</div>",
+                    buttons: [
+                        { label: "Cancel", value: null },
+                        { label: "Continue", color: ORANGE, value: true },
+                    ],
+                });
+                if (!go) return;
+                marked = [];
+                if (pool.length) await applyPool(pool.slice());
+                direct = true;
+            }
             if (pool.length) {
                 const answer = await choice.ask(card, {
                     title: "Pending replacements",
@@ -2809,13 +2848,11 @@ function buildGallery(container, ctx) {
                     marked = [];
                 }
             }
-            const s = ctx.getState();
-            // Fichiers coches sans remplacant : ils sortent aussi de la selection (Archives).
-            if (marked.length) s[LIST_KEYS[kind]] = list(s).filter((p) => !marked.some((m) => samePath(m, p)));
+            let s = ctx.getState();
             const final = list(s).slice();
             const sess = gallerySession(initial, final);
             let next = final;
-            if (sess.ask) {
+            if (sess.ask && !direct) {
                 const answer = await choice.ask(card, {
                     title: "Add, replace or cancel?",
                     html: sess.added.length + " new file(s) picked. <b>Add</b> them to the current selection (" +
@@ -2865,7 +2902,22 @@ function buildGallery(container, ctx) {
                     project: project.path, folder: projFolder, names: unused.map(baseName),
                 });
             }
+            // Projet associe (choix utilisateur) : tous les fichiers de la liste vont dans son dossier
+            // (copies, deplaces depuis Archives, "_02" si le nom est pris) ; les rognages suivent.
+            const listKey = LIST_KEYS[kind];
+            const inDir = (p) => samePath(p.replace(/[\\/][^\\/]*$/, ""), projDir);
+            const outside = list(s).filter((p) => !inDir(p));
+            if (outside.length) {
+                const data = await apiPost("/mmproject/import_files", { project: project.path, folder: projFolder,
+                    paths: outside });
+                s = remapState(s, (p, l) => {
+                    if (l !== listKey) return p;
+                    const k = outside.findIndex((o) => samePath(o, p));
+                    return k >= 0 ? data.dsts[k] : p;
+                });
+            }
             ctx.setState(s);
+            if (ctx.resnapProject) ctx.resnapProject(projFolder);
             marked = [];
             close();
         } catch (e) {
