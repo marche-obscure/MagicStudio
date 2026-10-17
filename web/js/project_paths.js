@@ -177,6 +177,29 @@ export function unusedProjectFiles(paths, state) {
     return paths.filter((p) => !used.has(normPath(p)));
 }
 
+// Maximum du Reference Loader par dossier (plafonds du noeud MiniMax H3) ; 08.Images suit le mode.
+export const FOLDER_MAX = {
+    "08.Images": { ref2va: 9, fl2va: 2 }, "10.Son": 3, "12.Video": 3, "14.Video-Audio": 3,
+};
+
+/**
+ * "Use: x/y" d'un dossier (choix utilisateur) : x = fichiers du dossier
+ * utilises par les listes du mode actuel (08.Images : Images en Ref2VA,
+ * premiere + derniere image en FL2VA), y = maximum du dossier pour ce mode.
+ */
+export function folderUse(paths, state, folder) {
+    const fl = !!state && state.mode === "fl2va";
+    const lists = folder === "08.Images" ? (fl ? ["first_frame", "last_frame"] : ["images"]) : MEDIA_FOLDERS[folder] || [];
+    const refs = new Set();
+    for (const list of lists) for (const p of (state && state[list]) || []) refs.add(normPath(p));
+    const max = FOLDER_MAX[folder];
+    return {
+        used: (paths || []).filter((p) => refs.has(normPath(p))).length,
+        max: typeof max === "object" && max ? max[fl ? "fl2va" : "ref2va"] : max || 0,
+        mode: fl ? "FL2VA" : "Ref2VA",
+    };
+}
+
 /** Couleurs des groupes de doublons, dans l'ordre d'apparition (puis on recommence). */
 export const DUP_COLORS = ["#3b82f6", "#e0793c", "#8b5cf6", "#22c55e", "#eab308", "#06b6d4"];
 
