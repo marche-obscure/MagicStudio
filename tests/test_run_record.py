@@ -136,8 +136,43 @@ class RunFileTest(unittest.TestCase):
         again = rr.finish_run(path, [], "error", self.out)
         self.assertEqual(again["status"], "done")
 
+    def test_real_paths_of_save_nodes(self):
+        # Pixaroma Save Video (dossier choisi hors de output), Video Helper Suite (fullpath).
+        rush = os.path.join(self.root, "elsewhere", "rush")
+        write(os.path.join(rush, "Video_Shiz_001.mp4"), b"v")
+        write(os.path.join(self.root, "vhs", "AnimateDiff_00001.mp4"), b"w")
+        write(os.path.join(self.root, "vhs", "notes.txt"), b"t")
+        path = rr.start_run(self.p, "p", PROMPT, self.when)
+        data = rr.finish_run(path, [
+            {"filename": "Video_Shiz_001.mp4", "subfolder": "", "type": "output", "fullpath": "", "folder": rush},
+            {"filename": "AnimateDiff_00001.mp4", "type": "output",
+             "fullpath": os.path.join(self.root, "vhs", "AnimateDiff_00001.mp4")},
+            {"filename": "notes.txt", "type": "output", "fullpath": os.path.join(self.root, "vhs", "notes.txt")},
+            {"filename": "preview.mp4", "type": "temp", "fullpath": os.path.join(self.root, "vhs", "AnimateDiff_00001.mp4")},
+            {"filename": "missing.mp4", "type": "output", "folder": rush},
+        ], "done", self.out)
+        self.assertEqual([o["source"] for o in data["outputs"]],
+                         [os.path.join(rush, "Video_Shiz_001.mp4"), os.path.join(self.root, "vhs", "AnimateDiff_00001.mp4")])
+        self.assertEqual([o["copy"] for o in data["outputs"]],
+                         ["40.Rush Videos/20261017_153000_run.mp4", "40.Rush Videos/20261017_153000_run_02.mp4"])
+
+    def test_reused_name_written_during_run_is_new(self):
+        # Compteur de SaveImage reparti a 00001 (anciens fichiers effaces) : meme nom, fichier neuf.
+        src = os.path.join(self.out, "ComfyUI_00001_.png")
+        write(src, b"i1")
+        os.utime(src, (self.when - 60, self.when - 60))
+        files = [{"filename": "ComfyUI_00001_.png", "subfolder": "", "type": "output"}]
+        rr.finish_run(rr.start_run(self.p, "p", PROMPT, self.when - 60), files, "done", self.out)
+        write(src, b"i2")
+        os.utime(src, (self.when + 5, self.when + 5))
+        res = rr.finish_run(rr.start_run(self.p, "p", PROMPT, self.when), files, "done", self.out)
+        self.assertEqual(res["status"], "done")
+        self.assertEqual(res["outputs"][0]["copy"], "60.Rush Images/20261017_153000_run.png")
+
     def test_unchanged_run_is_not_recorded(self):
         write(os.path.join(self.out, "ComfyUI_00001_.png"), b"i1")
+        # Fichier ecrit avant les Runs (le second le recoit du cache).
+        os.utime(os.path.join(self.out, "ComfyUI_00001_.png"), (self.when - 60, self.when - 60))
         files = [{"filename": "ComfyUI_00001_.png", "subfolder": "", "type": "output"}]
         first = rr.start_run(self.p, "p", PROMPT, self.when)
         rr.finish_run(first, files, "done", self.out)
