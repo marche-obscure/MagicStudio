@@ -6,7 +6,7 @@ import {
     saveItems, remapState, mapBySequence, mapByPrefix, configFileName, modeHasRefs,
     UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, mapFolderBySequence, withoutMedia,
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
-    MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName,
+    MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
 } from "../web/js/project_paths.js";
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
@@ -251,4 +251,19 @@ test("Load : fichiers a remettre en place depuis Archives", () => {
 test("dossiers chargeables et dossiers des medias", () => {
     assert.deepEqual(LOADABLE_FOLDERS, ["00.Workflows", "08.Images", "10.Son", "12.Video", "14.Video-Audio"]);
     for (const f of Object.keys(MEDIA_FOLDERS)) assert.ok(PROJECT_SUBFOLDERS.includes(f));
+});
+
+test("visualisation : ordre du Ref Loader, F / L, puis sans numero par nom", () => {
+    const D = "C:\\P\\08.Images\\";
+    const files = [D + "z.png", D + "b.png", D + "a.png", D + "f.png", D + "y.png"];
+    const st = { images: [D + "b.png", "c:/p/08.images/A.png"], first_frame: [D + "f.png"], last_frame: [D + "b.png"] };
+    assert.deepEqual(orderedFolderFiles(files, st, "08.Images"), [
+        { path: D + "b.png", badge: "1 · L" },
+        { path: D + "a.png", badge: "2" },
+        { path: D + "f.png", badge: "F" },
+        { path: D + "y.png", badge: "" },
+        { path: D + "z.png", badge: "" },
+    ]);
+    // Sans Reference Loader : tout par nom, sans numero.
+    assert.deepEqual(orderedFolderFiles([D + "b.png", D + "a.png"], null, "10.Son").map((x) => x.badge), ["", ""]);
 });
