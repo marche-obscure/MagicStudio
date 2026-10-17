@@ -391,6 +391,53 @@ class FolderFilesTest(unittest.TestCase):
             projects.folder_files(os.path.join(self.root, "nope"), ["08.Images"])
 
 
+class ArchiveDuplicatesTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.p = projects.create_project(self.root, "Clip")
+        self.arch = os.path.join(self.p, "08.Images", "Archives")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def add(self, name, data, mtime):
+        path = os.path.join(self.arch, name)
+        write(path, data)
+        os.utime(path, (mtime, mtime))
+        return path
+
+    def test_groups_and_kept_copy(self):
+        self.add("a (2).png", b"A", 100)      # le plus ancien, mais avec suffixe
+        self.add("a.png", b"A", 300)          # nom sans suffixe : garde
+        self.add("a_02.png", b"A", 200)
+        self.add("x_03.png", b"X", 300)
+        self.add("y_02.png", b"X", 100)       # tous avec suffixe : le plus ancien
+        self.add("solo.png", b"S", 100)
+        write(os.path.join(self.p, "08.Images", "a.png"), b"A")   # racine : ignoree
+        groups = projects.archive_duplicates(self.p, ["08.Images", "10.Son"])
+        self.assertEqual(groups["10.Son"], [])
+        g = groups["08.Images"]
+        self.assertEqual([[f["name"] for f in x["files"]] for x in g],
+                         [["a.png", "a (2).png", "a_02.png"], ["y_02.png", "x_03.png"]])
+        self.assertEqual([[f["keep"] for f in x["files"]] for x in g], [[True, False, False], [True, False]])
+        self.assertEqual(g[0]["files"][0]["size"], 1)
+
+    def test_delete_keeps_one_copy_per_checked_group(self):
+        self.add("a.png", b"A", 300)
+        self.add("a (2).png", b"A", 100)
+        self.add("x.png", b"X", 100)
+        self.add("x (2).png", b"X", 200)
+        sha_a = projects.file_hash(os.path.join(self.arch, "a.png"))
+        deleted = projects.delete_duplicates(self.p, "08.Images", [sha_a, "unknown"], False)
+        self.assertEqual(deleted, ["a (2).png"])
+        self.assertEqual(sorted(os.listdir(self.arch)), ["a.png", "x (2).png", "x.png"])
+        # Plus de doublon pour A : rien a supprimer.
+        self.assertEqual(projects.delete_duplicates(self.p, "08.Images", [sha_a], False), [])
+        self.assertEqual(len(projects.archive_duplicates(self.p, ["08.Images"])["08.Images"]), 1)
+        with self.assertRaises(ValueError):
+            projects.delete_duplicates(self.p, "99.Project-Config", [sha_a], False)
+
+
 class ImportFilesTest(unittest.TestCase):
     """Remplacants valides : copies (deplaces depuis Archives) dans le dossier du projet."""
 

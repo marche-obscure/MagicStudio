@@ -42,6 +42,9 @@ const PENCIL_ICON = svg('<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 
 const SAVE_ICON = svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>' +
     '<polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline>', 13);
 // Boite d'archives (workflows archives).
+// Deux feuilles superposees (doublons dans Archives).
+const DUP_ICON = svg('<rect x="8" y="8" width="13" height="13" rx="2"></rect>' +
+    '<path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path>', 12);
 const ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path>' +
     '<line x1="10" y1="12" x2="14" y2="12"></line>', 12);
 // Archives : 5 au plus par projet (comme projects.MAX_ARCHIVES) ; rouge = suppression.
@@ -151,6 +154,14 @@ const HELP_SECTIONS = [
             "file of the folder that no list of the Reference Loader uses anymore (removed references included): " +
             "no file is deleted, and they no longer show in the gallery of the project. The bell also turns orange " +
             "when the folder keeps such unused files. Then the bell goes back to grey and the sign goes away.</p>" +
+            "<p>Duplicates: the <b>Archives</b> folder of 08.Images, 10.Son, 12.Video and 14.Video-Audio is read " +
+            "(even when the folder itself is empty) and its files are compared by SHA256. When identical copies " +
+            "are found, " + iconBadge(DUP_ICON, BELL_ORANGE) + " appears right of the bell. It opens the window " +
+            "<b>Duplicates</b>: one thumbnail per group with its number of copies and a check box; click a " +
+            "thumbnail to see all its copies below (number, total size, size freed). One copy always stays in " +
+            "Archives (the name without <b>(2)</b> or <b>_02</b>, otherwise the oldest). <b>Delete (x) file(s)</b> " +
+            "(at least one box checked) asks <b>Cancel</b>, <b>Move to Recycle Bin</b> (Windows) or <b>Delete " +
+            "permanently</b>; groups without duplicates then leave the window.</p>" +
             hNote("This is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
                 "ignores the content of the lists of the Reference Loader.") +
             hNote("A subfolder deleted by mistake is created again when you pick the project.") +
@@ -298,6 +309,15 @@ const HELP_SECTIONS_FR = [
             "plus (références retirées comprises) : aucun fichier n'est effacé, et ils ne s'affichent plus dans la " +
             "galerie du projet. La cloche passe aussi à l'orange quand le dossier garde de tels fichiers " +
             "inutilisés. Ensuite la cloche redevient grise et le sigle disparaît.</p>" +
+            "<p>Doublons : le dossier <b>Archives</b> de 08.Images, 10.Son, 12.Video et 14.Video-Audio est lu " +
+            "(même quand le dossier lui-même est vide) et ses fichiers sont comparés par SHA256. Quand des copies " +
+            "identiques sont trouvées, " + iconBadge(DUP_ICON, BELL_ORANGE) + " apparaît à droite de la cloche. Il " +
+            "ouvre la fenêtre <b>Duplicates</b> : une vignette par groupe avec son nombre de copies et une case à " +
+            "cocher ; cliquez sur une vignette pour voir toutes ses copies en dessous (nombre, taille totale, place " +
+            "libérée). Un exemplaire reste toujours dans Archives (le nom sans <b>(2)</b> ni <b>_02</b>, sinon le " +
+            "plus ancien). <b>Delete (x) file(s)</b> (au moins une case cochée) demande <b>Cancel</b>, <b>Move to " +
+            "Recycle Bin</b> (Windows) ou <b>Delete permanently</b> ; les groupes sans doublon quittent ensuite la " +
+            "fenêtre.</p>" +
             hNote("Ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
                 "00.Workflows ignore le contenu des listes du Reference Loader.", "Remarque :") +
             hNote("Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet.", "Remarque :") +
@@ -1438,6 +1458,263 @@ function buildPreviewWindow() {
     };
 }
 
+// --------------------------------------------------------------------
+// Fenetre "Duplicates" (icone a droite de la cloche de 08.Images, 10.Son,
+// 12.Video, 14.Video-Audio) : copies identiques (SHA256) dans <dossier>/Archives.
+// --------------------------------------------------------------------
+function fmtSize(bytes) {
+    return bytes < 1048576 ? (bytes / 1024).toFixed(1) + " KB" : (bytes / 1048576).toFixed(1) + " MB";
+}
+
+/** Vignette d'un fichier de <dossier>/Archives : image ou video (miniature), icone pour un son. */
+function dupThumb(archDir, name, kind, size) {
+    const box = document.createElement("div");
+    Object.assign(box.style, {
+        width: size + "px", height: Math.round(size * 0.66) + "px", borderRadius: "6px", overflow: "hidden",
+        background: "#111", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+    });
+    if (kind === "audio") {
+        box.innerHTML = iconBadge(AUDIO_ICON, FOLDER_COLORS["10.Son"]);
+        return box;
+    }
+    const img = document.createElement("img");
+    img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(archDir) + "&file=" + encodeURIComponent(name);
+    Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
+    box.appendChild(img);
+    return box;
+}
+
+/** Confirmation : Promise<"trash" | "delete" | null> ; Echap = Cancel (gere par la fenetre Duplicates). */
+function buildDeleteChoice() {
+    const { overlay, card } = makeOverlay();
+    overlay.style.zIndex = "10003";
+    Object.assign(card.style, { width: "min(440px, 92vw)", padding: "12px 14px", borderColor: TRASH_RED });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "8px" });
+    const text = document.createElement("div");
+    Object.assign(text.style, { lineHeight: "1.5", color: "#ccc", wordBreak: "break-word", maxHeight: "40vh", overflowY: "auto" });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px", flexWrap: "wrap" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const trashBtn = makeTextButton("Move to Recycle Bin", VIOLET);
+    const deleteBtn = makeTextButton("Delete permanently", TRASH_RED);
+    footer.append(cancelBtn, trashBtn, deleteBtn);
+    card.append(title, text, footer);
+    let resolve = null;
+    function finish(r) {
+        overlay.style.display = "none";
+        const f = resolve;
+        resolve = null;
+        if (f) f(r);
+    }
+    cancelBtn.addEventListener("click", () => finish(null));
+    trashBtn.addEventListener("click", () => {
+        if (!trashBtn.disabled) finish("trash");
+    });
+    deleteBtn.addEventListener("click", () => finish("delete"));
+    overlay.addEventListener("mousedown", () => finish(null));
+    return {
+        isOpen: () => overlay.style.display !== "none",
+        cancel: () => finish(null),
+        ask(names, trashOk, anchor) {
+            if (resolve) finish(null);
+            title.textContent = "Delete " + names.length + " duplicate file(s)?";
+            const shown = names.slice(0, 15).map((n) => "<div>• " + escapeHtml(n) + "</div>").join("");
+            text.innerHTML = shown + (names.length > 15 ? "<div>… (+" + (names.length - 15) + ")</div>" : "") +
+                '<div style="color:#999;margin-top:8px">One copy of each group stays in Archives. Files moved to ' +
+                "the Recycle Bin can be restored from it; <b>Delete permanently</b> cannot be undone.</div>";
+            trashBtn.disabled = !trashOk;
+            trashBtn.style.opacity = trashOk ? "1" : "0.45";
+            trashBtn.style.cursor = trashOk ? "pointer" : "default";
+            trashBtn.title = trashOk ? "Move the copies to the Recycle Bin (they can be restored)"
+                : "The Recycle Bin is only available on Windows";
+            overlay.style.display = "block";
+            positionCardNextToNode(card, anchor, 440);
+            return new Promise((r) => (resolve = r));
+        },
+        remove() {
+            finish(null);
+            overlay.remove();
+        },
+    };
+}
+
+/**
+ * open(folder, groups, projectPath, trashOk, message) -> Promise<{shas, trash} | null>.
+ * null = Cancel (fenetre fermee) ; apres une suppression la fenetre reste
+ * ouverte jusqu'au prochain open() ou close().
+ */
+function buildDuplicatesDialog(container) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, {
+        width: "min(720px, 94vw)", padding: "12px 14px", borderColor: BELL_ORANGE, display: "flex",
+        flexDirection: "column", maxHeight: "86vh", gap: "8px",
+    });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR });
+    const message = document.createElement("div");
+    Object.assign(message.style, { minHeight: "0" });
+    const strip = document.createElement("div");
+    Object.assign(strip.style, { display: "flex", gap: "10px", overflowX: "auto", overflowY: "hidden", paddingBottom: "4px", flex: "0 0 auto" });
+    const frame = document.createElement("div");
+    Object.assign(frame.style, {
+        flex: "1 1 auto", minHeight: "180px", overflowY: "auto", padding: "8px 10px", background: "#161616",
+        border: "1px solid " + BELL_ORANGE, borderRadius: "8px",
+    });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const deleteBtn = makeTextButton("Delete", TRASH_RED);
+    footer.append(cancelBtn, deleteBtn);
+    card.append(title, message, strip, frame, footer);
+    const choice = buildDeleteChoice();
+
+    let resolve = null;
+    let ctx = null; // {folder, groups, archDir, kind, trashOk}
+    let checked = new Set();
+    let current = null;
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (choice.isOpen()) choice.cancel();
+        else close();
+    };
+    function close() {
+        choice.cancel();
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        frame.innerHTML = "";
+        const r = resolve;
+        resolve = null;
+        if (r) r(null);
+    }
+    const toDelete = () => ctx.groups.filter((g) => checked.has(g.sha)).flatMap((g) => g.files.filter((f) => !f.keep));
+    function paintButton() {
+        const n = ctx ? toDelete().length : 0;
+        deleteBtn.textContent = n ? "Delete (" + n + ") file(s)" : "Delete";
+        deleteBtn.disabled = !n;
+        deleteBtn.style.opacity = n ? "1" : "0.45";
+        deleteBtn.style.cursor = n ? "pointer" : "default";
+    }
+    function showGroup(g) {
+        current = g.sha;
+        [...strip.children].forEach((t) => (t.style.borderColor = t.dataset.sha === g.sha ? BELL_ORANGE : "#333"));
+        const total = g.files.reduce((a, f) => a + f.size, 0);
+        const freed = g.files.filter((f) => !f.keep).reduce((a, f) => a + f.size, 0);
+        frame.innerHTML = "";
+        const head = document.createElement("div");
+        head.innerHTML = "<b>" + g.files.length + " copies</b> · " + fmtSize(total) + ' in total · <span style="color:' +
+            TRASH_RED + '">' + fmtSize(freed) + " freed</span> when the extra copies are deleted";
+        Object.assign(head.style, { color: "#ccc", marginBottom: "8px" });
+        const grid = document.createElement("div");
+        Object.assign(grid.style, { display: "flex", flexWrap: "wrap", gap: "10px" });
+        for (const f of g.files) {
+            const cell = document.createElement("div");
+            Object.assign(cell.style, {
+                width: "140px", padding: "6px", borderRadius: "8px", background: "#1f1f1f",
+                border: "1px solid " + (f.keep ? GREEN : "#333"), boxSizing: "border-box",
+            });
+            cell.appendChild(dupThumb(ctx.archDir, f.name, ctx.kind, 126));
+            const info = document.createElement("div");
+            info.innerHTML = '<div style="font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' +
+                escapeHtml(f.name) + '">' + escapeHtml(f.name) + "</div>" +
+                '<div style="color:#888;font-size:10px">' + escapeHtml(formatLastSave(new Date(f.mtime * 1000))) + "</div>" +
+                '<div style="color:#888;font-size:10px">' + fmtSize(f.size) + "</div>" +
+                '<div style="font-weight:bold;font-size:11px;color:' + (f.keep ? GREEN : TRASH_RED) + '">' +
+                (f.keep ? "Kept" : "To delete") + "</div>";
+            Object.assign(info.style, { marginTop: "4px", lineHeight: "1.4" });
+            cell.appendChild(info);
+            grid.appendChild(cell);
+        }
+        frame.append(head, grid);
+    }
+    function render(msg) {
+        title.textContent = "Duplicates – " + ctx.folder + "/Archives";
+        message.style.color = msg && msg.ok ? GREEN : ORANGE;
+        message.textContent = msg ? msg.text : "";
+        message.style.display = msg ? "block" : "none";
+        strip.innerHTML = "";
+        for (const g of ctx.groups) {
+            const tile = document.createElement("div");
+            tile.dataset.sha = g.sha;
+            Object.assign(tile.style, {
+                width: "128px", padding: "5px", borderRadius: "8px", border: "2px solid #333", background: "#1f1f1f",
+                cursor: "pointer", flex: "0 0 auto", boxSizing: "border-box",
+            });
+            const kept = g.files.find((f) => f.keep);
+            tile.appendChild(dupThumb(ctx.archDir, kept.name, ctx.kind, 114));
+            const name = document.createElement("div");
+            name.textContent = kept.name;
+            name.title = kept.name;
+            Object.assign(name.style, { fontSize: "11px", marginTop: "3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+            const row = document.createElement("label");
+            Object.assign(row.style, { display: "flex", alignItems: "center", gap: "6px", marginTop: "3px", cursor: "pointer", color: BELL_ORANGE, fontWeight: "bold", fontSize: "11px" });
+            const box = document.createElement("input");
+            box.type = "checkbox";
+            box.checked = checked.has(g.sha);
+            Object.assign(box.style, { margin: "0" });
+            box.addEventListener("click", (e) => e.stopPropagation());
+            box.addEventListener("change", () => {
+                if (box.checked) checked.add(g.sha);
+                else checked.delete(g.sha);
+                paintButton();
+            });
+            row.addEventListener("click", (e) => e.stopPropagation());
+            row.append(box, document.createTextNode(g.files.length + " copies"));
+            tile.append(name, row);
+            tile.addEventListener("click", () => showGroup(g));
+            strip.appendChild(tile);
+        }
+        const g = ctx.groups.find((x) => x.sha === current) || ctx.groups[0];
+        if (g) showGroup(g);
+        paintButton();
+    }
+    cancelBtn.addEventListener("click", close);
+    deleteBtn.addEventListener("click", async () => {
+        if (deleteBtn.disabled || !resolve) return;
+        const names = toDelete().map((f) => f.name);
+        const how = await choice.ask(names, ctx.trashOk, card);
+        if (!how || !resolve) return;
+        const shas = [...checked];
+        const r = resolve;
+        resolve = null;
+        message.style.display = "block";
+        message.style.color = "#999";
+        message.textContent = "Deleting...";
+        r({ shas, trash: how === "trash" });
+    });
+    overlay.addEventListener("mousedown", () => {
+        if (!choice.isOpen()) close();
+    });
+
+    return {
+        open(folder, groups, projectPath, trashOk, msg) {
+            const again = overlay.style.display !== "none" && ctx && ctx.folder === folder;
+            if (!again) {
+                checked = new Set();
+                current = null;
+            }
+            // Groupes disparus : leurs cases sont oubliees.
+            checked = new Set([...checked].filter((sha) => groups.some((g) => g.sha === sha)));
+            ctx = { folder, groups, archDir: joinDir(joinDir(projectPath, folder), "Archives"), kind: PREVIEW_KIND[folder], trashOk };
+            render(msg);
+            if (!again) {
+                overlay.style.display = "block";
+                window.addEventListener("keydown", onKey, true);
+                positionCardNextToNode(card, container, 720);
+            }
+            return new Promise((r) => (resolve = r));
+        },
+        close,
+        remove() {
+            close();
+            choice.remove();
+            overlay.remove();
+        },
+    };
+}
+
 /** open(report, projectPath) -> Promise<dossiers coches | null> (Cancel, Echap, clic a cote = null). */
 function buildLoadDialog(container) {
     const { overlay, card } = makeOverlay();
@@ -1695,6 +1972,9 @@ app.registerExtension({
             let loadId = 0;
             // Fichiers a la racine des dossiers suivis du projet choisi : {dossier: [chemins]}.
             let folderFiles = {};
+            // Doublons de <dossier>/Archives : {dossier: [{sha, files}]} ; Corbeille disponible (Windows).
+            let dupGroups = {};
+            let trashOk = false;
 
             // ---- Interface ----
             const container = document.createElement("div");
@@ -1782,7 +2062,10 @@ app.registerExtension({
                 const bell = makeIconButton(INACTIVE_BG, BELL_ICON, "");
                 Object.assign(bell.style, { width: "22px", height: "22px", cursor: "default", opacity: "0.6" });
                 // 00.Workflows : bouton des archives a droite de la cloche ; ailleurs, un espace.
-                const arch = name === WORKFLOWS ? makeIconButton(INACTIVE_BG, ARCHIVE_ICON, "") : document.createElement("span");
+                // 08.Images ... 14.Video-Audio : bouton des doublons d'Archives (visible s'il y en a).
+                const arch = name === WORKFLOWS ? makeIconButton(INACTIVE_BG, ARCHIVE_ICON, "")
+                    : UPDATE_FOLDERS.includes(name) ? makeIconButton(BELL_ORANGE, DUP_ICON, "") : document.createElement("span");
+                if (UPDATE_FOLDERS.includes(name)) arch.style.visibility = "hidden";
                 Object.assign(arch.style, { width: "22px", height: "22px", flex: "0 0 auto" });
                 // Place du sigle d'avertissement sur toutes les lignes (boutons alignes) ;
                 // seul 00.Workflows l'affiche, quand le workflow a change sans etre sauvegarde.
@@ -1811,8 +2094,9 @@ app.registerExtension({
             const archiveMenu = buildArchiveMenu(container);
             const deleteDialog = buildDeleteArchivesDialog(container);
             const loadDialog = buildLoadDialog(container);
+            const duplicatesDialog = buildDuplicatesDialog(container);
             node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog,
-                loadDialog];
+                loadDialog, duplicatesDialog];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
@@ -2121,7 +2405,57 @@ app.registerExtension({
                 } catch (e) {
                     folderFiles = {};
                 }
+                try {
+                    const data = await apiGet("/mmproject/archive_duplicates?project=" + encodeURIComponent(s.path) +
+                        "&folders=" + encodeURIComponent(UPDATE_FOLDERS.join("|")));
+                    if (getState().path === s.path) {
+                        dupGroups = data.duplicates || {};
+                        trashOk = !!data.trash;
+                    }
+                } catch (e) {
+                    dupGroups = {};
+                }
                 paintFolders();
+            }
+
+            /** Bouton des doublons a droite de la cloche : visible quand <dossier>/Archives en a. */
+            function paintDuplicates() {
+                const s = getState();
+                const current = s.name && projects.includes(s.name);
+                for (const f of folderRows) {
+                    if (!UPDATE_FOLDERS.includes(f.name)) continue;
+                    const groups = current ? dupGroups[f.name] || [] : [];
+                    const copies = groups.reduce((a, g) => a + g.files.length - 1, 0);
+                    f.arch.style.visibility = groups.length ? "visible" : "hidden";
+                    f.arch.title = groups.length ? groups.length + " duplicate group(s) in " + f.name + "/Archives (" +
+                        copies + " extra cop" + (copies > 1 ? "ies" : "y") + "): click to see them" : "";
+                }
+            }
+
+            /** Fenetre des doublons : suppression (Corbeille ou definitive), puis relecture ; Cancel ferme. */
+            async function duplicatesStep(f) {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return;
+                let msg = null;
+                for (;;) {
+                    const groups = dupGroups[f] || [];
+                    if (!groups.length) {
+                        duplicatesDialog.close();
+                        if (msg) say(msg.text, msg.ok);
+                        return;
+                    }
+                    const res = await duplicatesDialog.open(f, groups, s.path, trashOk, msg);
+                    if (!res) return;
+                    try {
+                        const data = await apiPost("/mmproject/delete_duplicates",
+                            { project: s.path, folder: f, shas: res.shas, trash: res.trash });
+                        msg = { text: data.deleted.length + " file(s) " + (res.trash ? "moved to the Recycle Bin"
+                            : "deleted permanently") + " from " + f + "/Archives.", ok: true };
+                    } catch (e) {
+                        msg = { text: e.message, ok: false };
+                    }
+                    await loadFolderFiles();
+                }
             }
 
             /** Fichiers du dossier que plus aucune liste du Reference Loader n'utilise (a archiver). */
@@ -2134,6 +2468,7 @@ app.registerExtension({
              * retirees, ou quand le dossier garde des fichiers inutilises.
              */
             function paintFolders() {
+                paintDuplicates();
                 const s = getState();
                 const current = s.name && projects.includes(s.name);
                 const loader = current ? linkedLoader(node) : null;
@@ -2410,7 +2745,10 @@ app.registerExtension({
                 loadFolderFiles();
             }, FALLBACK_CHECK_MS);
             for (const f of folderRows) {
-                if (UPDATE_FOLDERS.includes(f.name)) f.bell.addEventListener("click", () => updateFolder(f.name));
+                if (UPDATE_FOLDERS.includes(f.name)) {
+                    f.bell.addEventListener("click", () => updateFolder(f.name));
+                    f.arch.addEventListener("click", () => duplicatesStep(f.name));
+                }
             }
 
             /** Renomme ou deplace le projet (deja confirme) ; le Reference Loader suit. */

@@ -329,6 +329,28 @@ try:
             return _project_error(e)
         return web.json_response({"files": files})
 
+    @routes.get("/mmproject/archive_duplicates")
+    async def mmproject_archive_duplicates(request):
+        """Doublons (meme SHA256) dans <dossier>/Archives (folders = noms separes par |)."""
+        q = request.rel_url.query
+        try:
+            folders = [f for f in q.get("folders", "").split("|") if f]
+            groups = await _in_executor(projects.archive_duplicates, q.get("project", ""), folders)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"duplicates": groups, "trash": projects.TRASH_AVAILABLE})
+
+    @routes.post("/mmproject/delete_duplicates")
+    async def mmproject_delete_duplicates(request):
+        """Supprime les copies des groupes coches (deja confirme) : Corbeille ou definitif."""
+        try:
+            body = await request.json()
+            names = await _in_executor(projects.delete_duplicates, body.get("project", ""), body.get("folder", ""),
+                                       list(body.get("shas") or []), bool(body.get("trash")))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"deleted": names})
+
     @routes.post("/mmproject/hashes")
     async def mmproject_hashes(request):
         """SHA256 des fichiers demandes (doublons de la galerie)."""
