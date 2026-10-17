@@ -324,7 +324,8 @@ const HELP_SECTIONS = [
                 "cache of ComfyUI, older than the run) is ignored, but a file written during the run counts even if it " +
                 "takes the name of an old one; a run without any new file, or that stops without any file, is not " +
                 "recorded: its JSON is removed and nothing is copied.",
-                "optional <b>models_link</b> input: wire the <b>model_link</b> output of <b>MultiFiles Select</b>. " +
+                "optional <b>models_link</b> input: wire the <b>model_link</b> output of <b>MultiFiles Select</b> " +
+                "(directly, or through Set / Get or Reroute nodes). " +
                 "Its fields give the models of the run for 02.Models (diffusion_models, text_encoders, vae), with " +
                 "<b>position</b> = number of the field; not wired: the models are read in the graph (position 0). " +
                 "The LoRA are always read in the graph. When MultiFiles Select has no save folder, it gets " +
@@ -564,7 +565,7 @@ const HELP_SECTIONS_FR = [
                 "le Run compte même s'il reprend le nom d'un ancien ; un Run sans fichier nouveau, ou qui s'arrête sans " +
                 "fichier, n'est pas enregistré : son JSON est retiré et rien n'est copié.",
                 "entrée optionnelle <b>models_link</b> : branchez la sortie <b>model_link</b> de <b>MultiFiles " +
-                "Select</b>. Ses champs donnent les modèles du Run pour 02.Models (diffusion_models, text_encoders, " +
+                "Select</b> (directement, ou via des nœuds Set / Get ou Reroute). Ses champs donnent les modèles du Run pour 02.Models (diffusion_models, text_encoders, " +
                 "vae), avec <b>position</b> = numéro du champ ; non branchée : modèles lus dans le graphe (position " +
                 "0). Les LoRA sont toujours lues dans le graphe. Sans dossier de sauvegarde, MultiFiles Select " +
                 "reçoit <b>&lt;projet&gt;/02.Models</b>, qui suit le projet ; un dossier choisi à la main n'est " +
@@ -2944,14 +2945,42 @@ app.registerExtension({
                 syncModelsLink();
             }
 
-            /** MultiFiles Select relie a l'entree models_link, null sinon. */
-            function linkedFileSelect() {
-                const input = (node.inputs || []).find((i) => i.name === MODELS_LINK);
-                const g = node.graph;
+            /** Noeud a l'origine de l'entree 'slot' de n, null sinon. */
+            function originOf(n, slot) {
+                const input = n && n.inputs && n.inputs[slot];
+                const g = n && n.graph;
                 if (!input || input.link == null || !g) return null;
                 const link = g.links && (typeof g.links.get === "function" ? g.links.get(input.link) : g.links[input.link]);
-                const src = link ? g.getNodeById(link.origin_id) : null;
-                return src && src.type === FILE_SELECT_TYPE ? src : null;
+                return link ? g.getNodeById(link.origin_id) : null;
+            }
+
+            /**
+             * MultiFiles Select relie a l'entree models_link, null sinon : en traversant
+             * Get / Set (le Set du meme nom : findSetter de KJNodes / Easy-Use, sinon un
+             * noeud "Set" de meme nom dans le graphe) et les anciens noeuds Reroute.
+             */
+            function linkedFileSelect() {
+                const slot = (node.inputs || []).findIndex((i) => i.name === MODELS_LINK);
+                let src = slot >= 0 ? originOf(node, slot) : null;
+                for (let hop = 0; src && hop < 10; hop++) {
+                    if (src.type === FILE_SELECT_TYPE) return src;
+                    const type = String(src.type || "");
+                    if (/get/i.test(type) && src.widgets && src.widgets[0]) {
+                        const name = src.widgets[0].value;
+                        let setter = typeof src.findSetter === "function" ? src.findSetter(src.graph) : null;
+                        if (setter && setter.node) setter = setter.node;
+                        if (!setter && src.graph) {
+                            setter = (src.graph._nodes || []).find((n) => /set/i.test(String(n.type || "")) &&
+                                n.widgets && n.widgets[0] && n.widgets[0].value === name) || null;
+                        }
+                        src = setter ? originOf(setter, 0) : null;
+                    } else if (src.isVirtualNode || /reroute/i.test(type)) {
+                        src = originOf(src, 0);
+                    } else {
+                        return null;
+                    }
+                }
+                return null;
             }
 
             /**
