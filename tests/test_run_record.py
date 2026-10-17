@@ -107,6 +107,42 @@ class RunParamsTest(unittest.TestCase):
         }
         self.assertEqual(rr.run_params(prompt), {"cfg": None, "steps": 12, "seed": 5, "cfg_from": "Math CFG"})
 
+    def test_models_and_loras_of_the_run(self):
+        # Workflow reel (Projet lapin) : UNET -> LoRA turbo (branche du switch) -> LoraManager -> KSampler.
+        prompt = {
+            "194": {"class_type": "UNETLoader", "inputs": {"unet_name": "h3\\unet.safetensors", "weight_dtype": "default"}},
+            "195": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen.safetensors", "type": "minimax"}},
+            "196": {"class_type": "VAELoader", "inputs": {"vae_name": "video_vae.safetensors"}},
+            "213": {"class_type": "VAELoader", "inputs": {"vae_name": "audio_vae.safetensors"}},
+            "269": {"class_type": "LoraLoaderModelOnly", "inputs": {"model": ["194", 0], "lora_name": "turbo.safetensors",
+                                                                   "strength_model": 1}},
+            "270": {"class_type": "PrimitiveBoolean", "inputs": {"value": True}},
+            "271": {"class_type": "ComfySwitchNode", "inputs": {"switch": ["270", 0], "on_true": ["269", 0], "on_false": ["194", 0]}},
+            "289": {"class_type": "Lora Loader (LoraManager)", "inputs": {"model": ["271", 0], "text": "<lora:b:0.7>", "loras": {
+                "__value__": [{"name": "bounce", "strength": 0.7, "clipStrength": 0.7, "active": True},
+                              {"name": "off", "strength": 1, "active": False}]}}},
+            "300": {"class_type": "Power Lora Loader (rgthree)", "inputs": {"model": ["289", 0],
+                    "lora_1": {"on": True, "lora": "p1.safetensors", "strength": 0.5},
+                    "lora_2": {"on": False, "lora": "p2.safetensors", "strength": 1}}},
+            "225": {"class_type": "KSampler", "inputs": {"model": ["300", 0], "positive": ["10", 0], "seed": 1, "steps": 8, "cfg": 1}},
+            "10": {"class_type": "TextEncode", "inputs": {"clip": ["195", 0], "text": "x"}},
+            "20": {"class_type": "VAEDecode", "inputs": {"samples": ["225", 0], "vae": ["196", 0]}},
+            "21": {"class_type": "VAEDecodeAudio", "inputs": {"samples": ["225", 1], "vae": ["213", 0]}},
+            "99": {"class_type": "LoraLoader", "inputs": {"model": ["194", 0], "lora_name": "unused.safetensors"}},  # hors chemin
+        }
+        m = rr.run_models(prompt)
+        self.assertEqual(m["diffusion_model"], ["h3\\unet.safetensors"])
+        self.assertEqual(m["text_encoder"], ["qwen.safetensors"])
+        self.assertEqual(m["vae"], ["video_vae.safetensors", "audio_vae.safetensors"])
+        self.assertEqual(m["loras"], [
+            {"name": "turbo.safetensors", "strength_model": 1, "strength_clip": None},
+            {"name": "bounce", "strength_model": 0.7, "strength_clip": 0.7},
+            {"name": "p1.safetensors", "strength_model": 0.5, "strength_clip": None}])
+        # Switch sur l'autre branche : plus de LoRA turbo.
+        prompt["270"]["inputs"]["value"] = False
+        self.assertEqual([x["name"] for x in rr.run_models(prompt)["loras"]], ["bounce", "p1.safetensors"])
+        self.assertEqual(rr.run_models(None), {"diffusion_model": [], "text_encoder": [], "vae": [], "loras": []})
+
     def test_nothing_found(self):
         self.assertEqual(rr.run_params({"1": {"class_type": "X", "inputs": {"text": "a"}}}),
                          {"cfg": None, "steps": None, "seed": None})
@@ -130,6 +166,7 @@ class RunFileTest(unittest.TestCase):
         data = read_json(path)
         self.assertEqual(data, {"date": "2026-10-17 15:30:00", "project": "Clip", "mode": "FL2VA",
                                 "prompt": "a red car", "cfg": 7.5, "steps": 30, "seed": 44,
+                                "models": {"diffusion_model": [], "text_encoder": [], "vae": [], "loras": []},
                                 "status": "running", "outputs": []})
         # Meme seconde : la suivante.
         self.assertTrue(rr.start_run(self.p, "b", PROMPT, self.when).endswith("20261017_153001_run.json"))

@@ -170,7 +170,11 @@ const HELP_SECTIONS = [
             "<b>Original</b>), the <b>Prompt</b> text and a thumbnail of the output (‹ › when there are several). " +
             "Click <b>40.Rush Videos</b> or <b>60.Rush Images</b>: the videos (copies in 40.Rush Videos) or the " +
             "images (originals) named in the JSON of the runs, newest on the left, scrolling sideways; below, " +
-            "the Configuration and the Prompt of the run of the picked thumbnail (the copy icon at the top left " +
+            "the Configuration and the Prompt of the run of the picked thumbnail. Under the Configuration, two " +
+            "folded blocks <b>Models</b> and <b>LoRA</b> (number in brackets): a click unfolds one (the other " +
+            "folds) and shows the diffusion model, text encoder and VAE, or the LoRA with their strength, " +
+            "captured when the run starts (only what the run really uses: the chosen branch of a switch, the " +
+            "active LoRA of LoraManager); both fold when another run is shown (the copy icon at the top left " +
             "of the Prompt frame copies its text to the clipboard, ready to paste in your prompt node). Click a thumbnail to see it " +
             "in the <b>Preview</b> window (the same thumbnail again closes it); ✕, Escape or a click outside " +
             "closes the window.</p>" +
@@ -385,7 +389,11 @@ const HELP_SECTIONS_FR = [
             "la vidéo, dossier de l'<b>Original</b>), le texte du <b>Prompt</b> et une vignette de la sortie (‹ › " +
             "s'il y en a plusieurs). Clic sur <b>40.Rush Videos</b> ou <b>60.Rush Images</b> : les vidéos (copies " +
             "de 40.Rush Videos) ou les images (originaux) citées dans les JSON des Runs, la plus récente à gauche, " +
-            "défilement horizontal ; en dessous, la Configuration et le Prompt du Run de la vignette choisie (l'icône " +
+            "défilement horizontal ; en dessous, la Configuration et le Prompt du Run de la vignette choisie. Sous la " +
+            "Configuration, deux blocs repliés <b>Models</b> et <b>LoRA</b> (nombre entre parenthèses) : un clic en " +
+            "déplie un (l'autre se replie) et affiche le modèle de diffusion, l'encodeur de texte et les VAE, ou les " +
+            "LoRA avec leur force, captés au lancement du Run (seulement ce que le Run utilise : branche choisie d'un " +
+            "switch, LoRA actives de LoraManager) ; les deux se replient quand un autre Run est affiché (l'icône " +
             "de copie en haut à gauche du cadre Prompt copie son texte dans le presse-papiers, prêt à coller dans " +
             "votre nœud de prompt). Clic " +
             "sur une vignette = fenêtre <b>Preview</b> (la même vignette la referme) ; ✕, Échap ou un clic à côté " +
@@ -2130,9 +2138,23 @@ function buildRunViewer(container, onMove) {
     });
     const thumb = frame("Output");
     Object.assign(thumb.body.style, { display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" });
+    // Blocs repliables Models / LoRA (choix utilisateur) : un seul ouvert a la fois,
+    // tous deux replies des que le Run affiche change.
+    const models = document.createElement("div");
+    Object.assign(models.style, { display: "flex", flexDirection: "column", gap: "6px" });
+    const modelBar = document.createElement("div");
+    Object.assign(modelBar.style, { display: "flex", gap: "8px" });
+    const blockBtns = { models: makeTextButton("Models", INACTIVE_BG), loras: makeTextButton("LoRA", INACTIVE_BG) };
+    Object.values(blockBtns).forEach((b) => Object.assign(b.style, { flex: "1", textAlign: "left" }));
+    modelBar.append(blockBtns.models, blockBtns.loras);
+    const modelPanel = document.createElement("div");
+    Object.assign(modelPanel.style, {
+        padding: "6px 10px", background: "#161616", border: "1px solid " + VIOLET, borderRadius: "8px", display: "none",
+    });
+    models.append(modelBar, modelPanel);
     const left = document.createElement("div");
     Object.assign(left.style, { display: "flex", flexDirection: "column", gap: "8px", minWidth: "0" });
-    left.append(conf.box, prompt.box);
+    left.append(conf.box, models, prompt.box);
     const grid = document.createElement("div");
     Object.assign(grid.style, { display: "grid", gap: "8px", alignItems: "start", minHeight: "0", overflowY: "auto" });
     grid.append(left, thumb.box);
@@ -2144,6 +2166,8 @@ function buildRunViewer(container, onMove) {
 
     let runs = [];
     let folder = "";
+    let openBlock = null;
+    let modelRun = null;
     let filter = "all";
     let runIndex = 0;
     let outIndex = 0;
@@ -2167,9 +2191,55 @@ function buildRunViewer(container, onMove) {
     closeBtn.addEventListener("click", close);
     overlay.addEventListener("mousedown", () => (moving ? null : preview.isOpen() ? preview.close() : close()));
 
+    /** Lignes des blocs Models / LoRA d'un Run (nom sans sous-dossier, chemin complet au survol). */
+    function blockRows(run, key) {
+        const m = (run && run.models) || {};
+        const row = (k, name, extra) => '<div style="display:flex;justify-content:space-between;gap:10px;line-height:1.7"' +
+            ' title="' + escapeHtml(name) + '"><span style="color:#999;flex:0 0 auto">' + k + '</span><span style="' +
+            'text-align:right;word-break:break-all">' + escapeHtml(baseOf(name)) + (extra ? '<span style="color:#9fd6cf">' +
+            extra + "</span>" : "") + "</span></div>";
+        if (key === "models") {
+            return [].concat((m.diffusion_model || []).map((n) => row("Model", n)),
+                (m.text_encoder || []).map((n) => row("Text encoder", n)), (m.vae || []).map((n) => row("VAE", n)));
+        }
+        const num = (v) => (typeof v === "number" ? String(Math.round(v * 1000) / 1000) : "?");
+        return (m.loras || []).map((l) => row("LoRA", String(l.name), " — " + num(l.strength_model) +
+            (l.strength_clip !== null && l.strength_clip !== undefined ? " / clip " + num(l.strength_clip) : "")));
+    }
+    function paintBlocks(run) {
+        for (const [key, btn] of Object.entries(blockBtns)) {
+            const n = blockRows(run, key).length;
+            const open = openBlock === key && n > 0;
+            btn.textContent = (open ? "▾ " : "▸ ") + (key === "models" ? "Models" : "LoRA") + " (" + n + ")";
+            btn.style.background = open ? VIOLET : INACTIVE_BG;
+            btn.style.opacity = n ? "1" : "0.45";
+            btn.style.cursor = n ? "pointer" : "default";
+            btn.title = n ? (open ? "Fold" : "Unfold") + " the " + (key === "models" ? "models" : "LoRA") + " of the run"
+                : "No " + (key === "models" ? "model" : "LoRA") + " recorded for this run";
+        }
+        const rows = openBlock ? blockRows(run, openBlock) : [];
+        modelPanel.innerHTML = rows.join("");
+        modelPanel.style.display = rows.length ? "block" : "none";
+    }
+    /** Blocs du Run affiche : replies quand le Run change (deja replies : rien). */
+    function fillModels(run) {
+        if (!run || !modelRun || run.file !== modelRun.file) openBlock = null;
+        modelRun = run;
+        models.style.display = run ? "flex" : "none";
+        paintBlocks(run);
+    }
+    for (const [key, btn] of Object.entries(blockBtns)) {
+        btn.addEventListener("click", () => {
+            if (!modelRun || !blockRows(modelRun, key).length) return;
+            openBlock = openBlock === key ? null : key;
+            paintBlocks(modelRun);
+        });
+    }
+
     /** Cadre Configuration + bouton "Move to ..." quand l'original est hors de son dossier du projet. */
     function fillConfig(run, out) {
         conf.body.innerHTML = runConfigHtml(run, out);
+        fillModels(run);
         if (!out || out.in_project || !out.source_exists || !onMove) return;
         const btn = makeTextButton("Move to " + RUSH_FOLDER_OF[out.kind], DOT_ORANGE);
         btn.title = "Copy the original to " + RUSH_FOLDER_OF[out.kind] + ", check it (SHA256), then delete the original";
@@ -2220,6 +2290,7 @@ function buildRunViewer(container, onMove) {
             o.textContent = "No run" + (filter === "all" ? "" : " with a " + filter);
             select.appendChild(o);
             conf.body.innerHTML = '<span style="color:#888">No run recorded.</span>';
+            fillModels(null);
             setPrompt("");
             thumb.body.innerHTML = "";
             return;
@@ -2298,6 +2369,7 @@ function buildRunViewer(container, onMove) {
             Object.assign(d.style, { color: "#888", alignSelf: "center" });
             strip.appendChild(d);
             conf.body.innerHTML = "";
+            fillModels(null);
             setPrompt("");
             return;
         }
@@ -2343,6 +2415,8 @@ function buildRunViewer(container, onMove) {
                 runIndex = 0;
                 outIndex = 0;
                 rushIndex = 0;
+                openBlock = null;
+                modelRun = null;
             }
             const promptMode = name === "04.Prompt";
             if (!same) note.textContent = "";
