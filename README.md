@@ -3,6 +3,7 @@
 [![version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmarche-obscure%2FMiniMax-H3-Ref-Loader%2Fmain%2Fpyproject.toml&query=%24.project.version&label=version&color=097267)](pyproject.toml)
 [![Nodes 2.0](https://img.shields.io/badge/Nodes%202.0-compatible-43a047)](#compatibility)
 [![license](https://img.shields.io/badge/license-MIT-007ec6)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-Windows%20%28tested%29-5c6b8a)](#compatibility)
 
 ComfyUI custom node that loads the references of the native **MiniMax H3 Reference to Video** node, picked in thumbnail galleries.
 
@@ -68,6 +69,8 @@ A second node of this pack, **MiniMax H3 Project** (`loaders/minimax`), creates 
 ## Compatibility
 
 Works with the classic node design and with **Modern Node Design (Nodes 2.0)**: in both, output names can be renamed by double-click (or the right-click menu) and paired outputs share their colour.
+
+Tested on Windows only. On Linux and macOS the Browse button is not available (type the folder path instead); everything else should work but is untested.
 
 ## Install
 
