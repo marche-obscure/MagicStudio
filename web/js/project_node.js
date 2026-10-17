@@ -3,7 +3,7 @@ import { api } from "../../scripts/api.js";
 import {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, INACTIVE_BG,
     svg, iconBadge, hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, REFRESH_ICON, GEAR_ICON, START_ICON,
-    IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, EYE_ICON,
+    IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, EYE_ICON, CLOSE_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode,
 } from "./minimax_ref_loader.js";
@@ -196,8 +196,9 @@ const HELP_SECTIONS = [
             "(same SHA256). The window <b>Load the project</b> then shows each folder:</p>" +
             hList([
                 "<b style=\"color:" + GREEN + "\">✓</b> same file, <b style=\"color:#d32f2f\">✗</b> missing or " +
-                "different; under it, <b>→ found in Archives</b> with " + iconBadge(EYE_ICON, VIOLET) + " to view it " +
-                "(images, videos, sounds);",
+                "different; under it, <b>→ found in Archives</b> with " + iconBadge(EYE_ICON, VIOLET) + " to view it in " +
+                "a <b>Preview</b> window next to it (images, videos, sounds; ✕, Escape or a click outside closes " +
+                "only the preview);",
                 "a check box (checked) for 00.Workflows, 08.Images, 10.Son, 12.Video and 14.Video-Audio: " +
                 "uncheck what must not be loaded;",
                 "04.Prompt is only checked: loading the workflow may lose the changes of the prompt in progress; " +
@@ -346,7 +347,8 @@ const HELP_SECTIONS_FR = [
             hList([
                 "<b style=\"color:" + GREEN + "\">✓</b> fichier identique, <b style=\"color:#d32f2f\">✗</b> manquant " +
                 "ou différent ; dessous, <b>→ found in Archives</b> avec " + iconBadge(EYE_ICON, VIOLET) + " pour le " +
-                "voir (images, vidéos, sons) ;",
+                "voir dans une fenêtre <b>Preview</b> à côté (images, vidéos, sons ; ✕, Échap ou un clic à côté " +
+                "ferment seulement l'aperçu) ;",
                 "une case (cochée) pour 00.Workflows, 08.Images, 10.Son, 12.Video et 14.Video-Audio : décochez " +
                 "ce qui ne doit pas être chargé ;",
                 "04.Prompt est seulement vérifié : charger le workflow peut perdre les modifications du prompt en " +
@@ -1349,6 +1351,93 @@ function structureHtml(d, plusLabel, minusLabel) {
     return out.join("");
 }
 
+/**
+ * Fenetre "Preview" de l'oeil de "Load the project" : a cote de la fenetre
+ * Load, image agrandie ou lecteur video / son. Croix, Echap (gere par la
+ * fenetre Load) ou clic a cote = fermeture de l'apercu seulement.
+ */
+function buildPreviewWindow() {
+    const { overlay, card } = makeOverlay();
+    overlay.style.zIndex = "10003";
+    Object.assign(card.style, {
+        width: "min(520px, 46vw)", padding: "10px 12px", borderColor: VIOLET, display: "flex",
+        flexDirection: "column", gap: "6px",
+    });
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "flex-start", gap: "8px" });
+    const titles = document.createElement("div");
+    Object.assign(titles.style, { flex: "1", minWidth: "0" });
+    const title = document.createElement("div");
+    Object.assign(title.style, {
+        fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, whiteSpace: "nowrap", overflow: "hidden",
+        textOverflow: "ellipsis",
+    });
+    const path = document.createElement("div");
+    Object.assign(path.style, { color: "#888", fontSize: "11px", wordBreak: "break-all" });
+    titles.append(title, path);
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close the preview");
+    Object.assign(closeBtn.style, { width: "22px", height: "22px" });
+    head.append(titles, closeBtn);
+    const body = document.createElement("div");
+    Object.assign(body.style, {
+        display: "flex", alignItems: "center", justifyContent: "center", background: "#111",
+        borderRadius: "8px", minHeight: "120px", maxHeight: "70vh", overflow: "hidden",
+    });
+    card.append(head, body);
+
+    function close() {
+        overlay.style.display = "none";
+        body.innerHTML = ""; // arrete la lecture
+    }
+    closeBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        isOpen: () => overlay.style.display !== "none",
+        close,
+        /** show(cheminAbsolu, "image" | "video" | "audio", cheminAffiche, carteDeReference) */
+        show(file, kind, shown, anchor) {
+            title.textContent = file.split(/[\\/]/).pop();
+            path.textContent = shown;
+            body.innerHTML = "";
+            const el = document.createElement(kind === "image" ? "img" : kind);
+            if (kind !== "image") {
+                el.controls = true;
+                el.preload = "metadata";
+            }
+            el.src = "/mmrefloader/media?file=" + encodeURIComponent(file);
+            Object.assign(el.style, kind === "audio" ? { width: "95%", margin: "40px 0" } : {
+                // Les petites images sont agrandies (largeur de la fenetre), sans depasser 70vh.
+                width: "100%", height: "auto", maxHeight: "70vh", objectFit: "contain", display: "block",
+            });
+            body.appendChild(el);
+            overlay.style.display = "block";
+            // A droite de la fenetre Load (retrecie a la place libre, 240 px au moins),
+            // sinon a gauche ; sans place des deux cotes, par-dessus, au bord droit.
+            const r = anchor.getBoundingClientRect();
+            const max = Math.min(520, window.innerWidth * 0.46);
+            const right = window.innerWidth - r.right - 18;
+            const leftRoom = r.left - 18;
+            let w = max;
+            let left = Math.max(8, window.innerWidth - 8 - max);
+            if (right >= 240) {
+                w = Math.min(max, right);
+                left = r.right + 10;
+            } else if (leftRoom >= 240) {
+                w = Math.min(max, leftRoom);
+                left = r.left - 10 - w;
+            }
+            card.style.width = w + "px";
+            card.style.left = left + "px";
+            card.style.top = Math.max(8, Math.min(r.top, window.innerHeight - 200)) + "px";
+        },
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
 /** open(report, projectPath) -> Promise<dossiers coches | null> (Cancel, Echap, clic a cote = null). */
 function buildLoadDialog(container) {
     const { overlay, card } = makeOverlay();
@@ -1376,16 +1465,20 @@ function buildLoadDialog(container) {
     const loadBtn = makeTextButton("Load", PINK);
     footer.append(cancelBtn, loadBtn);
     card.append(title, sub, body, note, footer);
+    const preview = buildPreviewWindow();
 
     let resolve = null;
     let boxes = [];
+    // Echap : ferme d'abord l'apercu, puis la fenetre Load.
     const onKey = (e) => {
         if (overlay.style.display === "none" || e.key !== "Escape") return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        finish(null);
+        if (preview.isOpen()) preview.close();
+        else finish(null);
     };
     function finish(result) {
+        preview.close();
         overlay.style.display = "none";
         window.removeEventListener("keydown", onKey, true);
         body.innerHTML = ""; // arrete les lecteurs ouverts
@@ -1431,30 +1524,15 @@ function buildLoadDialog(container) {
             { color: "#9fd6cf", paddingLeft: "16px", display: "flex", alignItems: "center", gap: "6px" });
         const kind = PREVIEW_KIND[f.folder];
         if (kind) {
-            const eye = makeIconButton(VIOLET, EYE_ICON, "View the file found in Archives");
+            const eye = makeIconButton(VIOLET, EYE_ICON, "View the file found in Archives (new window)");
             Object.assign(eye.style, { width: "20px", height: "20px" });
-            const view = div("", { display: "none", padding: "4px 0 4px 16px" });
             eye.addEventListener("click", () => {
-                if (view.style.display !== "none") {
-                    view.style.display = "none";
-                    view.innerHTML = "";
-                    return;
-                }
-                const el = document.createElement(kind === "image" ? "img" : kind);
-                if (kind !== "image") el.controls = true;
-                el.src = "/mmrefloader/media?file=" + encodeURIComponent(joinDir(joinDir(joinDir(projectPath,
-                    f.folder), "Archives"), x.archive));
-                Object.assign(el.style, kind === "audio" ? { width: "95%" }
-                    : { maxWidth: "100%", maxHeight: "200px", display: "block", borderRadius: "6px" });
-                view.innerHTML = "";
-                view.appendChild(el);
-                view.style.display = "block";
+                const file = joinDir(joinDir(joinDir(projectPath, f.folder), "Archives"), x.archive);
+                preview.show(file, kind, f.folder + "/Archives/" + x.archive, card);
             });
             line.appendChild(eye);
-            wrap.append(line, view);
-        } else {
-            wrap.appendChild(line);
         }
+        wrap.appendChild(line);
         return wrap;
     }
 
@@ -1540,6 +1618,7 @@ function buildLoadDialog(container) {
         },
         remove() {
             finish(null);
+            preview.remove();
             overlay.remove();
         },
     };
