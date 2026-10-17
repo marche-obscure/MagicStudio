@@ -380,6 +380,17 @@ try:
             return _project_error(e)
         return web.json_response({"runs": runs})
 
+    @routes.post("/mmproject/move_output")
+    async def mmproject_move_output(request):
+        """Deplace l'original d'une sortie de Run dans 40.Rush Videos / 60.Rush Images (copie, SHA256, suppression)."""
+        try:
+            body = await request.json()
+            data = await _in_executor(run_record.move_output, body.get("project", ""), body.get("run", ""),
+                                      body.get("index"))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
     @routes.post("/mmproject/hashes")
     async def mmproject_hashes(request):
         """SHA256 des fichiers demandes (doublons de la galerie)."""

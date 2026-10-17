@@ -173,6 +173,13 @@ const HELP_SECTIONS = [
             "the Configuration and the Prompt of the run of the picked thumbnail. Click a thumbnail to see it " +
             "in the <b>Preview</b> window (the same thumbnail again closes it); ✕, Escape or a click outside " +
             "closes the window.</p>" +
+            "<p>Each thumbnail has a dot: <b style=\"color:#43a047\">green</b> = the original is in its folder of " +
+            "the project (a video in 40.Rush Videos, an image in 60.Rush Images), <b style=\"color:#d35400\">dark " +
+            "orange</b> = it is elsewhere. Then <b>Move to 40.Rush Videos</b> / <b>Move to 60.Rush Images</b> " +
+            "(after a confirmation) moves it in 3 steps: copy into the project, SHA256 check of the copy, then " +
+            "the original is deleted and the dot turns green. A video replaces its reduced copy (only one " +
+            "version is kept); an image takes the name of the run. On an error the original is untouched: " +
+            "<b>Retry</b> or <b>Abandon</b>, abandoned after 3 failed attempts.</p>" +
             "<p>A file that goes to <b>Archives</b> is named <b>yyyyMMdd_HHmmss_name.ext</b> (date of the " +
             "archiving, <b>(2)</b>-like numbers removed; a name already taken gets the next second). Coming back " +
             "from Archives, it takes its name again without the date.</p>" +
@@ -380,6 +387,13 @@ const HELP_SECTIONS_FR = [
             "défilement horizontal ; en dessous, la Configuration et le Prompt du Run de la vignette choisie. Clic " +
             "sur une vignette = fenêtre <b>Preview</b> (la même vignette la referme) ; ✕, Échap ou un clic à côté " +
             "ferme la fenêtre.</p>" +
+            "<p>Chaque vignette a une pastille : <b style=\"color:#43a047\">verte</b> = l'original est dans son " +
+            "dossier du projet (une vidéo dans 40.Rush Videos, une image dans 60.Rush Images), <b " +
+            "style=\"color:#d35400\">orange foncé</b> = il est ailleurs. <b>Move to 40.Rush Videos</b> / <b>Move " +
+            "to 60.Rush Images</b> (après confirmation) le déplace en 3 temps : copie dans le projet, comparaison " +
+            "SHA256 de la copie, puis suppression de l'original et pastille verte. Une vidéo remplace sa copie " +
+            "réduite (une seule version gardée) ; une image prend le nom du Run. En cas d'erreur l'original n'est " +
+            "pas touché : <b>Retry</b> ou <b>Abandon</b>, abandon après 3 échecs.</p>" +
             "<p>Un fichier qui part dans <b>Archives</b> est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> (date de " +
             "l'archivage, numéros du type <b>(2)</b> retirés ; un nom déjà pris prend la seconde suivante). En " +
             "revenant d'Archives, il reprend son nom sans la date.</p>" +
@@ -814,6 +828,7 @@ function buildConfirm(container) {
             text.innerHTML = opts.html || "";
             okBtn.textContent = opts.okLabel || "OK";
             okBtn.style.background = opts.okColor || GREEN;
+            cancelBtn.textContent = opts.cancelLabel || "Cancel";
             cancelBtn.style.display = opts.noCancel ? "none" : "";
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
@@ -1957,6 +1972,23 @@ function buildFolderViewer(container) {
 // vignette = fenetre Preview a droite (meme vignette = fermeture).
 // --------------------------------------------------------------------
 const RUN_FILTERS = [["all", "All"], ["video", "Video"], ["image", "Image"]];
+// Pastille des vignettes (choix utilisateur) : vert = original dans son dossier du projet, orange fonce = ailleurs.
+const DOT_GREEN = "#43a047";
+const DOT_ORANGE = "#d35400";
+const RUSH_FOLDER_OF = { video: "40.Rush Videos", image: "60.Rush Images" };
+
+/** Pastille en haut a gauche d'une vignette. */
+function addStatusDot(box, out) {
+    box.style.position = "relative";
+    const dot = document.createElement("div");
+    Object.assign(dot.style, {
+        position: "absolute", top: "6px", left: "6px", width: "12px", height: "12px", borderRadius: "50%",
+        background: out.in_project ? DOT_GREEN : DOT_ORANGE, border: "2px solid #1e1e1e", zIndex: "1",
+    });
+    dot.title = out.in_project ? "Original in " + RUSH_FOLDER_OF[out.kind]
+        : "Original outside the project: " + (out.folder || "?");
+    box.appendChild(dot);
+}
 
 /** Dossier et nom d'un chemin complet. */
 function splitPath(path) {
@@ -1983,7 +2015,7 @@ function runConfigHtml(run, out) {
     return h;
 }
 
-function buildRunViewer(container) {
+function buildRunViewer(container, onMove) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
         width: "min(760px, 94vw)", padding: "12px 14px", borderColor: VIOLET, display: "flex",
@@ -2048,8 +2080,11 @@ function buildRunViewer(container) {
     const grid = document.createElement("div");
     Object.assign(grid.style, { display: "grid", gap: "8px", alignItems: "start", minHeight: "0", overflowY: "auto" });
     grid.append(left, thumb.box);
-    card.append(head, pick, strip, grid);
+    const note = document.createElement("div");
+    Object.assign(note.style, { minHeight: "14px", fontSize: "11px", color: "#9fd6cf" });
+    card.append(head, pick, strip, grid, note);
     const preview = buildPreviewWindow();
+    let moving = false;
 
     let runs = [];
     let folder = "";
@@ -2059,7 +2094,7 @@ function buildRunViewer(container) {
     let rushIndex = 0;
 
     const onKey = (e) => {
-        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        if (overlay.style.display === "none" || moving || e.key !== "Escape") return;
         e.preventDefault();
         e.stopImmediatePropagation();
         if (preview.isOpen()) preview.close();
@@ -2067,13 +2102,40 @@ function buildRunViewer(container) {
     };
     function close() {
         preview.close();
+        note.textContent = "";
         overlay.style.display = "none";
         window.removeEventListener("keydown", onKey, true);
         strip.innerHTML = "";
         thumb.body.innerHTML = "";
     }
     closeBtn.addEventListener("click", close);
-    overlay.addEventListener("mousedown", () => (preview.isOpen() ? preview.close() : close()));
+    overlay.addEventListener("mousedown", () => (moving ? null : preview.isOpen() ? preview.close() : close()));
+
+    /** Cadre Configuration + bouton "Move to ..." quand l'original est hors de son dossier du projet. */
+    function fillConfig(run, out) {
+        conf.body.innerHTML = runConfigHtml(run, out);
+        if (!out || out.in_project || !out.source_exists || !onMove) return;
+        const btn = makeTextButton("Move to " + RUSH_FOLDER_OF[out.kind], DOT_ORANGE);
+        btn.title = "Copy the original to " + RUSH_FOLDER_OF[out.kind] + ", check it (SHA256), then delete the original";
+        Object.assign(btn.style, { marginTop: "6px", width: "100%" });
+        btn.addEventListener("click", async () => {
+            moving = true;
+            preview.close();
+            let res = null;
+            try {
+                res = await onMove(run, out);
+            } finally {
+                moving = false;
+            }
+            if (!res) return;
+            runs = res.runs || runs;
+            note.textContent = res.text || "";
+            note.style.color = res.ok ? "#9fd6cf" : ORANGE;
+            if (folder === "04.Prompt") renderPrompt();
+            else renderRush();
+        });
+        conf.body.appendChild(btn);
+    }
 
     const shownOf = (file) => folder === "40.Rush Videos" || /[\\/]40\.Rush Videos[\\/]/.test(file)
         ? "40.Rush Videos/" + baseOf(file) : file;
@@ -2114,9 +2176,10 @@ function buildRunViewer(container) {
         const outs = (run.outputs || []).filter((o) => filter === "all" || o.kind === filter);
         outIndex = Math.min(outIndex, Math.max(0, outs.length - 1));
         const out = outs[outIndex];
-        conf.body.innerHTML = runConfigHtml(run, out);
+        fillConfig(run, out);
         prompt.body.textContent = run.prompt || "";
         thumb.body.innerHTML = "";
+        thumb.label.textContent = out ? "Output – click the thumbnail to view the " + out.kind : "Output";
         const file = outputFile(out);
         if (!out || !file) {
             const d = document.createElement("div");
@@ -2128,6 +2191,7 @@ function buildRunViewer(container) {
             const t = dupThumb(dir, name, out.kind, 300);
             Object.assign(t.style, { width: "100%", height: "auto", aspectRatio: "16 / 10", cursor: "pointer" });
             t.title = "Preview " + name;
+            addStatusDot(t, out);
             t.addEventListener("click", () => showPreview(file, out.kind));
             const n = document.createElement("div");
             n.textContent = name;
@@ -2190,7 +2254,9 @@ function buildRunViewer(container) {
                 border: i === rushIndex ? "2px solid " + VIOLET : "1px solid #333",
             });
             const [dir, name] = splitPath(it.file);
-            t.appendChild(dupThumb(dir, name, it.output.kind, 108));
+            const pic = dupThumb(dir, name, it.output.kind, 108);
+            addStatusDot(pic, it.output);
+            t.appendChild(pic);
             const label = document.createElement("div");
             label.textContent = runDateText(it.run.date);
             label.title = name;
@@ -2207,7 +2273,7 @@ function buildRunViewer(container) {
         });
         const it = items[rushIndex];
         conf.label.textContent = "Configuration – " + baseOf(it.file);
-        conf.body.innerHTML = runConfigHtml(it.run, it.output);
+        fillConfig(it.run, it.output);
         prompt.body.textContent = it.run.prompt || "";
     }
 
@@ -2223,6 +2289,7 @@ function buildRunViewer(container) {
                 rushIndex = 0;
             }
             const promptMode = name === "04.Prompt";
+            if (!same) note.textContent = "";
             title.textContent = name + " – " + projectName;
             conf.label.textContent = "Configuration";
             pick.style.display = promptMode ? "flex" : "none";
@@ -2628,7 +2695,7 @@ app.registerExtension({
             const loadDialog = buildLoadDialog(container);
             const duplicatesDialog = buildDuplicatesDialog(container);
             const folderViewer = buildFolderViewer(container);
-            const runViewer = buildRunViewer(container);
+            const runViewer = buildRunViewer(container, (run, out) => moveOutput(run, out));
             node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog,
                 loadDialog, duplicatesDialog, folderViewer, runViewer];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
@@ -2969,6 +3036,49 @@ app.registerExtension({
                     if (getState().path === s.path) runList = data.runs || [];
                 } catch (e) {
                     runList = [];
+                }
+            }
+
+            /**
+             * Deplacement de l'original d'une sortie dans 40.Rush Videos / 60.Rush Images
+             * (choix utilisateur) : confirmation, puis copie + SHA256 + suppression cote
+             * serveur ; en cas d'erreur Retry / Abandon, abandon apres 3 echecs.
+             */
+            async function moveOutput(run, out) {
+                const s = getState();
+                const dest = out.kind === "video" ? "40.Rush Videos" : "60.Rush Images";
+                const ok = await confirm.ask({
+                    title: "Move the original to " + dest + "?",
+                    html: escapeHtml(out.source) + '<br><span style="color:#888">→</span> <b style="color:#9fd6cf">' +
+                        dest + "</b>" + (out.kind === "video" && out.copy_exists ? '<br><span style="color:#999">It ' +
+                        "replaces the copy " + escapeHtml(baseOf(out.copy)) + " (only one version is kept).</span>" : "") +
+                        '<br><span style="color:#999">Copy, SHA256 check, then the original is deleted.</span>',
+                    okLabel: "Move", okColor: DOT_ORANGE,
+                });
+                if (!ok) return null;
+                for (let attempt = 1; ; attempt++) {
+                    try {
+                        const data = await apiPost("/mmproject/move_output", { project: s.path, run: run.file, index: out.index });
+                        await loadRuns(s);
+                        paintFolders();
+                        say("File moved to " + dest + ": " + baseOf(data.source), true);
+                        return { runs: runList, text: "File moved to " + dest + ": " + baseOf(data.source), ok: true };
+                    } catch (e) {
+                        if (attempt >= 3) {
+                            await confirm.ask({
+                                title: "Move abandoned",
+                                html: escapeHtml(e.message) + "<br>3 attempts failed: the original stays in place.",
+                                okLabel: "OK", okColor: INACTIVE_BG, noCancel: true,
+                            });
+                            return { runs: runList, text: "Move abandoned after 3 attempts: " + e.message, ok: false };
+                        }
+                        const retry = await confirm.ask({
+                            title: "Move failed (attempt " + attempt + "/3)",
+                            html: escapeHtml(e.message) + "<br>The original is untouched.",
+                            okLabel: "Retry", okColor: DOT_ORANGE, cancelLabel: "Abandon",
+                        });
+                        if (!retry) return { runs: runList, text: "Move abandoned: the original stays in place.", ok: false };
+                    }
                 }
             }
 
