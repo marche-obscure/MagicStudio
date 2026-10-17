@@ -163,7 +163,7 @@ const HELP_SECTIONS = [
             "Reference Loader with their number (<b>F</b> / <b>L</b> = First / Last frame; files without number " +
             "last, greyed), then a frame with the files of <b>Archives</b>; both rows scroll sideways. Click a " +
             "thumbnail to see it large in the <b>Preview</b> window.</p>" +
-            "<p>The rows of 04.Prompt, 40.Rush Videos and 60.Rush Images show <b>Last run: dd/MM/yyyy hh:mm:ss | " +
+            "<p>The rows of 04.Prompt, 40.Rush Videos and 60.Rush Images (no bell) show <b>Last run: dd/MM/yyyy hh:mm:ss | " +
             "Runs: n</b> once runs are recorded (40: runs with a video, 60: runs with an image). Click " +
             "<b>04.Prompt</b>: a filter <b>All / Video / Image</b> and the list of the runs (newest first), then " +
             "a <b>Configuration</b> frame (date, mode, Steps, CFG, Seed, status, size of the video, folder of the " +
@@ -378,7 +378,7 @@ const HELP_SECTIONS_FR = [
             "fichiers sans numéro à la fin, grisés), puis un cadre avec les fichiers d'<b>Archives</b> ; les deux " +
             "lignes défilent horizontalement. Cliquez sur une vignette pour la voir en grand dans la fenêtre " +
             "<b>Preview</b>.</p>" +
-            "<p>Les lignes de 04.Prompt, 40.Rush Videos et 60.Rush Images affichent <b>Last run: dd/MM/yyyy " +
+            "<p>Les lignes de 04.Prompt, 40.Rush Videos et 60.Rush Images (sans cloche) affichent <b>Last run: dd/MM/yyyy " +
             "hh:mm:ss | Runs: n</b> dès qu'un Run est enregistré (40 : Runs avec une vidéo, 60 : Runs avec une " +
             "image). Clic sur <b>04.Prompt</b> : un filtre <b>All / Video / Image</b> et la liste des Runs (le plus " +
             "récent d'abord), puis un cadre <b>Configuration</b> (date, mode, Steps, CFG, Seed, status, taille de " +
@@ -2716,6 +2716,8 @@ app.registerExtension({
                 btn.append(icon, label, last);
                 const bell = makeIconButton(INACTIVE_BG, BELL_ICON, "");
                 Object.assign(bell.style, { width: "22px", height: "22px", cursor: "default", opacity: "0.6" });
+                // 04.Prompt, 40.Rush Videos, 60.Rush Images : pas de cloche, place gardee (boutons alignes ; choix utilisateur).
+                if (name in RUN_FOLDERS) bell.style.visibility = "hidden";
                 // 00.Workflows : bouton des archives a droite de la cloche ; ailleurs, un espace.
                 // 08.Images ... 14.Video-Audio : bouton des doublons d'Archives (visible s'il y en a).
                 const arch = name === WORKFLOWS ? makeIconButton(INACTIVE_BG, ARCHIVE_ICON, "")
