@@ -170,7 +170,8 @@ const HELP_SECTIONS = [
             "<b>Original</b>), the <b>Prompt</b> text and a thumbnail of the output (‹ › when there are several). " +
             "Click <b>40.Rush Videos</b> or <b>60.Rush Images</b>: the videos (copies in 40.Rush Videos) or the " +
             "images (originals) named in the JSON of the runs, newest on the left, scrolling sideways; below, " +
-            "the Configuration and the Prompt of the run of the picked thumbnail. Click a thumbnail to see it " +
+            "the Configuration and the Prompt of the run of the picked thumbnail (the copy icon at the top left " +
+            "of the Prompt frame copies its text to the clipboard, ready to paste in your prompt node). Click a thumbnail to see it " +
             "in the <b>Preview</b> window (the same thumbnail again closes it); ✕, Escape or a click outside " +
             "closes the window.</p>" +
             "<p>Each thumbnail has a dot: <b style=\"color:#43a047\">green</b> = the original is in its folder of " +
@@ -384,7 +385,9 @@ const HELP_SECTIONS_FR = [
             "la vidéo, dossier de l'<b>Original</b>), le texte du <b>Prompt</b> et une vignette de la sortie (‹ › " +
             "s'il y en a plusieurs). Clic sur <b>40.Rush Videos</b> ou <b>60.Rush Images</b> : les vidéos (copies " +
             "de 40.Rush Videos) ou les images (originaux) citées dans les JSON des Runs, la plus récente à gauche, " +
-            "défilement horizontal ; en dessous, la Configuration et le Prompt du Run de la vignette choisie. Clic " +
+            "défilement horizontal ; en dessous, la Configuration et le Prompt du Run de la vignette choisie (l'icône " +
+            "de copie en haut à gauche du cadre Prompt copie son texte dans le presse-papiers, prêt à coller dans " +
+            "votre nœud de prompt). Clic " +
             "sur une vignette = fenêtre <b>Preview</b> (la même vignette la referme) ; ✕, Échap ou un clic à côté " +
             "ferme la fenêtre.</p>" +
             "<p>Chaque vignette a une pastille : <b style=\"color:#43a047\">verte</b> = l'original est dans son " +
@@ -2072,6 +2075,59 @@ function buildRunViewer(container, onMove) {
         whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: "1.5", overflowY: "auto", maxHeight: "28vh",
         userSelect: "text", cursor: "text",
     });
+    // Icone de copie en haut a gauche du cadre Prompt (choix utilisateur) : texte dans le presse-papiers.
+    const copyBtn = makeIconButton(INACTIVE_BG, DUP_ICON, "Copy the prompt to the clipboard");
+    Object.assign(copyBtn.style, { width: "18px", height: "18px", flex: "0 0 auto" });
+    const copyDone = document.createElement("span");
+    Object.assign(copyDone.style, { color: DOT_GREEN, fontWeight: "normal", marginLeft: "auto" });
+    const promptTitle = document.createElement("span");
+    promptTitle.textContent = "Prompt";
+    prompt.label.textContent = "";
+    Object.assign(prompt.label.style, { display: "flex", alignItems: "center", gap: "6px" });
+    prompt.label.append(copyBtn, promptTitle, copyDone);
+    let copyTimer = 0;
+    function setPrompt(text) {
+        prompt.body.textContent = text || "";
+        copyBtn.disabled = !text;
+        copyBtn.style.opacity = text ? "1" : "0.4";
+        copyBtn.style.cursor = text ? "pointer" : "default";
+        copyBtn.style.background = INACTIVE_BG;
+        copyDone.textContent = "";
+    }
+    /** Copie : API du presse-papiers, sinon zone de texte temporaire (execCommand). */
+    async function copyText(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (e) {
+            const area = document.createElement("textarea");
+            area.value = text;
+            Object.assign(area.style, { position: "fixed", left: "-9999px", top: "0" });
+            card.appendChild(area);
+            area.select();
+            let ok = false;
+            try {
+                ok = document.execCommand("copy");
+            } catch (err) {
+                ok = false;
+            }
+            area.remove();
+            return ok;
+        }
+    }
+    copyBtn.addEventListener("click", async () => {
+        const text = prompt.body.textContent;
+        if (!text) return;
+        const ok = await copyText(text);
+        clearTimeout(copyTimer);
+        copyBtn.style.background = ok ? DOT_GREEN : INACTIVE_BG;
+        copyDone.textContent = ok ? "Copied" : "Could not copy to the clipboard";
+        copyDone.style.color = ok ? DOT_GREEN : ORANGE;
+        copyTimer = setTimeout(() => {
+            copyBtn.style.background = INACTIVE_BG;
+            copyDone.textContent = "";
+        }, 1500);
+    });
     const thumb = frame("Output");
     Object.assign(thumb.body.style, { display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" });
     const left = document.createElement("div");
@@ -2164,7 +2220,7 @@ function buildRunViewer(container, onMove) {
             o.textContent = "No run" + (filter === "all" ? "" : " with a " + filter);
             select.appendChild(o);
             conf.body.innerHTML = '<span style="color:#888">No run recorded.</span>';
-            prompt.body.textContent = "";
+            setPrompt("");
             thumb.body.innerHTML = "";
             return;
         }
@@ -2177,7 +2233,7 @@ function buildRunViewer(container, onMove) {
         outIndex = Math.min(outIndex, Math.max(0, outs.length - 1));
         const out = outs[outIndex];
         fillConfig(run, out);
-        prompt.body.textContent = run.prompt || "";
+        setPrompt(run.prompt);
         thumb.body.innerHTML = "";
         thumb.label.textContent = out ? "Output – click the thumbnail to view the " + out.kind : "Output";
         const file = outputFile(out);
@@ -2242,7 +2298,7 @@ function buildRunViewer(container, onMove) {
             Object.assign(d.style, { color: "#888", alignSelf: "center" });
             strip.appendChild(d);
             conf.body.innerHTML = "";
-            prompt.body.textContent = "";
+            setPrompt("");
             return;
         }
         rushIndex = Math.min(rushIndex, items.length - 1);
@@ -2274,7 +2330,7 @@ function buildRunViewer(container, onMove) {
         const it = items[rushIndex];
         conf.label.textContent = "Configuration – " + baseOf(it.file);
         fillConfig(it.run, it.output);
-        prompt.body.textContent = it.run.prompt || "";
+        setPrompt(it.run.prompt);
     }
 
     return {
