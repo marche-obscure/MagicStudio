@@ -6,6 +6,7 @@ projets (le Root folder du MiniMax H3 Reference Loader branche, sinon
 """
 
 import os
+import sys
 import shutil
 import filecmp
 import hashlib
@@ -507,6 +508,101 @@ def file_hashes(paths):
         if d:
             out[p] = d
     return out
+
+
+# ----------------------------------------------------------------------
+# Doublons dans <dossier>/Archives (08.Images, 10.Son, 12.Video, 14.Video-Audio)
+# ----------------------------------------------------------------------
+# Suffixe ajoute par le projet a un nom deja pris : "nom (2)" ou "nom_02".
+_COPY_SUFFIX = re.compile(r"(?: \(\d+\)|_\d{2,})$")
+
+
+def _has_copy_suffix(name):
+    return bool(_COPY_SUFFIX.search(os.path.splitext(name)[0]))
+
+
+def archive_duplicates(project, folders):
+    """
+    {dossier: [groupe]} : fichiers de <dossier>/Archives (racine seulement)
+    au meme SHA256, groupes d'au moins deux. groupe = {sha, files: [{name,
+    size, mtime, keep}]} ; keep = l'exemplaire garde (choix utilisateur : le
+    nom sans suffixe "(2)" / "_02", sinon le plus ancien), en premier.
+    """
+    if not project or not os.path.isdir(project):
+        raise FileNotFoundError("Project folder not found: %s" % project)
+    out = {}
+    for folder in folders:
+        if folder not in SUBFOLDERS:
+            raise ValueError("Unknown project folder: %s" % folder)
+        arch = os.path.join(project, folder, ARCHIVE_FOLDER)
+        groups = {}
+        if os.path.isdir(arch):
+            for e in os.scandir(arch):
+                if not e.is_file() or e.name.startswith("."):
+                    continue
+                st = e.stat()
+                sha = file_hash(e.path)
+                if sha:
+                    groups.setdefault(sha, []).append({"name": e.name, "size": st.st_size, "mtime": st.st_mtime})
+        found = []
+        for sha, files in groups.items():
+            if len(files) < 2:
+                continue
+            files.sort(key=lambda f: (_has_copy_suffix(f["name"]), f["mtime"], f["name"].lower()))
+            for i, f in enumerate(files):
+                f["keep"] = i == 0
+            found.append({"sha": sha, "files": files})
+        found.sort(key=lambda g: g["files"][0]["name"].lower())
+        out[folder] = found
+    return out
+
+
+def _to_recycle_bin(paths):
+    """Corbeille de Windows (recuperable) ; OSError si elle refuse."""
+    import ctypes
+    from ctypes import wintypes
+
+    class SHFILEOPSTRUCTW(ctypes.Structure):
+        _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", ctypes.c_void_p),
+                    ("pTo", ctypes.c_void_p), ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL),
+                    ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", ctypes.c_void_p)]
+
+    FO_DELETE, FOF_SILENT, FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_NOERRORUI = 3, 0x4, 0x10, 0x40, 0x400
+    # Liste terminee par deux caracteres nuls.
+    buf = ctypes.create_unicode_buffer("\0".join(os.path.abspath(p) for p in paths) + "\0\0")
+    op = SHFILEOPSTRUCTW(None, FO_DELETE, ctypes.cast(buf, ctypes.c_void_p), None,
+                         FOF_SILENT | FOF_NOCONFIRMATION | FOF_ALLOWUNDO | FOF_NOERRORUI, False, None, None)
+    code = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+    if code != 0 or op.fAnyOperationsAborted:
+        raise OSError("Could not move the files to the Recycle Bin (code %d)." % code)
+
+
+TRASH_AVAILABLE = sys.platform == "win32"
+
+
+def delete_duplicates(project, folder, shas, trash):
+    """
+    Supprime les copies des groupes 'shas' de <dossier>/Archives : tout sauf
+    l'exemplaire garde (relu ici, jamais choisi par l'appelant). trash = vers
+    la Corbeille de Windows, sinon suppression definitive. Renvoie les noms.
+    """
+    if trash and not TRASH_AVAILABLE:
+        raise ValueError("The Recycle Bin is only available on Windows.")
+    groups = archive_duplicates(project, [folder])[folder]
+    wanted = set(shas or [])
+    arch = os.path.join(project, folder, ARCHIVE_FOLDER)
+    names = [f["name"] for g in groups if g["sha"] in wanted for f in g["files"] if not f["keep"]]
+    paths = [os.path.join(arch, n) for n in names]
+    if not paths:
+        return []
+    if trash:
+        _to_recycle_bin(paths)
+    else:
+        for p in paths:
+            os.remove(p)
+    for p in paths:
+        _HASH_CACHE.pop(_norm(p), None)
+    return names
 
 
 def delete_archive(project, name):
