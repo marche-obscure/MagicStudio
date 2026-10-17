@@ -3,8 +3,9 @@ Enregistrement d'un Run dans le projet (noeud MiniMaxH3Project, entree
 text_prompt), sans import ComfyUI (testable seul) :
 - au lancement : 04.Prompt/yyyyMMdd_HHmmss_run.json avec le prompt final,
   CFG, Steps et Seed lus dans le Run lui-meme (aucune entree en plus) ;
-- a la fin : les fichiers generes sont copies dans 60.Rush Images (images)
-  ou 40.Rush Videos (videos) sous le meme nom que le JSON, qui les liste.
+- a la fin : les videos generees sont copiees dans 40.Rush Videos sous le
+  meme nom que le JSON (reduites a 960x544 au plus) ; les images restent
+  dans le dossier choisi par l'utilisateur ; le JSON liste les deux.
 """
 
 import json
@@ -23,6 +24,9 @@ VIDEO_EXTS = {".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"}
 
 _RUN_NAME = re.compile(r"^\d{8}_\d{6}_run\.json$")
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# Taille maximale des videos copiees dans 40.Rush Videos (choix utilisateur).
+MAX_VIDEO_SIZE = (960, 544)
 
 
 # Suivi des liens (choix utilisateur) : valeur directe, ou lien vers un noeud
@@ -196,9 +200,12 @@ def finish_run(run_file, files, status, output_dir):
     type "output", sous output_dir). Seuls les fichiers NOUVEAUX comptent :
     ceux qu'un Run precedent du projet a deja enregistres (renvoyes par le
     cache de ComfyUI) sont ignores (choix utilisateur), sauf s'ils ont ete
-    ecrits pendant ce Run (date de modification). Images -> 60.Rush
-    Images, videos -> 40.Rush Videos, copiees sous le nom du JSON ("_02"...
-    pour les suivantes) ; le JSON recoit status et outputs. Aucun fichier
+    ecrits pendant ce Run (date de modification). Videos -> 40.Rush Videos
+    sous le nom du JSON ("_02"... pour les suivantes), reduites dans
+    MAX_VIDEO_SIZE (ratio garde, en .mp4) si plus grandes, copiees sinon ;
+    une video deja dans 40.Rush Videos du projet n'est pas touchee
+    (in_place). Images : pas de copie (choix utilisateur), seulement citees.
+    Le JSON recoit status et outputs. Aucun fichier
     nouveau alors que le Run en a renvoye, ou Run arrete sans fichier : le
     JSON est retire, rien n'est copie ({skipped, same_as, status}). Deja
     termine : rien n'est refait.
@@ -223,23 +230,97 @@ def finish_run(run_file, files, status, output_dir):
         same = known.get(os.path.normcase(sources[0])) if sources else None
         return {"skipped": True, "same_as": same, "status": data["status"]}
     base = os.path.splitext(os.path.basename(run_file))[0]
-    outputs, count = [], {}
+    outputs, n = [], 0
+    rush = os.path.join(project, RUSH_VIDEOS)
     for src in new:
         ext = os.path.splitext(src)[1].lower()
-        folder = RUSH_IMAGES if ext in IMAGE_EXTS else RUSH_VIDEOS if ext in VIDEO_EXTS else None
-        copy = None
-        if folder:
-            count[folder] = count.get(folder, 0) + 1
-            n = count[folder]
-            name = base + ext if n == 1 else "%s_%02d%s" % (base, n, ext)
-            dst_dir = os.path.join(project, folder)
-            os.makedirs(dst_dir, exist_ok=True)
-            shutil.copy2(src, os.path.join(dst_dir, name))
-            copy = folder + "/" + name
-        outputs.append({"source": src, "copy": copy})
+        out = {"source": src, "copy": None}
+        if ext in VIDEO_EXTS:
+            size = video_size(src)
+            if size:
+                out["size"] = "%dx%d" % size
+            if os.path.normcase(os.path.dirname(src)) == os.path.normcase(rush):
+                out.update({"copy": RUSH_VIDEOS + "/" + os.path.basename(src), "in_place": True})
+            else:
+                n += 1
+                out.update(_copy_video(src, rush, base if n == 1 else "%s_%02d" % (base, n), size))
+        outputs.append(out)
     data["outputs"] = outputs
     _write(run_file, data)
     return data
+
+
+def fit_size(width, height, box=None):
+    """Taille dans la boite (ratio garde, dimensions paires), None si la video y tient deja."""
+    bw, bh = box or MAX_VIDEO_SIZE
+    if width <= bw and height <= bh:
+        return None
+    scale = min(bw / float(width), bh / float(height))
+    return (min(bw, max(2, int(round(width * scale)) // 2 * 2)),
+            min(bh, max(2, int(round(height * scale)) // 2 * 2)))
+
+
+def video_size(path):
+    """(largeur, hauteur) de la premiere piste video, None si illisible."""
+    try:
+        import av
+        with av.open(path) as c:
+            s = c.streams.video[0].codec_context
+            return (s.width, s.height) if s.width and s.height else None
+    except Exception:
+        return None
+
+
+def resize_video(src, dst, size):
+    """
+    Reencode src en H.264 (.mp4) a la taille size, meme cadence ; le son est
+    recopie tel quel. Ecrit d'abord un fichier .part, retire en cas d'erreur.
+    """
+    import av
+    part = dst + ".part.mp4"
+    try:
+        with av.open(src) as inp, av.open(part, "w", format="mp4") as out:
+            vin = inp.streams.video[0]
+            ain = inp.streams.audio[0] if inp.streams.audio else None
+            vout = out.add_stream("libx264", rate=vin.average_rate or 24)
+            vout.width, vout.height = size
+            vout.pix_fmt = "yuv420p"
+            vout.options = {"crf": "18", "preset": "medium"}
+            aout = out.add_stream_from_template(ain) if ain is not None else None
+            for packet in inp.demux([s for s in (vin, ain) if s is not None]):
+                if packet.stream.index == vin.index:
+                    for frame in packet.decode():
+                        small = frame.reformat(width=size[0], height=size[1], format="yuv420p")
+                        small.pts, small.time_base = frame.pts, frame.time_base
+                        for p in vout.encode(small):
+                            out.mux(p)
+                elif packet.dts is not None:
+                    packet.stream = aout
+                    out.mux(packet)
+            for p in vout.encode(None):
+                out.mux(p)
+        os.replace(part, dst)
+    finally:
+        if os.path.exists(part):
+            os.remove(part)
+
+
+def _copy_video(src, folder, name, size):
+    """Copie (ou reduction) d'une video dans folder sous name ; champs du JSON."""
+    os.makedirs(folder, exist_ok=True)
+    ext = os.path.splitext(src)[1].lower()
+    small = fit_size(*size) if size else None
+    if small:
+        dst = os.path.join(folder, name + ".mp4")
+        try:
+            resize_video(src, dst, small)
+            return {"copy": RUSH_VIDEOS + "/" + name + ".mp4", "copy_size": "%dx%d" % small}
+        except Exception as e:
+            error = str(e) or e.__class__.__name__
+        shutil.copy2(src, os.path.join(folder, name + ext))
+        return {"copy": RUSH_VIDEOS + "/" + name + ext, "resize_error": error}
+    shutil.copy2(src, os.path.join(folder, name + ext))
+    return {"copy": RUSH_VIDEOS + "/" + name + ext}
 
 
 def _source_path(item, output_dir, root):
