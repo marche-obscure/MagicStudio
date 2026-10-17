@@ -140,7 +140,7 @@ class ProjectConfigTest(unittest.TestCase):
         refs, trims = self.refs()
         write(self.f("04.Prompt", "p.txt"), b"P")
         pc.save_config(self.p, refs, trims)
-        projects.archive_files(self.p, "08.Images", ["a.png"])   # a.png -> Archives (meme contenu)
+        a_arch = os.path.basename(projects.archive_files(self.p, "08.Images", ["a.png"])[0])  # meme contenu
         write(self.f("08.Images", "b.png"), b"B2")                 # b.png modifie, sans archive
         os.remove(self.f("12.Video", "shot.mp4"))                  # manquant
         write(self.f("04.Prompt", "p.txt"), b"P2")                 # prompt modifie
@@ -150,7 +150,8 @@ class ProjectConfigTest(unittest.TestCase):
         self.assertEqual(imgs[("b.png", "images")]["status"], "changed")
         self.assertIsNone(imgs[("b.png", "images")]["archive"])
         self.assertEqual(imgs[("a.png", "images")]["status"], "missing")
-        self.assertEqual(imgs[("a.png", "images")]["archive"], "a.png")
+        self.assertEqual(imgs[("a.png", "images")]["archive"], a_arch)
+        self.assertTrue(a_arch.endswith("_a.png"))
         vid = by["12.Video"]["files"][0]
         self.assertEqual((vid["status"], vid["archive"], vid["trim"]), ("missing", None, [5, 7]))
         prompt = by["04.Prompt"]
@@ -190,9 +191,9 @@ class ProjectConfigTest(unittest.TestCase):
         refs, trims = self.refs()
         pc.save_config(self.p, refs, trims)
         write(self.f("08.Images", "Archives/aaa.png"), b"B")
-        projects.archive_files(self.p, "08.Images", ["b.png"])
+        b_arch = os.path.basename(projects.archive_files(self.p, "08.Images", ["b.png"])[0])
         by = {x["nom"]: x for x in pc.check_config(self.p)["folders"][4]["files"]}
-        self.assertEqual(by["b.png"]["archive"], "b.png")
+        self.assertEqual(by["b.png"]["archive"], b_arch)   # meme nom d'origine, date en prefixe
 
     def test_check_without_config(self):
         with self.assertRaises(FileNotFoundError):
@@ -202,13 +203,15 @@ class ProjectConfigTest(unittest.TestCase):
     def test_restore_moves_archive_back_and_archives_current(self):
         refs, trims = self.refs()
         pc.save_config(self.p, refs, trims)
-        projects.archive_files(self.p, "08.Images", ["b.png"])
+        b_arch = os.path.basename(projects.archive_files(self.p, "08.Images", ["b.png"], when=0)[0])
         write(self.f("08.Images", "b.png"), b"B2")
-        done = pc.restore_files(self.p, [{"folder": "08.Images", "archive": "b.png", "nom": "b.png"},
-                                         {"folder": "08.Images", "archive": "b.png", "nom": "b.png"}])
+        done = pc.restore_files(self.p, [{"folder": "08.Images", "archive": b_arch, "nom": "b.png"},
+                                         {"folder": "08.Images", "archive": b_arch, "nom": "b.png"}])
         self.assertEqual(done, [self.f("08.Images", "b.png")])
         self.assertEqual(read(self.f("08.Images", "b.png")), b"B")
-        self.assertEqual(read(self.f("08.Images", "Archives/b (2).png")), b"B2")
+        # Le fichier present part dans Archives avec la date de l'archivage en prefixe.
+        others = [n for n in os.listdir(self.f("08.Images", "Archives")) if n.endswith("_b.png")]
+        self.assertEqual([read(self.f("08.Images", "Archives/" + n)) for n in others], [b"B2"])
         with self.assertRaises(ValueError):
             pc.restore_files(self.p, [{"folder": "99.Project-Config", "archive": "x", "nom": "x"}])
         with self.assertRaises(ValueError):

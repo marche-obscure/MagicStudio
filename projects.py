@@ -381,12 +381,42 @@ def save_workflow(project, name, content, archive=None):
 # Fichiers du projet plus utilises par le Ref Loader : deplaces ici, jamais effaces.
 ARCHIVE_FOLDER = "Archives"
 
+# Nom d'un fichier archive (choix utilisateur, 17/10/2026) :
+# yyyyMMdd_HHmmss_<nom sans "(x)">.ext, date de l'archivage.
+_ARCHIVE_STAMP = re.compile(r"^\d{8}_\d{6}_")
+_PAREN_NUMBER = re.compile(r"\s*\(\d+\)")
 
-def archive_files(project, folder, names):
+
+def clean_archive_name(name):
+    """Nom d'origine d'un fichier d'Archives : sans prefixe date ni groupes "(x)"."""
+    stem, ext = os.path.splitext(_ARCHIVE_STAMP.sub("", name))
+    return (_PAREN_NUMBER.sub("", stem).strip() or stem) + ext
+
+
+def has_archive_stamp(name):
+    return bool(_ARCHIVE_STAMP.match(name))
+
+
+def stamped_name(folder, name, when):
+    """
+    yyyyMMdd_HHmmss_<nom propre> libre dans folder (date 'when', secondes
+    depuis 1970) ; nom pris : la date avance d'une seconde (jamais de "(2)").
+    """
+    base = clean_archive_name(name)
+    t = int(when)
+    while True:
+        candidate = time.strftime("%Y%m%d_%H%M%S", time.localtime(t)) + "_" + base
+        if not os.path.exists(os.path.join(folder, candidate)):
+            return candidate
+        t += 1
+
+
+def archive_files(project, folder, names, when=None):
     """
     Deplace les fichiers 'names' de <projet>/<folder> dans
-    <projet>/<folder>/Archives ("nom (2).ext" si le nom y est pris).
-    Renvoie les nouveaux chemins, dans l'ordre.
+    <projet>/<folder>/Archives sous yyyyMMdd_HHmmss_<nom sans "(x)">
+    (date de l'archivage, 'when' pour les tests). Renvoie les nouveaux
+    chemins, dans l'ordre.
     """
     if not project or not os.path.isdir(project):
         raise FileNotFoundError("Project folder not found: %s" % project)
@@ -398,15 +428,10 @@ def archive_files(project, folder, names):
             raise FileNotFoundError("File not found: %s" % os.path.join(src_dir, name))
     dst_dir = os.path.join(src_dir, ARCHIVE_FOLDER)
     os.makedirs(dst_dir, exist_ok=True)
+    when = time.time() if when is None else when
     moved = []
     for name in names:
-        stem, ext = os.path.splitext(name)
-        n = 1
-        while True:
-            dst = os.path.join(dst_dir, name if n == 1 else "%s (%d)%s" % (stem, n, ext))
-            if not os.path.exists(dst):
-                break
-            n += 1
+        dst = os.path.join(dst_dir, stamped_name(dst_dir, name, when))
         shutil.move(os.path.join(src_dir, name), dst)
         moved.append(dst)
     return moved
@@ -471,7 +496,10 @@ def import_files(project, folder, paths):
         if parent == _norm(dst_dir):
             out.append(p)
             continue
-        dst = os.path.join(dst_dir, import_name(dst_dir, os.path.basename(p)))
+        name = os.path.basename(p)
+        if parent == _norm(arch_dir):
+            name = clean_archive_name(name)  # retour depuis Archives : nom d'origine
+        dst = os.path.join(dst_dir, import_name(dst_dir, name))
         if parent == _norm(arch_dir):
             shutil.move(p, dst)
         else:
@@ -551,7 +579,10 @@ def archive_duplicates(project, folders):
         for sha, files in groups.items():
             if len(files) < 2:
                 continue
-            files.sort(key=lambda f: (_has_copy_suffix(f["name"]), f["mtime"], f["name"].lower()))
+            # Garde : date en prefixe sans "(x)", puis nom sans suffixe, puis le plus ancien.
+            files.sort(key=lambda f: (not (has_archive_stamp(f["name"]) and not _PAREN_NUMBER.search(f["name"])),
+                                      _has_copy_suffix(f["name"]) or bool(_PAREN_NUMBER.search(f["name"])),
+                                      f["mtime"], f["name"].lower()))
             for i, f in enumerate(files):
                 f["keep"] = i == 0
             found.append({"sha": sha, "files": files})
@@ -605,6 +636,19 @@ def delete_duplicates(project, folder, shas, trash):
             os.remove(p)
     for p in paths:
         _HASH_CACHE.pop(_norm(p), None)
+    # L'exemplaire garde prend le nom yyyyMMdd_HHmmss_<nom sans "(x)"> : sa date
+    # en prefixe s'il en a une, sinon la date du fichier (choix utilisateur).
+    for g in groups:
+        if g["sha"] not in wanted:
+            continue
+        kept = next(f for f in g["files"] if f["keep"])
+        m = _ARCHIVE_STAMP.match(kept["name"])
+        when = time.mktime(time.strptime(m.group(0)[:15], "%Y%m%d_%H%M%S")) if m else kept["mtime"]
+        if m and not _PAREN_NUMBER.search(kept["name"]):
+            continue
+        src = os.path.join(arch, kept["name"])
+        os.rename(src, os.path.join(arch, stamped_name(arch, kept["name"], when)))
+        _HASH_CACHE.pop(_norm(src), None)
     return names
 
 
