@@ -411,6 +411,24 @@ def archive_files(project, folder, names):
     return moved
 
 
+def folder_files(project, folders):
+    """
+    {dossier: [chemins]} : fichiers a la racine de chaque dossier du projet
+    (sans sous-dossiers ni fichiers caches), tries par nom. Cloches des
+    dossiers suivis : fichiers que le Ref Loader n'utilise plus.
+    """
+    if not project or not os.path.isdir(project):
+        raise FileNotFoundError("Project folder not found: %s" % project)
+    out = {}
+    for folder in folders:
+        if folder not in SUBFOLDERS:
+            raise ValueError("Unknown project folder: %s" % folder)
+        d = os.path.join(project, folder)
+        names = [e.name for e in os.scandir(d) if e.is_file() and not e.name.startswith(".")] if os.path.isdir(d) else []
+        out[folder] = [os.path.join(d, n) for n in sorted(names, key=lambda n: (n.lower(), n))]
+    return out
+
+
 def import_name(folder, name):
     """
     Nom libre pour 'name' dans 'folder' : le nom lui-meme s'il est libre,

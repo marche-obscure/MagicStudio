@@ -318,6 +318,17 @@ try:
             return _project_error(e)
         return web.json_response({"dsts": dsts})
 
+    @routes.get("/mmproject/folder_files")
+    async def mmproject_folder_files(request):
+        """Fichiers a la racine des dossiers demandes (folders = noms separes par |)."""
+        q = request.rel_url.query
+        try:
+            folders = [f for f in q.get("folders", "").split("|") if f]
+            files = await _in_executor(projects.folder_files, q.get("project", ""), folders)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"files": files})
+
     @routes.post("/mmproject/hashes")
     async def mmproject_hashes(request):
         """SHA256 des fichiers demandes (doublons de la galerie)."""
