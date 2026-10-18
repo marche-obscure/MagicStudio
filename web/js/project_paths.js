@@ -440,6 +440,57 @@ export function rushItems(runs, folder) {
     return items;
 }
 
+// Fenetres 02.Models / 06.LoRA (choix utilisateur, 18/10/2026) : un ensemble du
+// registre par carte, ses prompts regroupes par texte identique, et l'autre
+// registre des Runs du prompt choisi.
+export const REGISTRY_FOLDERS = { "02.Models": "models", "06.LoRA": "lora" };
+export const OTHER_REGISTRY = { models: "lora", lora: "models" };
+
+/** Runs qui utilisent l'ensemble n du registre kind (ordre garde : plus recent d'abord). */
+export function runsOfSet(runs, kind, index) {
+    return (runs || []).filter((r) => ((r.sets || {})[kind] || []).includes(index));
+}
+
+/** Cartes de la colonne 1 : [{set, runs}] dans l'ordre du registre (numero croissant). */
+export function setsWithRuns(registries, runs, kind) {
+    return ((registries && registries[kind]) || []).map((set) => ({ set, runs: runsOfSet(runs, kind, set.index) }));
+}
+
+/** Prompts identiques (espaces autour ignores) regroupes : [{prompt, runs}], groupe du Run le plus recent d'abord. */
+export function promptGroups(runs) {
+    const groups = new Map();
+    for (const r of runs || []) {
+        const key = String(r.prompt == null ? "" : r.prompt).trim();
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(r);
+    }
+    return [...groups].map(([prompt, list]) => ({ prompt, runs: list }));
+}
+
+/** Ensembles du registre kind utilises par ces Runs : [{index, count}] par numero ; index 0 = Runs sans ensemble. */
+export function setsOfRuns(runs, kind) {
+    const counts = new Map();
+    for (const r of runs || []) {
+        const list = (r.sets || {})[kind] || [];
+        for (const n of list.length ? list : [0]) counts.set(n, (counts.get(n) || 0) + 1);
+    }
+    return [...counts].sort((a, b) => a[0] - b[0]).map(([index, count]) => ({ index, count }));
+}
+
+/** Texte des lignes 02 / 06 : "Sets: n | Last run: dd/MM/yyyy hh:mm:ss", "" sans ensemble. */
+export function setSummary(registries, runs, folder) {
+    const kind = REGISTRY_FOLDERS[folder];
+    const sets = (registries && registries[kind]) || [];
+    if (!sets.length) return "";
+    const used = (runs || []).find((r) => ((r.sets || {})[kind] || []).length);
+    return "Sets: " + sets.length + (used ? " | Last run: " + runDateText(used.date) : "");
+}
+
+/** Nom de l'onglet du workflow d'un Run : nom du JSON sans extension. */
+export function runTabName(file) {
+    return String(file || "run").replace(/\.json$/i, "");
+}
+
 /** Nom du nouvel onglet quand la structure du workflow differe : "<nom>-copie". */
 export function copyTabName(name) {
     return String(name || "workflow").replace(/\.json$/i, "") + "-copie";

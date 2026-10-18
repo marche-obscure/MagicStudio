@@ -101,7 +101,8 @@ class MiniMaxH3Project:
                 # donnent les modeles du Run (02.Models), avec leur position.
                 "models_link": ("STRING", {"forceInput": True}),
             },
-            "hidden": {"prompt": "PROMPT"},
+            # extra_pnginfo.workflow = workflow tel qu'au clic sur Run (00.Workflows/Run).
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
     RETURN_TYPES = ()
@@ -121,7 +122,7 @@ class MiniMaxH3Project:
         # ce qui ne fait rien sans text_prompt.
         return float("nan")
 
-    def run(self, state, project=None, text_prompt=None, models_link=None, prompt=None):
+    def run(self, state, project=None, text_prompt=None, models_link=None, prompt=None, extra_pnginfo=None):
         # Sans text_prompt : rien a faire (le dossier se gere dans l'interface).
         if text_prompt is None:
             return {}
@@ -132,6 +133,7 @@ class MiniMaxH3Project:
         if not path or not os.path.isdir(path):
             print("[MiniMax H3 Project] No project picked: this run is not recorded.")
             return {}
-        run_file = run_record.start_run(path, text_prompt, prompt)
+        workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+        run_file = run_record.start_run(path, text_prompt, prompt, workflow=workflow)
         # Lu par l'interface : a la fin du Run, les fichiers generes sont associes a ce JSON.
         return {"ui": {"mmrun": [run_file]}}

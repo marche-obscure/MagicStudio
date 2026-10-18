@@ -375,10 +375,22 @@ try:
     async def mmproject_runs(request):
         """Runs enregistres du projet (04.Prompt), le plus recent d'abord."""
         try:
-            runs = await _in_executor(run_record.list_runs, request.rel_url.query.get("project", "").strip())
+            project = request.rel_url.query.get("project", "").strip()
+            runs = await _in_executor(run_record.list_runs, project)
+            sets = await _in_executor(run_record.registry_sets, project)
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"runs": runs})
+        return web.json_response({"runs": runs, "registries": sets})
+
+    @routes.get("/mmproject/run_workflow")
+    async def mmproject_run_workflow(request):
+        """Workflow d'un Run (00.Workflows/Run, sinon celui range dans ses rendus)."""
+        q = request.rel_url.query
+        try:
+            data = await _in_executor(run_record.read_run_workflow, q.get("project", "").strip(), q.get("name", ""))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
 
     @routes.post("/mmproject/move_output")
     async def mmproject_move_output(request):

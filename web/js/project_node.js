@@ -13,6 +13,7 @@ import {
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
     copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems,
+    REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -188,7 +189,16 @@ const HELP_SECTIONS = [
             "active LoRA of LoraManager); both fold when another run is shown (the copy icon at the top left " +
             "of the Prompt frame copies its text to the clipboard, ready to paste in your prompt node). Click a thumbnail to see it " +
             "in the <b>Preview</b> window (the same thumbnail again closes it); ✕, Escape or a click outside " +
-            "closes the window.</p>" +
+            "closes the window. Under the thumbnail, <b>Retrieve the workflow</b> opens in a new tab the workflow " +
+            "of the run, as it was when Run was clicked (<b>00.Workflows/Run</b>, same name as the JSON of the " +
+            "run); for a run recorded before, it looks for the workflow kept in its output files (PNG, video of " +
+            "Video Helper Suite), greyed when there is none.</p>" +
+            "<p>The rows of 02.Models and 06.LoRA show <b>Sets: n | Last run: dd/MM/yyyy hh:mm:ss</b>. Click " +
+            "<b>02.Models</b> or <b>06.LoRA</b>: on the left, one card per set of the registry (number, files, " +
+            "number of runs, last run); on the right, the prompts of the selected set, identical texts grouped " +
+            "in one card (last run, number of runs); the blue eye opens the runs of this prompt (Configuration, " +
+            "thumbnail, Retrieve the workflow). Under the sets, the other side of the selected prompt: its LoRA " +
+            "from 02.Models, its models from 06.LoRA.</p>" +
             "<p>Each thumbnail has a dot: <b style=\"color:#43a047\">green</b> = the original is in its folder of " +
             "the project (a video in 40.Rush Videos, an image in 60.Rush Images), <b style=\"color:#d35400\">dark " +
             "orange</b> = it is elsewhere. Then <b>Move to 40.Rush Videos</b> / <b>Move to 60.Rush Images</b> " +
@@ -306,6 +316,9 @@ const HELP_SECTIONS = [
         html: "<p>Wire the final prompt text to the <b>text_prompt</b> input (the same text as the prompt of the " +
             "MiniMax node). Then each <b>Run</b> is recorded in the project:</p>" +
             hList([
+                "at the start, the workflow as it is when Run is clicked goes into <b>00.Workflows/Run</b>, under " +
+                "the same name as the JSON of the run (named in its <b>workflow</b> field; never listed with the " +
+                "workflows of the project, removed with the JSON of a run that is not kept);",
                 "at the start, <b>04.Prompt/yyyyMMdd_HHmmss_run.json</b> with the date, the project, the mode, the " +
                 "prompt, and the <b>CFG</b>, <b>Steps</b> and <b>Seed</b> read in the run itself (KSampler first, " +
                 "then CFGGuider, RandomNoise...). A value typed in the node is read directly; a linked one is " +
@@ -422,7 +435,16 @@ const HELP_SECTIONS_FR = [
             "de copie en haut à gauche du cadre Prompt copie son texte dans le presse-papiers, prêt à coller dans " +
             "votre nœud de prompt). Clic " +
             "sur une vignette = fenêtre <b>Preview</b> (la même vignette la referme) ; ✕, Échap ou un clic à côté " +
-            "ferme la fenêtre.</p>" +
+            "ferme la fenêtre. Sous la vignette, <b>Retrieve the workflow</b> ouvre dans un nouvel onglet le " +
+            "workflow du Run, tel qu'au clic sur Run (<b>00.Workflows/Run</b>, même nom que le JSON du Run) ; pour " +
+            "un Run plus ancien, il cherche le workflow gardé dans ses rendus (PNG, vidéo de Video Helper Suite), " +
+            "grisé s'il n'y en a pas.</p>" +
+            "<p>Les lignes de 02.Models et 06.LoRA affichent <b>Sets: n | Last run: dd/MM/yyyy hh:mm:ss</b>. Clic " +
+            "sur <b>02.Models</b> ou <b>06.LoRA</b> : à gauche, une carte par ensemble du registre (numéro, " +
+            "fichiers, nombre de Runs, dernier Run) ; à droite, les prompts de l'ensemble choisi, les textes " +
+            "identiques regroupés en une carte (dernier Run, nombre de Runs) ; l'œil bleu ouvre les Runs de ce " +
+            "prompt (Configuration, vignette, Retrieve the workflow). Sous les ensembles, l'autre côté du prompt " +
+            "choisi : ses LoRA depuis 02.Models, ses modèles depuis 06.LoRA.</p>" +
             "<p>Chaque vignette a une pastille : <b style=\"color:#43a047\">verte</b> = l'original est dans son " +
             "dossier du projet (une vidéo dans 40.Rush Videos, une image dans 60.Rush Images), <b " +
             "style=\"color:#d35400\">orange foncé</b> = il est ailleurs. <b>Move to 40.Rush Videos</b> / <b>Move " +
@@ -545,6 +567,9 @@ const HELP_SECTIONS_FR = [
         html: "<p>Branchez le texte final du prompt sur l'entrée <b>text_prompt</b> (le même texte que le prompt du " +
             "nœud MiniMax). Ensuite chaque <b>Run</b> est enregistré dans le projet :</p>" +
             hList([
+                "au lancement, le workflow tel qu'au clic sur Run va dans <b>00.Workflows/Run</b>, sous le même " +
+                "nom que le JSON du Run (cité par son champ <b>workflow</b> ; jamais listé avec les workflows du " +
+                "projet, retiré avec le JSON d'un Run qui n'est pas gardé) ;",
                 "au lancement, <b>04.Prompt/yyyyMMdd_HHmmss_run.json</b> avec la date, le projet, le mode, le " +
                 "prompt, et les <b>CFG</b>, <b>Steps</b> et <b>Seed</b> lus dans le Run lui-même (KSampler d'abord, " +
                 "puis CFGGuider, RandomNoise...). Une valeur tapée dans le nœud est lue directement ; une valeur " +
@@ -2059,7 +2084,7 @@ function runConfigHtml(run, out) {
     return h;
 }
 
-function buildRunViewer(container, onMove) {
+function buildRunViewer(container, onMove, onWorkflow) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
         width: "min(760px, 94vw)", padding: "12px 14px", borderColor: VIOLET, display: "flex",
@@ -2382,6 +2407,41 @@ function buildRunViewer(container, onMove) {
             nav.append(prev, count, next);
             thumb.body.appendChild(nav);
         }
+        if (onWorkflow) thumb.body.appendChild(workflowButton(run));
+    }
+
+    /**
+     * "Retrieve the workflow" sous la vignette (choix utilisateur) : workflow du Run
+     * (00.Workflows/Run) dans un nouvel onglet ; Run plus ancien : cherche dans ses rendus.
+     */
+    function workflowButton(run) {
+        const files = (run.outputs || []).some((o) => o.source_exists || o.copy_exists);
+        const b = makeTextButton("Retrieve the workflow", run.workflow ? GREEN : files ? VIOLET : INACTIVE_BG);
+        Object.assign(b.style, { width: "100%", marginTop: "4px" });
+        b.title = run.workflow ? "Open the workflow of this run in a new tab (00.Workflows/Run/" + run.file + ")"
+            : files ? "Run recorded before the workflows were saved: look for the workflow in its output files, then open it in a new tab"
+                : "No workflow saved for this run";
+        if (!run.workflow && !files) {
+            b.disabled = true;
+            Object.assign(b.style, { opacity: "0.45", cursor: "default" });
+            return b;
+        }
+        b.addEventListener("click", async () => {
+            b.disabled = true;
+            let res = null;
+            try {
+                res = await onWorkflow(run);
+            } finally {
+                b.disabled = false;
+            }
+            if (res && res.ok) {
+                close();
+                return;
+            }
+            note.textContent = (res && res.text) || "";
+            note.style.color = ORANGE;
+        });
+        return b;
     }
     filterBtns.forEach((b) => b.addEventListener("click", () => {
         filter = b.dataset.filter;
@@ -2471,9 +2531,267 @@ function buildRunViewer(container, onMove) {
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 760);
         },
+        isOpen: () => overlay.style.display !== "none",
+        close,
         remove() {
             close();
             preview.remove();
+            overlay.remove();
+        },
+    };
+}
+
+// ----------------------------------------------------------------------
+// Fenetre des boutons 02.Models / 06.LoRA (choix utilisateur, 18/10/2026) :
+// colonne 1 = ensembles du registre (un par carte), colonne 2 = prompts de
+// l'ensemble choisi (textes identiques regroupes), zone A = l'autre registre
+// des Runs du prompt choisi ; bouton bleu = fenetre des Runs de ce prompt.
+// ----------------------------------------------------------------------
+const SET_BLUE = "#3b82f6";
+
+/** Lignes d'un ensemble : [{label, name, extra}] (Models : modele, encodeur, VAE ; LoRA : nom et forces). */
+function setLines(kind, set) {
+    const num = (v) => (typeof v === "number" ? String(Math.round(v * 1000) / 1000) : "?");
+    if (kind === "models") {
+        const item = (label) => (n) => ({
+            label: label + (n && typeof n === "object" && n.position ? " #" + n.position : ""),
+            name: typeof n === "string" ? n : String((n && n.name) || ""), extra: "",
+        });
+        return [].concat((set.diffusion_model || []).map(item("Model")),
+            (set.text_encoder || []).map(item("Text encoder")), (set.vae || []).map(item("VAE")));
+    }
+    return (set.loras || []).map((l) => ({
+        label: "LoRA", name: String(l.name),
+        extra: " — " + num(l.strength_model) + (l.strength_clip !== null && l.strength_clip !== undefined
+            ? " / clip " + num(l.strength_clip) : ""),
+    }));
+}
+
+function setLinesHtml(lines) {
+    return lines.map((x) => '<div style="display:flex;justify-content:space-between;gap:10px;line-height:1.6" title="' +
+        escapeHtml(x.name) + '"><span style="color:#999;flex:0 0 auto">' + escapeHtml(x.label) + '</span><span style="' +
+        'text-align:right;word-break:break-all">' + escapeHtml(baseOf(x.name)) + (x.extra ? '<span style="color:#9fd6cf">' +
+        escapeHtml(x.extra) + "</span>" : "") + "</span></div>").join("");
+}
+
+const SET_NAMES = { models: "Models", lora: "LoRA" };
+
+function buildSetViewer(container, onMove, onWorkflow) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, {
+        width: "min(980px, 96vw)", height: "min(660px, 86vh)", padding: "12px 14px", display: "flex",
+        flexDirection: "column", gap: "8px",
+    });
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "8px" });
+    const title = document.createElement("div");
+    Object.assign(title.style, { flex: "1", fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR });
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
+    Object.assign(closeBtn.style, { width: "22px", height: "22px" });
+    head.append(title, closeBtn);
+
+    const column = () => {
+        const c = document.createElement("div");
+        Object.assign(c.style, { display: "flex", flexDirection: "column", gap: "6px", minHeight: "0", minWidth: "0" });
+        return c;
+    };
+    const heading = () => {
+        const h = document.createElement("div");
+        Object.assign(h.style, { color: "#9fd6cf", fontWeight: "bold", fontSize: "12px", flex: "0 0 auto" });
+        return h;
+    };
+    const scroller = (flex) => {
+        const d = document.createElement("div");
+        Object.assign(d.style, {
+            display: "flex", flexDirection: "column", gap: "6px", overflowY: "auto", minHeight: "0", flex, paddingRight: "2px",
+        });
+        return d;
+    };
+    const left = column();
+    const setsHead = heading();
+    const setsList = scroller("1 1 60%");
+    const otherHead = heading();
+    Object.assign(otherHead.style, { borderTop: "2px solid #333", paddingTop: "8px", marginTop: "2px" });
+    const otherList = scroller("0 1 40%");
+    left.append(setsHead, setsList, otherHead, otherList);
+    const right = column();
+    Object.assign(right.style, { borderLeft: "2px solid #333", paddingLeft: "10px" });
+    const promptHead = heading();
+    const promptList = scroller("1 1 auto");
+    right.append(promptHead, promptList);
+    const body = document.createElement("div");
+    Object.assign(body.style, {
+        display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "10px", flex: "1 1 auto", minHeight: "0",
+    });
+    body.append(left, right);
+    const note = document.createElement("div");
+    Object.assign(note.style, { minHeight: "14px", fontSize: "11px", color: "#9fd6cf" });
+    card.append(head, body, note);
+
+    // Fenetre des Runs du prompt : creee apres, donc au-dessus de celle-ci.
+    const sub = buildRunViewer(container, onMove, async (run) => {
+        const res = await onWorkflow(run);
+        if (res && res.ok) close();
+        return res;
+    });
+
+    let folder = "";
+    let kind = "models";
+    let projectName = "";
+    let runs = [];
+    let registries = {};
+    let setIndex = null;
+    let promptIndex = 0;
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || sub.isOpen() || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close();
+    };
+    function close() {
+        sub.close();
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+    closeBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
+
+    const empty = (text) => {
+        const d = document.createElement("div");
+        d.textContent = text;
+        Object.assign(d.style, { color: "#888", padding: "6px 2px" });
+        return d;
+    };
+    const box = (selected, color) => {
+        const b = document.createElement("div");
+        Object.assign(b.style, {
+            padding: "6px 10px", background: "#161616", borderRadius: "8px", flex: "0 0 auto",
+            border: selected ? "2px solid " + color : "1px solid #2c2c2c", margin: selected ? "0" : "1px",
+        });
+        return b;
+    };
+    const setHeader = (index, list, color) => '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">' +
+        '<b style="background:' + color + ';color:#fff;border-radius:4px;padding:0 6px">#' + index + "</b>" +
+        '<span style="color:#9fd6cf">' + list.length + " run" + (list.length > 1 ? "s" : "") +
+        (list.length ? " · last " + escapeHtml(runDateText(list[0].date)) : "") + "</span></div>";
+
+    function render() {
+        const color = FOLDER_COLORS[folder] || VIOLET;
+        const cards = setsWithRuns(registries, runs, kind);
+        setsHead.textContent = SET_NAMES[kind] + " (" + cards.length + ")";
+        setsList.innerHTML = "";
+        if (!cards.length) {
+            setsList.appendChild(empty("No " + SET_NAMES[kind] + " set recorded yet: a set is added at the end of each recorded run."));
+        }
+        if (!cards.some((c) => c.set.index === setIndex)) {
+            const first = cards.find((c) => c.runs.length) || cards[0];
+            setIndex = first ? first.set.index : null;
+            promptIndex = 0;
+        }
+        let current = null;
+        for (const c of cards) {
+            const selected = c.set.index === setIndex;
+            if (selected) current = c;
+            const b = box(selected, color);
+            b.style.cursor = "pointer";
+            b.innerHTML = setHeader(c.set.index, c.runs, color) + setLinesHtml(setLines(kind, c.set));
+            b.addEventListener("click", () => {
+                if (setIndex === c.set.index) return;
+                setIndex = c.set.index;
+                promptIndex = 0;
+                render();
+            });
+            setsList.appendChild(b);
+        }
+        renderPrompts(current, color);
+    }
+
+    function renderPrompts(current, color) {
+        const groups = current ? promptGroups(current.runs) : [];
+        promptHead.textContent = "Prompts (" + groups.length + ")";
+        promptList.innerHTML = "";
+        if (current && !groups.length) promptList.appendChild(empty("No run uses this set."));
+        promptIndex = Math.min(promptIndex, Math.max(0, groups.length - 1));
+        groups.forEach((g, i) => {
+            const b = box(i === promptIndex, color);
+            Object.assign(b.style, { display: "flex", gap: "8px", alignItems: "flex-start", cursor: "pointer" });
+            const textCol = document.createElement("div");
+            Object.assign(textCol.style, { flex: "1", minWidth: "0" });
+            const text = document.createElement("div");
+            text.textContent = g.prompt || "(empty prompt)";
+            text.title = g.prompt;
+            Object.assign(text.style, {
+                display: "-webkit-box", WebkitLineClamp: "3", WebkitBoxOrient: "vertical", overflow: "hidden",
+                lineHeight: "1.45", wordBreak: "break-word", color: g.prompt ? "#ddd" : "#888",
+            });
+            const meta = document.createElement("div");
+            meta.textContent = runDateText(g.runs[0].date) + " · " + g.runs.length + " run" + (g.runs.length > 1 ? "s" : "");
+            Object.assign(meta.style, { color: "#9fd6cf", fontSize: "11px", marginTop: "3px" });
+            textCol.append(text, meta);
+            const show = makeIconButton(SET_BLUE, EYE_ICON, "Show the run" + (g.runs.length > 1 ? "s" : "") +
+                " of this prompt (configuration, rendering, workflow)");
+            show.addEventListener("click", (e) => {
+                e.stopPropagation();
+                sub.open("04.Prompt", projectName, g.runs);
+            });
+            b.append(textCol, show);
+            b.addEventListener("click", () => {
+                if (promptIndex === i) return;
+                promptIndex = i;
+                renderPrompts(current, color);
+            });
+            promptList.appendChild(b);
+        });
+        renderOther(groups[promptIndex], color);
+    }
+
+    function renderOther(group, color) {
+        const other = OTHER_REGISTRY[kind];
+        otherHead.textContent = SET_NAMES[other] + " of the selected prompt";
+        otherList.innerHTML = "";
+        if (!group) return;
+        for (const { index, count } of setsOfRuns(group.runs, other)) {
+            const b = box(false, color);
+            const runsText = count + " run" + (count > 1 ? "s" : "");
+            const set = index ? ((registries[other] || []).find((x) => x.index === index)) : null;
+            if (!index) {
+                b.innerHTML = '<span style="color:#888">No ' + SET_NAMES[other] + " (" + runsText + ")</span>";
+            } else {
+                b.innerHTML = '<div style="margin-bottom:2px"><b style="background:' + (FOLDER_COLORS[other === "models" ?
+                    "02.Models" : "06.LoRA"] || VIOLET) + ';color:#fff;border-radius:4px;padding:0 6px">#' + index +
+                    '</b> <span style="color:#9fd6cf">' + runsText + "</span></div>" +
+                    (set ? setLinesHtml(setLines(other, set)) : '<span style="color:#888">Not in the registry.</span>');
+            }
+            otherList.appendChild(b);
+        }
+    }
+
+    return {
+        /** open(folder "02.Models" | "06.LoRA", projectName, runs, registries) */
+        open(name, project, list, regs) {
+            const same = folder === name && overlay.style.display !== "none";
+            folder = name;
+            kind = REGISTRY_FOLDERS[name] || "models";
+            projectName = project;
+            runs = list || [];
+            registries = regs || {};
+            if (!same) {
+                setIndex = null;
+                promptIndex = 0;
+                note.textContent = "";
+            }
+            title.textContent = name + " – " + project;
+            card.style.borderColor = FOLDER_COLORS[name] || VIOLET;
+            render();
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 980);
+        },
+        close,
+        remove() {
+            close();
+            sub.remove();
             overlay.remove();
         },
     };
@@ -2742,6 +3060,8 @@ app.registerExtension({
             const runLock = new Set();
             // Runs enregistres (04.Prompt), le plus recent d'abord : boutons et fenetres 04 / 40 / 60.
             let runList = [];
+            // Registres 02.Models / 06.LoRA : {models: [ensembles], lora: [ensembles]}.
+            let registries = {};
             // Doublons de <dossier>/Archives : {dossier: [{sha, files}]} ; Corbeille disponible (Windows).
             let dupGroups = {};
             let trashOk = false;
@@ -2868,9 +3188,10 @@ app.registerExtension({
             const loadDialog = buildLoadDialog(container);
             const duplicatesDialog = buildDuplicatesDialog(container);
             const folderViewer = buildFolderViewer(container);
-            const runViewer = buildRunViewer(container, (run, out) => moveOutput(run, out));
+            const runViewer = buildRunViewer(container, (run, out) => moveOutput(run, out), (run) => openRunWorkflow(run));
+            const setViewer = buildSetViewer(container, (run, out) => moveOutput(run, out), (run) => openRunWorkflow(run));
             node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog,
-                loadDialog, duplicatesDialog, folderViewer, runViewer];
+                loadDialog, duplicatesDialog, folderViewer, runViewer, setViewer];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
@@ -2908,8 +3229,10 @@ app.registerExtension({
                 folderRows.forEach((f) => {
                     const path = current ? s.path + sep + f.name : "";
                     f.row.style.opacity = current ? "1" : "0.45";
-                    const viewable = current && (UPDATE_FOLDERS.includes(f.name) || f.name in RUN_FOLDERS);
-                    f.btn.title = viewable ? (f.name in RUN_FOLDERS ? "Show the runs of " : "Show the files of ") + f.name + " (" + path + ")"
+                    const viewable = current && (UPDATE_FOLDERS.includes(f.name) || f.name in RUN_FOLDERS ||
+                        f.name in REGISTRY_FOLDERS);
+                    f.btn.title = viewable ? (f.name in RUN_FOLDERS ? "Show the runs of " : f.name in REGISTRY_FOLDERS
+                        ? "Show the sets and their prompts of " : "Show the files of ") + f.name + " (" + path + ")"
                         : current ? path : "Pick or create a project first";
                     f.btn.style.cursor = viewable ? "pointer" : "default";
                     if (f.name !== WORKFLOWS && !UPDATE_FOLDERS.includes(f.name)) {
@@ -3270,9 +3593,57 @@ app.registerExtension({
             async function loadRuns(s) {
                 try {
                     const data = await apiGet("/mmproject/runs?project=" + encodeURIComponent(s.path));
-                    if (getState().path === s.path) runList = data.runs || [];
+                    if (getState().path === s.path) {
+                        runList = data.runs || [];
+                        registries = data.registries || {};
+                    }
                 } catch (e) {
                     runList = [];
+                    registries = {};
+                }
+            }
+
+            /** Fenetre des boutons 02.Models / 06.LoRA, relue a chaque ouverture. */
+            async function showSets(f) {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return;
+                await loadRuns(s);
+                paintFolders();
+                setViewer.open(f, s.name, runList, registries);
+            }
+
+            /**
+             * Nouvel onglet temporaire (rien d'ecrit) : onglet vide, workflow charge dedans, puis
+             * renomme. loadGraphData(workflow, ..., "nom") echoue sur certains workflows (MiniMaxH3Easy :
+             * proprietes que le frontend ne sait plus copier) et charge alors dans l'onglet courant.
+             */
+            async function openInNewTab(workflow, name) {
+                const ext = app.extensionManager;
+                const wm = ext && ext.workflow;
+                if (!wm || !ext.command) {
+                    await app.loadGraphData(workflow, true, true, name);
+                    return;
+                }
+                await ext.command.execute("Comfy.NewBlankWorkflow");
+                const tab = wm.activeWorkflow;
+                await app.loadGraphData(workflow, true, true, tab);
+                try {
+                    await wm.renameWorkflow(tab, tab.directory + "/" + name + ".json");
+                } catch (e) {
+                    // Nom deja pris par un onglet ouvert : nom par defaut garde.
+                }
+            }
+
+            /** Workflow d'un Run dans un nouvel onglet (nom du JSON du Run) ; {ok, text}. */
+            async function openRunWorkflow(run) {
+                const s = getState();
+                try {
+                    const data = await apiGet("/mmproject/run_workflow?project=" + encodeURIComponent(s.path) +
+                        "&name=" + encodeURIComponent(run.file));
+                    await openInNewTab(data.workflow, runTabName(run.file));
+                    return { ok: true };
+                } catch (e) {
+                    return { ok: false, text: e.message };
                 }
             }
 
@@ -3404,6 +3775,12 @@ app.registerExtension({
                     return paintFolders();
                 }
                 for (const f of folderRows) {
+                    if (f.name in REGISTRY_FOLDERS) {
+                        // "Sets: n | Last run: dd/MM/yyyy hh:mm:ss".
+                        f.last.textContent = current ? setSummary(registries, runList, f.name) : "";
+                        f.last.title = f.last.textContent;
+                        f.last.style.color = "#9fd6cf";
+                    }
                     if (f.name in RUN_FOLDERS) {
                         // "Last run: dd/MM/yyyy hh:mm:ss | Runs: n" (choix utilisateur).
                         f.last.textContent = current ? runSummary(runList, f.name) : "";
@@ -3794,6 +4171,7 @@ app.registerExtension({
                     f.btn.addEventListener("click", () => showFolder(f.name));
                 }
                 if (f.name in RUN_FOLDERS) f.btn.addEventListener("click", () => showRuns(f.name));
+                if (f.name in REGISTRY_FOLDERS) f.btn.addEventListener("click", () => showSets(f.name));
             }
 
             /** Renomme ou deplace le projet (deja confirme) ; le Reference Loader suit. */

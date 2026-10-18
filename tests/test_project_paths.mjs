@@ -8,7 +8,33 @@ import {
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse,
+    REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
 } from "../web/js/project_paths.js";
+
+test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
+    const runs = [
+        { file: "c", date: "2026-10-18 13:48:47", prompt: "a yacht ", sets: { models: [2], lora: [1] } },
+        { file: "b", date: "2026-10-18 12:00:00", prompt: "a dog", sets: { models: [1], lora: [] } },
+        { file: "a", date: "2026-10-17 10:00:00", prompt: "a yacht", sets: { models: [2], lora: [3] } },
+        { file: "z", date: "2026-10-16 10:00:00", prompt: "old" },
+    ];
+    const registries = { models: [{ index: 1 }, { index: 2 }, { index: 3 }], lora: [{ index: 1 }, { index: 3 }] };
+    assert.equal(REGISTRY_FOLDERS["02.Models"], "models");
+    assert.equal(OTHER_REGISTRY[REGISTRY_FOLDERS["06.LoRA"]], "models");
+    assert.deepEqual(runsOfSet(runs, "models", 2).map((r) => r.file), ["c", "a"]);
+    assert.deepEqual(setsWithRuns(registries, runs, "models").map((x) => [x.set.index, x.runs.length]), [[1, 1], [2, 2], [3, 0]]);
+    assert.deepEqual(setsWithRuns(null, runs, "lora"), []);
+    // Meme texte (espaces autour ignores) : un seul groupe, Run le plus recent d'abord.
+    const groups = promptGroups(runsOfSet(runs, "models", 2));
+    assert.deepEqual(groups.map((g) => [g.prompt, g.runs.map((r) => r.file)]), [["a yacht", ["c", "a"]]]);
+    assert.deepEqual(promptGroups([{ prompt: null }, { prompt: "" }]).map((g) => g.runs.length), [2]);
+    // Zone A : LoRA des Runs du prompt ; 0 = Run sans ensemble.
+    assert.deepEqual(setsOfRuns(groups[0].runs, "lora"), [{ index: 1, count: 1 }, { index: 3, count: 1 }]);
+    assert.deepEqual(setsOfRuns(runs.slice(1, 2), "lora"), [{ index: 0, count: 1 }]);
+    assert.equal(setSummary(registries, runs, "06.LoRA"), "Sets: 2 | Last run: 18/10/2026 13:48:47");
+    assert.equal(setSummary({ models: [] }, runs, "02.Models"), "");
+    assert.equal(runTabName("20261018_134847_run.json"), "20261018_134847_run");
+});
 
 test("Use: x/y : utilises par le mode actuel / maximum du dossier", () => {
     const st = { mode: "ref2va", images: ["P/08.Images/a.png", "P/08.Images/b.png"], first_frame: ["P/08.Images/c.png"],

@@ -2,7 +2,9 @@
 Enregistrement d'un Run dans le projet (noeud MiniMaxH3Project, entree
 text_prompt), sans import ComfyUI (testable seul) :
 - au lancement : 04.Prompt/yyyyMMdd_HHmmss_run.json avec le prompt final,
-  CFG, Steps et Seed lus dans le Run lui-meme (aucune entree en plus) ;
+  CFG, Steps et Seed lus dans le Run lui-meme (aucune entree en plus), et le
+  workflow du Run (tel qu'au clic sur Run) dans 00.Workflows/Run sous le meme
+  nom, cite par le champ "workflow" du JSON ;
 - a la fin : les videos generees sont copiees dans 40.Rush Videos sous le
   meme nom que le JSON (reduites a 960x544 au plus) ; les images restent
   dans le dossier choisi par l'utilisateur ; le JSON liste les deux.
@@ -16,6 +18,8 @@ import shutil
 import time
 
 PROMPT_FOLDER = "04.Prompt"
+# Workflow de chaque Run (choix utilisateur, 18/10/2026) : meme nom que son JSON.
+RUN_WORKFLOW_FOLDER = ("00.Workflows", "Run")
 RUSH_IMAGES = "60.Rush Images"
 RUSH_VIDEOS = "40.Rush Videos"
 REF_LOADER = "MiniMaxH3RefLoader"
@@ -337,8 +341,19 @@ def run_mode(prompt):
     return None
 
 
-def start_run(project, text, prompt=None, when=None):
-    """Ecrit 04.Prompt/yyyyMMdd_HHmmss_run.json (seconde suivante si le nom est pris) ; renvoie son chemin."""
+def run_workflow_path(project, run_name):
+    """Chemin du workflow d'un Run : <projet>/00.Workflows/Run/<nom du JSON du Run>."""
+    return os.path.join(project, *RUN_WORKFLOW_FOLDER, os.path.basename(run_name))
+
+
+def start_run(project, text, prompt=None, when=None, workflow=None):
+    """
+    Ecrit 04.Prompt/yyyyMMdd_HHmmss_run.json (seconde suivante si le nom est
+    pris, ici ou dans 00.Workflows/Run) ; renvoie son chemin. workflow =
+    workflow du Run (dict) : ecrit sous le meme nom dans 00.Workflows/Run et
+    cite par le champ "workflow" (chemin relatif au projet). Echec
+    d'ecriture : "workflow_error", le Run est enregistre quand meme.
+    """
     if not project or not os.path.isdir(project):
         raise FileNotFoundError("Project folder not found: %s" % project)
     folder = os.path.join(project, PROMPT_FOLDER)
@@ -347,7 +362,7 @@ def start_run(project, text, prompt=None, when=None):
     while True:
         name = time.strftime("%Y%m%d_%H%M%S", time.localtime(t)) + "_run.json"
         path = os.path.join(folder, name)
-        if not os.path.exists(path):
+        if not os.path.exists(path) and not os.path.exists(run_workflow_path(project, name)):
             break
         t += 1
     data = {"date": time.strftime(DATE_FORMAT, time.localtime(t)),
@@ -355,9 +370,24 @@ def start_run(project, text, prompt=None, when=None):
             "prompt": text}
     data.update(run_params(prompt))
     data["models"] = run_models(prompt)
+    if isinstance(workflow, dict):
+        wf = run_workflow_path(project, name)
+        try:
+            os.makedirs(os.path.dirname(wf), exist_ok=True)
+            with open(wf, "w", encoding="utf-8", newline="\n") as f:
+                f.write(json.dumps(workflow, ensure_ascii=False))
+            data["workflow"] = "/".join(RUN_WORKFLOW_FOLDER + (name,))
+        except (OSError, TypeError, ValueError) as e:
+            data["workflow_error"] = str(e) or e.__class__.__name__
     data.update({"status": "running", "outputs": []})
     _write(path, data)
     return path
+
+
+def _remove_run_workflow(project, run_file):
+    wf = run_workflow_path(project, run_file)
+    if os.path.isfile(wf):
+        os.remove(wf)
 
 
 def _write(path, data):
@@ -412,6 +442,7 @@ def finish_run(run_file, files, status, output_dir, now=None):
     new = [src for src in sources if os.path.normcase(src) not in known or _written_since(src, started)]
     if not new and (sources or data["status"] == "error"):
         os.remove(run_file)
+        _remove_run_workflow(project, run_file)
         same = known.get(os.path.normcase(sources[0])) if sources else None
         return {"skipped": True, "same_as": same, "status": data["status"]}
     try:
@@ -568,6 +599,9 @@ def list_runs(project):
         if models is not None:
             run["models"] = models
         run["file"] = name
+        run["sets"] = run_sets(data, regs)
+        wf = run_workflow_path(project, name)
+        run["workflow"] = wf if data.get("workflow") and os.path.isfile(wf) else None
         outs = []
         for index, o in enumerate(data.get("outputs") or []):
             if not isinstance(o, dict) or not output_kind(o):
@@ -794,6 +828,113 @@ def _register_run(project, data, now=None):
         else:
             out[k] = v
     return out
+
+
+def run_sets(data, registries):
+    """
+    Numeros des ensembles du Run dans les registres : {"models": [n], "lora": [n]}
+    (listes vides sans ensemble). Ancien Run au bloc complet : ensemble du
+    registre identique, s'il existe (fenetres 02.Models / 06.LoRA).
+    """
+    out = {"models": [], "lora": []}
+    m = data.get("models")
+    if isinstance(m, list):
+        out["models"] = [r["indiceMODELS"] for r in m if isinstance(r, dict) and r.get("indiceMODELS")]
+        out["lora"] = [r["indiceLoRA"] for r in data.get("loras") or [] if isinstance(r, dict) and r.get("indiceLoRA")]
+        return out
+    if not isinstance(m, dict):
+        return out
+    configs = {"models": {g: m.get(g) or [] for g in _MODEL_GROUPS}, "lora": list(m.get("loras") or [])}
+    for kind, config in configs.items():
+        if (not any(config.values())) if kind == "models" else not config:
+            continue
+        _f, _s, list_key, idx_key = REGISTRIES[kind][:4]
+        key = _config_key(kind, config)
+        for e in ((registries or {}).get(kind) or {}).get(list_key) or []:
+            if isinstance(e, dict) and e.get(idx_key) and _entry_key(kind, e) == key:
+                out[kind] = [e[idx_key]]
+                break
+    return out
+
+
+def registry_sets(project):
+    """
+    Ensembles des registres pour les fenetres 02.Models / 06.LoRA :
+    {"models": [{index, datecreat, datemodifi, diffusion_model, text_encoder, vae}],
+     "lora": [{index, datecreat, datemodifi, loras: [{name, strength_model, strength_clip}]}]}.
+    """
+    out = {}
+    for kind in REGISTRIES:
+        _f, _s, list_key, idx_key = REGISTRIES[kind][:4]
+        items = []
+        for e in (read_registry(project, kind) or {}).get(list_key) or []:
+            if not isinstance(e, dict) or not e.get(idx_key):
+                continue
+            item = {"index": e[idx_key], "datecreat": e.get("datecreat"), "datemodifi": e.get("datemodifi")}
+            if kind == "models":
+                item.update({g: [model_item(x) for x in e.get(g) or []] for g in _MODEL_GROUPS})
+            else:
+                item["loras"] = lora_list(e)
+            items.append(item)
+        out[kind] = sorted(items, key=lambda x: x["index"])
+    return out
+
+
+def _workflow_in_file(path):
+    """Workflow (dict) range dans un rendu : PNG (texte "workflow"), video VHS (metadonnee "workflow" ou "comment")."""
+    ext = os.path.splitext(path)[1].lower()
+    texts = []
+    try:
+        if ext in IMAGE_EXTS:
+            from PIL import Image
+            with Image.open(path) as img:
+                texts = [img.info.get("workflow")]
+        elif ext in VIDEO_EXTS:
+            import av
+            with av.open(path) as c:
+                meta = {k.lower(): v for k, v in (c.metadata or {}).items()}
+                texts = [meta.get("workflow"), meta.get("comment")]
+    except Exception:
+        return None
+    for text in texts:
+        if not isinstance(text, str) or not text.strip().startswith("{"):
+            continue
+        try:
+            data = json.loads(text)
+        except ValueError:
+            continue
+        if isinstance(data, dict) and isinstance(data.get("workflow"), dict):
+            data = data["workflow"]
+        if isinstance(data, dict) and isinstance(data.get("nodes"), list):
+            return data
+    return None
+
+
+def read_run_workflow(project, run_name):
+    """
+    Workflow d'un Run : 00.Workflows/Run/<nom>, sinon (anciens Runs) celui
+    range dans ses rendus (original, puis copie). Renvoie {"workflow": dict,
+    "source": chemin} ; FileNotFoundError si aucun n'est trouve.
+    """
+    run_file = os.path.join(project or "", PROMPT_FOLDER, os.path.basename(run_name or ""))
+    _check_run_file(run_file)
+    wf = run_workflow_path(project, run_file)
+    if os.path.isfile(wf):
+        with open(wf, "r", encoding="utf-8") as f:
+            return {"workflow": json.load(f), "source": wf}
+    with open(run_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    for o in data.get("outputs") or []:
+        if not isinstance(o, dict):
+            continue
+        copy = os.path.join(project, *o["copy"].split("/")) if o.get("copy") else ""
+        for path in (o.get("source") or "", copy):
+            if path and os.path.isfile(path):
+                found = _workflow_in_file(path)
+                if found:
+                    return {"workflow": found, "source": path}
+    raise FileNotFoundError("No workflow found for this run: it was recorded before workflows were saved, "
+                            "and its output files do not contain one.")
 
 
 def run_models_of(project, data, registries=None):
