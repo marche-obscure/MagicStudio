@@ -241,6 +241,53 @@ class RunFileTest(unittest.TestCase):
         # Meme seconde : la suivante.
         self.assertTrue(rr.start_run(self.p, "b", PROMPT, self.when).endswith("20261017_153001_run.json"))
 
+    def test_start_writes_workflow(self):
+        wf = {"nodes": [{"id": 1, "type": "KSampler"}], "links": [], "extra": {"t": "\u00e9"}}
+        path = rr.start_run(self.p, "p", PROMPT, self.when, workflow=wf)
+        saved = os.path.join(self.p, "00.Workflows", "Run", "20261017_153000_run.json")
+        self.assertEqual(read_json(saved), wf)
+        self.assertEqual(read_json(path)["workflow"], "00.Workflows/Run/20261017_153000_run.json")
+        self.assertEqual(rr.list_runs(self.p)[0]["workflow"], saved)
+        # Workflow orphelin deja present : le Run prend la seconde suivante (paires gardees).
+        os.remove(path)
+        self.assertTrue(rr.start_run(self.p, "q", PROMPT, self.when, workflow=wf).endswith("20261017_153001_run.json"))
+        # Pas de workflow : pas de champ, list_runs -> None.
+        other = rr.start_run(self.p, "r", PROMPT, self.when + 10)
+        self.assertNotIn("workflow", read_json(other))
+        self.assertIsNone([r for r in rr.list_runs(self.p) if r["file"] == os.path.basename(other)][0]["workflow"])
+        # Les workflows des Runs ne sont pas des workflows du projet.
+        self.assertEqual(projects.list_workflows(self.p), {"workflows": [], "archives": []})
+
+    def test_read_run_workflow(self):
+        wf = {"nodes": [{"id": 3}], "links": []}
+        path = rr.start_run(self.p, "p", PROMPT, self.when, workflow=wf)
+        self.assertEqual(rr.read_run_workflow(self.p, os.path.basename(path))["workflow"], wf)
+        # Ancien Run sans workflow : celui du PNG rendu (texte "workflow").
+        from PIL import Image, PngImagePlugin
+        png = os.path.join(self.out, "a.png")
+        os.makedirs(self.out, exist_ok=True)
+        info = PngImagePlugin.PngInfo()
+        info.add_text("workflow", json.dumps({"nodes": [{"id": 9}]}))
+        Image.new("RGB", (4, 4)).save(png, pnginfo=info)
+        old = rr.start_run(self.p, "p", PROMPT, self.when + 5)
+        rr.finish_run(old, [{"filename": "a.png", "type": "output"}], "done", self.out)
+        got = rr.read_run_workflow(self.p, os.path.basename(old))
+        self.assertEqual((got["workflow"], got["source"]), ({"nodes": [{"id": 9}]}, png))
+        # Rien nulle part.
+        bare = os.path.join(self.out, "b.png")
+        Image.new("RGB", (4, 4)).save(bare)
+        none = rr.start_run(self.p, "p", PROMPT, self.when + 9)
+        rr.finish_run(none, [{"filename": "b.png", "type": "output"}], "done", self.out)
+        with self.assertRaises(FileNotFoundError):
+            rr.read_run_workflow(self.p, os.path.basename(none))
+        with self.assertRaises(ValueError):
+            rr.read_run_workflow(self.p, "../x.json")
+
+    def test_skipped_run_removes_its_workflow(self):
+        path = rr.start_run(self.p, "p", PROMPT, self.when, workflow={"nodes": []})
+        self.assertEqual(rr.finish_run(path, [], "interrupted", self.out)["skipped"], True)
+        self.assertFalse(os.path.exists(os.path.join(self.p, "00.Workflows", "Run", "20261017_153000_run.json")))
+
     def test_fit_size(self):
         self.assertEqual(rr.fit_size(1216, 672), (960, 530))
         self.assertEqual(rr.fit_size(672, 1216), (300, 544))
@@ -520,6 +567,18 @@ class RunFileTest(unittest.TestCase):
         detail = runs["20261017_153400_run.json"]["models"]
         self.assertEqual(detail["diffusion_model"], [P0("u.safetensors")])
         self.assertEqual(detail["loras"], [{"name": "bounce", "strength_model": 0.8, "strength_clip": 0.8}])
+        # Fenetres 02 / 06 : numeros des ensembles de chaque Run, et ensembles des registres.
+        self.assertEqual(runs["20261017_153400_run.json"]["sets"], {"models": [1], "lora": [2]})
+        self.assertEqual(runs["20261017_153600_run.json"]["sets"], {"models": [1], "lora": []})
+        sets = rr.registry_sets(self.p)
+        self.assertEqual([s["index"] for s in sets["lora"]], [1, 2])
+        self.assertEqual(sets["lora"][1]["loras"], [{"name": "bounce", "strength_model": 0.8, "strength_clip": 0.8}])
+        self.assertEqual(sets["models"][0]["vae"], [P0("v1"), P0("v2")])
+        # Ancien Run au bloc complet : ensemble identique du registre.
+        regs = {k: rr.read_registry(self.p, k) for k in rr.REGISTRIES}
+        self.assertEqual(rr.run_sets({"models": changed}, regs), {"models": [1], "lora": [2]})
+        self.assertEqual(rr.run_sets({"models": dict(models, vae=["other"])}, regs), {"models": [], "lora": [1]})
+        self.assertEqual(rr.registry_sets(os.path.join(self.root, "none")), {"models": [], "lora": []})
 
     def test_error_status_and_bad_files(self):
         path = rr.start_run(self.p, "p", PROMPT, self.when)

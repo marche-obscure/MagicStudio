@@ -76,6 +76,9 @@ def ensure_project(path):
     if not os.path.isdir(arch):
         os.makedirs(arch, exist_ok=True)
         created.append(PROJECT_CONFIG_DIR)
+    # Workflows des Runs (run_record.RUN_WORKFLOW_FOLDER), a cote de Archives :
+    # jamais listes comme workflows du projet (lectures non recursives).
+    os.makedirs(os.path.join(path, CONFIG_FOLDER, "Run"), exist_ok=True)
     return created
 
 
