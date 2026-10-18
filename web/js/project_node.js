@@ -155,10 +155,13 @@ const HELP_SECTIONS = [
         html: "<p>Every project is a folder with always the same subfolders:</p>" +
             folderBadges() +
             "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> and <b>14.Video-Audio</b> follow the lists of the " +
-            "Reference Loader. When a reference is added or removed there, or when the folder keeps files that no " +
-            "list uses anymore, " + iconBadge(WARN_ICON, INACTIVE_BG) + " appears left of the folder (hover it for " +
-            "the details); <b>Save</b> copies the new files into the project. Only 00.Workflows has a bell; the " +
-            "other rows keep its place, so all the folder buttons have the same width.</p>" +
+            "Reference Loader. When a reference is added or removed there, " + iconBadge(WARN_ICON, INACTIVE_BG) +
+            " appears left of the folder and its " + iconBadge(BELL_ICON, BELL_ORANGE) + " turns orange. Click the " +
+            "bell: the window lists the files to copy and the references removed, and <b>Update</b> copies the new " +
+            "files (the Reference Loader then uses the copies) and moves to <b>&lt;folder&gt;/Archives</b> every " +
+            "file of the folder that no list of the Reference Loader uses anymore (removed references included): " +
+            "no file is deleted, and they no longer show in the gallery of the project. The bell also turns orange " +
+            "when the folder keeps such unused files. Then the bell goes back to grey and the sign goes away.</p>" +
             "<p>The row of 08.Images, 10.Son, 12.Video and 14.Video-Audio shows <b>Use: n/x | Orphelins: m | In " +
             "Archives: y</b>: n files of the folder are used by the Reference Loader out of x, the most it accepts " +
             "for this folder (08.Images: 9 in Ref2VA, 2 in FL2VA = first + last frame; 10.Son, 12.Video, " +
@@ -208,7 +211,7 @@ const HELP_SECTIONS = [
             "from Archives, it takes its name again without the date.</p>" +
             "<p>Duplicates: the <b>Archives</b> folder of 08.Images, 10.Son, 12.Video and 14.Video-Audio is read " +
             "(even when the folder itself is empty) and its files are compared by SHA256. When identical copies " +
-            "are found, " + iconBadge(DUP_ICON, BELL_ORANGE) + " appears at the right end of the row. It opens the window " +
+            "are found, " + iconBadge(DUP_ICON, BELL_ORANGE) + " appears right of the bell. It opens the window " +
             "<b>Duplicates</b>: one thumbnail per group with its number of copies and a check box; click a " +
             "thumbnail to see all its copies below (number, total size, size freed). One copy always stays in " +
             "Archives (a dated name without <b>(x)</b>, then a name without <b>(2)</b> or <b>_02</b>, otherwise the " +
@@ -394,10 +397,14 @@ const HELP_SECTIONS_FR = [
         html: "<p>Chaque projet est un dossier avec toujours les mêmes sous-dossiers :</p>" +
             folderBadges() +
             "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> et <b>14.Video-Audio</b> suivent les listes du " +
-            "Reference Loader. Quand une référence y est ajoutée ou retirée, ou quand le dossier garde des fichiers " +
-            "qu'aucune liste n'utilise plus, " + iconBadge(WARN_ICON, INACTIVE_BG) + " apparaît à gauche du dossier " +
-            "(survolez-le pour le détail) ; <b>Save</b> copie les nouveaux fichiers dans le projet. Seul 00.Workflows " +
-            "a une cloche ; les autres lignes gardent sa place, tous les boutons des dossiers ont donc la même largeur.</p>" +
+            "Reference Loader. Quand une référence y est ajoutée ou retirée, " + iconBadge(WARN_ICON, INACTIVE_BG) +
+            " apparaît à gauche du dossier et sa " + iconBadge(BELL_ICON, BELL_ORANGE) + " passe à l'orange. Cliquez " +
+            "sur la cloche : la fenêtre liste les fichiers à copier et les références retirées, et <b>Update</b> " +
+            "copie les nouveaux fichiers (le Reference Loader utilise ensuite les copies) et déplace dans " +
+            "<b>&lt;dossier&gt;/Archives</b> chaque fichier du dossier qu'aucune liste du Reference Loader n'utilise " +
+            "plus (références retirées comprises) : aucun fichier n'est effacé, et ils ne s'affichent plus dans la " +
+            "galerie du projet. La cloche passe aussi à l'orange quand le dossier garde de tels fichiers " +
+            "inutilisés. Ensuite la cloche redevient grise et le sigle disparaît.</p>" +
             "<p>La ligne de 08.Images, 10.Son, 12.Video et 14.Video-Audio affiche <b>Use: n/x | Orphelins: m | " +
             "In Archives: y</b> : n fichiers du dossier sont utilisés par le Reference Loader sur x, le maximum " +
             "qu'il accepte pour ce dossier (08.Images : 9 en Ref2VA, 2 en FL2VA = première + dernière image ; " +
@@ -450,7 +457,7 @@ const HELP_SECTIONS_FR = [
             "revenant d'Archives, il reprend son nom sans la date.</p>" +
             "<p>Doublons : le dossier <b>Archives</b> de 08.Images, 10.Son, 12.Video et 14.Video-Audio est lu " +
             "(même quand le dossier lui-même est vide) et ses fichiers sont comparés par SHA256. Quand des copies " +
-            "identiques sont trouvées, " + iconBadge(DUP_ICON, BELL_ORANGE) + " apparaît au bout de la ligne. Il " +
+            "identiques sont trouvées, " + iconBadge(DUP_ICON, BELL_ORANGE) + " apparaît à droite de la cloche. Il " +
             "ouvre la fenêtre <b>Duplicates</b> : une vignette par groupe avec son nombre de copies et une case à " +
             "cocher ; cliquez sur une vignette pour voir toutes ses copies en dessous (nombre, taille totale, place " +
             "libérée). Un exemplaire reste toujours dans Archives (un nom daté sans <b>(x)</b>, puis un nom sans " +
@@ -3144,9 +3151,10 @@ app.registerExtension({
                 btn.append(icon, label, last);
                 const bell = makeIconButton(INACTIVE_BG, BELL_ICON, "");
                 Object.assign(bell.style, { width: "22px", height: "22px", cursor: "default", opacity: "0.6" });
-                // Cloche seulement sur 00.Workflows (choix utilisateur, 18/10/2026) : ailleurs, place
-                // gardee pour que tous les boutons aient la largeur et l'alignement de 00.Workflows.
-                if (name !== WORKFLOWS) bell.style.visibility = "hidden";
+                // Cloches gardees sur 00.Workflows et 08.Images ... 14.Video-Audio (Update) ; ailleurs,
+                // place gardee : tous les boutons ont la largeur et l'alignement de 00.Workflows
+                // (choix utilisateur, 18/10/2026).
+                if (name !== WORKFLOWS && !UPDATE_FOLDERS.includes(name)) bell.style.visibility = "hidden";
                 // 00.Workflows : bouton des archives a droite de la cloche ; ailleurs, un espace.
                 // 08.Images ... 14.Video-Audio : bouton des doublons d'Archives (visible s'il y en a).
                 const arch = name === WORKFLOWS ? makeIconButton(INACTIVE_BG, ARCHIVE_ICON, "")
