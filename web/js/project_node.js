@@ -3612,13 +3612,35 @@ app.registerExtension({
                 setViewer.open(f, s.name, runList, registries);
             }
 
+            /**
+             * Nouvel onglet temporaire (rien d'ecrit) : onglet vide, workflow charge dedans, puis
+             * renomme. loadGraphData(workflow, ..., "nom") echoue sur certains workflows (MiniMaxH3Easy :
+             * proprietes que le frontend ne sait plus copier) et charge alors dans l'onglet courant.
+             */
+            async function openInNewTab(workflow, name) {
+                const ext = app.extensionManager;
+                const wm = ext && ext.workflow;
+                if (!wm || !ext.command) {
+                    await app.loadGraphData(workflow, true, true, name);
+                    return;
+                }
+                await ext.command.execute("Comfy.NewBlankWorkflow");
+                const tab = wm.activeWorkflow;
+                await app.loadGraphData(workflow, true, true, tab);
+                try {
+                    await wm.renameWorkflow(tab, tab.directory + "/" + name + ".json");
+                } catch (e) {
+                    // Nom deja pris par un onglet ouvert : nom par defaut garde.
+                }
+            }
+
             /** Workflow d'un Run dans un nouvel onglet (nom du JSON du Run) ; {ok, text}. */
             async function openRunWorkflow(run) {
                 const s = getState();
                 try {
                     const data = await apiGet("/mmproject/run_workflow?project=" + encodeURIComponent(s.path) +
                         "&name=" + encodeURIComponent(run.file));
-                    await app.loadGraphData(data.workflow, true, true, runTabName(run.file));
+                    await openInNewTab(data.workflow, runTabName(run.file));
                     return { ok: true };
                 } catch (e) {
                     return { ok: false, text: e.message };
