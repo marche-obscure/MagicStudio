@@ -9,7 +9,7 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -130,6 +130,18 @@ test("40 / 60 : filtre par pastille", () => {
     assert.deepEqual(filterByDot(items, new Set(["validated", "outside"])).map((x) => x.file), ["a", "d"]);
     assert.deepEqual(filterByDot(null, new Set(["rejected"])), []);
     assert.deepEqual(dotCounts(items), { validated: 1, footage: 2, rejected: 1, outside: 1 });
+});
+
+test("40 / 60 : groupes par pastille, puis date", () => {
+    const it = (file, place, inside = true) => ({ file, run: { file: file + ".json" }, output: { index: 0, in_project: inside, place } });
+    // Ordre recu = date (plus recent d'abord) : garde dans chaque groupe.
+    const items = [it("d5", "rejected"), it("d4", "footage", false), it("d3", "footage"), it("d2", "validated"),
+        it("d1", "footage"), it("d0", "validated")];
+    assert.deepEqual(groupByDot(items).map((x) => x.file), ["d2", "d0", "d3", "d1", "d5", "d4"]);
+    assert.deepEqual(groupByDot([...items].reverse()).map((x) => x.file), ["d0", "d2", "d1", "d3", "d5", "d4"]);
+    assert.deepEqual(groupByDot(null), []);
+    assert.equal(rushKey(items[0]), "d5.json#0");
+    assert.equal(rushKey(undefined), "");
 });
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
