@@ -120,6 +120,16 @@ async function apiPost(url, body) {
 const folderList = PROJECT_SUBFOLDERS.map((f) => "<b>" + f + "</b>").join(", ");
 // Bouton Purge du noeud (choix utilisateur, 19/10/2026) : rouge fonce.
 const PURGE_RED = "#8b1a1a";
+// Carte d'une entree du noeud pour l'aide (choix utilisateur, 19/10/2026) : nom, badge
+// "Optional" bien visible, puis lignes [libelle, texte].
+const inputCard = (name, badge, rows) =>
+    '<div style="border:1px solid #2c2c2c;border-radius:8px;background:#161616;padding:8px 10px;margin:8px 0">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="color:#9fd6cf;font-size:13px">' +
+    name + '</b><span style="background:#2e7d32;color:#fff;font-weight:bold;font-size:10px;border-radius:9px;' +
+    'padding:1px 8px">' + badge + "</span></div>" +
+    '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px">' +
+    rows.map(([k, v]) => '<span style="color:#999;white-space:nowrap">' + k + "</span><span>" + v + "</span>").join("") +
+    "</div></div>";
 // Pastille d'un dossier et pastille de couleur des vignettes, pour l'aide.
 const folderBadge = (f) => iconBadge(FOLDER_ICONS[f], FOLDER_COLORS[f]);
 const helpDot = (c) => '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:' + c +
@@ -156,6 +166,35 @@ const HELP_SECTIONS = [
             [iconBadge(BELL_ICON, BELL_ORANGE), "Bell of 08.Images, 10.Son, 12.Video, 14.Video-Audio: references added or removed in the Reference Loader; click to update the folder"],
             [iconBadge(ARCHIVE_ICON, VIOLET), "Open an archived workflow in a new tab"],
         ]),
+    },
+    {
+        id: "inputs", title: "Inputs", icon: LINK_ICON, color: ORANGE,
+        html: "<p>The node has three inputs, <b>all optional</b>: without any of them, it already creates, opens " +
+            "and manages the projects. Each input adds a feature.</p>" +
+            inputCard("project", "Optional", [
+                ["Wire", "the <b>project</b> output of the <b>MiniMax H3 Reference Loader</b>: always its last output, in " +
+                    "both modes; the link stays when you switch Ref2VA / F2VA-FL2VA."],
+                ["Gives", "the projects folder (Root folder of the Reference Loader) and the link to the Reference " +
+                    "Loader: needed by <b>Save</b>, by <b>Load</b> to fill the Reference Loader, and by the bells of " +
+                    "08 to 14. It gives the Root folder only: the references and the galleries are not changed."],
+                ["Without it", "projects go to the folder chosen when creating (<b>ComfyUI/input/Projets</b> by " +
+                    "default), Save is greyed and the bells of 08 to 14 follow nothing."],
+            ]) +
+            inputCard("text_prompt", "Optional", [
+                ["Wire", "the final prompt text (the same text as the prompt of the MiniMax node)."],
+                ["Gives", "the record of each run: JSON in <b>04.Prompt</b>, copies in <b>40.Rush Videos</b>, " +
+                    "registries in <b>02.Models</b> / <b>06.LoRA</b> (see <b>Run record</b>)."],
+                ["Without it", "nothing is recorded; the windows 04, 40 and 60 stay empty."],
+            ]) +
+            inputCard("models_link", "Optional", [
+                ["Wire", "the <b>model_link</b> output of <b>MultiFiles Select</b> (directly, or through Set / Get, " +
+                    "Reroute, or a Switch MultiIN-OUT: the input of its active group)."],
+                ["Gives", "the models of the run with their <b>position</b> (number of the field), and " +
+                    "<b>&lt;project&gt;/02.Models</b> as save folder of MultiFiles Select when it is empty (a folder " +
+                    "chosen by hand is never replaced)."],
+                ["Without it", "the models are read in the graph (position 0). The LoRA are always read in the graph."],
+            ]) +
+            hNote("The node has no output."),
     },
     {
         id: "folders", title: "Project folders", icon: PROJECT_ICON, color: VIOLET,
@@ -409,14 +448,6 @@ const HELP_SECTIONS = [
             "follows too (Root folder of the Reference Loader, or this node).",
         ]),
     },
-    {
-        id: "link", title: "Link to the Reference Loader", icon: LINK_ICON, color: ORANGE,
-        html: hList([
-            "The <b>project</b> output is always the last output of the Reference Loader, in both modes.",
-            "It gives the Root folder only: the references and the galleries are not changed.",
-            "The link stays when you switch Ref2VA / F2VA-FL2VA.",
-        ]),
-    },
 ];
 
 const HELP_SECTIONS_FR = [
@@ -442,6 +473,37 @@ const HELP_SECTIONS_FR = [
             [iconBadge(BELL_ICON, BELL_ORANGE), "Cloche de 08.Images, 10.Son, 12.Video, 14.Video-Audio : références ajoutées ou retirées dans le Reference Loader ; cliquez pour mettre le dossier à jour"],
             [iconBadge(ARCHIVE_ICON, VIOLET), "Ouvrir un workflow archivé dans un nouvel onglet"],
         ]),
+    },
+    {
+        id: "inputs", title: "Entrées",
+        html: "<p>Le nœud a trois entrées, <b>toutes optionnelles</b> : sans aucune, il crée, ouvre et gère déjà " +
+            "les projets. Chaque entrée ajoute une fonction.</p>" +
+            inputCard("project", "Optionnelle", [
+                ["Brancher", "la sortie <b>project</b> du <b>MiniMax H3 Reference Loader</b> : toujours sa dernière " +
+                    "sortie, dans les deux modes ; le lien reste quand vous basculez Ref2VA / F2VA-FL2VA."],
+                ["Apporte", "le dossier des projets (Root folder du Reference Loader) et le lien avec le Reference " +
+                    "Loader : indispensable pour <b>Save</b>, pour que <b>Load</b> remplisse le Reference Loader, et " +
+                    "pour les cloches de 08 à 14. Elle ne donne que le Root folder : les références et les galeries ne " +
+                    "changent pas."],
+                ["Sans elle", "les projets vont dans le dossier choisi à la création (<b>ComfyUI/input/Projets</b> " +
+                    "par défaut), Save est grisé et les cloches de 08 à 14 ne suivent rien."],
+            ]) +
+            inputCard("text_prompt", "Optionnelle", [
+                ["Brancher", "le texte final du prompt (le même texte que le prompt du nœud MiniMax)."],
+                ["Apporte", "l'enregistrement de chaque Run : JSON dans <b>04.Prompt</b>, copies dans <b>40.Rush " +
+                    "Videos</b>, registres dans <b>02.Models</b> / <b>06.LoRA</b> (voir <b>Enregistrement des Runs</b>)."],
+                ["Sans elle", "rien n'est enregistré ; les fenêtres 04, 40 et 60 restent vides."],
+            ]) +
+            inputCard("models_link", "Optionnelle", [
+                ["Brancher", "la sortie <b>model_link</b> de <b>MultiFiles Select</b> (directement, ou via Set / Get, " +
+                    "Reroute, ou un Switch MultiIN-OUT : l'entrée de son groupe actif)."],
+                ["Apporte", "les modèles du Run avec leur <b>position</b> (numéro du champ), et " +
+                    "<b>&lt;projet&gt;/02.Models</b> comme dossier de sauvegarde de MultiFiles Select quand il est vide " +
+                    "(un dossier choisi à la main n'est jamais remplacé)."],
+                ["Sans elle", "les modèles sont lus dans le graphe (position 0). Les LoRA sont toujours lues dans le " +
+                    "graphe."],
+            ]) +
+            hNote("Le nœud n'a pas de sortie.", "Remarque :"),
     },
     {
         id: "folders", title: "Dossiers du projet",
@@ -701,14 +763,6 @@ const HELP_SECTIONS_FR = [
             "La fenêtre montre le nom ou le dossier actuel et le nouveau ; rien ne change avant votre confirmation.",
             "Les références du Reference Loader qui sont dans le projet le suivent. Après un déplacement, le " +
             "dossier des projets suit aussi (Root folder du Reference Loader, ou ce nœud).",
-        ]),
-    },
-    {
-        id: "link", title: "Lien avec le Reference Loader",
-        html: hList([
-            "La sortie <b>project</b> est toujours la dernière sortie du Reference Loader, dans les deux modes.",
-            "Elle ne donne que le Root folder : les références et les galeries ne changent pas.",
-            "Le lien reste quand vous basculez Ref2VA / F2VA-FL2VA.",
         ]),
     },
 ];
