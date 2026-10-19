@@ -118,6 +118,8 @@ async function apiPost(url, body) {
 // Aide (anglais et francais)
 // --------------------------------------------------------------------
 const folderList = PROJECT_SUBFOLDERS.map((f) => "<b>" + f + "</b>").join(", ");
+// Entree project obligatoire (choix utilisateur, 19/10/2026) : message du noeud sans lien.
+const WIRE_PROJECT = "Wire the project output of the MiniMax H3 Reference Loader";
 // Bouton Purge du noeud (choix utilisateur, 19/10/2026) : rouge fonce.
 const PURGE_RED = "#8b1a1a";
 // Carte d'une entree du noeud pour l'aide (choix utilisateur, 19/10/2026) : nom, badge
@@ -125,7 +127,7 @@ const PURGE_RED = "#8b1a1a";
 const inputCard = (name, badge, rows) =>
     '<div style="border:1px solid #2c2c2c;border-radius:8px;background:#161616;padding:8px 10px;margin:8px 0">' +
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="color:#9fd6cf;font-size:13px">' +
-    name + '</b><span style="background:#2e7d32;color:#fff;font-weight:bold;font-size:10px;border-radius:9px;' +
+    name + '</b><span style="background:' + (/^(Required|Obligatoire)$/.test(badge) ? "#c62828" : "#2e7d32") + ';color:#fff;font-weight:bold;font-size:10px;border-radius:9px;' +
     'padding:1px 8px">' + badge + "</span></div>" +
     '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px">' +
     rows.map(([k, v]) => '<span style="color:#999;white-space:nowrap">' + k + "</span><span>" + v + "</span>").join("") +
@@ -169,16 +171,17 @@ const HELP_SECTIONS = [
     },
     {
         id: "inputs", title: "Inputs", icon: LINK_ICON, color: ORANGE,
-        html: "<p>The node has three inputs, <b>all optional</b>: without any of them, it already creates, opens " +
-            "and manages the projects. Each input adds a feature.</p>" +
-            inputCard("project", "Optional", [
+        html: "<p>The node has three inputs: <b>project is required</b> (it is the point of this node), " +
+            "<b>text_prompt</b> and <b>models_link</b> are optional and each adds a feature.</p>" +
+            inputCard("project", "Required", [
                 ["Wire", "the <b>project</b> output of the <b>MiniMax H3 Reference Loader</b>: always its last output, in " +
                     "both modes; the link stays when you switch Ref2VA / F2VA-FL2VA."],
                 ["Gives", "the projects folder (Root folder of the Reference Loader) and the link to the Reference " +
                     "Loader: needed by <b>Save</b>, by <b>Load</b> to fill the Reference Loader, and by the bells of " +
                     "08 to 14. It gives the Root folder only: the references and the galleries are not changed."],
-                ["Without it", "projects go to the folder chosen when creating (<b>ComfyUI/input/Projets</b> by " +
-                    "default), Save is greyed and the bells of 08 to 14 follow nothing."],
+                ["Without it", "the node is greyed (projects, folders, Load, Save, Purge) with the message " +
+                    "<b>Wire the project output of the MiniMax H3 Reference Loader</b>, and ComfyUI refuses the run " +
+                    "(required input missing)."],
             ]) +
             inputCard("text_prompt", "Optional", [
                 ["Wire", "the final prompt text (the same text as the prompt of the MiniMax node)."],
@@ -319,11 +322,11 @@ const HELP_SECTIONS = [
         html: hList([
             "Wired to the Reference Loader: in its <b>Root folder</b> (its " + iconBadge(GEAR_ICON, VIOLET) +
             " button). Change it there and the list of projects follows.",
-            "Not wired, or Root folder empty: the window of " + iconBadge(PLUS_ICON, PINK) + " lets you choose " +
+            "Root folder empty: the window of " + iconBadge(PLUS_ICON, PINK) + " lets you choose " +
             "the folder (type it, or " + iconBadge(FOLDER_ICON, VIOLET) + " Browse), with the fallback folder " +
             "<b>ComfyUI/input/Projets</b> already filled in (" + iconBadge(REFRESH_ICON, INACTIVE_BG) + " brings it back).",
-            "The folder chosen is kept in the Root folder of the Reference Loader when it is wired, otherwise " +
-            "in this node.",
+            "The folder chosen is kept in the Root folder of the Reference Loader (the fallback folder is not kept).",
+            "Not wired: the node is greyed (the <b>project</b> input is required).",
             "The Root folder does not exist yet: the window of " + iconBadge(PLUS_ICON, PINK) +
             " warns you, and <b>Create</b> makes it first.",
         ]) +
@@ -476,17 +479,18 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "inputs", title: "Entrées",
-        html: "<p>Le nœud a trois entrées, <b>toutes optionnelles</b> : sans aucune, il crée, ouvre et gère déjà " +
-            "les projets. Chaque entrée ajoute une fonction.</p>" +
-            inputCard("project", "Optionnelle", [
+        html: "<p>Le nœud a trois entrées : <b>project est obligatoire</b> (c'est tout l'intérêt de ce nœud), " +
+            "<b>text_prompt</b> et <b>models_link</b> sont optionnelles et ajoutent chacune une fonction.</p>" +
+            inputCard("project", "Obligatoire", [
                 ["Brancher", "la sortie <b>project</b> du <b>MiniMax H3 Reference Loader</b> : toujours sa dernière " +
                     "sortie, dans les deux modes ; le lien reste quand vous basculez Ref2VA / F2VA-FL2VA."],
                 ["Apporte", "le dossier des projets (Root folder du Reference Loader) et le lien avec le Reference " +
                     "Loader : indispensable pour <b>Save</b>, pour que <b>Load</b> remplisse le Reference Loader, et " +
                     "pour les cloches de 08 à 14. Elle ne donne que le Root folder : les références et les galeries ne " +
                     "changent pas."],
-                ["Sans elle", "les projets vont dans le dossier choisi à la création (<b>ComfyUI/input/Projets</b> " +
-                    "par défaut), Save est grisé et les cloches de 08 à 14 ne suivent rien."],
+                ["Sans elle", "le nœud est grisé (projets, dossiers, Load, Save, Purge) avec le message <b>Wire the " +
+                    "project output of the MiniMax H3 Reference Loader</b>, et ComfyUI refuse le Run (entrée " +
+                    "obligatoire manquante)."],
             ]) +
             inputCard("text_prompt", "Optionnelle", [
                 ["Brancher", "le texte final du prompt (le même texte que le prompt du nœud MiniMax)."],
@@ -633,11 +637,11 @@ const HELP_SECTIONS_FR = [
         html: hList([
             "Relié au Reference Loader : dans son <b>Root folder</b> (son bouton " + iconBadge(GEAR_ICON, VIOLET) +
             "). Changez-le là-bas et la liste des projets suit.",
-            "Non relié, ou Root folder vide : la fenêtre de " + iconBadge(PLUS_ICON, PINK) + " vous laisse choisir " +
+            "Root folder vide : la fenêtre de " + iconBadge(PLUS_ICON, PINK) + " vous laisse choisir " +
             "le dossier (tapez-le, ou " + iconBadge(FOLDER_ICON, VIOLET) + " Browse), avec le dossier de repli " +
             "<b>ComfyUI/input/Projets</b> déjà rempli (" + iconBadge(REFRESH_ICON, INACTIVE_BG) + " le remet).",
-            "Le dossier choisi est gardé dans le Root folder du Reference Loader s'il est relié, sinon " +
-            "dans ce nœud.",
+            "Le dossier choisi est gardé dans le Root folder du Reference Loader (le dossier de repli n'est pas gardé).",
+            "Non relié : le nœud est grisé (l'entrée <b>project</b> est obligatoire).",
             "Le Root folder n'existe pas encore : la fenêtre de " + iconBadge(PLUS_ICON, PINK) +
             " vous prévient, et <b>Create</b> le crée d'abord.",
         ]) +
@@ -3350,6 +3354,10 @@ app.registerExtension({
             let folder = { root: "", exists: true, linked: false, custom: false };
             let fallbackRoot = ""; // dossier de repli <input de ComfyUI>/Projets
             let projects = [];
+            // Entree project obligatoire (choix utilisateur, 19/10/2026) : sans Reference Loader
+            // relie, le noeud est grise ; un projet n'est "choisi" qu'avec ce lien.
+            const wired = () => !!linkedLoader(node);
+            const inProject = (name) => !!name && projects.includes(name) && wired();
             let message = "";   // erreur ou avertissement (orange), ou resultat (messageOk)
             let messageOk = false;
             // Workflow du projet : fichiers de 00.Workflows, workflow courant
@@ -3505,15 +3513,14 @@ app.registerExtension({
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
-             * Dossier des projets : Root folder du Reference Loader branche, sinon
-             * dossier personnalise du noeud, sinon "" (dossier de repli).
+             * Dossier des projets : Root folder du Reference Loader branche, sinon ""
+             * (dossier de repli). Le dossier personnalise du noeud n'est plus lu :
+             * l'entree project est obligatoire (choix utilisateur, 19/10/2026).
              */
             function requestedRoot() {
                 const loader = linkedLoader(node);
                 const root = loader ? loader.mmRootFolder() : "";
-                if (root) return { root, linked: true, custom: false };
-                const custom = getState().folder;
-                return { root: custom, linked: false, custom: !!custom };
+                return root ? { root, linked: true, custom: false } : { root: "", linked: false, custom: false };
             }
 
             function render() {
@@ -3529,10 +3536,13 @@ app.registerExtension({
                 };
                 add("", "(no project)", "#888");
                 projects.forEach((p) => add(p, p));
-                const current = s.name && projects.includes(s.name);
+                const current = inProject(s.name);
                 if (s.name && !current) add(s.name, s.name + " (not in this folder)", ORANGE);
                 select.value = s.name;
                 select.style.color = current ? "#ddd" : s.name ? ORANGE : "#888";
+                select.disabled = !wired();
+                select.style.opacity = wired() ? "1" : "0.45";
+                select.title = wired() ? "" : WIRE_PROJECT;
 
                 // Lignes des dossiers : grisees sans projet choisi ; infobulle = chemin.
                 const sep = s.path.includes("\\") ? "\\" : "/";
@@ -3545,6 +3555,8 @@ app.registerExtension({
                         ? "Show the sets and their prompts of " : "Show the files of ") + f.name + " (" + path + ")"
                         : current ? path : "Pick or create a project first";
                     f.btn.style.cursor = viewable ? "pointer" : "default";
+                    f.btn.disabled = !viewable;
+                    if (!wired()) f.btn.title = WIRE_PROJECT;
                 });
                 renderWorkflow();
                 paintFolders();
@@ -3552,12 +3564,15 @@ app.registerExtension({
                 // Bas du noeud : seulement les messages (plus de chemin).
                 let text = message;
                 let tip = message;
-                if (!text && !folder.exists) {
+                if (!wired()) {
+                    text = WIRE_PROJECT;
+                    tip = WIRE_PROJECT;
+                } else if (!text && !folder.exists) {
                     text = "Projects folder not found (created with the first project)";
                     tip = folder.root;
                 }
                 status.textContent = text;
-                status.style.color = message && messageOk ? "#9fd6cf" : ORANGE;
+                status.style.color = wired() && message && messageOk ? "#9fd6cf" : ORANGE;
                 status.title = tip;
 
                 // Crayon : un projet choisi ; Save : un projet et un Reference Loader relie.
@@ -3565,7 +3580,9 @@ app.registerExtension({
                 const locked = runLock.size > 0;
                 const LOCKED = "Run in progress: Load and Save are locked";
                 const canSave = current && !!linkedLoader(node);
-                setOn(editBtn, current, VIOLET, current ? "Rename or move the project" : "Pick a project first");
+                setOn(editBtn, current, VIOLET, current ? "Rename or move the project" : !wired() ? WIRE_PROJECT
+                    : "Pick a project first");
+                setOn(newBtn, wired(), PINK, wired() ? "New project" : WIRE_PROJECT);
                 setOn(saveBtn, canSave && !locked, PINK, !current ? "Pick a project first"
                     : !canSave ? "Wire the project output of the Reference Loader first" : locked ? LOCKED
                         : "Save: copy the files of the Reference Loader into the project, save the workflow and " +
@@ -3633,7 +3650,7 @@ app.registerExtension({
              */
             function syncModelsLink() {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return;
+                if (!inProject(s.name)) return;
                 const fs = linkedFileSelect();
                 if (!fs) return;
                 const sep = s.path.includes("\\") ? "\\" : "/";
@@ -3682,7 +3699,7 @@ app.registerExtension({
                 }
                 const s = getState();
                 // Le projet choisi est dans ce dossier : on recree ses sous-dossiers manquants.
-                if (s.name && projects.includes(s.name)) await openProject(s.name, true);
+                if (inProject(s.name)) await openProject(s.name, true);
                 else render();
             }
 
@@ -3851,7 +3868,7 @@ app.registerExtension({
 
             function paintBell(wf) {
                 const s = getState();
-                const current = s.name && projects.includes(s.name);
+                const current = inProject(s.name);
                 if (current && wfInfo.current && !wf) wf = currentWorkflow();
                 const st = current ? bellState(wf) : "none";
                 // Sigle a gauche du bouton : modifie mais pas encore sauvegarde.
@@ -3877,7 +3894,7 @@ app.registerExtension({
             /** Relit les fichiers des dossiers suivis du projet choisi, puis les cloches. */
             async function loadFolderFiles() {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) {
+                if (!inProject(s.name)) {
                     folderFiles = {};
                     archiveFiles = {};
                     runList = [];
@@ -3926,7 +3943,7 @@ app.registerExtension({
             /** Fenetre des boutons 02.Models / 06.LoRA, relue a chaque ouverture. */
             async function showSets(f) {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return;
+                if (!inProject(s.name)) return;
                 await loadRuns(s);
                 paintFolders();
                 setViewer.open(f, s.name, runList, registries);
@@ -4019,7 +4036,7 @@ app.registerExtension({
             /** Fenetre des Runs (04 / 40 / 60), relue a chaque ouverture. */
             async function showRuns(f) {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return;
+                if (!inProject(s.name)) return;
                 await loadRuns(s);
                 paintFolders();
                 runViewer.open(f, s.name, runList);
@@ -4028,7 +4045,7 @@ app.registerExtension({
             /** Bouton des doublons a droite de la cloche : visible quand <dossier>/Archives en a. */
             function paintDuplicates() {
                 const s = getState();
-                const current = s.name && projects.includes(s.name);
+                const current = inProject(s.name);
                 for (const f of folderRows) {
                     if (!UPDATE_FOLDERS.includes(f.name)) continue;
                     const groups = current ? dupGroups[f.name] || [] : [];
@@ -4045,7 +4062,7 @@ app.registerExtension({
              */
             async function purgeProject() {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return;
+                if (!inProject(s.name)) return;
                 let plan;
                 try {
                     plan = await apiPost("/mmproject/purge", { project: s.path, dry_run: true });
@@ -4103,7 +4120,7 @@ app.registerExtension({
             /** Fenetre de visualisation d'un dossier : racine (ordre du Ref Loader) et Archives. */
             async function showFolder(f) {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return;
+                if (!inProject(s.name)) return;
                 try {
                     const data = await apiGet("/mmproject/folder_files?project=" + encodeURIComponent(s.path) +
                         "&folders=" + encodeURIComponent(f) + "&archives=1&dates=1");
@@ -4118,7 +4135,7 @@ app.registerExtension({
             /** Fenetre des doublons : suppression (Corbeille ou definitive), puis relecture ; Cancel ferme. */
             async function duplicatesStep(f) {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return;
+                if (!inProject(s.name)) return;
                 let msg = null;
                 for (;;) {
                     const groups = dupGroups[f] || [];
@@ -4153,7 +4170,7 @@ app.registerExtension({
             function paintFolders() {
                 paintDuplicates();
                 const s = getState();
-                const current = s.name && projects.includes(s.name);
+                const current = inProject(s.name);
                 const loader = current ? linkedLoader(node) : null;
                 const refState = loader ? loader.mmGetState() : null;
                 // Premier passage sur ce projet : l'etat actuel sert de reference pour les suppressions.
@@ -4227,7 +4244,7 @@ app.registerExtension({
             async function updateFolder(f) {
                 const loader = linkedLoader(node);
                 const s = getState();
-                if (!loader || !s.name || !projects.includes(s.name)) return;
+                if (!loader || !inProject(s.name)) return;
                 await loadFolderFiles();
                 const refState = loader.mmGetState();
                 const ch = folderChanges(refState, f, s.path, snapshotOf(s, f));
@@ -4296,7 +4313,7 @@ app.registerExtension({
                 wfInfo = { workflows: [], archives: [], current: null };
                 savedWf = null;
                 savedSig = null;
-                if (s.name && projects.includes(s.name)) {
+                if (inProject(s.name)) {
                     try {
                         const data = await apiGet("/mmproject/workflows?project=" + encodeURIComponent(s.path));
                         const mine = s.wfPath === s.path && data.workflows.find((w) => w.name === s.wfName);
@@ -4341,7 +4358,7 @@ app.registerExtension({
             /** Cloche : changements, archiver l'ancien ?, nom, puis sauvegarde (cloche verte). */
             async function workflowStep() {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return;
+                if (!inProject(s.name)) return;
                 let name = workflowNameOf(s.name);
                 let message = null;
                 let again = false;
@@ -4411,7 +4428,7 @@ app.registerExtension({
 
             wfRow.bell.addEventListener("click", () => {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return;
+                if (!inProject(s.name)) return;
                 if (wfInfo.current) workflowStep();
                 else saveWorkflowDirect();
             });
@@ -4590,7 +4607,7 @@ app.registerExtension({
             select.addEventListener("change", () => openProject(select.value));
             editBtn.addEventListener("click", () => {
                 const s = getState();
-                if (s.name && projects.includes(s.name)) renameDialog.open(s.path);
+                if (inProject(s.name)) renameDialog.open(s.path);
             });
             // ---- Configuration du projet (99.Project-Config) ----
 
@@ -4600,7 +4617,7 @@ app.registerExtension({
              */
             async function saveProjectConfig() {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return false;
+                if (!inProject(s.name)) return false;
                 const loader = linkedLoader(node);
                 const st = loader ? loader.mmGetState() : {};
                 let res;
@@ -4662,7 +4679,7 @@ app.registerExtension({
              */
             async function loadProject() {
                 const s = getState();
-                if (!s.name || !projects.includes(s.name)) return;
+                if (!inProject(s.name)) return;
                 let report;
                 say("Checking the files of the project...", true);
                 try {
@@ -4737,9 +4754,10 @@ app.registerExtension({
             loadBtn.addEventListener("click", () => loadProject());
             purgeBtn.addEventListener("click", () => purgeProject());
             newBtn.addEventListener("click", async () => {
+                if (!wired()) return;
                 await loadProjects();
                 createDialog.open({
-                    root: folder.linked || folder.custom ? folder.root : fallbackRoot,
+                    root: folder.linked ? folder.root : fallbackRoot,
                     exists: folder.exists, fixed: folder.linked, fallback: fallbackRoot,
                 });
             });
@@ -4761,7 +4779,7 @@ app.registerExtension({
             // Lu par la galerie du Reference Loader : projet choisi (et existant), sinon null.
             node.mmProjectInfo = () => {
                 const s = getState();
-                return s.name && projects.includes(s.name) ? { name: s.name, path: s.path } : null;
+                return inProject(s.name) ? { name: s.name, path: s.path } : null;
             };
 
             node.addDOMWidget("mmproject_ui", "mmproject", container, {
