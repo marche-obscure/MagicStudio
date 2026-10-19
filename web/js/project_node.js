@@ -2060,13 +2060,14 @@ function buildFolderViewer(container) {
     Object.assign(footer.style, { display: "flex", justifyContent: "flex-end" });
     const closeBtn = makeTextButton("Close", INACTIVE_BG);
     footer.appendChild(closeBtn);
-    const head = document.createElement("div");
-    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "8px" });
-    title.style.flex = "1";
+    // Date ↓ / ↑ a droite de la ligne Archives (choix utilisateur, 19/10/2026).
     let current = null;
     const orderBtn = makeDateOrderButton(() => current && render());
-    head.append(title, orderBtn);
-    card.append(head, rootLabel, rootRow, archLabel, archFrame, footer);
+    const archHead = document.createElement("div");
+    Object.assign(archHead.style, { display: "flex", alignItems: "center", gap: "8px" });
+    archLabel.style.flex = "1";
+    archHead.append(archLabel, orderBtn);
+    card.append(title, rootLabel, rootRow, archHead, archFrame, footer);
     const preview = buildPreviewWindow();
 
     const onKey = (e) => {
@@ -2763,13 +2764,7 @@ function buildSetViewer(container, onSort, onWorkflow) {
     Object.assign(title.style, { flex: "1", fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR });
     const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
     Object.assign(closeBtn.style, { width: "22px", height: "22px" });
-    // Date ↓ / ↑ : ensembles par date de leur dernier Run, prompts du plus recent ou du plus ancien.
-    const orderBtn = makeDateOrderButton(() => {
-        const c = setsWithRuns(registries, runs, kind).find((x) => x.set.index === setIndex);
-        promptIndex = Math.max(0, (c ? promptGroups(c.runs).length : 0) - 1 - promptIndex);
-        render();
-    });
-    head.append(title, orderBtn, closeBtn);
+    head.append(title, closeBtn);
 
     const column = () => {
         const c = document.createElement("div");
@@ -2790,11 +2785,22 @@ function buildSetViewer(container, onSort, onWorkflow) {
     };
     const left = column();
     const setsHead = heading();
+    // Date ↓ / ↑ a droite du titre des ensembles (choix utilisateur, 19/10/2026) : ensembles par
+    // date de leur dernier Run, prompts du plus recent ou du plus ancien.
+    const orderBtn = makeDateOrderButton(() => {
+        const c = setsWithRuns(registries, runs, kind).find((x) => x.set.index === setIndex);
+        promptIndex = Math.max(0, (c ? promptGroups(c.runs).length : 0) - 1 - promptIndex);
+        render();
+    });
+    const setsHeadRow = document.createElement("div");
+    Object.assign(setsHeadRow.style, { display: "flex", alignItems: "center", gap: "8px", flex: "0 0 auto" });
+    setsHead.style.flex = "1";
+    setsHeadRow.append(setsHead, orderBtn);
     const setsList = scroller("1 1 60%");
     const otherHead = heading();
     Object.assign(otherHead.style, { borderTop: "2px solid #333", paddingTop: "8px", marginTop: "2px" });
     const otherList = scroller("0 1 40%");
-    left.append(setsHead, setsList, otherHead, otherList);
+    left.append(setsHeadRow, setsList, otherHead, otherList);
     const right = column();
     Object.assign(right.style, { borderLeft: "2px solid #333", paddingLeft: "10px" });
     const promptHead = heading();
