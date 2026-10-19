@@ -583,6 +583,46 @@ class RunFileTest(unittest.TestCase):
         self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images")), ["mine.png"])
         self.assertEqual(rr.tidy_rush(self.p), 0)
 
+    def _status_run(self, when, status):
+        path = rr.start_run(self.p, "p", PROMPT, when, workflow={"nodes": []})
+        data = read_json(path)
+        data["status"] = status
+        rr._write(path, data)
+        return os.path.basename(path)
+
+    def test_purge_runs(self):
+        running = self._status_run(self.when, "running")
+        error = self._status_run(self.when + 60, "error")
+        done = self._status_run(self.when + 120, "done")
+        vid = os.path.join(self.p, "40.Rush Videos", "Footage", error.replace(".json", ".mp4"))
+        write(vid, b"v")
+        prompt = os.path.join(self.p, "04.Prompt")
+        wf = os.path.join(self.p, "00.Workflows", "Run")
+        err = os.path.join(self.p, "98.Error")
+        write(os.path.join(err, error), b"older")  # nom pris
+        # Compte seulement : rien n'est touche.
+        plan = rr.purge_runs(self.p, dry_run=True)
+        self.assertEqual(plan, {"deleted": [running], "moved": [error], "kept": []})
+        self.assertEqual(files_in(prompt), sorted([running, error, done]))
+        # ComfyUI occupe : le Run "running" est garde.
+        self.assertEqual(rr.purge_runs(self.p, busy=True, dry_run=True)["kept"], [running])
+        out = rr.purge_runs(self.p)
+        self.assertEqual(out, {"deleted": [running], "moved": [error], "kept": []})
+        self.assertEqual(files_in(prompt), [done])
+        self.assertEqual(files_in(wf), [done])
+        self.assertEqual(files_in(err), sorted([error, error.replace(".json", "_02.json")]))
+        self.assertEqual(files_in(os.path.join(err, "Workflows")), [error])
+        self.assertEqual(read_json(os.path.join(err, error.replace(".json", "_02.json")))["status"], "error")
+        self.assertTrue(os.path.isfile(vid))  # fichiers produits laisses en place
+        self.assertEqual([r["file"] for r in rr.list_runs(self.p)], [done])
+        self.assertEqual(rr.purge_runs(self.p), {"deleted": [], "moved": [], "kept": []})
+
+    def test_purge_busy_keeps_running(self):
+        running = self._status_run(self.when, "running")
+        self.assertEqual(rr.purge_runs(self.p, busy=True), {"deleted": [], "moved": [], "kept": [running]})
+        self.assertEqual(files_in(os.path.join(self.p, "04.Prompt")), [running])
+        self.assertFalse(os.path.exists(os.path.join(self.p, "98.Error")))
+
     def test_sort_failure_keeps_original(self):
         src = os.path.join(self.out, "a.png")
         write(src, b"img")

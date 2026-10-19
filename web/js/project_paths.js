@@ -528,3 +528,34 @@ export function switchSourceInput(node, outSlot) {
     const group = String((w && w.value) || "A").toLowerCase();
     return (node.inputs || []).findIndex((i) => i.name === group + (outSlot + 1));
 }
+
+// Tri par date des fenetres des dossiers (choix utilisateur, 19/10/2026) :
+// "desc" = plus recent d'abord (defaut), "asc" = plus ancien d'abord.
+/** Liste deja du plus recent au plus ancien (Runs, prompts), dans l'ordre demande. */
+export function inDateOrder(list, order) {
+    const l = list || [];
+    return order === "asc" ? [...l].reverse() : l;
+}
+
+/** Cartes 02 / 06 : par date de leur dernier Run ; ensembles sans Run a la fin, par numero. */
+export function orderSetCards(cards, order) {
+    const used = (cards || []).filter((c) => c.runs.length);
+    const unused = (cards || []).filter((c) => !c.runs.length);
+    const date = (c) => String(c.runs[0].date || "");
+    used.sort((a, b) => (date(a) < date(b) ? 1 : date(a) > date(b) ? -1 : a.set.index - b.set.index));
+    return inDateOrder(used, order).concat(unused);
+}
+
+/**
+ * Fenetres 08 a 14 : [{path, badge}] ; fichiers numerotes (utilises par le Ref
+ * Loader) en tete dans leur ordre (choix utilisateur), les autres par date de
+ * modification (mtimes {chemin: secondes}).
+ */
+export function orderByMtime(items, mtimes, order) {
+    const t = (p) => (mtimes && typeof mtimes[p] === "number" ? mtimes[p] : 0);
+    const base = (p) => String(p).split(/[\\/]/).pop().toLowerCase();
+    const fixed = (items || []).filter((x) => x.badge);
+    const rest = (items || []).filter((x) => !x.badge);
+    rest.sort((a, b) => (t(b.path) - t(a.path)) || base(a.path).localeCompare(base(b.path)));
+    return fixed.concat(inDateOrder(rest, order));
+}

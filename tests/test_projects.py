@@ -418,6 +418,9 @@ class FolderFilesTest(unittest.TestCase):
         for n in ["b.png", "A.png", ".hidden", "Archives/old.png"]:
             write(os.path.join(img, n))
         out = projects.folder_files(self.p, ["08.Images", "10.Son"])
+        times = projects.file_mtimes(out)
+        self.assertEqual(sorted(times), sorted(p for v in out.values() for p in v))
+        self.assertTrue(all(isinstance(t, float) for t in times.values()))
         self.assertEqual(out["08.Images"], [os.path.join(img, "A.png"), os.path.join(img, "b.png")])
         self.assertEqual(out["10.Son"], [])
         arch = projects.folder_files(self.p, ["08.Images", "10.Son"], "Archives")

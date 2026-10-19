@@ -9,7 +9,7 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -95,6 +95,29 @@ test("Runs : pastille et boutons de tri Reject / Validate / Footage", () => {
     assert.deepEqual(sortTargets({ ...gone, copy_exists: false }), []);
     assert.deepEqual(sortTargets(null), []);
     assert.equal(sortDot({ in_project: true, place: "root" }), "outside");
+});
+
+test("tri par date : Runs, ensembles 02 / 06 et fichiers 08 a 14", () => {
+    const runs = [{ date: "2026-10-19 12:00:00" }, { date: "2026-10-18 12:00:00" }];
+    assert.equal(inDateOrder(runs, "desc"), runs);
+    assert.deepEqual(inDateOrder(runs, "asc"), [runs[1], runs[0]]);
+    assert.deepEqual(runs.map((r) => r.date)[0], "2026-10-19 12:00:00"); // liste d'origine intacte
+    assert.deepEqual(inDateOrder(null, "asc"), []);
+    const cards = [
+        { set: { index: 1 }, runs: [runs[1]] },
+        { set: { index: 2 }, runs: [] },
+        { set: { index: 3 }, runs: [runs[0]] },
+    ];
+    assert.deepEqual(orderSetCards(cards, "desc").map((c) => c.set.index), [3, 1, 2]);
+    assert.deepEqual(orderSetCards(cards, "asc").map((c) => c.set.index), [1, 3, 2]);
+    // Fichiers numerotes en tete dans leur ordre, les autres par date.
+    const items = [{ path: "D/b.png", badge: "1" }, { path: "D/a.png", badge: "2" },
+        { path: "D/old.png", badge: "" }, { path: "D/new.png", badge: "" }, { path: "D/mid.png", badge: "" }];
+    const mtimes = { "D/old.png": 10, "D/new.png": 30, "D/mid.png": 20, "D/b.png": 5, "D/a.png": 50 };
+    assert.deepEqual(orderByMtime(items, mtimes, "desc").map((x) => x.path),
+        ["D/b.png", "D/a.png", "D/new.png", "D/mid.png", "D/old.png"]);
+    assert.deepEqual(orderByMtime(items, mtimes, "asc").map((x) => x.path),
+        ["D/b.png", "D/a.png", "D/old.png", "D/mid.png", "D/new.png"]);
 });
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
