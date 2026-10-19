@@ -423,6 +423,27 @@ export function outputFile(o) {
     return o.source_exists ? o.source : "";
 }
 
+// Tri des fichiers de 40 / 60 (choix utilisateur, 19/10/2026) : [cle, bouton, sous-dossier].
+export const SORT_FOLDERS = [["rejected", "Reject", "Rejected"], ["validated", "Validate", "Validated"],
+    ["footage", "Footage", "Footage"]];
+const SORT_KEYS = SORT_FOLDERS.map((x) => x[0]);
+
+/** Pastille d'une sortie : sous-dossier de l'original s'il est dans le projet, sinon "outside". */
+export function sortDot(o) {
+    return o && o.in_project && SORT_KEYS.includes(o.place) ? o.place : "outside";
+}
+
+/**
+ * Boutons de tri actifs d'une sortie : tous si l'original existe hors du projet
+ * (rapatriement), sinon tous sauf le sous-dossier du fichier ; aucun sans fichier.
+ */
+export function sortTargets(o) {
+    if (!o) return [];
+    if (o.source_exists && !o.in_project) return SORT_KEYS.slice();
+    if (!outputFile(o)) return [];
+    return SORT_KEYS.filter((k) => k !== o.place);
+}
+
 /**
  * Vignettes de 40.Rush Videos / 60.Rush Images (choix utilisateur) : seulement
  * les sorties citees par les JSON et presentes, [{file, run, output}], Run le

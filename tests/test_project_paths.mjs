@@ -7,7 +7,7 @@ import {
     UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, mapFolderBySequence, withoutMedia,
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
-    runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse,
+    runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput,
 } from "../web/js/project_paths.js";
@@ -75,6 +75,26 @@ test("Runs : vignettes de 40 / 60 = fichiers cites et presents", () => {
     assert.deepEqual(rushItems(RUNS, "40.Rush Videos").map((x) => x.file), ["P/40.Rush Videos/a.mp4"]);
     assert.deepEqual(rushItems(RUNS, "60.Rush Images").map((x) => x.file), ["G:/o/i.png"]);
     assert.equal(rushItems(RUNS, "60.Rush Images")[0].run, RUNS[1]);
+});
+
+test("Runs : pastille et boutons de tri Reject / Validate / Footage", () => {
+    assert.deepEqual(SORT_FOLDERS.map((x) => x[2]), ["Rejected", "Validated", "Footage"]);
+    const inside = { kind: "video", in_project: true, place: "validated", source_exists: true,
+        copy: "P/40.Rush Videos/Validated/a.mp4", copy_exists: true };
+    assert.equal(sortDot(inside), "validated");
+    assert.deepEqual(sortTargets(inside), ["rejected", "footage"]);
+    // Original hors du projet : pastille grise, les trois boutons le rapatrient.
+    const outside = { kind: "video", in_project: false, place: "footage", source_exists: true,
+        copy: "P/40.Rush Videos/Footage/a.mp4", copy_exists: true };
+    assert.equal(sortDot(outside), "outside");
+    assert.deepEqual(sortTargets(outside), ["rejected", "validated", "footage"]);
+    // Original disparu, copie video dans Footage : deplacable ailleurs.
+    const gone = { ...outside, source_exists: false };
+    assert.deepEqual(sortTargets(gone), ["rejected", "validated"]);
+    // Aucun fichier : aucun bouton.
+    assert.deepEqual(sortTargets({ ...gone, copy_exists: false }), []);
+    assert.deepEqual(sortTargets(null), []);
+    assert.equal(sortDot({ in_project: true, place: "root" }), "outside");
 });
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
