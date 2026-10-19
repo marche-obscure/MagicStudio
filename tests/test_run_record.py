@@ -26,6 +26,11 @@ def write(path, data=b"x"):
         f.write(data)
 
 
+def files_in(folder):
+    """Fichiers d'un dossier (sans les sous-dossiers de tri), tries."""
+    return sorted(n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n)))
+
+
 def make_video(path, width, height, frames=6, audio=True):
     """Petite video H.264 (+ son AAC) pour les tests de reduction."""
     import av
@@ -333,16 +338,16 @@ class RunFileTest(unittest.TestCase):
         data = rr.finish_run(path, [{"filename": "big_00001.mp4", "type": "output"},
                                     {"filename": "small_00001.mp4", "type": "output"}], "done", self.out)
         self.assertEqual(data["outputs"], [
-            {"source": big, "kind": "video", "copy": "40.Rush Videos/20261017_153000_run.mp4", "size": "1216x672", "copy_size": "960x530"},
-            {"source": small, "kind": "video", "copy": "40.Rush Videos/20261017_153000_run_02.mp4", "size": "320x176"},
+            {"source": big, "kind": "video", "copy": "40.Rush Videos/Footage/20261017_153000_run.mp4", "size": "1216x672", "copy_size": "960x530"},
+            {"source": small, "kind": "video", "copy": "40.Rush Videos/Footage/20261017_153000_run_02.mp4", "size": "320x176"},
         ])
-        done = os.path.join(self.p, "40.Rush Videos", "20261017_153000_run.mp4")
+        done = os.path.join(self.p, "40.Rush Videos", "Footage", "20261017_153000_run.mp4")
         with av.open(done) as c:
             self.assertEqual((c.streams.video[0].codec_context.width, c.streams.video[0].codec_context.height), (960, 530))
             self.assertEqual(c.streams.video[0].frames, 6)
             self.assertEqual([s.codec_context.name for s in c.streams.audio], ["aac"])
         self.assertEqual(rr.video_size(big), (1216, 672))     # original intact
-        self.assertEqual(sorted(os.listdir(os.path.join(self.p, "40.Rush Videos"))),
+        self.assertEqual(sorted(os.listdir(os.path.join(self.p, "40.Rush Videos", "Footage"))),
                          ["20261017_153000_run.mp4", "20261017_153000_run_02.mp4"])
 
     def test_video_saved_in_rush_folder_is_left_alone(self):
@@ -352,7 +357,7 @@ class RunFileTest(unittest.TestCase):
         data = rr.finish_run(path, [{"filename": "clip_00001.mp4", "fullpath": own}], "done", self.out)
         self.assertEqual(data["outputs"], [{"source": own, "kind": "video", "copy": "40.Rush Videos/clip_00001.mp4",
                                             "size": "1216x672", "in_place": True}])
-        self.assertEqual(os.listdir(os.path.join(self.p, "40.Rush Videos")), ["clip_00001.mp4"])
+        self.assertEqual(files_in(os.path.join(self.p, "40.Rush Videos")), ["clip_00001.mp4"])
         self.assertEqual(rr.video_size(own), (1216, 672))
 
     def test_failed_reduction_falls_back_to_copy(self):
@@ -365,7 +370,7 @@ class RunFileTest(unittest.TestCase):
                                  [{"filename": "big.mp4", "type": "output"}], "done", self.out)
         finally:
             rr.resize_video = old
-        self.assertEqual(data["outputs"][0]["copy"], "40.Rush Videos/20261017_153000_run.mp4")
+        self.assertEqual(data["outputs"][0]["copy"], "40.Rush Videos/Footage/20261017_153000_run.mp4")
         self.assertEqual(data["outputs"][0]["resize_error"], "no encoder")
 
     def test_finish_copies_outputs_to_rushes(self):
@@ -386,9 +391,9 @@ class RunFileTest(unittest.TestCase):
         data = rr.finish_run(path, files, "done", self.out)
         self.assertEqual(data["status"], "done")
         # Images citees sans copie (choix utilisateur) ; video illisible : copiee telle quelle.
-        self.assertEqual([o["copy"] for o in data["outputs"]], [None, None, "40.Rush Videos/20261017_153000_run.mp4", None])
+        self.assertEqual([o["copy"] for o in data["outputs"]], [None, None, "40.Rush Videos/Footage/20261017_153000_run.mp4", None])
         self.assertEqual(data["outputs"][1]["source"], os.path.join(self.out, "sub", "ComfyUI_00002_.png"))
-        self.assertEqual(os.listdir(os.path.join(self.p, "60.Rush Images")), [])
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images")), [])
         self.assertEqual(read_json(path)["outputs"], data["outputs"])
         # Deja termine : rien n'est refait.
         again = rr.finish_run(path, [], "error", self.out)
@@ -412,7 +417,7 @@ class RunFileTest(unittest.TestCase):
         self.assertEqual([o["source"] for o in data["outputs"]],
                          [os.path.join(rush, "Video_Shiz_001.mp4"), os.path.join(self.root, "vhs", "AnimateDiff_00001.mp4")])
         self.assertEqual([o["copy"] for o in data["outputs"]],
-                         ["40.Rush Videos/20261017_153000_run.mp4", "40.Rush Videos/20261017_153000_run_02.mp4"])
+                         ["40.Rush Videos/Footage/20261017_153000_run.mp4", "40.Rush Videos/Footage/20261017_153000_run_02.mp4"])
 
     def test_reused_name_written_during_run_is_new(self):
         # Compteur de SaveImage reparti a 00001 (anciens fichiers effaces) : meme nom, fichier neuf.
@@ -439,7 +444,7 @@ class RunFileTest(unittest.TestCase):
         res = rr.finish_run(second, files, "done", self.out)
         self.assertEqual(res, {"skipped": True, "same_as": "20261017_153000_run.json", "status": "done"})
         self.assertFalse(os.path.exists(second))
-        self.assertEqual(os.listdir(os.path.join(self.p, "60.Rush Images")), [])
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images")), [])
         # Nouveau fichier : enregistre.
         write(os.path.join(self.out, "ComfyUI_00002_.png"), b"i2")
         third = rr.start_run(self.p, "p", PROMPT, self.when)
@@ -472,7 +477,7 @@ class RunFileTest(unittest.TestCase):
         img, vid = runs[0]["outputs"]
         self.assertEqual((img["kind"], img["source_exists"], img["copy"], img["folder"]), ("image", True, "", self.out))
         self.assertEqual(vid["kind"], "video")
-        self.assertEqual(vid["copy"], os.path.join(self.p, "40.Rush Videos", "20261017_153000_run.mp4"))
+        self.assertEqual(vid["copy"], os.path.join(self.p, "40.Rush Videos", "Footage", "20261017_153000_run.mp4"))
         self.assertTrue(vid["copy_exists"])
         self.assertEqual(runs[1]["cfg_from"], "Math")
         self.assertEqual(runs[1]["outputs"][0]["kind"], "video")
@@ -489,42 +494,96 @@ class RunFileTest(unittest.TestCase):
         rr._write(path, data)
         return os.path.basename(path)
 
-    def test_move_image_to_rush_images(self):
+    def test_sort_image_from_outside(self):
         src = os.path.join(self.out, "ComfyUI_00001_.png")
         write(src, b"img")
-        write(os.path.join(self.p, "60.Rush Images", "20261017_153000_run.png"), b"other")  # nom pris
+        rej = os.path.join(self.p, "60.Rush Images", "Rejected")
+        write(os.path.join(rej, "20261017_153000_run.png"), b"other")  # nom pris
         name = self._run_with([{"source": src, "kind": "image", "copy": None}])
-        self.assertFalse(rr.list_runs(self.p)[0]["outputs"][0]["in_project"])
-        res = rr.move_output(self.p, name, 0)
-        dst = os.path.join(self.p, "60.Rush Images", "20261017_153000_run_02.png")
-        self.assertEqual(res, {"source": dst, "copy": "60.Rush Images/20261017_153000_run_02.png", "moved_from": src})
+        out = rr.list_runs(self.p)[0]["outputs"][0]
+        self.assertEqual((out["in_project"], out["place"]), (False, None))
+        res = rr.sort_output(self.p, name, 0, "rejected")
+        dst = os.path.join(rej, "20261017_153000_run_02.png")
+        self.assertEqual(res, {"source": dst, "copy": "60.Rush Images/Rejected/20261017_153000_run_02.png",
+                               "moved_from": src, "place": "rejected"})
         self.assertFalse(os.path.exists(src))
         with open(dst, "rb") as f:
             self.assertEqual(f.read(), b"img")
         out = rr.list_runs(self.p)[0]["outputs"][0]
-        self.assertTrue(out["in_project"])
-        self.assertEqual(out["source"], dst)
-        with self.assertRaises(ValueError):          # deja dans 60
-            rr.move_output(self.p, name, 0)
+        self.assertEqual((out["in_project"], out["place"], out["source"]), (True, "rejected", dst))
+        with self.assertRaises(ValueError):          # deja dans Rejected
+            rr.sort_output(self.p, name, 0, "rejected")
+        # Puis d'un sous-dossier a l'autre : simple renommage, nom garde.
+        rr.sort_output(self.p, name, 0, "validated")
+        val = os.path.join(self.p, "60.Rush Images", "Validated", "20261017_153000_run_02.png")
+        self.assertTrue(os.path.isfile(val))
+        o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]
+        self.assertEqual((o["source"], o["copy"]), (val, "60.Rush Images/Validated/20261017_153000_run_02.png"))
+        with self.assertRaises(ValueError):
+            rr.sort_output(self.p, name, 0, "nowhere")
 
-    def test_move_video_replaces_reduced_copy(self):
+    def test_sort_video_from_outside_replaces_reduced_copy(self):
         src = os.path.join(self.root, "rush", "Video_001.webm")
         write(src, b"full")
-        copy = os.path.join(self.p, "40.Rush Videos", "20261017_153000_run.mp4")
+        copy = os.path.join(self.p, "40.Rush Videos", "Footage", "20261017_153000_run.mp4")
         write(copy, b"small")
-        name = self._run_with([{"source": src, "kind": "video", "copy": "40.Rush Videos/20261017_153000_run.mp4",
+        name = self._run_with([{"source": src, "kind": "video", "copy": "40.Rush Videos/Footage/20261017_153000_run.mp4",
                                 "size": "1216x672", "copy_size": "960x530"}])
-        rr.move_output(self.p, name, 0)
-        self.assertEqual(os.listdir(os.path.join(self.p, "40.Rush Videos")), ["20261017_153000_run.webm"])
+        out = rr.list_runs(self.p)[0]["outputs"][0]
+        self.assertEqual((out["in_project"], out["place"]), (False, "footage"))
+        rr.sort_output(self.p, name, 0, "validated")
+        self.assertEqual(files_in(os.path.join(self.p, "40.Rush Videos", "Footage")), [])
+        self.assertEqual(files_in(os.path.join(self.p, "40.Rush Videos", "Validated")), ["20261017_153000_run.webm"])
         self.assertFalse(os.path.exists(src))
-        with open(os.path.join(self.p, "04.Prompt", name), "r", encoding="utf-8") as f:
-            o = json.load(f)["outputs"][0]
-        self.assertEqual(o["copy"], "40.Rush Videos/20261017_153000_run.webm")
+        o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]
+        self.assertEqual(o["copy"], "40.Rush Videos/Validated/20261017_153000_run.webm")
         self.assertEqual(o["moved_from"], src)
         self.assertNotIn("copy_size", o)
         self.assertEqual(o["size"], "1216x672")
+        # Original rapatrie dans le dossier ou est deja sa copie : la copie est remplacee.
+        src2 = os.path.join(self.root, "rush", "Video_002.webm")
+        write(src2, b"full2")
+        copy2 = os.path.join(self.p, "40.Rush Videos", "Footage", "x.webm")
+        write(copy2, b"small2")
+        name2 = os.path.basename(rr.start_run(self.p, "p", PROMPT, self.when + 60))
+        data = read_json(os.path.join(self.p, "04.Prompt", name2))
+        data.update({"status": "done", "outputs": [{"source": src2, "kind": "video", "copy": "40.Rush Videos/Footage/x.webm"}]})
+        rr._write(os.path.join(self.p, "04.Prompt", name2), data)
+        rr.sort_output(self.p, name2, 0, "footage")
+        with open(copy2, "rb") as f:
+            self.assertEqual(f.read(), b"full2")
 
-    def test_move_failure_keeps_original(self):
+    def test_sort_copy_when_original_is_gone(self):
+        copy = os.path.join(self.p, "40.Rush Videos", "Footage", "20261017_153000_run.mp4")
+        write(copy, b"small")
+        name = self._run_with([{"source": "Z:/gone.mp4", "kind": "video", "copy": "40.Rush Videos/Footage/20261017_153000_run.mp4"}])
+        rr.sort_output(self.p, name, 0, "rejected")
+        o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]
+        self.assertEqual((o["source"], o["copy"]), ("Z:/gone.mp4", "40.Rush Videos/Rejected/20261017_153000_run.mp4"))
+        self.assertTrue(os.path.isfile(os.path.join(self.p, "40.Rush Videos", "Rejected", "20261017_153000_run.mp4")))
+
+    def test_root_files_go_to_footage(self):
+        # Anciens Runs : copie video et image rapatriee a la racine de 40 / 60 ; fichier non cite : laisse.
+        vid = os.path.join(self.p, "40.Rush Videos", "20261017_153000_run.mp4")
+        img = os.path.join(self.p, "60.Rush Images", "20261017_153000_run.png")
+        write(vid, b"v")
+        write(img, b"i")
+        write(os.path.join(self.p, "60.Rush Images", "mine.png"), b"m")
+        name = self._run_with([
+            {"source": "Z:/gone.mp4", "kind": "video", "copy": "40.Rush Videos/20261017_153000_run.mp4"},
+            {"source": img, "kind": "image", "copy": "60.Rush Images/20261017_153000_run.png", "in_place": True},
+        ])
+        vid_out, img_out = rr.list_runs(self.p)[0]["outputs"]
+        self.assertEqual(vid_out["copy"], os.path.join(self.p, "40.Rush Videos", "Footage", "20261017_153000_run.mp4"))
+        self.assertEqual((vid_out["place"], vid_out["in_project"]), ("footage", False))
+        fimg = os.path.join(self.p, "60.Rush Images", "Footage", "20261017_153000_run.png")
+        self.assertEqual((img_out["source"], img_out["place"], img_out["in_project"]), (fimg, "footage", True))
+        o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][1]
+        self.assertEqual((o["source"], o["copy"]), (fimg, "60.Rush Images/Footage/20261017_153000_run.png"))
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images")), ["mine.png"])
+        self.assertEqual(rr.tidy_rush(self.p), 0)
+
+    def test_sort_failure_keeps_original(self):
         src = os.path.join(self.out, "a.png")
         write(src, b"img")
         name = self._run_with([{"source": src, "kind": "image", "copy": None}])
@@ -533,16 +592,16 @@ class RunFileTest(unittest.TestCase):
         rr.file_sha256 = lambda p: calls.append(p) or ("x" if p.endswith(".part") else "y")
         try:
             with self.assertRaises(IOError):
-                rr.move_output(self.p, name, 0)
+                rr.sort_output(self.p, name, 0, "footage")
         finally:
             rr.file_sha256 = old
         self.assertTrue(os.path.isfile(src))
-        self.assertEqual(os.listdir(os.path.join(self.p, "60.Rush Images")), [])
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Footage")), [])
         with self.assertRaises(ValueError):
-            rr.move_output(self.p, name, 5)
+            rr.sort_output(self.p, name, 5, "footage")
         os.remove(src)
         with self.assertRaises(FileNotFoundError):
-            rr.move_output(self.p, name, 0)
+            rr.sort_output(self.p, name, 0, "footage")
 
     def test_registries_at_the_end_of_the_run(self):
         img = os.path.join(self.out, "a.png")

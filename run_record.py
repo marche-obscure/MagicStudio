@@ -5,7 +5,7 @@ text_prompt), sans import ComfyUI (testable seul) :
   CFG, Steps et Seed lus dans le Run lui-meme (aucune entree en plus), et le
   workflow du Run (tel qu'au clic sur Run) dans 00.Workflows/Run sous le meme
   nom, cite par le champ "workflow" du JSON ;
-- a la fin : les videos generees sont copiees dans 40.Rush Videos sous le
+- a la fin : les videos generees sont copiees dans 40.Rush Videos/Footage sous le
   meme nom que le JSON (reduites a 960x544 au plus) ; les images restent
   dans le dossier choisi par l'utilisateur ; le JSON liste les deux.
 """
@@ -29,6 +29,12 @@ VIDEO_EXTS = {".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"}
 
 _RUN_NAME = re.compile(r"^\d{8}_\d{6}_run\.json$")
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# Sous-dossiers de tri de 40.Rush Videos et 60.Rush Images (choix utilisateur,
+# 19/10/2026) : boutons Reject / Validate / Footage des fenetres 04 / 40 / 60 ;
+# les copies des Runs vont dans Footage.
+SORT_FOLDERS = {"rejected": "Rejected", "validated": "Validated", "footage": "Footage"}
+DEFAULT_SORT = "footage"
 
 # Taille maximale des videos copiees dans 40.Rush Videos (choix utilisateur).
 MAX_VIDEO_SIZE = (960, 544)
@@ -457,10 +463,10 @@ def finish_run(run_file, files, status, output_dir, now=None):
     type "output", sous output_dir). Seuls les fichiers NOUVEAUX comptent :
     ceux qu'un Run precedent du projet a deja enregistres (renvoyes par le
     cache de ComfyUI) sont ignores (choix utilisateur), sauf s'ils ont ete
-    ecrits pendant ce Run (date de modification). Videos -> 40.Rush Videos
-    sous le nom du JSON ("_02"... pour les suivantes), reduites dans
+    ecrits pendant ce Run (date de modification). Videos -> 40.Rush Videos/
+    Footage sous le nom du JSON ("_02"... pour les suivantes), reduites dans
     MAX_VIDEO_SIZE (ratio garde, en .mp4) si plus grandes, copiees sinon ;
-    une video deja dans 40.Rush Videos du projet n'est pas touchee
+    une video deja dans 40.Rush Videos du projet (ou un sous-dossier) n'est pas touchee
     (in_place). Images : pas de copie (choix utilisateur), seulement citees.
     Le JSON recoit status et outputs. Aucun fichier
     nouveau alors que le Run en a renvoye, ou Run arrete sans fichier : le
@@ -493,7 +499,7 @@ def finish_run(run_file, files, status, output_dir, now=None):
         data["registry_error"] = str(e) or e.__class__.__name__
     base = os.path.splitext(os.path.basename(run_file))[0]
     outputs, n = [], 0
-    rush = os.path.join(project, RUSH_VIDEOS)
+    rush = os.path.join(project, RUSH_VIDEOS, SORT_FOLDERS[DEFAULT_SORT])
     for src in new:
         ext = os.path.splitext(src)[1].lower()
         out = {"source": src, "kind": "video" if ext in VIDEO_EXTS else "image", "copy": None}
@@ -501,8 +507,8 @@ def finish_run(run_file, files, status, output_dir, now=None):
             size = video_size(src)
             if size:
                 out["size"] = "%dx%d" % size
-            if os.path.normcase(os.path.dirname(src)) == os.path.normcase(rush):
-                out.update({"copy": RUSH_VIDEOS + "/" + os.path.basename(src), "in_place": True})
+            if sort_of(project, "video", src) is not None:
+                out.update({"copy": _rel(project, src), "in_place": True})
             else:
                 n += 1
                 out.update(_copy_video(src, rush, base if n == 1 else "%s_%02d" % (base, n), size))
@@ -572,17 +578,18 @@ def _copy_video(src, folder, name, size):
     os.makedirs(folder, exist_ok=True)
     ext = os.path.splitext(src)[1].lower()
     small = fit_size(*size) if size else None
+    rel = RUSH_VIDEOS + "/" + os.path.basename(folder) + "/" + name
     if small:
         dst = os.path.join(folder, name + ".mp4")
         try:
             resize_video(src, dst, small)
-            return {"copy": RUSH_VIDEOS + "/" + name + ".mp4", "copy_size": "%dx%d" % small}
+            return {"copy": rel + ".mp4", "copy_size": "%dx%d" % small}
         except Exception as e:
             error = str(e) or e.__class__.__name__
         shutil.copy2(src, os.path.join(folder, name + ext))
-        return {"copy": RUSH_VIDEOS + "/" + name + ext, "resize_error": error}
+        return {"copy": rel + ext, "resize_error": error}
     shutil.copy2(src, os.path.join(folder, name + ext))
-    return {"copy": RUSH_VIDEOS + "/" + name + ext}
+    return {"copy": rel + ext}
 
 
 def _source_path(item, output_dir, root):
@@ -623,6 +630,10 @@ def list_runs(project):
     """
     if not project or not os.path.isdir(project):
         raise FileNotFoundError("Project folder not found: %s" % project)
+    try:
+        tidy_rush(project)
+    except OSError:  # fichier verrouille : range a la prochaine ouverture
+        pass
     folder = os.path.join(project, PROMPT_FOLDER)
     names = sorted((n for n in os.listdir(folder) if _RUN_NAME.match(n)), reverse=True) if os.path.isdir(folder) else []
     runs = []
@@ -649,13 +660,16 @@ def list_runs(project):
             if not isinstance(o, dict) or not output_kind(o):
                 continue
             src = o.get("source") or ""
-            copy = os.path.join(project, *o["copy"].split("/")) if o.get("copy") else ""
+            copy = _abs_copy(project, o)
             kind = output_kind(o)
+            place = sort_of(project, kind, src)
             out = {"index": index, "kind": kind, "source": src, "folder": os.path.dirname(src),
                    "source_exists": bool(src) and os.path.isfile(src),
                    "copy": copy, "copy_exists": bool(copy) and os.path.isfile(copy),
-                   # Original deja dans son dossier du projet (pastille verte) : video -> 40, image -> 60.
-                   "in_project": bool(src) and _same_dir(os.path.dirname(src), _rush_dir(project, kind))}
+                   # Original dans son dossier du projet (video -> 40, image -> 60, ou un sous-dossier).
+                   "in_project": bool(src) and place is not None,
+                   # Sous-dossier du fichier montre (pastille et bouton grise) : original, sinon copie video.
+                   "place": place if place is not None else sort_of(project, kind, copy)}
             out.update({k: o[k] for k in ("size", "copy_size", "in_place", "resize_error") if o.get(k)})
             outs.append(out)
         run["outputs"] = outs
@@ -679,17 +693,112 @@ def file_sha256(path):
     return h.hexdigest()
 
 
-def move_output(project, run_name, index):
+def _free_path(folder, name):
+    """Chemin libre pour name dans folder : name, sinon name_02, name_03..."""
+    stem, ext = os.path.splitext(name)
+    dst, n = os.path.join(folder, name), 1
+    while os.path.exists(dst):
+        n += 1
+        dst = os.path.join(folder, "%s_%02d%s" % (stem, n, ext))
+    return dst
+
+
+def _rel(project, path):
+    """Chemin relatif au projet, en "/" (champ copy du JSON)."""
+    return os.path.relpath(path, project).replace(os.sep, "/")
+
+
+def _abs_copy(project, o):
+    return os.path.join(project, *o["copy"].split("/")) if o.get("copy") else ""
+
+
+def sort_of(project, kind, path):
     """
-    Deplace l'original d'une sortie dans son dossier du projet (choix
-    utilisateur, en 3 temps) : video -> 40.Rush Videos (remplace la copie,
-    une seule version gardee : l'original), image -> 60.Rush Images (nom du
-    JSON, "_02"... si pris). 1) copie dans un fichier .part, 2) SHA256 de la
-    copie = celui de l'original, 3) la copie prend sa place, l'ancienne copie
-    est retiree, puis l'original est supprime. Toute erreur avant la
-    suppression laisse l'original intact (fichier .part retire). Le JSON
-    recoit source / copy (nouveau chemin) et moved_from.
+    Place de path dans le dossier 40 / 60 de kind : "rejected", "validated",
+    "footage", "root" (racine du dossier), None hors de ce dossier.
     """
+    if not path:
+        return None
+    d = os.path.dirname(path)
+    base = _rush_dir(project, kind)
+    if _same_dir(d, base):
+        return "root"
+    for key, name in SORT_FOLDERS.items():
+        if _same_dir(d, os.path.join(base, name)):
+            return key
+    return None
+
+
+def _project_file(project, o, kind):
+    """Fichier de la sortie dans 40 / 60 : l'original s'il y est, sinon la copie video ; "" sinon."""
+    src = o.get("source") or ""
+    if src and sort_of(project, kind, src) is not None:
+        return src
+    copy = _abs_copy(project, o)
+    return copy if copy and sort_of(project, kind, copy) is not None else ""
+
+
+def _rename_into(project, o, kind, path, key):
+    """Deplace path (deja dans 40 / 60) dans le sous-dossier key (renommage) ; met a jour source / copy."""
+    folder = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[key])
+    os.makedirs(folder, exist_ok=True)
+    dst = _free_path(folder, os.path.basename(path))
+    os.replace(path, dst)
+    if o.get("source") and _same_dir(o["source"], path):
+        o["source"] = dst
+    if o.get("copy") is not None and (_same_dir(_abs_copy(project, o), path) or o.get("in_place")):
+        o["copy"] = _rel(project, dst)
+    return dst
+
+
+def tidy_rush(project):
+    """
+    Fichiers de Runs restes a la racine de 40 / 60 (avant les sous-dossiers,
+    choix utilisateur) : ranges dans Footage, JSON mis a jour. Les fichiers
+    que les JSON ne citent pas ne sont pas touches. Renvoie le nombre range.
+    """
+    folder = os.path.join(project, PROMPT_FOLDER)
+    names = [n for n in os.listdir(folder) if _RUN_NAME.match(n)] if os.path.isdir(folder) else []
+    moved = 0
+    for name in names:
+        path = os.path.join(folder, name)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or data.get("status") == "running":
+            continue
+        changed = False
+        for o in data.get("outputs") or []:
+            kind = output_kind(o) if isinstance(o, dict) else None
+            if not kind:
+                continue
+            p = _project_file(project, o, kind)
+            if p and sort_of(project, kind, p) == "root" and os.path.isfile(p):
+                _rename_into(project, o, kind, p, DEFAULT_SORT)
+                changed = True
+                moved += 1
+        if changed:
+            _write(path, data)
+    return moved
+
+
+def sort_output(project, run_name, index, target):
+    """
+    Range une sortie de Run dans Rejected / Validated / Footage de 40 (video)
+    ou 60 (image) (choix utilisateur, 19/10/2026), d'ou qu'elle vienne :
+    - original hors du projet : rapatrie en 3 temps : 1) copie dans un fichier
+      .part, 2) SHA256 de la copie = celui de l'original, 3) la copie prend sa
+      place, puis l'original est supprime ; une video remplace sa copie reduite
+      (une seule version gardee : l'original), une image prend le nom du JSON.
+      Toute erreur avant la suppression laisse l'original intact ;
+    - fichier deja dans 40 / 60 (original, ou copie video dont l'original a
+      disparu) : simple renommage d'un sous-dossier a l'autre.
+    Nom deja pris : "_02"... Le JSON recoit source / copy (et moved_from).
+    """
+    if target not in SORT_FOLDERS:
+        raise ValueError("Unknown folder: %s" % target)
     run_file = os.path.join(project or "", PROMPT_FOLDER, os.path.basename(run_name or ""))
     _check_run_file(run_file)
     with open(run_file, "r", encoding="utf-8") as f:
@@ -702,40 +811,47 @@ def move_output(project, run_name, index):
     src = o.get("source") or ""
     if kind not in ("video", "image"):
         raise ValueError("Not a video or an image: %s" % src)
-    if not src or not os.path.isfile(src):
-        raise FileNotFoundError("Original not found: %s" % src)
-    folder = _rush_dir(project, kind)
-    if _same_dir(os.path.dirname(src), folder):
-        raise ValueError("Already in %s" % os.path.basename(folder))
-    os.makedirs(folder, exist_ok=True)
-    ext = os.path.splitext(src)[1]
-    old_copy = os.path.join(project, *o["copy"].split("/")) if o.get("copy") else ""
-    if kind == "video" and old_copy:
-        dst = os.path.splitext(old_copy)[0] + ext
+    folder = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[target])
+    outside = bool(src) and os.path.isfile(src) and sort_of(project, kind, src) is None
+    res = {}
+    if outside:
+        os.makedirs(folder, exist_ok=True)
+        ext = os.path.splitext(src)[1]
+        old_copy = _abs_copy(project, o)
+        if kind == "video" and old_copy:
+            name = os.path.splitext(os.path.basename(old_copy))[0] + ext
+        else:
+            name = os.path.splitext(os.path.basename(run_file))[0] + ext
+        dst = os.path.join(folder, name)
+        if os.path.exists(dst) and not (old_copy and _same_dir(old_copy, dst)):
+            dst = _free_path(folder, name)
+        part = dst + ".part"
+        try:
+            shutil.copy2(src, part)
+            if file_sha256(part) != file_sha256(src):
+                raise IOError("The copy differs from the original (SHA256)")
+            os.replace(part, dst)
+        finally:
+            if os.path.exists(part):
+                os.remove(part)
+        if (old_copy and not _same_dir(old_copy, dst) and os.path.isfile(old_copy)
+                and sort_of(project, kind, old_copy) is not None):
+            os.remove(old_copy)
+        os.remove(src)
+        o.update({"source": dst, "copy": _rel(project, dst), "moved_from": src, "in_place": True})
+        for key in ("copy_size", "resize_error"):
+            o.pop(key, None)
+        res["moved_from"] = src
     else:
-        base = os.path.splitext(os.path.basename(run_file))[0]
-        dst, n = os.path.join(folder, base + ext), 1
-        while os.path.exists(dst):
-            n += 1
-            dst = os.path.join(folder, "%s_%02d%s" % (base, n, ext))
-    part = dst + ".part"
-    try:
-        shutil.copy2(src, part)
-        if file_sha256(part) != file_sha256(src):
-            raise IOError("The copy differs from the original (SHA256)")
-        os.replace(part, dst)
-    finally:
-        if os.path.exists(part):
-            os.remove(part)
-    if old_copy and not _same_dir(old_copy, dst) and os.path.isfile(old_copy) and _same_dir(os.path.dirname(old_copy), folder):
-        os.remove(old_copy)
-    os.remove(src)
-    rel = os.path.basename(folder) + "/" + os.path.basename(dst)
-    o.update({"source": dst, "copy": rel, "moved_from": src, "in_place": True})
-    for key in ("copy_size", "resize_error"):
-        o.pop(key, None)
+        p = _project_file(project, o, kind)
+        if not p or not os.path.isfile(p):
+            raise FileNotFoundError("File not found: %s" % (src or o.get("copy") or "?"))
+        if sort_of(project, kind, p) == target:
+            raise ValueError("Already in %s" % SORT_FOLDERS[target])
+        _rename_into(project, o, kind, p, target)
     _write(run_file, data)
-    return {"source": dst, "copy": rel, "moved_from": src}
+    res.update({"source": o.get("source"), "copy": o.get("copy"), "place": target})
+    return res
 
 
 # ----------------------------------------------------------------------

@@ -12,7 +12,7 @@ import {
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
     copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
-    RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems,
+    RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput,
 } from "./project_paths.js";
@@ -200,13 +200,17 @@ const HELP_SECTIONS = [
             "in one card (last run, number of runs); the blue eye opens the runs of this prompt (Configuration, " +
             "thumbnail, Retrieve the workflow). Under the sets, the other side of the selected prompt: its LoRA " +
             "from 02.Models, its models from 06.LoRA.</p>" +
-            "<p>Each thumbnail has a dot: <b style=\"color:#43a047\">green</b> = the original is in its folder of " +
-            "the project (a video in 40.Rush Videos, an image in 60.Rush Images), <b style=\"color:#d35400\">dark " +
-            "orange</b> = it is elsewhere. Then <b>Move to 40.Rush Videos</b> / <b>Move to 60.Rush Images</b> " +
-            "(after a confirmation) moves it in 3 steps: copy into the project, SHA256 check of the copy, then " +
-            "the original is deleted and the dot turns green. A video replaces its reduced copy (only one " +
-            "version is kept); an image takes the name of the run. On an error the original is untouched: " +
-            "<b>Retry</b> or <b>Abandon</b>, abandoned after 3 failed attempts.</p>" +
+            "<p><b>40.Rush Videos</b> and <b>60.Rush Images</b> each have three folders: <b>Rejected</b>, " +
+            "<b>Validated</b> and <b>Footage</b>. The copies of the runs go to <b>Footage</b>; files of older " +
+            "runs left in the root of 40 / 60 are put in Footage when the window opens. Under the image (04, " +
+            "40, 60), <b>Reject</b> / <b>Validate</b> / <b>Footage</b> move the file into that folder; the " +
+            "button of its current folder is greyed. Each thumbnail has a dot: <b style=\"color:#e53935\">red" +
+            "</b> = Rejected, <b style=\"color:#7ee081\">light green</b> = Validated, <b style=\"color:#fb8c00\">" +
+            "orange</b> = Footage, <b style=\"color:#8a8a8a\">grey</b> = the original is outside the project. " +
+            "From outside, the three buttons bring it back (after a confirmation) in 3 steps: copy into the " +
+            "folder, SHA256 check of the copy, then the original is deleted. A video replaces its reduced copy " +
+            "(only one version is kept); an image takes the name of the run. On an error the original is " +
+            "untouched: <b>Retry</b> or <b>Abandon</b>, abandoned after 3 failed attempts.</p>" +
             "<p>A file that goes to <b>Archives</b> is named <b>yyyyMMdd_HHmmss_name.ext</b> (date of the " +
             "archiving, <b>(2)</b>-like numbers removed; a name already taken gets the next second). Coming back " +
             "from Archives, it takes its name again without the date.</p>" +
@@ -446,13 +450,17 @@ const HELP_SECTIONS_FR = [
             "identiques regroupés en une carte (dernier Run, nombre de Runs) ; l'œil bleu ouvre les Runs de ce " +
             "prompt (Configuration, vignette, Retrieve the workflow). Sous les ensembles, l'autre côté du prompt " +
             "choisi : ses LoRA depuis 02.Models, ses modèles depuis 06.LoRA.</p>" +
-            "<p>Chaque vignette a une pastille : <b style=\"color:#43a047\">verte</b> = l'original est dans son " +
-            "dossier du projet (une vidéo dans 40.Rush Videos, une image dans 60.Rush Images), <b " +
-            "style=\"color:#d35400\">orange foncé</b> = il est ailleurs. <b>Move to 40.Rush Videos</b> / <b>Move " +
-            "to 60.Rush Images</b> (après confirmation) le déplace en 3 temps : copie dans le projet, comparaison " +
-            "SHA256 de la copie, puis suppression de l'original et pastille verte. Une vidéo remplace sa copie " +
-            "réduite (une seule version gardée) ; une image prend le nom du Run. En cas d'erreur l'original n'est " +
-            "pas touché : <b>Retry</b> ou <b>Abandon</b>, abandon après 3 échecs.</p>" +
+            "<p><b>40.Rush Videos</b> et <b>60.Rush Images</b> ont chacun trois dossiers : <b>Rejected</b>, " +
+            "<b>Validated</b> et <b>Footage</b>. Les copies des Runs vont dans <b>Footage</b> ; les fichiers " +
+            "d'anciens Runs restés à la racine de 40 / 60 y sont rangés à l'ouverture de la fenêtre. Sous " +
+            "l'image (04, 40, 60), <b>Reject</b> / <b>Validate</b> / <b>Footage</b> déplacent le fichier dans ce " +
+            "dossier ; le bouton de son dossier actuel est grisé. Chaque vignette a une pastille : <b " +
+            "style=\"color:#e53935\">rouge</b> = Rejected, <b style=\"color:#7ee081\">vert clair</b> = " +
+            "Validated, <b style=\"color:#fb8c00\">orange</b> = Footage, <b style=\"color:#8a8a8a\">grise</b> = " +
+            "l'original est hors du projet. De l'extérieur, les trois boutons le rapatrient (après confirmation) " +
+            "en 3 temps : copie dans le dossier, comparaison SHA256 de la copie, puis suppression de l'original. " +
+            "Une vidéo remplace sa copie réduite (une seule version gardée) ; une image prend le nom du Run. En " +
+            "cas d'erreur l'original n'est pas touché : <b>Retry</b> ou <b>Abandon</b>, abandon après 3 échecs.</p>" +
             "<p>Un fichier qui part dans <b>Archives</b> est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> (date de " +
             "l'archivage, numéros du type <b>(2)</b> retirés ; un nom déjà pris prend la seconde suivante). En " +
             "revenant d'Archives, il reprend son nom sans la date.</p>" +
@@ -2042,20 +2050,27 @@ function buildFolderViewer(container) {
 // vignette = fenetre Preview a droite (meme vignette = fermeture).
 // --------------------------------------------------------------------
 const RUN_FILTERS = [["all", "All"], ["video", "Video"], ["image", "Image"]];
-// Pastille des vignettes (choix utilisateur) : vert = original dans son dossier du projet, orange fonce = ailleurs.
+// Pastille des vignettes (choix utilisateur, 19/10/2026) : sous-dossier de tri de
+// l'original dans 40 / 60 (rouge Rejected, vert clair Validated, orange Footage),
+// gris = original hors du projet.
 const DOT_GREEN = "#43a047";
 const DOT_ORANGE = "#d35400";
+const DOT_GREY = "#8a8a8a";
+const SORT_COLORS = { rejected: "#e53935", validated: "#7ee081", footage: "#fb8c00" };
+const SORT_TEXT_COLORS = { rejected: "#fff", validated: "#102010", footage: "#1a1000" };
 const RUSH_FOLDER_OF = { video: "40.Rush Videos", image: "60.Rush Images" };
+const SORT_NAME = Object.fromEntries(SORT_FOLDERS.map(([key, , name]) => [key, name]));
 
 /** Pastille en haut a gauche d'une vignette. */
 function addStatusDot(box, out) {
     box.style.position = "relative";
     const dot = document.createElement("div");
+    const key = sortDot(out);
     Object.assign(dot.style, {
         position: "absolute", top: "6px", left: "6px", width: "12px", height: "12px", borderRadius: "50%",
-        background: out.in_project ? DOT_GREEN : DOT_ORANGE, border: "2px solid #1e1e1e", zIndex: "1",
+        background: SORT_COLORS[key] || DOT_GREY, border: "2px solid #1e1e1e", zIndex: "1",
     });
-    dot.title = out.in_project ? "Original in " + RUSH_FOLDER_OF[out.kind]
+    dot.title = key !== "outside" ? "In " + RUSH_FOLDER_OF[out.kind] + "/" + SORT_NAME[key]
         : "Original outside the project: " + (out.folder || "?");
     box.appendChild(dot);
 }
@@ -2085,7 +2100,7 @@ function runConfigHtml(run, out) {
     return h;
 }
 
-function buildRunViewer(container, onMove, onWorkflow) {
+function buildRunViewer(container, onSort, onWorkflow) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
         width: "min(760px, 94vw)", padding: "12px 14px", borderColor: VIOLET, display: "flex",
@@ -2219,7 +2234,9 @@ function buildRunViewer(container, onMove, onWorkflow) {
     grid.append(left, thumb.box);
     const note = document.createElement("div");
     Object.assign(note.style, { minHeight: "14px", fontSize: "11px", color: "#9fd6cf" });
-    card.append(head, pick, strip, grid, note);
+    // 40 / 60 : boutons de tri du fichier choisi, sous les vignettes.
+    const rushSort = document.createElement("div");
+    card.append(head, pick, strip, rushSort, grid, note);
     const preview = buildPreviewWindow();
     let moving = false;
 
@@ -2301,31 +2318,57 @@ function buildRunViewer(container, onMove, onWorkflow) {
         });
     }
 
-    /** Cadre Configuration + bouton "Move to ..." quand l'original est hors de son dossier du projet. */
+    /** Cadre Configuration du Run et de la sortie montree. */
     function fillConfig(run, out) {
         conf.body.innerHTML = runConfigHtml(run, out);
         fillModels(run);
-        if (!out || out.in_project || !out.source_exists || !onMove) return;
-        const btn = makeTextButton("Move to " + RUSH_FOLDER_OF[out.kind], DOT_ORANGE);
-        btn.title = "Copy the original to " + RUSH_FOLDER_OF[out.kind] + ", check it (SHA256), then delete the original";
-        Object.assign(btn.style, { marginTop: "6px", width: "100%" });
-        btn.addEventListener("click", async () => {
-            moving = true;
-            preview.close();
-            let res = null;
-            try {
-                res = await onMove(run, out);
-            } finally {
-                moving = false;
+    }
+
+    /**
+     * Boutons Reject / Validate / Footage sous l'image (choix utilisateur, 19/10/2026) :
+     * le fichier va dans ce sous-dossier de 40 / 60 ; bouton du dossier actuel grise ;
+     * original hors du projet : les trois le rapatrient (copie, SHA256, suppression).
+     */
+    function sortBar(run, out) {
+        const bar = document.createElement("div");
+        Object.assign(bar.style, { display: "flex", gap: "6px", width: "100%" });
+        const active = sortTargets(out);
+        const where = RUSH_FOLDER_OF[out.kind] + "/";
+        for (const [key, label, name] of SORT_FOLDERS) {
+            const here = out.in_project && out.place === key;
+            const b = makeTextButton(label, here ? SORT_COLORS[key] : INACTIVE_BG);
+            Object.assign(b.style, { flex: "1", border: "2px solid " + SORT_COLORS[key] });
+            if (here) Object.assign(b.style, { color: SORT_TEXT_COLORS[key], fontWeight: "bold" });
+            if (!onSort || !active.includes(key)) {
+                b.disabled = true;
+                Object.assign(b.style, { cursor: "default", opacity: here ? "1" : "0.45" });
+                b.title = here ? "Already in " + where + name : "File not found";
+                bar.appendChild(b);
+                continue;
             }
-            if (!res) return;
-            runs = res.runs || runs;
-            note.textContent = res.text || "";
-            note.style.color = res.ok ? "#9fd6cf" : ORANGE;
-            if (folder === "04.Prompt") renderPrompt();
-            else renderRush();
-        });
-        conf.body.appendChild(btn);
+            b.title = !out.in_project && out.source_exists
+                ? "Move the original into " + where + name + " (copy, SHA256 check, then the original is deleted)"
+                : "Move the file into " + where + name;
+            b.addEventListener("click", async () => {
+                moving = true;
+                preview.close();
+                let res = null;
+                try {
+                    res = await onSort(run, out, key);
+                } finally {
+                    moving = false;
+                }
+                if (!res) return;
+                runs = res.runs || runs;
+                if (modelRun) modelRun = runs.find((r) => r.file === modelRun.file) || modelRun;
+                note.textContent = res.text || "";
+                note.style.color = res.ok ? "#9fd6cf" : ORANGE;
+                if (folder === "04.Prompt") renderPrompt();
+                else renderRush();
+            });
+            bar.appendChild(b);
+        }
+        return bar;
     }
 
     const shownOf = (file) => folder === "40.Rush Videos" || /[\\/]40\.Rush Videos[\\/]/.test(file)
@@ -2390,6 +2433,7 @@ function buildRunViewer(container, onMove, onWorkflow) {
             Object.assign(n.style, { fontSize: "11px", color: "#999", wordBreak: "break-all", textAlign: "center" });
             thumb.body.append(t, n);
         }
+        if (out) thumb.body.appendChild(sortBar(run, out));
         if (outs.length > 1) {
             const nav = document.createElement("div");
             Object.assign(nav.style, { display: "flex", alignItems: "center", gap: "8px" });
@@ -2468,6 +2512,7 @@ function buildRunViewer(container, onMove, onWorkflow) {
             d.textContent = "No " + (RUN_FOLDERS[folder] || "file") + " recorded by a run.";
             Object.assign(d.style, { color: "#888", alignSelf: "center" });
             strip.appendChild(d);
+            rushSort.innerHTML = "";
             conf.body.innerHTML = "";
             fillModels(null);
             setPrompt("");
@@ -2500,6 +2545,8 @@ function buildRunViewer(container, onMove, onWorkflow) {
             strip.appendChild(t);
         });
         const it = items[rushIndex];
+        rushSort.innerHTML = "";
+        rushSort.appendChild(sortBar(it.run, it.output));
         conf.label.textContent = "Configuration – " + baseOf(it.file);
         fillConfig(it.run, it.output);
         setPrompt(it.run.prompt);
@@ -2524,6 +2571,7 @@ function buildRunViewer(container, onMove, onWorkflow) {
             conf.label.textContent = "Configuration";
             pick.style.display = promptMode ? "flex" : "none";
             strip.style.display = promptMode ? "none" : "flex";
+            rushSort.style.display = promptMode ? "none" : "block";
             thumb.box.style.display = promptMode ? "block" : "none";
             grid.style.gridTemplateColumns = promptMode ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)";
             if (promptMode) renderPrompt();
@@ -2577,7 +2625,7 @@ function setLinesHtml(lines) {
 
 const SET_NAMES = { models: "Models", lora: "LoRA" };
 
-function buildSetViewer(container, onMove, onWorkflow) {
+function buildSetViewer(container, onSort, onWorkflow) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
         width: "min(980px, 96vw)", height: "min(660px, 86vh)", padding: "12px 14px", display: "flex",
@@ -2630,7 +2678,7 @@ function buildSetViewer(container, onMove, onWorkflow) {
     card.append(head, body, note);
 
     // Fenetre des Runs du prompt : creee apres, donc au-dessus de celle-ci.
-    const sub = buildRunViewer(container, onMove, async (run) => {
+    const sub = buildRunViewer(container, onSort, async (run) => {
         const res = await onWorkflow(run);
         if (res && res.ok) close();
         return res;
@@ -3191,8 +3239,8 @@ app.registerExtension({
             const loadDialog = buildLoadDialog(container);
             const duplicatesDialog = buildDuplicatesDialog(container);
             const folderViewer = buildFolderViewer(container);
-            const runViewer = buildRunViewer(container, (run, out) => moveOutput(run, out), (run) => openRunWorkflow(run));
-            const setViewer = buildSetViewer(container, (run, out) => moveOutput(run, out), (run) => openRunWorkflow(run));
+            const runViewer = buildRunViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run));
+            const setViewer = buildSetViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run));
             node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog,
                 loadDialog, duplicatesDialog, folderViewer, runViewer, setViewer];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
@@ -3659,29 +3707,35 @@ app.registerExtension({
             }
 
             /**
-             * Deplacement de l'original d'une sortie dans 40.Rush Videos / 60.Rush Images
-             * (choix utilisateur) : confirmation, puis copie + SHA256 + suppression cote
-             * serveur ; en cas d'erreur Retry / Abandon, abandon apres 3 echecs.
+             * Tri d'une sortie dans Rejected / Validated / Footage de 40 / 60 (choix
+             * utilisateur, 19/10/2026). Fichier deja dans le projet : renommage direct.
+             * Original hors du projet : confirmation, puis copie + SHA256 + suppression
+             * cote serveur. En cas d'erreur Retry / Abandon, abandon apres 3 echecs.
              */
-            async function moveOutput(run, out) {
+            async function sortOutput(run, out, key) {
                 const s = getState();
-                const dest = out.kind === "video" ? "40.Rush Videos" : "60.Rush Images";
-                const ok = await confirm.ask({
-                    title: "Move the original to " + dest + "?",
-                    html: escapeHtml(out.source) + '<br><span style="color:#888">→</span> <b style="color:#9fd6cf">' +
-                        dest + "</b>" + (out.kind === "video" && out.copy_exists ? '<br><span style="color:#999">It ' +
-                        "replaces the copy " + escapeHtml(baseOf(out.copy)) + " (only one version is kept).</span>" : "") +
-                        '<br><span style="color:#999">Copy, SHA256 check, then the original is deleted.</span>',
-                    okLabel: "Move", okColor: DOT_ORANGE,
-                });
-                if (!ok) return null;
+                const dest = (out.kind === "video" ? "40.Rush Videos/" : "60.Rush Images/") +
+                    SORT_FOLDERS.find((x) => x[0] === key)[2];
+                if (out.source_exists && !out.in_project) {
+                    const ok = await confirm.ask({
+                        title: "Move the original to " + dest + "?",
+                        html: escapeHtml(out.source) + '<br><span style="color:#888">→</span> <b style="color:#9fd6cf">' +
+                            dest + "</b>" + (out.kind === "video" && out.copy_exists ? '<br><span style="color:#999">It ' +
+                            "replaces the copy " + escapeHtml(baseOf(out.copy)) + " (only one version is kept).</span>" : "") +
+                            '<br><span style="color:#999">Copy, SHA256 check, then the original is deleted.</span>',
+                        okLabel: "Move", okColor: SORT_COLORS[key],
+                    });
+                    if (!ok) return null;
+                }
                 for (let attempt = 1; ; attempt++) {
                     try {
-                        const data = await apiPost("/mmproject/move_output", { project: s.path, run: run.file, index: out.index });
+                        const data = await apiPost("/mmproject/sort_output",
+                            { project: s.path, run: run.file, index: out.index, target: key });
                         await loadRuns(s);
                         paintFolders();
-                        say("File moved to " + dest + ": " + baseOf(data.source), true);
-                        return { runs: runList, text: "File moved to " + dest + ": " + baseOf(data.source), ok: true };
+                        const name = baseOf(data.copy || data.source || "");
+                        say("File moved to " + dest + ": " + name, true);
+                        return { runs: runList, text: "File moved to " + dest + ": " + name, ok: true };
                     } catch (e) {
                         if (attempt >= 3) {
                             await confirm.ask({

@@ -76,6 +76,10 @@ def ensure_project(path):
     if not os.path.isdir(arch):
         os.makedirs(arch, exist_ok=True)
         created.append(PROJECT_CONFIG_DIR)
+    # Sous-dossiers de tri de 40 / 60 (run_record.SORT_FOLDERS, choix utilisateur 19/10/2026).
+    for rush in ("40.Rush Videos", "60.Rush Images"):
+        for sub in ("Rejected", "Validated", "Footage"):
+            os.makedirs(os.path.join(path, rush, sub), exist_ok=True)
     # Workflows des Runs (run_record.RUN_WORKFLOW_FOLDER), a cote de Archives :
     # jamais listes comme workflows du projet (lectures non recursives).
     os.makedirs(os.path.join(path, CONFIG_FOLDER, "Run"), exist_ok=True)
