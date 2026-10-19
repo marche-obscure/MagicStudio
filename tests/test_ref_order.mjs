@@ -30,10 +30,16 @@ test("ordre change : deplacement, suppression, decalage des audios", () => {
     assert.deepEqual(va.map((c) => [c.path, c.from, c.to]), [["s.wav", "<Audio 1>", "<Audio 2>"]]);
 });
 
-test("pas d'avertissement : ajout a la fin, remplacement a sa place, dernier retire, F2VA", () => {
+test("remplacement a sa place : signale (meme numero, autre fichier)", () => {
+    const before = st({ images: ["a.png", "b.png"], audios: ["s.wav"] });
+    const rep = orderChanges(before, st({ images: ["a.png", "x.png"], audios: ["s.wav"] }));
+    assert.deepEqual(rep, [{ list: "images", path: "x.png", from: "<Picture 2>", to: "<Picture 2>", replaced: "b.png" }]);
+    assert.ok(orderWarningNeeded(rep));
+});
+
+test("pas d'avertissement : ajout a la fin, dernier retire, F2VA", () => {
     const before = st({ images: ["a.png", "b.png"] });
     assert.deepEqual(orderChanges(before, st({ images: ["a.png", "b.png", "c.png"] })), []);
-    assert.deepEqual(orderChanges(before, st({ images: ["a.png", "x.png"] })), []);
     const last = orderChanges(before, st({ images: ["a.png"] }));
     assert.deepEqual(last.map((c) => c.to), [null]);
     assert.equal(orderWarningNeeded(last), false);

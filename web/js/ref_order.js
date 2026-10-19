@@ -24,7 +24,8 @@ export function refTokens(state) {
 /**
  * Jetons changes entre deux selections Ref2VA : [{list, path, from, to}],
  * to = null pour un fichier retire. Un fichier remplace a sa place (son
- * jeton repris par un nouveau fichier) ne compte pas.
+ * jeton repris par un nouveau fichier, choix utilisateur) : {list, path:
+ * nouveau fichier, from = to = le jeton, replaced: ancien fichier}.
  */
 export function orderChanges(before, after) {
     if (!before || !after || before.mode === "fl2va" || after.mode === "fl2va") return [];
@@ -37,24 +38,25 @@ export function orderChanges(before, after) {
     const old = refTokens(before);
     const known = new Set(old.map((t) => t.list + "|" + t.path));
     const now = new Map();
-    const taken = new Set(); // jetons repris par un fichier nouveau dans sa liste
+    const taken = new Map(); // jeton repris par un fichier nouveau dans sa liste -> ce fichier
     const seenAfter = new Map();
     for (const t of refTokens(after)) {
         now.set(key(t, seenAfter), t.token);
-        if (!known.has(t.list + "|" + t.path)) taken.add(t.list + "|" + t.token);
+        if (!known.has(t.list + "|" + t.path)) taken.set(t.list + "|" + t.token, t.path);
     }
     const out = [];
     const seenBefore = new Map();
     for (const t of old) {
         const to = now.get(key(t, seenBefore)) || null;
         if (to === t.token) continue;
-        if (!to && taken.has(t.list + "|" + t.token)) continue;
-        out.push({ list: t.list, path: t.path, from: t.token, to });
+        const by = to ? null : taken.get(t.list + "|" + t.token);
+        if (by) out.push({ list: t.list, path: by, from: t.token, to: t.token, replaced: t.path });
+        else out.push({ list: t.list, path: t.path, from: t.token, to });
     }
     return out;
 }
 
-/** Message a montrer : au moins un fichier garde change de jeton. */
+/** Message a montrer : un fichier garde change de jeton, ou un fichier est remplace a sa place. */
 export function orderWarningNeeded(changes) {
     return (changes || []).some((c) => c.to);
 }

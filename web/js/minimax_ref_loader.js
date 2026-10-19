@@ -322,8 +322,9 @@ const HELP_SECTIONS = [
         ]) +
         hTip("In <b>Ref2VA</b>, a file that changes number also changes in the prompt (<b>&lt;Picture N&gt;</b>, " +
             "<b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>): when a window closes (gallery, selection), after " +
-            "Load or the trash, the window <b>Order of the references changed</b> lists the old and new numbers; " +
-            "update your prompt. Adding at the end or replacing a file at its place does not show it.") +
+            "Load or the trash, the window <b>Order of the references changed</b> lists the old and new numbers, " +
+            "the files removed and the files replaced at their place (old → new file); update your prompt. Adding " +
+            "at the end or removing the last file does not show it.") +
         hNote("the " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
             " on the node deletes <b>all</b> the files of its row, after a confirmation."),
     },
@@ -558,8 +559,9 @@ const HELP_SECTIONS_FR = [
         hTip("En <b>Ref2VA</b>, un fichier qui change de numéro change aussi dans le prompt (<b>&lt;Picture " +
             "N&gt;</b>, <b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>) : à la fermeture d'une fenêtre (galerie, " +
             "sélection), après Load ou la poubelle, la fenêtre <b>Order of the references changed</b> liste les " +
-            "anciens et nouveaux numéros ; mettez votre prompt à jour. Un ajout à la fin ou un remplacement à sa " +
-            "place ne l'affiche pas.", TIP_FR) +
+            "anciens et nouveaux numéros, les fichiers retirés et les fichiers remplacés à leur place (ancien → " +
+            "nouveau fichier) ; mettez votre prompt à jour. Un ajout à la fin ou la suppression du dernier fichier " +
+            "ne l'affiche pas.", TIP_FR) +
         hNote("la " + iconBadge(TRASH_ICON, MARK_RED) + " à côté de " + iconBadge(EYE_ICON, VIOLET) +
             " sur le nœud supprime <b>tous</b> les fichiers de sa ligne, après confirmation.", NOTE_FR),
     },
@@ -1957,7 +1959,8 @@ function buildOrderWarning(container) {
     title.textContent = "Order of the references changed";
     Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: ORANGE });
     const intro = document.createElement("div");
-    intro.innerHTML = "These files now have another number in the <b>Ref2VA</b> prompt. <b>Update your prompt</b>: " +
+    intro.innerHTML = "These references changed in the <b>Ref2VA</b> prompt (new number, or another file). " +
+        "<b>Update your prompt</b>: " +
         "&lt;Picture N&gt;, &lt;Video N&gt; and &lt;Audio N&gt; follow the new numbers.";
     intro.style.lineHeight = "1.5";
     const list = document.createElement("div");
@@ -2003,11 +2006,13 @@ function buildOrderWarning(container) {
             pic.appendChild(img);
         }
         const name = document.createElement("div");
-        name.textContent = baseName(c.path);
-        name.title = c.path;
+        // Fichier remplace a sa place : ancien → nouveau, meme numero (choix utilisateur).
+        name.textContent = c.replaced ? baseName(c.replaced) + " → " + baseName(c.path) : baseName(c.path);
+        name.title = c.replaced ? c.replaced + "\n→ " + c.path : c.path;
         Object.assign(name.style, { flex: "1", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
         const move = document.createElement("div");
-        move.innerHTML = '<span style="color:#999">' + escapeHtml(c.from) + "</span> → " + (c.to
+        move.innerHTML = c.replaced ? '<b style="color:' + ORANGE + '">' + escapeHtml(c.to) + "</b> " +
+            '<span style="color:#999">(replaced)</span>' : '<span style="color:#999">' + escapeHtml(c.from) + "</span> → " + (c.to
             ? '<b style="color:' + ORANGE + '">' + escapeHtml(c.to) + "</b>"
             : '<span style="color:' + MARK_RED + '">removed</span>');
         Object.assign(move.style, { flex: "0 0 auto", whiteSpace: "nowrap", fontFamily: "monospace" });
