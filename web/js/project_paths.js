@@ -495,3 +495,15 @@ export function runTabName(file) {
 export function copyTabName(name) {
     return String(name || "workflow").replace(/\.json$/i, "") + "-copie";
 }
+
+/**
+ * Switch MultiIN-OUT (noeud de l'utilisateur) : index de l'entree qui alimente sa
+ * sortie outSlot = entree n du groupe actif (widget "group" ; une entree select
+ * reliee n'est connue qu'au Run, la pilule sert alors de repere). -1 sinon.
+ */
+export function switchSourceInput(node, outSlot) {
+    if (!node || node.type !== "SwitchMultiInOut") return -1;
+    const w = (node.widgets || []).find((x) => x.name === "group");
+    const group = String((w && w.value) || "A").toLowerCase();
+    return (node.inputs || []).findIndex((i) => i.name === group + (outSlot + 1));
+}

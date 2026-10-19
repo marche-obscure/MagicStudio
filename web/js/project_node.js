@@ -14,6 +14,7 @@ import {
     copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
+    switchSourceInput,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -338,7 +339,7 @@ const HELP_SECTIONS = [
                 "takes the name of an old one; a run without any new file, or that stops without any file, is not " +
                 "recorded: its JSON is removed and nothing is copied.",
                 "optional <b>models_link</b> input: wire the <b>model_link</b> output of <b>MultiFiles Select</b> " +
-                "(directly, or through Set / Get or Reroute nodes). " +
+                "(directly, or through Set / Get or Reroute nodes, or a Switch MultiIN-OUT: the input of its active group). " +
                 "Its fields give the models of the run for 02.Models (diffusion_models, text_encoders, vae), with " +
                 "<b>position</b> = number of the field; not wired: the models are read in the graph (position 0). " +
                 "The LoRA are always read in the graph. When MultiFiles Select has no save folder, it gets " +
@@ -590,7 +591,7 @@ const HELP_SECTIONS_FR = [
                 "le Run compte même s'il reprend le nom d'un ancien ; un Run sans fichier nouveau, ou qui s'arrête sans " +
                 "fichier, n'est pas enregistré : son JSON est retiré et rien n'est copié.",
                 "entrée optionnelle <b>models_link</b> : branchez la sortie <b>model_link</b> de <b>MultiFiles " +
-                "Select</b> (directement, ou via des nœuds Set / Get ou Reroute). Ses champs donnent les modèles du Run pour 02.Models (diffusion_models, text_encoders, " +
+                "Select</b> (directement, ou via des nœuds Set / Get ou Reroute, ou un Switch MultiIN-OUT : l'entrée de son groupe actif). Ses champs donnent les modèles du Run pour 02.Models (diffusion_models, text_encoders, " +
                 "vae), avec <b>position</b> = numéro du champ ; non branchée : modèles lus dans le graphe (position " +
                 "0). Les LoRA sont toujours lues dans le graphe. Sans dossier de sauvegarde, MultiFiles Select " +
                 "reçoit <b>&lt;projet&gt;/02.Models</b>, qui suit le projet ; un dossier choisi à la main n'est " +
@@ -3267,14 +3268,15 @@ app.registerExtension({
                 syncModelsLink();
             }
 
-            /** Noeud a l'origine de l'entree 'slot' de n, null sinon. */
-            function originOf(n, slot) {
-                const input = n && n.inputs && n.inputs[slot];
+            /** Lien arrivant sur l'entree 'slot' de n (lien du graphe), null sinon. */
+            function linkInto(n, slot) {
                 const g = n && n.graph;
-                if (!input || input.link == null || !g) return null;
-                const link = g.links && (typeof g.links.get === "function" ? g.links.get(input.link) : g.links[input.link]);
-                return link ? g.getNodeById(link.origin_id) : null;
+                if (!g || slot < 0 || !n.inputs || !n.inputs[slot]) return null;
+                if (typeof n.getInputLink === "function") return n.getInputLink(slot) || null;
+                const id = n.inputs[slot].link;
+                return id == null ? null : (typeof g.links.get === "function" ? g.links.get(id) : g.links[id]) || null;
             }
+
 
             /**
              * MultiFiles Select relie a l'entree models_link, null sinon : en traversant
@@ -3283,9 +3285,16 @@ app.registerExtension({
              */
             function linkedFileSelect() {
                 const slot = (node.inputs || []).findIndex((i) => i.name === MODELS_LINK);
-                let src = slot >= 0 ? originOf(node, slot) : null;
+                let link = slot >= 0 ? linkInto(node, slot) : null;
+                let src = link ? node.graph.getNodeById(link.origin_id) : null;
                 for (let hop = 0; src && hop < 10; hop++) {
                     if (src.type === FILE_SELECT_TYPE) return src;
+                    // Switch MultiIN-OUT : entree du groupe actif sur la ligne de la sortie suivie.
+                    if (src.type === "SwitchMultiInOut") {
+                        link = linkInto(src, switchSourceInput(src, link ? link.origin_slot : 0));
+                        src = link ? src.graph.getNodeById(link.origin_id) : null;
+                        continue;
+                    }
                     const type = String(src.type || "");
                     if (/get/i.test(type) && src.widgets && src.widgets[0]) {
                         const name = src.widgets[0].value;
@@ -3295,9 +3304,12 @@ app.registerExtension({
                             setter = (src.graph._nodes || []).find((n) => /set/i.test(String(n.type || "")) &&
                                 n.widgets && n.widgets[0] && n.widgets[0].value === name) || null;
                         }
-                        src = setter ? originOf(setter, 0) : null;
+                        link = setter ? linkInto(setter, 0) : null;
+                        src = link ? setter.graph.getNodeById(link.origin_id) : null;
                     } else if (src.isVirtualNode || /reroute/i.test(type)) {
-                        src = originOf(src, 0);
+                        const from = src;
+                        link = linkInto(from, 0);
+                        src = link ? from.graph.getNodeById(link.origin_id) : null;
                     } else {
                         return null;
                     }

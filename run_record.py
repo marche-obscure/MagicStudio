@@ -168,6 +168,40 @@ MULTI_FILE_SELECT = "MultiFileSelect"
 _MULTI_SELECT_FIELDS = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 6: 6, 7: 7}
 
 
+# Switch MultiIN-OUT (noeud de l'utilisateur) : la sortie Sn donne l'entree n du
+# groupe actif (entree "select" si elle est reliee, sinon la pilule "group").
+SWITCH_MULTI = "SwitchMultiInOut"
+_SWITCH_GROUPS = {"A": "A", "B": "B", "C": "C", "1": "A", "2": "B", "3": "C"}
+
+
+def _switch_group(prompt, inputs):
+    sel = inputs.get("select")
+    if sel is not None:
+        v = resolve(prompt, sel)[0] if _is_link(sel) else sel
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer():
+            v = str(int(v))
+        g = _SWITCH_GROUPS.get(str(v).strip().upper()) if v is not None else None
+        if g:
+            return g
+    g = inputs.get("group")
+    return g if g in ("A", "B", "C") else "A"
+
+
+def _switch_source(prompt, node, slot):
+    """Entree (valeur ou lien) qui alimente la sortie 'slot' d'un Switch MultiIN-OUT."""
+    inputs = node.get("inputs") or {}
+    return inputs.get("%s%d" % (_switch_group(prompt, inputs).lower(), slot + 1))
+
+
+def _followed_inputs(prompt, node):
+    """Entrees a suivre en remontant le graphe : groupe actif seulement pour un Switch MultiIN-OUT."""
+    inputs = node.get("inputs") or {}
+    if node.get("class_type") != SWITCH_MULTI:
+        return inputs
+    g = _switch_group(prompt, inputs).lower()
+    return {k: v for k, v in inputs.items() if k == "select" or re.match(r"^%s\d$" % g, k)}
+
+
 def resolve_file(prompt, value, depth=0):
     """
     Nom de fichier d'une entree (regle 1) : valeur directe ; sinon en remontant
@@ -182,6 +216,8 @@ def resolve_file(prompt, value, depth=0):
     inputs = node.get("inputs") or {}
     if depth >= MAX_DEPTH or not node:
         return None
+    if node.get("class_type") == SWITCH_MULTI:
+        return resolve_file(prompt, _switch_source(prompt, node, value[1]), depth + 1)
     if node.get("class_type") == MULTI_FILE_SELECT:
         n = _MULTI_SELECT_FIELDS.get(value[1])
         v = inputs.get("field_%d" % n) if n else None
@@ -241,6 +277,12 @@ def linked_file_select(prompt):
     for i in sorted(prompt or {}, key=_sort_key):
         node = prompt.get(i) or {}
         link = (node.get("inputs") or {}).get("models_link") if node.get("class_type") == PROJECT_NODE else None
+        # Switch MultiIN-OUT traverse : entree du groupe actif sur la meme ligne.
+        for _hop in range(MAX_DEPTH):
+            src = prompt.get(str(link[0])) if _is_link(link) else None
+            if not src or src.get("class_type") != SWITCH_MULTI:
+                break
+            link = _switch_source(prompt, src, link[1])
         if _is_link(link):
             return prompt.get(str(link[0]))
     return None
@@ -287,7 +329,7 @@ def run_models(prompt):
         if i in seen or i not in prompt:
             continue
         seen.add(i)
-        inputs = node(i).get("inputs") or {}
+        inputs = _followed_inputs(prompt, node(i))
         skip = _chosen_branch(prompt, inputs)
         stack.extend(str(v[0]) for k, v in inputs.items() if k != skip and _is_link(v))
     for i in [x for x in ids if x in seen]:

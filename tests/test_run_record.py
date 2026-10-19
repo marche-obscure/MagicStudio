@@ -213,6 +213,33 @@ class RunParamsTest(unittest.TestCase):
         del prompt["1"]["inputs"]["models_link"]
         self.assertEqual(rr.run_models(prompt)["diffusion_model"], [P0("other.safetensors")])
 
+    def test_models_link_through_switch_multi_in_out(self):
+        """Switch MultiIN-OUT entre MultiFiles Select et models_link : groupe actif seulement."""
+        fs = lambda unet: {"class_type": "MultiFileSelect", "inputs": {
+            "model_type_1": "diffusion_models", "field_1": unet, "save_folder": ""}}
+        prompt = {
+            "491": fs("F\\unet.safetensors"),
+            "240": fs("N\\unet.safetensors"),
+            "492": {"class_type": "UNETLoader", "inputs": {"unet_name": "F-graph.safetensors"}},
+            "194": {"class_type": "UNETLoader", "inputs": {"unet_name": "N-graph.safetensors"}},
+            "527": {"class_type": "SwitchMultiInOut", "inputs": {
+                "group": "A", "pairs": 2, "show_c": False,
+                "a1": ["491", 5], "a2": ["492", 0], "b1": ["240", 5], "b2": ["194", 0]}},
+            "225": {"class_type": "KSampler", "inputs": {"model": ["527", 1], "steps": 8, "cfg": 1}},
+            "1": {"class_type": "MiniMaxH3Project", "inputs": {"state": "{}", "models_link": ["527", 0]}},
+        }
+        self.assertEqual(rr.linked_file_select(prompt), prompt["491"])
+        self.assertEqual(rr.run_models(prompt)["diffusion_model"], [{"position": 1, "name": "F\\unet.safetensors"}])
+        prompt["527"]["inputs"]["group"] = "B"
+        self.assertEqual(rr.linked_file_select(prompt), prompt["240"])
+        # select relie (valeur "a" lue dans le graphe) : prend le dessus sur la pilule.
+        prompt["9"] = {"class_type": "PrimitiveString", "inputs": {"value": "a"}}
+        prompt["527"]["inputs"]["select"] = ["9", 0]
+        self.assertEqual(rr.linked_file_select(prompt), prompt["491"])
+        # Sans models_link : seul le groupe actif est lu dans le graphe.
+        del prompt["1"]["inputs"]["models_link"]
+        self.assertEqual(rr.run_models(prompt)["diffusion_model"], [P0("F-graph.safetensors")])
+
     def test_nothing_found(self):
         self.assertEqual(rr.run_params({"1": {"class_type": "X", "inputs": {"text": "a"}}}),
                          {"cfg": None, "steps": None, "seed": None})
