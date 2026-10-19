@@ -118,10 +118,12 @@ async function apiPost(url, body) {
 // Aide (anglais et francais)
 // --------------------------------------------------------------------
 const folderList = PROJECT_SUBFOLDERS.map((f) => "<b>" + f + "</b>").join(", ");
-// Dossiers avec leur pastille, comme dans le noeud.
-const folderBadges = () => hList(PROJECT_SUBFOLDERS.map((f) => iconBadge(FOLDER_ICONS[f], FOLDER_COLORS[f]) + " <b>" + f + "</b>"));
 // Bouton Purge du noeud (choix utilisateur, 19/10/2026) : rouge fonce.
 const PURGE_RED = "#8b1a1a";
+// Pastille d'un dossier et pastille de couleur des vignettes, pour l'aide.
+const folderBadge = (f) => iconBadge(FOLDER_ICONS[f], FOLDER_COLORS[f]);
+const helpDot = (c) => '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:' + c +
+    ';vertical-align:middle"></span>';
 // Boutons texte du bas du noeud (Load, Save, Purge), comme dans le noeud.
 const textBadge = (t, color) => '<span style="display:inline-block;background:' + (color || PINK) + ';color:white;font-weight:bold;' +
     'font-size:11px;border-radius:5px;padding:0 7px;line-height:18px">' + t + "</span>";
@@ -157,83 +159,115 @@ const HELP_SECTIONS = [
     },
     {
         id: "folders", title: "Project folders", icon: PROJECT_ICON, color: VIOLET,
-        html: "<p>Every project is a folder with always the same subfolders:</p>" +
-            folderBadges() +
-            "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> and <b>14.Video-Audio</b> follow the lists of the " +
-            "Reference Loader. When a reference is added or removed there, " + iconBadge(WARN_ICON, INACTIVE_BG) +
-            " appears left of the folder and its " + iconBadge(BELL_ICON, BELL_ORANGE) + " turns orange. Click the " +
-            "bell: the window lists the files to copy and the references removed, and <b>Update</b> copies the new " +
-            "files (the Reference Loader then uses the copies) and moves to <b>&lt;folder&gt;/Archives</b> every " +
-            "file of the folder that no list of the Reference Loader uses anymore (removed references included): " +
-            "no file is deleted, and they no longer show in the gallery of the project. The bell also turns orange " +
-            "when the folder keeps such unused files. Then the bell goes back to grey and the sign goes away.</p>" +
-            "<p>The row of 08.Images, 10.Son, 12.Video and 14.Video-Audio shows <b>Use: n/x | Orphelins: m | In " +
-            "Archives: y</b>: n files of the folder are used by the Reference Loader out of x, the most it accepts " +
-            "for this folder (08.Images: 9 in Ref2VA, 2 in FL2VA = first + last frame; 10.Son, 12.Video, " +
-            "14.Video-Audio: 3), m orphan files (no " +
-            "number, not archived yet; shown in orange, gone once Update has archived them), y files in Archives.</p>" +
-            "<p>Click the button of 08.Images, 10.Son, 12.Video or 14.Video-Audio to view the folder (view " +
-            "only, <b>Close</b>, Escape or a click outside closes it): first its files, in the order of the " +
-            "Reference Loader with their number (<b>F</b> / <b>L</b> = First / Last frame; files without number " +
-            "last, greyed), then a frame with the files of <b>Archives</b>; both rows scroll sideways. Click a " +
-            "thumbnail to see it large in the <b>Preview</b> window.</p>" +
-            "<p>The rows of 04.Prompt, 40.Rush Videos and 60.Rush Images show <b>Last run: dd/MM/yyyy hh:mm:ss | " +
-            "Runs: n</b> once runs are recorded (40: runs with a video, 60: runs with an image). Click " +
-            "<b>04.Prompt</b>: a filter <b>All / Video / Image</b> and the list of the runs (newest first), then " +
-            "a <b>Configuration</b> frame (date, mode, Steps, CFG, Seed, status, size of the video, folder of the " +
-            "<b>Original</b>), the <b>Prompt</b> text and a thumbnail of the output (‹ › when there are several). " +
-            "Click <b>40.Rush Videos</b> or <b>60.Rush Images</b>: the videos (copies in 40.Rush Videos) or the " +
-            "images (originals) named in the JSON of the runs, newest on the left, scrolling sideways; below, " +
-            "the Configuration and the Prompt of the run of the picked thumbnail. At the end of a recorded run, the " +
-            "models and the LoRA go into the registries <b>02.Models/yyyyMMdd_HHmmss_models.json</b> and " +
-            "<b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (a known set keeps its index, a new one gets the next " +
-            "index) and the JSON of the run keeps their indices. Under the Configuration, two " +
-            "folded blocks <b>Models</b> and <b>LoRA</b> (number in brackets): a click unfolds one (the other " +
-            "folds) and shows the diffusion model, text encoder and VAE, or the LoRA with their strength, " +
-            "captured when the run starts (only what the run really uses: the chosen branch of a switch, the " +
-            "active LoRA of LoraManager); both fold when another run is shown (the copy icon at the top left " +
-            "of the Prompt frame copies its text to the clipboard, ready to paste in your prompt node). Click a thumbnail to see it " +
-            "in the <b>Preview</b> window (the same thumbnail again closes it); ✕, Escape or a click outside " +
-            "closes the window. Under the thumbnail, <b>Retrieve the workflow</b> opens in a new tab the workflow " +
-            "of the run, as it was when Run was clicked (<b>00.Workflows/Run</b>, same name as the JSON of the " +
-            "run); for a run recorded before, it looks for the workflow kept in its output files (PNG, video of " +
-            "Video Helper Suite), greyed when there is none.</p>" +
-            "<p>The rows of 02.Models and 06.LoRA show <b>Sets: n | Last run: dd/MM/yyyy hh:mm:ss</b>. Click " +
-            "<b>02.Models</b> or <b>06.LoRA</b>: on the left, one card per set of the registry (number, files, " +
-            "number of runs, last run); on the right, the prompts of the selected set, identical texts grouped " +
-            "in one card (last run, number of runs); the blue eye opens the runs of this prompt (Configuration, " +
-            "thumbnail, Retrieve the workflow). Under the sets, the other side of the selected prompt: its LoRA " +
-            "from 02.Models, its models from 06.LoRA.</p>" +
-            "<p><b>40.Rush Videos</b> and <b>60.Rush Images</b> each have three folders: <b>Rejected</b>, " +
-            "<b>Validated</b> and <b>Footage</b>. The copies of the runs go to <b>Footage</b>; files of older " +
-            "runs left in the root of 40 / 60 are put in Footage when the window opens. Under the image (04, " +
-            "40, 60), <b>Reject</b> / <b>Validate</b> / <b>Footage</b> move the file into that folder; the " +
-            "button of its current folder is greyed. Each thumbnail has a dot: <b style=\"color:#e53935\">red" +
-            "</b> = Rejected, <b style=\"color:#7ee081\">light green</b> = Validated, <b style=\"color:#fb8c00\">" +
-            "orange</b> = Footage, <b style=\"color:#8a8a8a\">grey</b> = the original is outside the project. " +
-            "From outside, the three buttons bring it back (after a confirmation) in 3 steps: copy into the " +
-            "folder, SHA256 check of the copy, then the original is deleted. A video replaces its reduced copy " +
-            "(only one version is kept); an image takes the name of the run. On an error the original is " +
-            "untouched: <b>Retry</b> or <b>Abandon</b>, abandoned after 3 failed attempts.</p>" +
-            "<p>A file that goes to <b>Archives</b> is named <b>yyyyMMdd_HHmmss_name.ext</b> (date of the " +
-            "archiving, <b>(2)</b>-like numbers removed; a name already taken gets the next second). Coming back " +
-            "from Archives, it takes its name again without the date.</p>" +
-            "<p>Duplicates: the <b>Archives</b> folder of 08.Images, 10.Son, 12.Video and 14.Video-Audio is read " +
-            "(even when the folder itself is empty) and its files are compared by SHA256. When identical copies " +
-            "are found, " + iconBadge(DUP_ICON, BELL_ORANGE) + " appears right of the bell. It opens the window " +
-            "<b>Duplicates</b>: one thumbnail per group with its number of copies and a check box; click a " +
-            "thumbnail to see all its copies below (number, total size, size freed). One copy always stays in " +
-            "Archives (a dated name without <b>(x)</b>, then a name without <b>(2)</b> or <b>_02</b>, otherwise the " +
-            "oldest); after the deletion it is named <b>yyyyMMdd_HHmmss_name.ext</b> (its date kept, or the date " +
-            "of the file added instead of the <b>(x)</b>). <b>Delete (x) file(s)</b> " +
-            "(at least one box checked) asks <b>Cancel</b>, <b>Move to Recycle Bin</b> (Windows) or <b>Delete " +
-            "permanently</b>; groups without duplicates then leave the window.</p>" +
-            hNote("This is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
-                "ignores the content of the lists of the Reference Loader.") +
-            hNote("A subfolder deleted by mistake is created again when you pick the project.") +
-            hNote("<b>99.Project-Config</b> (configuration of the project, with its <b>Archives</b> folder) is " +
-                "created with the project but has no row in the node.") +
+        html: "<p>Every project is a folder with always the same subfolders. Click a row to open its window.</p>" +
+            hCard("Folders of the project", [
+                [folderBadge("00.Workflows"), "<b>00.Workflows</b>: the workflow of the project and its archives (see <b>Workflow</b>)"],
+                [folderBadge("02.Models"), "<b>02.Models</b>, <b>06.LoRA</b>: the sets of models and LoRA used by the runs (see <b>Sets 02 / 06</b>)"],
+                [folderBadge("04.Prompt"), "<b>04.Prompt</b>: the recorded runs (see <b>Run windows</b>)"],
+                [folderBadge("08.Images"), "<b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b>, <b>14.Video-Audio</b>: the files of the Reference Loader (see <b>Media 08 to 14</b>)"],
+                [folderBadge("40.Rush Videos"), "<b>40.Rush Videos</b>, <b>60.Rush Images</b>: the outputs of the runs (see <b>Run windows</b> and <b>Sorting the rushes</b>)"],
+            ]) +
+            hList([
+                textBadge("Date ↓", INACTIVE_BG) + " at the top of each window: newest first, or oldest first (Date ↑); one setting for all the windows.",
+                "A subfolder deleted by mistake is created again when you pick the project.",
+                "<b>99.Project-Config</b> (configuration of the project, with its <b>Archives</b>) and <b>98.Error</b> " +
+                "(runs in error, moved by Purge) are in the project folder but have no row in the node.",
+            ]) +
             hTip("A project name cannot contain <b>&lt; &gt; : \" / \\ | ? *</b> nor end with a dot."),
+    },
+    {
+        id: "media", title: "Media 08 to 14", icon: FOLDER_ICONS["08.Images"], color: FOLDER_COLORS["08.Images"],
+        html: "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> and <b>14.Video-Audio</b> follow the lists of the " +
+            "Reference Loader.</p>" +
+            hList([
+                "<b>Bell</b>: a reference added or removed in the Reference Loader shows " + iconBadge(WARN_ICON, INACTIVE_BG) +
+                " left of the folder and turns its " + iconBadge(BELL_ICON, BELL_ORANGE) + " orange (also when the folder " +
+                "keeps unused files). Click it: <b>Update</b> copies the new files (the Reference Loader then uses the " +
+                "copies) and moves every unused file to <b>&lt;folder&gt;/Archives</b>; the bell is then grey again. No " +
+                "file is deleted.",
+                "<b>Row</b>: <b>Use: n/x | Orphelins: m | In Archives: y</b> = n files used out of x allowed (08.Images: " +
+                "9 in Ref2VA, 2 in FL2VA; 10, 12, 14: 3), m orphan files (no number, not archived yet, in orange), y " +
+                "files in Archives.",
+                "<b>Click the row</b>: the files in the order of the Reference Loader with their number (<b>F</b> / " +
+                "<b>L</b> = First / Last frame; files without number last, greyed), then the <b>Archives</b> frame. A " +
+                "thumbnail opens the <b>Preview</b> window; <b>Close</b>, Escape or a click outside closes.",
+                "<b>Archives</b>: a file is named <b>yyyyMMdd_HHmmss_name.ext</b> (date of the archiving, " +
+                "<b>(2)</b>-like numbers removed; next second if the name is taken) and gets its name back when it " +
+                "comes out.",
+            ]) +
+            hNote("This is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
+                "ignores the lists of the Reference Loader."),
+    },
+    {
+        id: "duplicates", title: "Duplicates in Archives", icon: DUP_ICON, color: BELL_ORANGE,
+        html: "<p>The <b>Archives</b> of 08.Images, 10.Son, 12.Video and 14.Video-Audio are compared by SHA256 (even " +
+            "when the folder itself is empty). Identical copies show " + iconBadge(DUP_ICON, BELL_ORANGE) +
+            " right of the bell.</p>" +
+            hSteps([
+                "Click it: the <b>Duplicates</b> window shows one thumbnail per group, with its number of copies and a " +
+                "check box.",
+                "Click a thumbnail to see all its copies below (number, total size, size freed).",
+                "<b>Delete (x) file(s)</b> asks <b>Cancel</b>, <b>Move to Recycle Bin</b> (Windows) or <b>Delete " +
+                "permanently</b>.",
+            ]) +
+            hNote("One copy always stays: a dated name without <b>(x)</b>, then a name without <b>(2)</b> or " +
+                "<b>_02</b>, otherwise the oldest. It is then named <b>yyyyMMdd_HHmmss_name.ext</b>. Groups without " +
+                "duplicates leave the window."),
+    },
+    {
+        id: "runwindows", title: "Run windows (04, 40, 60)", icon: FOLDER_ICONS["04.Prompt"], color: FOLDER_COLORS["04.Prompt"],
+        html: "<p>Once runs are recorded, the rows of 04.Prompt, 40.Rush Videos and 60.Rush Images show <b>Last run: " +
+            "dd/MM/yyyy hh:mm:ss | Runs: n</b> (40: runs with a video, 60: runs with an image).</p>" +
+            hList([
+                "<b>04.Prompt</b>: filter <b>All / Video / Image</b>, list of the runs, then the thumbnail of the " +
+                "output (‹ › when there are several).",
+                "<b>40.Rush Videos</b> / <b>60.Rush Images</b>: the videos (copies) or images (originals) named by the " +
+                "runs, scrolling sideways.",
+                "<b>Configuration</b>: date, mode, Steps, CFG, Seed, status, size of the video, folder of the " +
+                "<b>Original</b>. Under it, the folded blocks <b>Models</b> and <b>LoRA</b>: what the run really used " +
+                "(chosen branch of a switch, active LoRA), one open at a time.",
+                "<b>Prompt</b>: its text; the copy icon at the top left copies it to the clipboard.",
+                "<b>Retrieve the workflow</b> (under the thumbnail): opens the workflow of the run in a new tab " +
+                "(<b>00.Workflows/Run</b>, or the one kept in its PNG / video for an older run; greyed when there is none).",
+                "A thumbnail opens the <b>Preview</b> window (the same thumbnail closes it); ✕, Escape or a click " +
+                "outside closes the window.",
+            ]) +
+            hNote("At the end of a recorded run, its models and LoRA go into the registries " +
+                "<b>02.Models/yyyyMMdd_HHmmss_models.json</b> and <b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (a known set " +
+                "keeps its index, a new one gets the next) and the run keeps their indices.") +
+            hNote(textBadge("Purge", PURGE_RED) + " deletes the runs still marked running while no run is in progress " +
+                "and moves the runs in error to <b>98.Error</b>; their files stay in place."),
+    },
+    {
+        id: "rushsort", title: "Sorting the rushes", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
+        html: "<p><b>40.Rush Videos</b> and <b>60.Rush Images</b> each have three folders: <b>Rejected</b>, " +
+            "<b>Validated</b> and <b>Footage</b>. The copies of the runs go to <b>Footage</b> (files of older runs left " +
+            "in the root are put there when the window opens).</p>" +
+            hCard("Dot of each thumbnail", [
+                [helpDot("#e53935"), "Rejected"],
+                [helpDot("#7ee081"), "Validated"],
+                [helpDot("#fb8c00"), "Footage"],
+                [helpDot("#8a8a8a"), "the original is outside the project"],
+            ]) +
+            hList([
+                "Under the image (04, 40, 60), <b>Reject</b> / <b>Validate</b> / <b>Footage</b> move the file into that " +
+                "folder; the button of its current folder is greyed.",
+                "From outside the project, the three buttons bring the original back after a confirmation: copy, " +
+                "SHA256 check, then the original is deleted. A video replaces its reduced copy; an image takes the " +
+                "name of the run.",
+                "On an error the original is untouched: <b>Retry</b> or <b>Abandon</b> (abandoned after 3 failed attempts).",
+            ]),
+    },
+    {
+        id: "sets", title: "Sets 02 / 06", icon: FOLDER_ICONS["02.Models"], color: FOLDER_COLORS["02.Models"],
+        html: "<p>The rows of 02.Models and 06.LoRA show <b>Sets: n | Last run: dd/MM/yyyy hh:mm:ss</b>. Click one:</p>" +
+            hList([
+                "<b>Left</b>: one card per set of the registry (number, files, number of runs, last run).",
+                "<b>Right</b>: the prompts of the selected set, identical texts grouped in one card (last run, number " +
+                "of runs); the blue " + iconBadge(EYE_ICON, "#3b82f6") + " opens the runs of this prompt.",
+                "<b>Under the sets</b>: the other side of the selected prompt (its LoRA from 02.Models, its models " +
+                "from 06.LoRA).",
+            ]),
     },
     {
         id: "where", title: "Where projects go", icon: GEAR_ICON, color: VIOLET,
@@ -405,89 +439,119 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "folders", title: "Dossiers du projet",
-        html: "<p>Chaque projet est un dossier avec toujours les mêmes sous-dossiers :</p>" +
-            folderBadges() +
-            "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> et <b>14.Video-Audio</b> suivent les listes du " +
-            "Reference Loader. Quand une référence y est ajoutée ou retirée, " + iconBadge(WARN_ICON, INACTIVE_BG) +
-            " apparaît à gauche du dossier et sa " + iconBadge(BELL_ICON, BELL_ORANGE) + " passe à l'orange. Cliquez " +
-            "sur la cloche : la fenêtre liste les fichiers à copier et les références retirées, et <b>Update</b> " +
-            "copie les nouveaux fichiers (le Reference Loader utilise ensuite les copies) et déplace dans " +
-            "<b>&lt;dossier&gt;/Archives</b> chaque fichier du dossier qu'aucune liste du Reference Loader n'utilise " +
-            "plus (références retirées comprises) : aucun fichier n'est effacé, et ils ne s'affichent plus dans la " +
-            "galerie du projet. La cloche passe aussi à l'orange quand le dossier garde de tels fichiers " +
-            "inutilisés. Ensuite la cloche redevient grise et le sigle disparaît.</p>" +
-            "<p>La ligne de 08.Images, 10.Son, 12.Video et 14.Video-Audio affiche <b>Use: n/x | Orphelins: m | " +
-            "In Archives: y</b> : n fichiers du dossier sont utilisés par le Reference Loader sur x, le maximum " +
-            "qu'il accepte pour ce dossier (08.Images : 9 en Ref2VA, 2 en FL2VA = première + dernière image ; " +
-            "10.Son, 12.Video, 14.Video-Audio : 3), m fichiers " +
-            "orphelins (sans numéro, pas encore archivés ; en orange, disparaît une fois archivés par Update), y " +
-            "fichiers dans Archives.</p>" +
-            "<p>Cliquez sur le bouton de 08.Images, 10.Son, 12.Video ou 14.Video-Audio pour voir le dossier " +
-            "(visualisation seulement, <b>Close</b>, Échap ou un clic à côté la ferme) : d'abord ses fichiers, " +
-            "dans l'ordre du Reference Loader avec leur numéro (<b>F</b> / <b>L</b> = First / Last frame ; les " +
-            "fichiers sans numéro à la fin, grisés), puis un cadre avec les fichiers d'<b>Archives</b> ; les deux " +
-            "lignes défilent horizontalement. Cliquez sur une vignette pour la voir en grand dans la fenêtre " +
-            "<b>Preview</b>.</p>" +
-            "<p>Les lignes de 04.Prompt, 40.Rush Videos et 60.Rush Images affichent <b>Last run: dd/MM/yyyy " +
-            "hh:mm:ss | Runs: n</b> dès qu'un Run est enregistré (40 : Runs avec une vidéo, 60 : Runs avec une " +
-            "image). Clic sur <b>04.Prompt</b> : un filtre <b>All / Video / Image</b> et la liste des Runs (le plus " +
-            "récent d'abord), puis un cadre <b>Configuration</b> (date, mode, Steps, CFG, Seed, status, taille de " +
-            "la vidéo, dossier de l'<b>Original</b>), le texte du <b>Prompt</b> et une vignette de la sortie (‹ › " +
-            "s'il y en a plusieurs). Clic sur <b>40.Rush Videos</b> ou <b>60.Rush Images</b> : les vidéos (copies " +
-            "de 40.Rush Videos) ou les images (originaux) citées dans les JSON des Runs, la plus récente à gauche, " +
-            "défilement horizontal ; en dessous, la Configuration et le Prompt du Run de la vignette choisie. À la fin " +
-            "d'un Run enregistré, les modèles et les LoRA vont dans les registres <b>02.Models/yyyyMMdd_HHmmss_models.json</b> " +
-            "et <b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (un ensemble connu garde son indice, un nouveau prend " +
-            "l'indice suivant) et le JSON du Run garde leurs indices. Sous la " +
-            "Configuration, deux blocs repliés <b>Models</b> et <b>LoRA</b> (nombre entre parenthèses) : un clic en " +
-            "déplie un (l'autre se replie) et affiche le modèle de diffusion, l'encodeur de texte et les VAE, ou les " +
-            "LoRA avec leur force, captés au lancement du Run (seulement ce que le Run utilise : branche choisie d'un " +
-            "switch, LoRA actives de LoraManager) ; les deux se replient quand un autre Run est affiché (l'icône " +
-            "de copie en haut à gauche du cadre Prompt copie son texte dans le presse-papiers, prêt à coller dans " +
-            "votre nœud de prompt). Clic " +
-            "sur une vignette = fenêtre <b>Preview</b> (la même vignette la referme) ; ✕, Échap ou un clic à côté " +
-            "ferme la fenêtre. Sous la vignette, <b>Retrieve the workflow</b> ouvre dans un nouvel onglet le " +
-            "workflow du Run, tel qu'au clic sur Run (<b>00.Workflows/Run</b>, même nom que le JSON du Run) ; pour " +
-            "un Run plus ancien, il cherche le workflow gardé dans ses rendus (PNG, vidéo de Video Helper Suite), " +
-            "grisé s'il n'y en a pas.</p>" +
-            "<p>Les lignes de 02.Models et 06.LoRA affichent <b>Sets: n | Last run: dd/MM/yyyy hh:mm:ss</b>. Clic " +
-            "sur <b>02.Models</b> ou <b>06.LoRA</b> : à gauche, une carte par ensemble du registre (numéro, " +
-            "fichiers, nombre de Runs, dernier Run) ; à droite, les prompts de l'ensemble choisi, les textes " +
-            "identiques regroupés en une carte (dernier Run, nombre de Runs) ; l'œil bleu ouvre les Runs de ce " +
-            "prompt (Configuration, vignette, Retrieve the workflow). Sous les ensembles, l'autre côté du prompt " +
-            "choisi : ses LoRA depuis 02.Models, ses modèles depuis 06.LoRA.</p>" +
-            "<p><b>40.Rush Videos</b> et <b>60.Rush Images</b> ont chacun trois dossiers : <b>Rejected</b>, " +
-            "<b>Validated</b> et <b>Footage</b>. Les copies des Runs vont dans <b>Footage</b> ; les fichiers " +
-            "d'anciens Runs restés à la racine de 40 / 60 y sont rangés à l'ouverture de la fenêtre. Sous " +
-            "l'image (04, 40, 60), <b>Reject</b> / <b>Validate</b> / <b>Footage</b> déplacent le fichier dans ce " +
-            "dossier ; le bouton de son dossier actuel est grisé. Chaque vignette a une pastille : <b " +
-            "style=\"color:#e53935\">rouge</b> = Rejected, <b style=\"color:#7ee081\">vert clair</b> = " +
-            "Validated, <b style=\"color:#fb8c00\">orange</b> = Footage, <b style=\"color:#8a8a8a\">grise</b> = " +
-            "l'original est hors du projet. De l'extérieur, les trois boutons le rapatrient (après confirmation) " +
-            "en 3 temps : copie dans le dossier, comparaison SHA256 de la copie, puis suppression de l'original. " +
-            "Une vidéo remplace sa copie réduite (une seule version gardée) ; une image prend le nom du Run. En " +
-            "cas d'erreur l'original n'est pas touché : <b>Retry</b> ou <b>Abandon</b>, abandon après 3 échecs.</p>" +
-            "<p>Un fichier qui part dans <b>Archives</b> est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> (date de " +
-            "l'archivage, numéros du type <b>(2)</b> retirés ; un nom déjà pris prend la seconde suivante). En " +
-            "revenant d'Archives, il reprend son nom sans la date.</p>" +
-            "<p>Doublons : le dossier <b>Archives</b> de 08.Images, 10.Son, 12.Video et 14.Video-Audio est lu " +
-            "(même quand le dossier lui-même est vide) et ses fichiers sont comparés par SHA256. Quand des copies " +
-            "identiques sont trouvées, " + iconBadge(DUP_ICON, BELL_ORANGE) + " apparaît à droite de la cloche. Il " +
-            "ouvre la fenêtre <b>Duplicates</b> : une vignette par groupe avec son nombre de copies et une case à " +
-            "cocher ; cliquez sur une vignette pour voir toutes ses copies en dessous (nombre, taille totale, place " +
-            "libérée). Un exemplaire reste toujours dans Archives (un nom daté sans <b>(x)</b>, puis un nom sans " +
-            "<b>(2)</b> ni <b>_02</b>, sinon le plus ancien) ; après la suppression il est nommé " +
-            "<b>yyyyMMdd_HHmmss_nom.ext</b> (sa date gardée, ou la date du fichier ajoutée à la place des " +
-            "<b>(x)</b>). <b>Delete (x) file(s)</b> (au moins une case cochée) demande <b>Cancel</b>, <b>Move to " +
-            "Recycle Bin</b> (Windows) ou <b>Delete permanently</b> ; les groupes sans doublon quittent ensuite la " +
-            "fenêtre.</p>" +
-            hNote("Ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
-                "00.Workflows ignore le contenu des listes du Reference Loader.", "Remarque :") +
-            hNote("Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet.", "Remarque :") +
-            hNote("<b>99.Project-Config</b> (configuration du projet, avec son dossier <b>Archives</b>) est créé " +
-                "avec le projet mais n'a pas de ligne dans le nœud.", "Remarque :") +
+        html: "<p>Chaque projet est un dossier avec toujours les mêmes sous-dossiers. Cliquez sur une ligne pour " +
+            "ouvrir sa fenêtre.</p>" +
+            hCard("Dossiers du projet", [
+                [folderBadge("00.Workflows"), "<b>00.Workflows</b> : le workflow du projet et ses archives (voir <b>Workflow</b>)"],
+                [folderBadge("02.Models"), "<b>02.Models</b>, <b>06.LoRA</b> : les ensembles de modèles et de LoRA utilisés par les Runs (voir <b>Ensembles 02 / 06</b>)"],
+                [folderBadge("04.Prompt"), "<b>04.Prompt</b> : les Runs enregistrés (voir <b>Fenêtres des Runs</b>)"],
+                [folderBadge("08.Images"), "<b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b>, <b>14.Video-Audio</b> : les fichiers du Reference Loader (voir <b>Médias 08 à 14</b>)"],
+                [folderBadge("40.Rush Videos"), "<b>40.Rush Videos</b>, <b>60.Rush Images</b> : les sorties des Runs (voir <b>Fenêtres des Runs</b> et <b>Tri des rushs</b>)"],
+            ]) +
+            hList([
+                textBadge("Date ↓", INACTIVE_BG) + " en haut de chaque fenêtre : plus récent d'abord, ou plus ancien " +
+                "d'abord (Date ↑) ; un seul réglage pour toutes les fenêtres.",
+                "Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet.",
+                "<b>99.Project-Config</b> (configuration du projet, avec son <b>Archives</b>) et <b>98.Error</b> (Runs " +
+                "en erreur, déplacés par Purge) sont dans le dossier du projet mais n'ont pas de ligne dans le nœud.",
+            ]) +
             hTip("Un nom de projet ne peut pas contenir <b>&lt; &gt; : \" / \\ | ? *</b> ni finir par un point.",
                 "Astuce :"),
+    },
+    {
+        id: "media", title: "Médias 08 à 14",
+        html: "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> et <b>14.Video-Audio</b> suivent les listes du " +
+            "Reference Loader.</p>" +
+            hList([
+                "<b>Cloche</b> : une référence ajoutée ou retirée dans le Reference Loader affiche " +
+                iconBadge(WARN_ICON, INACTIVE_BG) + " à gauche du dossier et passe sa " + iconBadge(BELL_ICON, BELL_ORANGE) +
+                " à l'orange (aussi quand le dossier garde des fichiers inutilisés). Cliquez dessus : <b>Update</b> " +
+                "copie les nouveaux fichiers (le Reference Loader utilise ensuite les copies) et déplace chaque fichier " +
+                "inutilisé dans <b>&lt;dossier&gt;/Archives</b> ; la cloche redevient grise. Aucun fichier n'est effacé.",
+                "<b>Ligne</b> : <b>Use: n/x | Orphelins: m | In Archives: y</b> = n fichiers utilisés sur x permis " +
+                "(08.Images : 9 en Ref2VA, 2 en FL2VA ; 10, 12, 14 : 3), m fichiers orphelins (sans numéro, pas encore " +
+                "archivés, en orange), y fichiers dans Archives.",
+                "<b>Clic sur la ligne</b> : les fichiers dans l'ordre du Reference Loader avec leur numéro (<b>F</b> / " +
+                "<b>L</b> = First / Last frame ; sans numéro à la fin, grisés), puis le cadre <b>Archives</b>. Une " +
+                "vignette ouvre la fenêtre <b>Preview</b> ; <b>Close</b>, Échap ou un clic à côté ferme.",
+                "<b>Archives</b> : un fichier est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> (date de l'archivage, numéros " +
+                "du type <b>(2)</b> retirés ; seconde suivante si le nom est pris) et reprend son nom en sortant.",
+            ]) +
+            hNote("Ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
+                "00.Workflows ignore les listes du Reference Loader.", "Remarque :"),
+    },
+    {
+        id: "duplicates", title: "Doublons d'Archives",
+        html: "<p>Les <b>Archives</b> de 08.Images, 10.Son, 12.Video et 14.Video-Audio sont comparées par SHA256 " +
+            "(même quand le dossier lui-même est vide). Des copies identiques affichent " + iconBadge(DUP_ICON, BELL_ORANGE) +
+            " à droite de la cloche.</p>" +
+            hSteps([
+                "Cliquez dessus : la fenêtre <b>Duplicates</b> montre une vignette par groupe, avec son nombre de " +
+                "copies et une case à cocher.",
+                "Cliquez sur une vignette pour voir toutes ses copies en dessous (nombre, taille totale, place libérée).",
+                "<b>Delete (x) file(s)</b> demande <b>Cancel</b>, <b>Move to Recycle Bin</b> (Windows) ou <b>Delete " +
+                "permanently</b>.",
+            ]) +
+            hNote("Un exemplaire reste toujours : un nom daté sans <b>(x)</b>, puis un nom sans <b>(2)</b> ni " +
+                "<b>_02</b>, sinon le plus ancien. Il est ensuite nommé <b>yyyyMMdd_HHmmss_nom.ext</b>. Les groupes " +
+                "sans doublon quittent la fenêtre.", "Remarque :"),
+    },
+    {
+        id: "runwindows", title: "Fenêtres des Runs (04, 40, 60)",
+        html: "<p>Dès qu'un Run est enregistré, les lignes de 04.Prompt, 40.Rush Videos et 60.Rush Images affichent " +
+            "<b>Last run: dd/MM/yyyy hh:mm:ss | Runs: n</b> (40 : Runs avec une vidéo, 60 : Runs avec une image).</p>" +
+            hList([
+                "<b>04.Prompt</b> : filtre <b>All / Video / Image</b>, liste des Runs, puis la vignette de la sortie " +
+                "(‹ › s'il y en a plusieurs).",
+                "<b>40.Rush Videos</b> / <b>60.Rush Images</b> : les vidéos (copies) ou les images (originaux) citées " +
+                "par les Runs, défilement horizontal.",
+                "<b>Configuration</b> : date, mode, Steps, CFG, Seed, status, taille de la vidéo, dossier de " +
+                "l'<b>Original</b>. En dessous, les blocs repliés <b>Models</b> et <b>LoRA</b> : ce que le Run a " +
+                "vraiment utilisé (branche choisie d'un switch, LoRA actives), un seul ouvert à la fois.",
+                "<b>Prompt</b> : son texte ; l'icône de copie en haut à gauche le copie dans le presse-papiers.",
+                "<b>Retrieve the workflow</b> (sous la vignette) : ouvre le workflow du Run dans un nouvel onglet " +
+                "(<b>00.Workflows/Run</b>, ou celui gardé dans son PNG / sa vidéo pour un ancien Run ; grisé s'il n'y " +
+                "en a pas).",
+                "Une vignette ouvre la fenêtre <b>Preview</b> (la même vignette la referme) ; ✕, Échap ou un clic à " +
+                "côté ferme la fenêtre.",
+            ]) +
+            hNote("À la fin d'un Run enregistré, ses modèles et LoRA vont dans les registres " +
+                "<b>02.Models/yyyyMMdd_HHmmss_models.json</b> et <b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (un ensemble " +
+                "connu garde son indice, un nouveau prend le suivant) et le Run garde leurs indices.", "Remarque :") +
+            hNote(textBadge("Purge", PURGE_RED) + " supprime les Runs encore marqués running alors qu'aucun Run ne " +
+                "tourne et déplace les Runs en erreur dans <b>98.Error</b> ; leurs fichiers restent en place.", "Remarque :"),
+    },
+    {
+        id: "rushsort", title: "Tri des rushs",
+        html: "<p><b>40.Rush Videos</b> et <b>60.Rush Images</b> ont chacun trois dossiers : <b>Rejected</b>, " +
+            "<b>Validated</b> et <b>Footage</b>. Les copies des Runs vont dans <b>Footage</b> (les fichiers d'anciens " +
+            "Runs restés à la racine y sont rangés à l'ouverture de la fenêtre).</p>" +
+            hCard("Pastille de chaque vignette", [
+                [helpDot("#e53935"), "Rejected"],
+                [helpDot("#7ee081"), "Validated"],
+                [helpDot("#fb8c00"), "Footage"],
+                [helpDot("#8a8a8a"), "l'original est hors du projet"],
+            ]) +
+            hList([
+                "Sous l'image (04, 40, 60), <b>Reject</b> / <b>Validate</b> / <b>Footage</b> déplacent le fichier dans " +
+                "ce dossier ; le bouton de son dossier actuel est grisé.",
+                "Hors du projet, les trois boutons rapatrient l'original après confirmation : copie, comparaison " +
+                "SHA256, puis suppression de l'original. Une vidéo remplace sa copie réduite ; une image prend le nom " +
+                "du Run.",
+                "En cas d'erreur l'original n'est pas touché : <b>Retry</b> ou <b>Abandon</b> (abandon après 3 échecs).",
+            ]),
+    },
+    {
+        id: "sets", title: "Ensembles 02 / 06",
+        html: "<p>Les lignes de 02.Models et 06.LoRA affichent <b>Sets: n | Last run: dd/MM/yyyy hh:mm:ss</b>. " +
+            "Cliquez sur l'une d'elles :</p>" +
+            hList([
+                "<b>À gauche</b> : une carte par ensemble du registre (numéro, fichiers, nombre de Runs, dernier Run).",
+                "<b>À droite</b> : les prompts de l'ensemble choisi, les textes identiques regroupés en une carte " +
+                "(dernier Run, nombre de Runs) ; l'" + iconBadge(EYE_ICON, "#3b82f6") + " bleu ouvre les Runs de ce prompt.",
+                "<b>Sous les ensembles</b> : l'autre côté du prompt choisi (ses LoRA depuis 02.Models, ses modèles " +
+                "depuis 06.LoRA).",
+            ]),
     },
     {
         id: "where", title: "Où vont les projets",
