@@ -5,11 +5,65 @@
 [![license](https://img.shields.io/badge/license-MIT-007ec6)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows%20%28tested%29-5c6b8a)](#compatibility)
 
-ComfyUI custom node that loads the references of the native **MiniMax H3 Reference to Video** node, picked in thumbnail galleries.
+**Two ComfyUI custom nodes for the native MiniMax H3 models:** pick your references in thumbnail galleries, then keep every project, run and rush organised.
 
 <p align="center">
   <img src="assets/screenshot.webp" alt="MiniMax H3 Reference Loader node with its project overview and preview windows" width="960">
 </p>
+
+## Highlights
+
+| Feature | What it does |
+|---|---|
+| 🖼️ **Thumbnail galleries** | Images, videos, video soundtracks and audio, with a large preview |
+| 🔢 **Click order = number** | The first image clicked is `ref_image_1`, i.e. `<Picture 1>` in the prompt; a warning lists the references that change number |
+| 🔁 **Two modes** | **Ref2VA** (Reference to Video) and **F2VA / FL2VA** (first and last frame) |
+| ✂️ **Trim** | Videos and audio are trimmed at the output; your files are never changed |
+| 📁 **Projects** | Fixed folders per project, Save / Load with SHA256 checks and archives |
+| 🎬 **Run record** | Each run keeps its prompt, CFG, steps, seed, models, LoRA and workflow |
+| 🗂️ **Rush sorting** | Reject / Validate / Footage, coloured dots, filter and date order |
+| 🌍 **Help & compatibility** | Built-in help in English and French; classic nodes and Nodes 2.0 |
+
+## Quick start
+
+1. Copy this folder into `ComfyUI/custom_nodes/` and restart ComfyUI.
+2. Add **MiniMax H3 Reference Loader**, click a row (Images, Video…) and pick files in the gallery. Wire its outputs in order to **MiniMax H3 Reference to Video** (`ref_image_1` → `ref_image_0`, and so on).
+3. Optional: add **MiniMax H3 Project**, wire the `project` output of the Reference Loader to its `project` input, then click **+** to create a project. Wire your final prompt to `text_prompt` to record every run.
+
+## MiniMax H3 Reference Loader
+
+<p align="center">
+  <img src="assets/ref-node.webp" alt="The Reference Loader node in Ref2VA and F2VA / FL2VA modes" width="640">
+</p>
+
+- **One row per kind** of reference: Images (up to 9), Video (3), Video/Audio (3 soundtracks), Audio (3); or First frame and Last frame.
+- **A row button opens the gallery** of your root folder and its subfolders; with a project wired, the project folder shows below the line.
+- **The eye button shows the selection** in order: reorder, delete, inspect, preview and trim.
+- **Save / load** the selection of each mode as a `.json` file; the root folder (gear) points to your rushes.
+- Windows open next to the node and can be moved by their title bar.
+
+<p align="center">
+  <img src="assets/ref-gallery-images.webp" alt="Image gallery with the project folder below the line"><br>
+  <sub>Gallery: pick images; the project folder shows below the line</sub>
+</p>
+
+<p align="center">
+  <img src="assets/ref-gallery-videos.webp" alt="Video gallery with a large preview"><br>
+  <sub>Videos with their duration and a large preview</sub>
+</p>
+
+<p align="center">
+  <img src="assets/ref-selection-images.webp" alt="Selection window of the images"><br>
+  <sub>Eye button: reorder, inspect and preview the selection</sub>
+</p>
+
+<p align="center">
+  <img src="assets/ref-selection-video.webp" alt="Selection window of a video with the trim bar"><br>
+  <sub>Trim a video or an audio file without changing it</sub>
+</p>
+
+<details>
+<summary><b>Full details of the Reference Loader</b></summary>
 
 - A switch at the top chooses the mode: **Ref2VA** (references for MiniMax H3 Reference to Video, the rows below) or **F2VA / FL2VA** (a **First frame** and an optional **Last frame**, images only, on the outputs `first_frame` and `last_frame` for MiniMax H3 Image to Video; without a last frame MiniMax does F2VA). Each mode keeps its own selection and outputs; switching back reconnects the wires of that mode when their target is still there and free.
 - **Images** (up to 9), **Video** (up to 3), **Video/Audio** (up to 3 video soundtracks), **Audio** (up to 3).
@@ -55,9 +109,42 @@ ComfyUI custom node that loads the references of the native **MiniMax H3 Referen
 - The **?** button opens the help: a menu of sections on the left (Quick start, Modes, Picking files, Gallery with a project, Replace a file of the project, Closing the gallery of a project, Selection, Trim, Overview, Save and load, Outputs, Limits), one section at a time on the right, a search field that filters the sections and highlights the words, and Previous / Next links (or the ← → keys). It reopens on the last section viewed. The help is in English or French: the globe button in its header opens the language list; by default it follows the ComfyUI language (then the browser's), and the choice is remembered. The search ignores accents and case.
 - Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most; audio is cut to 15 s.
 
+</details>
+
 ## MiniMax H3 Project node
 
-A second node of this pack, **MiniMax H3 Project** (`loaders/minimax`), creates and picks project folders in the root folder of the Reference Loader:
+<p align="center">
+  <img src="assets/project-node.webp" alt="The Project node with one row per project folder" width="420">
+</p>
+
+- **The `project` input is required:** wire the last output of the Reference Loader; projects are created in its root folder.
+- **One row per folder** of the project (`00.Workflows` … `60.Rush Images`), with its status and a window behind each button.
+- **Save / Load** copy the references into the project, save the workflow and its configuration, and check every file (SHA256) when loading.
+- **Every run is recorded** in `04.Prompt` (prompt, settings, models, LoRA, workflow); videos are copied to `40.Rush Videos`.
+- **Sort the rushes** with Reject / Validate / Footage, coloured dots, a filter by colour and the date order; **Purge** cleans unfinished runs.
+
+<p align="center">
+  <img src="assets/project-runs.webp" alt="LoRA sets and runs windows of the Project node"><br>
+  <sub>Runs: configuration, models, LoRA, prompt and output of each run</sub>
+</p>
+
+<p align="center">
+  <img src="assets/project-models.webp" alt="Model sets of the Project node"><br>
+  <sub>02.Models: the model sets used by the runs and their prompts</sub>
+</p>
+
+<p align="center">
+  <img src="assets/project-rushes.webp" alt="Rush videos window with the filter by colour"><br>
+  <sub>40.Rush Videos: Reject, Validate or Footage, grouped by colour</sub>
+</p>
+
+<p align="center">
+  <img src="assets/project-folder.webp" alt="Images folder of the project with its Archives"><br>
+  <sub>08.Images: files in the order of the Reference Loader, then Archives</sub>
+</p>
+
+<details>
+<summary><b>Full details of the Project node</b></summary>
 
 - The Reference Loader has a **project** output, always its last output (in both modes): it gives its root folder (gear button). Wire it to the **project** input of the Project node: this input is **required** (without it the node is greyed and ComfyUI refuses the run).
 - Click **+**: a window shows where the project goes and asks for the name. With a root folder in the Reference Loader, the project goes there. With an empty root folder, you choose the projects folder (type it or Browse), with the fallback folder `ComfyUI/input/Projets` filled in; the folder chosen is then kept as the root folder of the Reference Loader. The window warns when the folder does not exist yet (it is then created). **Create** makes the project folder with `00.Workflows`, `02.Models`, `04.Prompt`, `06.LoRA`, `08.Images`, `10.Son`, `12.Video`, `14.Video-Audio`, `40.Rush Videos` and `60.Rush Images`, plus `99.Project-Config` (configuration of the project, with its `Archives` folder; no row in the node).
@@ -75,6 +162,16 @@ A second node of this pack, **MiniMax H3 Project** (`loaders/minimax`), creates 
 - Under the list, one row per folder of the project, with its own icon and colour (bells on 00.Workflows and on 08.Images to 14.Video-Audio; the other rows keep their place, so all the folder buttons have the same width and line up); greyed until a project is picked, the tooltip gives the folder path.
 - Or pick an existing project in the drop-down list; a missing subfolder is created again. Change the root folder of the Reference Loader and the list follows.
 
+</details>
+
+### Built-in help
+
+<p align="center">
+  <img src="assets/ref-help.webp" alt="Help of the Reference Loader" width="49%">
+  <img src="assets/project-help.webp" alt="Help of the Project node" width="49%"><br>
+  <sub>Reference Loader help (English or French, with search) · Project node help</sub>
+</p>
+
 ## Compatibility
 
 Works with the classic node design and with **Modern Node Design (Nodes 2.0)**: in both, output names can be renamed by double-click (or the right-click menu) and paired outputs share their colour.
@@ -85,12 +182,15 @@ Tested on Windows only. On Linux and macOS the Browse button is not available (t
 
 Copy this folder into `ComfyUI/custom_nodes/` and restart ComfyUI. No extra dependency (uses PyAV, Pillow and torch shipped with ComfyUI). The **Browse** button opens the Windows folder dialog; on other systems type or paste the folder path.
 
-## Tests
+<details>
+<summary><b>Tests</b></summary>
 
 ```
 python -m unittest discover -s tests -v
 node --test tests/test_config_format.mjs tests/test_config_json.mjs tests/test_help_search.mjs tests/test_project_paths.mjs tests/test_ref_order.mjs tests/test_workflow_diff.mjs
 ```
+
+</details>
 
 ## Credits
 
@@ -99,4 +199,4 @@ node --test tests/test_config_format.mjs tests/test_config_json.mjs tests/test_h
 
 ## License
 
-Code and documentation: MIT, © 2026 marche-obscure. Images in `assets/` (if any) are all rights reserved. Third-party code: see the end of [LICENSE](LICENSE).
+Code and documentation: MIT, © 2026 marche-obscure. Images in `assets/` are © 2026 marche-obscure, all rights reserved (the media shown in them are blurred on purpose). Third-party code: see the end of [LICENSE](LICENSE).
