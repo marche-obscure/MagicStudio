@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
+import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
 import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState } from "./project_paths.js";
 
@@ -319,6 +320,10 @@ const HELP_SECTIONS = [
             iconBadge(TRASH_ICON, MARK_RED) + "); <b>Delete</b> removes the marked files after a confirmation.",
             "The following files move up (ref 4 becomes ref 3...) and the last output, now empty, is removed.",
         ]) +
+        hTip("In <b>Ref2VA</b>, a file that changes number also changes in the prompt (<b>&lt;Picture N&gt;</b>, " +
+            "<b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>): when a window closes (gallery, selection), after " +
+            "Load or the trash, the window <b>Order of the references changed</b> lists the old and new numbers; " +
+            "update your prompt. Adding at the end or replacing a file at its place does not show it.") +
         hNote("the " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
             " on the node deletes <b>all</b> the files of its row, after a confirmation."),
     },
@@ -550,6 +555,11 @@ const HELP_SECTIONS_FR = [
             "Les fichiers suivants remontent (la réf 4 devient la réf 3...) et la dernière sortie, devenue " +
             "vide, est retirée.",
         ]) +
+        hTip("En <b>Ref2VA</b>, un fichier qui change de numéro change aussi dans le prompt (<b>&lt;Picture " +
+            "N&gt;</b>, <b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>) : à la fermeture d'une fenêtre (galerie, " +
+            "sélection), après Load ou la poubelle, la fenêtre <b>Order of the references changed</b> liste les " +
+            "anciens et nouveaux numéros ; mettez votre prompt à jour. Un ajout à la fin ou un remplacement à sa " +
+            "place ne l'affiche pas.", TIP_FR) +
         hNote("la " + iconBadge(TRASH_ICON, MARK_RED) + " à côté de " + iconBadge(EYE_ICON, VIOLET) +
             " sur le nœud supprime <b>tous</b> les fichiers de sa ligne, après confirmation.", NOTE_FR),
     },
@@ -1930,6 +1940,99 @@ function buildChoiceDialog() {
 // --------------------------------------------------------------------
 // Galerie de selection (une seule fenetre, reutilisee pour les 3 types)
 // --------------------------------------------------------------------
+// --------------------------------------------------------------------
+// Avertissement d'ordre (choix utilisateur, 19/10/2026) : en Ref2VA, un fichier
+// garde qui change de numero change son jeton <Picture N> / <Video N> /
+// <Audio N> dans le prompt. Montre a la fermeture d'une fenetre (galerie,
+// selection), apres Load ou la poubelle d'une ligne ; un seul bouton OK.
+// --------------------------------------------------------------------
+function buildOrderWarning(container) {
+    const { overlay, card } = makeOverlay();
+    overlay.style.zIndex = "10004";
+    Object.assign(card.style, {
+        width: "min(520px, 92vw)", maxHeight: "80vh", display: "flex", flexDirection: "column",
+        padding: "12px 14px", gap: "8px", borderColor: ORANGE,
+    });
+    const title = document.createElement("div");
+    title.textContent = "Order of the references changed";
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: ORANGE });
+    const intro = document.createElement("div");
+    intro.innerHTML = "These files now have another number in the <b>Ref2VA</b> prompt. <b>Update your prompt</b>: " +
+        "&lt;Picture N&gt;, &lt;Video N&gt; and &lt;Audio N&gt; follow the new numbers.";
+    intro.style.lineHeight = "1.5";
+    const list = document.createElement("div");
+    Object.assign(list.style, { overflowY: "auto", display: "flex", flexDirection: "column", gap: "4px", minHeight: "0" });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end" });
+    const okBtn = makeTextButton("OK", ORANGE);
+    footer.appendChild(okBtn);
+    card.append(title, intro, list, footer);
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || (e.key !== "Escape" && e.key !== "Enter")) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close();
+    };
+    function close() {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        list.innerHTML = "";
+    }
+    okBtn.addEventListener("click", close);
+    overlay.addEventListener("mousedown", close);
+
+    const row = (c) => {
+        const r = document.createElement("div");
+        Object.assign(r.style, {
+            display: "flex", alignItems: "center", gap: "10px", padding: "4px 6px", background: "#161616",
+            border: "1px solid #2c2c2c", borderRadius: "6px",
+        });
+        const pic = document.createElement("div");
+        Object.assign(pic.style, {
+            width: "44px", height: "32px", flex: "0 0 auto", display: "flex", alignItems: "center",
+            justifyContent: "center", background: "#111", borderRadius: "4px", overflow: "hidden", color: "#888",
+        });
+        if (c.list === "audios" || c.list === "video_audios") {
+            pic.innerHTML = c.list === "audios" ? AUDIO_ICON : VIDEO_AUDIO_ICON;
+        } else {
+            const img = document.createElement("img");
+            img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(dirName(c.path)) + "&file=" +
+                encodeURIComponent(baseName(c.path));
+            Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover" });
+            pic.appendChild(img);
+        }
+        const name = document.createElement("div");
+        name.textContent = baseName(c.path);
+        name.title = c.path;
+        Object.assign(name.style, { flex: "1", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
+        const move = document.createElement("div");
+        move.innerHTML = '<span style="color:#999">' + escapeHtml(c.from) + "</span> → " + (c.to
+            ? '<b style="color:' + ORANGE + '">' + escapeHtml(c.to) + "</b>"
+            : '<span style="color:' + MARK_RED + '">removed</span>');
+        Object.assign(move.style, { flex: "0 0 auto", whiteSpace: "nowrap", fontFamily: "monospace" });
+        r.append(pic, name, move);
+        return r;
+    };
+
+    return {
+        /** Compare deux selections ; montre la fenetre si un fichier garde change de numero. */
+        check(before, after) {
+            const changes = orderChanges(before, after);
+            if (!orderWarningNeeded(changes)) return;
+            list.innerHTML = "";
+            changes.forEach((c) => list.appendChild(row(c)));
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 520);
+        },
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
 function buildGallery(container, ctx) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
@@ -2834,9 +2937,11 @@ function buildGallery(container, ctx) {
     };
 
     function close() {
+        const was = overlay.style.display !== "none";
         sidePreview.hide();
         overlay.style.display = "none";
         window.removeEventListener("keydown", onKey, true);
+        if (was && ctx.onClosed) ctx.onClosed();
     }
 
     /**
@@ -3642,11 +3747,13 @@ function buildSelectionViewer(container, ctx) {
     };
 
     function close() {
+        const was = overlay.style.display !== "none";
         closeConfirm();
         overlay.style.display = "none";
         preview.innerHTML = ""; // arrete une lecture audio en cours
         hideSide();
         window.removeEventListener("keydown", onKey, true);
+        if (was && ctx.onClosed) ctx.onClosed();
     }
 
     closeBtn.addEventListener("click", close);
@@ -3940,12 +4047,18 @@ app.registerExtension({
                     overflow: "hidden", textOverflow: "ellipsis",
                 });
                 btn.append(icon, label, count);
-                btn.addEventListener("click", () => gallery.open(b.kind));
+                btn.addEventListener("click", () => {
+                    watchOrder();
+                    gallery.open(b.kind);
+                });
                 row.appendChild(btn);
 
                 // Oeil : fenetre de la selection (ordre, infos, reorganisation).
                 const eye = makeIconButton(VIOLET, EYE_ICON, "View and reorder the selection");
-                eye.addEventListener("click", () => viewer.open(b.kind));
+                eye.addEventListener("click", () => {
+                    watchOrder();
+                    viewer.open(b.kind);
+                });
                 row.appendChild(eye);
 
                 // Poubelle : vide toute la liste de la ligne, apres confirmation
@@ -3961,8 +4074,10 @@ app.registerExtension({
                         '<div style="color:#999;margin-top:8px">Only ' + outputName(b.kind, 0) + " stays, empty.</div>",
                         "Delete all", () => {
                             const s = getState();
+                            const before = getState();
                             s[LIST_KEYS[b.kind]] = [];
                             setState(s);
+                            orderWarning.check(before, getState());
                         });
                 });
                 row.appendChild(trash);
@@ -4024,8 +4139,20 @@ app.registerExtension({
                     if (t && typeof t.mmResnapFolder === "function") t.mmResnapFolder(folder);
                 }
             };
-            const gallery = buildGallery(container, { getState, setState, getProject, resnapProject });
-            const viewer = buildSelectionViewer(container, { getState, setState });
+            // Ordre des references (Ref2VA) : instantane a l'ouverture d'une fenetre,
+            // compare a sa fermeture (choix utilisateur, 19/10/2026).
+            const orderWarning = buildOrderWarning(container);
+            let orderSnap = null;
+            const watchOrder = () => {
+                orderSnap = getState();
+            };
+            const checkOrder = () => {
+                const before = orderSnap;
+                orderSnap = null;
+                if (before) orderWarning.check(before, getState());
+            };
+            const gallery = buildGallery(container, { getState, setState, getProject, resnapProject, onClosed: checkOrder });
+            const viewer = buildSelectionViewer(container, { getState, setState, onClosed: checkOrder });
             const clearConfirm = buildConfirmDialog(container);
             const rootDialog = buildRootDialog(container, { getState, setState });
             const help = buildHelpOverlay(container);
@@ -4033,7 +4160,7 @@ app.registerExtension({
             helpBtn.addEventListener("click", () => help.open());
             overviewBtn.addEventListener("click", () => overview.open());
             rootBtn.addEventListener("click", () => rootDialog.open());
-            node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview];
+            node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview, orderWarning];
 
             // Une configuration "existe" des qu'une reference est selectionnee ;
             // le dossier racine seul ne compte pas.
@@ -4161,6 +4288,7 @@ app.registerExtension({
                     }
                     // Seule la partie du mode affiche est remplacee ; le mode du
                     // noeud ne change pas. Le dossier racine (commun) est repris.
+                    const before = getState();
                     if (s.root !== conf.root) resetRootSubs(s);
                     s.root = conf.root;
                     let paths;
@@ -4177,6 +4305,7 @@ app.registerExtension({
                         paths = conf.images.concat(conf.videos, conf.video_audios, conf.audios);
                     }
                     setState(s);
+                    orderWarning.check(before, getState());
                     // Fichiers absents du disque : charges quand meme, signales.
                     const missing = [];
                     await Promise.all(paths.map(async (p) => {
