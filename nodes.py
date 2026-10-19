@@ -82,8 +82,9 @@ class MiniMaxH3Project:
     """
     Dossier de projet (00.Workflows ... 60.Rush Images) choisi ou cree dans
     l'interface JS (web/js/project_node.js), dans le Root folder recu du
-    MiniMax H3 Reference Loader (entree "project"), sinon dans
-    <input de ComfyUI>/Projets. Le dossier se gere dans l'interface ; avec
+    MiniMax H3 Reference Loader (entree "project", obligatoire : choix
+    utilisateur 19/10/2026), ou <input de ComfyUI>/Projets si ce Root folder
+    est vide. Le dossier se gere dans l'interface ; avec
     l'entree text_prompt branchee, chaque Run est enregistre dans
     04.Prompt (voir run_record.py). Le noeud n'a pas de sortie.
     """
@@ -93,9 +94,10 @@ class MiniMaxH3Project:
         return {
             "required": {
                 "state": ("STRING", {"default": "{}", "multiline": False}),
+                # Sortie project du Reference Loader : tout l'interet du noeud (choix utilisateur).
+                "project": (PROJECT_TYPE,),
             },
             "optional": {
-                "project": (PROJECT_TYPE,),
                 "text_prompt": ("STRING", {"forceInput": True}),
                 # Sortie model_link de MultiFiles Select (choix utilisateur) : ses champs
                 # donnent les modeles du Run (02.Models), avec leur position.
