@@ -402,6 +402,8 @@ const HELP_SECTIONS = [
             "<b>Browse</b> uses the Windows folder dialog; on other systems type or paste the folder path.",
             "Works with the classic node design and with <b>Modern Node Design (Nodes 2.0)</b>: renaming the " +
             "outputs and the pair colours work in both.",
+            "Every window opens next to the node; drag it by its <b>title bar</b> (✥ cursor) to move it. It stays " +
+            "on the screen, the preview next to it follows, and it opens next to the node again the next time.",
         ]),
     },
 ];
@@ -641,6 +643,9 @@ const HELP_SECTIONS_FR = [
             "le chemin du dossier.",
             "Fonctionne avec le design classique des nœuds et avec <b>Modern Node Design (Nodes 2.0)</b> : le " +
             "renommage des sorties et les couleurs des paires marchent dans les deux.",
+            "Chaque fenêtre s'ouvre à côté du nœud ; tirez-la par sa <b>barre de titre</b> (curseur ✥) pour la " +
+            "déplacer. Elle reste dans l'écran, l'aperçu à côté la suit, et elle se rouvre à côté du nœud la fois " +
+            "suivante.",
         ]),
     },
 ];
@@ -1130,6 +1135,48 @@ function positionCardNextToNode(card, container, maxWidth) {
     card.style.top = top + "px";
 }
 
+/**
+ * Fenetre deplacable (choix utilisateur, 19/10/2026) : placee a l'ouverture
+ * (positionCardNextToNode), puis tiree par sa barre de titre = premier element
+ * de la carte (hors boutons, champs, listes). Elle reste dans l'ecran (titre
+ * toujours visible) ; l'evenement "mm-moved" sur la carte previent les apercus
+ * qui la suivent. Revient a cote du noeud a chaque ouverture.
+ */
+const DRAG_SKIP = "button, input, select, textarea, a, label, video, audio";
+function makeDraggable(card) {
+    const handleOf = (target) => {
+        // Premier element du flux (une fenetre flottante comme la liste des langues ne compte pas).
+        const handle = [...card.children].find((c) => c.style.position !== "absolute" && c.style.position !== "fixed");
+        return handle && handle.contains(target) && !target.closest(DRAG_SKIP) ? handle : null;
+    };
+    card.addEventListener("pointerover", (e) => {
+        const handle = handleOf(e.target);
+        if (handle && !handle.style.cursor) handle.style.cursor = "move";
+    });
+    card.addEventListener("pointerdown", (e) => {
+        const handle = e.button === 0 ? handleOf(e.target) : null;
+        if (!handle) return;
+        e.preventDefault();
+        const r = card.getBoundingClientRect();
+        const dx = e.clientX - r.left;
+        const dy = e.clientY - r.top;
+        const keep = 100; // px du titre toujours visibles
+        const move = (ev) => {
+            const left = Math.max(keep - r.width, Math.min(ev.clientX - dx, window.innerWidth - keep));
+            const top = Math.max(0, Math.min(ev.clientY - dy, window.innerHeight - 40));
+            card.style.left = left + "px";
+            card.style.top = top + "px";
+            card.dispatchEvent(new CustomEvent("mm-moved"));
+        };
+        const up = () => {
+            window.removeEventListener("pointermove", move, true);
+            window.removeEventListener("pointerup", up, true);
+        };
+        window.addEventListener("pointermove", move, true);
+        window.addEventListener("pointerup", up, true);
+    });
+}
+
 function makeOverlay() {
     const overlay = document.createElement("div");
     Object.assign(overlay.style, {
@@ -1143,6 +1190,7 @@ function makeOverlay() {
     });
     card.addEventListener("mousedown", (e) => e.stopPropagation());
     card.addEventListener("click", (e) => e.stopPropagation());
+    makeDraggable(card);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
     return { overlay, card };
@@ -1664,6 +1712,10 @@ function buildSidePreview(card, overlay) {
     });
     side.append(header, body);
     overlay.appendChild(side);
+    // La fenetre deplacee : l'apercu la suit (choix utilisateur, 19/10/2026).
+    card.addEventListener("mm-moved", () => {
+        if (side.style.display !== "none") place();
+    });
 
     function place() {
         const r = card.getBoundingClientRect();
@@ -1893,6 +1945,7 @@ function buildChoiceDialog() {
     const btns = document.createElement("div");
     Object.assign(btns.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" });
     card.append(title, text, btns);
+    makeDraggable(card);
     card.addEventListener("mousedown", (e) => e.stopPropagation());
     overlay.appendChild(card);
     document.body.appendChild(overlay);
@@ -3199,6 +3252,7 @@ function buildConfirmDialog(container) {
     const okBtn = makeTextButton("Delete", MARK_RED);
     btns.append(cancelBtn, okBtn);
     card.append(text, btns);
+    makeDraggable(card);
     card.addEventListener("mousedown", (e) => e.stopPropagation());
     overlay.appendChild(card);
     document.body.appendChild(overlay);
