@@ -2,7 +2,8 @@ import { app } from "../../scripts/app.js";
 import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
-import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState } from "./project_paths.js";
+import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
+    relinkCandidates, withoutPaths } from "./project_paths.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -742,6 +743,48 @@ function parseState(raw) {
  * (galeries sans dossier propre) ne sont plus valables : retour a la
  * racine elle-meme.
  */
+/** Le fichier existe-t-il ? (404 = non ; autre erreur : on le suppose present, rien n'est retire.) */
+async function fileExists(path) {
+    try {
+        const res = await fetch("/mmrefloader/info?file=" + encodeURIComponent(path));
+        return res.status !== 404;
+    } catch (e) {
+        return true;
+    }
+}
+
+/** Chemins introuvables sur le disque parmi paths. */
+async function missingPaths(paths) {
+    const uniq = [...new Set(paths || [])];
+    const ok = await Promise.all(uniq.map(fileExists));
+    return uniq.filter((p, i) => !ok[i]);
+}
+
+const SELECTION_LISTS = ["images", "videos", "video_audios", "audios", "first_frame", "last_frame"];
+
+/**
+ * Nouveau Root folder (choix utilisateur, 19/10/2026) : chaque reference
+ * introuvable est cherchee sous le nouveau dossier (memes derniers elements du
+ * chemin) ; trouvee, elle y est re-liee. Renvoie le nombre de re-liaisons.
+ */
+async function relinkToRoot(getState, setState, root) {
+    if (!root) return 0;
+    const s = getState();
+    const gone = await missingPaths(SELECTION_LISTS.flatMap((k) => s[k] || []));
+    const map = new Map();
+    for (const p of gone) {
+        for (const c of relinkCandidates(p, root)) {
+            if (await fileExists(c)) {
+                map.set(p, c);
+                break;
+            }
+        }
+    }
+    if (!map.size) return 0;
+    setState(remapState(getState(), (p) => map.get(p) || p));
+    return map.size;
+}
+
 function resetRootSubs(s) {
     for (const k of ["image", "video", "audio"]) {
         if (!s.folders[k]) s.subs[k] = "";
@@ -3085,6 +3128,28 @@ function buildGallery(container, ctx) {
                 if (answer === "replace") next = replaceSelection(initial, final);
             }
             s[LIST_KEYS[kind]] = next;
+            // Fichiers introuvables (dossier renomme hors de ComfyUI...) : on propose de les
+            // retirer ; tant qu'il en reste, rien n'est importe ni archive (choix utilisateur).
+            const gone = await missingPaths(next);
+            if (gone.length) {
+                const names = gone.map((p) => escapeHtml(baseName(p)));
+                const ok = await choice.ask(card, {
+                    title: "Missing files in the selection",
+                    html: gone.length + " file(s) of the selection are not on disk anymore: " + names.join(", ") +
+                        '<div style="color:#999;margin-top:6px">Their folder may have been renamed or moved: set the root ' +
+                        "folder again (gear button) to relink them, or remove them from the selection. Nothing is " +
+                        "archived while the selection has missing files.</div>",
+                    buttons: [
+                        { label: "Cancel", value: null },
+                        { label: "Remove from the selection", color: ORANGE, value: true },
+                    ],
+                });
+                if (!ok) {
+                    render();
+                    return;
+                }
+                s[LIST_KEYS[kind]] = withoutPaths(next, gone);
+            }
             await loadProject();
             const unused = unusedProjectFiles(projFiles.map((f) => joinPath(projDir, f.name)), s);
             if (unused.length) {
@@ -3362,6 +3427,7 @@ function buildRootDialog(container, ctx) {
             s.root = value;
             resetRootSubs(s);
             ctx.setState(s);
+            if (ctx.relink) ctx.relink(value);
         }
         close();
     }
@@ -4213,7 +4279,19 @@ app.registerExtension({
             const gallery = buildGallery(container, { getState, setState, getProject, resnapProject, onClosed: checkOrder });
             const viewer = buildSelectionViewer(container, { getState, setState, onClosed: checkOrder });
             const clearConfirm = buildConfirmDialog(container);
-            const rootDialog = buildRootDialog(container, { getState, setState });
+            // Root folder change (choix utilisateur, 19/10/2026) : references introuvables
+            // re-liees sous le nouveau dossier quand elles y sont (dossier renomme).
+            const relinkRoot = async (root) => {
+                const n = await relinkToRoot(getState, setState, root);
+                if (n) {
+                    // Les cloches du noeud Projet suivent : memes fichiers, nouveaux chemins.
+                    for (const f of ["08.Images", "10.Son", "12.Video", "14.Video-Audio"]) resnapProject(f);
+                    notice = "↺ " + n + " reference" + (n > 1 ? "s" : "") + " relinked to the new root folder";
+                    noticeTitle = "Files not found at their old path were found under " + root + ".";
+                    refresh();
+                }
+            };
+            const rootDialog = buildRootDialog(container, { getState, setState, relink: relinkRoot });
             const help = buildHelpOverlay(container);
             const overview = buildOverview(container, { getState });
             helpBtn.addEventListener("click", () => help.open());
@@ -4523,6 +4601,7 @@ app.registerExtension({
                 s.root = root;
                 resetRootSubs(s);
                 setState(s);
+                relinkRoot(root);
             };
             // Save, renommer / deplacer du noeud Projet : il lit la selection et
             // la remplace par les chemins des copies (ou du projet deplace).

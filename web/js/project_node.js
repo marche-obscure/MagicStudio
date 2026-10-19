@@ -14,7 +14,7 @@ import {
     copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
+    switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -235,6 +235,10 @@ const HELP_SECTIONS = [
                 "<b>Click the row</b>: the files in the order of the Reference Loader with their number (<b>F</b> / " +
                 "<b>L</b> = First / Last frame; files without number last, greyed), then the <b>Archives</b> frame. A " +
                 "thumbnail opens the <b>Preview</b> window; <b>Close</b>, Escape or a click outside closes.",
+                "<b>Missing files</b>: when references of the Reference Loader point to files that are not on disk " +
+                "anymore (a folder renamed outside ComfyUI…), Update copies and archives nothing and offers " +
+                "<b>Remove missing references</b>. Setting the root folder of the Reference Loader again relinks " +
+                "the files found under it.",
                 "<b>Archives</b>: a file is named <b>yyyyMMdd_HHmmss_name.ext</b> (date of the archiving, " +
                 "<b>(2)</b>-like numbers removed; next second if the name is taken) and gets its name back when it " +
                 "comes out.",
@@ -550,6 +554,10 @@ const HELP_SECTIONS_FR = [
                 "<b>Clic sur la ligne</b> : les fichiers dans l'ordre du Reference Loader avec leur numéro (<b>F</b> / " +
                 "<b>L</b> = First / Last frame ; sans numéro à la fin, grisés), puis le cadre <b>Archives</b>. Une " +
                 "vignette ouvre la fenêtre <b>Preview</b> ; <b>Close</b>, Échap ou un clic à côté ferme.",
+                "<b>Fichiers manquants</b> : quand des références du Reference Loader pointent vers des fichiers " +
+                "qui ne sont plus sur le disque (dossier renommé hors de ComfyUI…), Update ne copie et n'archive " +
+                "rien et propose <b>Remove missing references</b>. Redonner le Root folder du Reference Loader " +
+                "re-lie les fichiers retrouvés dessous.",
                 "<b>Archives</b> : un fichier est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> (date de l'archivage, numéros " +
                 "du type <b>(2)</b> retirés ; seconde suivante si le nom est pris) et reprend son nom en sortant.",
             ]) +
@@ -4545,17 +4553,41 @@ app.registerExtension({
                 const refState = loader.mmGetState();
                 const ch = folderChanges(refState, f, s.path, snapshotOf(s, f));
                 const unused = unusedOf(f, refState);
-                if (!ch.added.length && !ch.removed.length && !unused.length) return;
                 const items = saveItems(refState).filter((i) => i.folder === f);
                 let plan = [];
                 try {
-                    if (ch.added.length) plan = (await apiPost("/mmproject/save_plan", { project: s.path, items })).plan;
+                    if (items.length) plan = (await apiPost("/mmproject/save_plan", { project: s.path, items })).plan;
                 } catch (e) {
                     say(e.message);
                     return;
                 }
                 const copies = plan.filter((x) => x.action === "copy");
                 const missing = plan.filter((x) => x.action === "missing");
+                if (!ch.added.length && !ch.removed.length && !unused.length && !missing.length) return;
+                // References vers des fichiers introuvables (choix utilisateur, 19/10/2026) : on peut
+                // les retirer du Reference Loader ; tant qu'il en reste, rien n'est archive (un
+                // dossier renomme hors de ComfyUI ferait passer tous les fichiers pour orphelins).
+                if (missing.length) {
+                    const ok = await confirm.ask({
+                        title: "Missing files in " + f,
+                        html: missing.length + " reference(s) of the Reference Loader point to files that are not on " +
+                            "disk anymore: " + nameList(missing.map((x) => x.src)) +
+                            '<div style="color:' + ORANGE + ';margin-top:6px">Nothing is copied or archived while ' +
+                            "references are missing.</div>" + '<div style="color:#999;margin-top:4px">Their folder may ' +
+                            "have been renamed or moved: set the root folder of the Reference Loader again (gear " +
+                            "button) to relink them, or remove them here, then click the bell again.</div>",
+                        okLabel: "Remove missing references", okColor: ORANGE,
+                    });
+                    if (!ok) return;
+                    const gone = missing.map((x) => x.src);
+                    const st = loader.mmGetState();
+                    for (const list of MEDIA_FOLDERS[f] || []) st[list] = withoutPaths(st[list], gone);
+                    loader.mmSetState(remapState(st, (p) => p));
+                    say(gone.length + " missing reference(s) removed from the Reference Loader; click the bell of " + f +
+                        " again to update it.", true);
+                    await loadFolderFiles();
+                    return;
+                }
                 const html = (copies.length ? copies.length + " file(s) to copy into <b>" + escapeHtml(f) + "</b>: " +
                     nameList(copies.map((x) => x.src)) : "No file to copy") +
                     (missing.length ? '<br><span style="color:' + ORANGE + '">' + missing.length +
