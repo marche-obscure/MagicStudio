@@ -602,12 +602,12 @@ class RunFileTest(unittest.TestCase):
         write(os.path.join(err, error), b"older")  # nom pris
         # Compte seulement : rien n'est touche.
         plan = rr.purge_runs(self.p, dry_run=True)
-        self.assertEqual(plan, {"deleted": [running], "moved": [error], "kept": []})
+        self.assertEqual(plan, {"deleted": [running], "moved": [error], "kept": [], "empty": [done]})
         self.assertEqual(files_in(prompt), sorted([running, error, done]))
         # ComfyUI occupe : le Run "running" est garde.
         self.assertEqual(rr.purge_runs(self.p, busy=True, dry_run=True)["kept"], [running])
         out = rr.purge_runs(self.p)
-        self.assertEqual(out, {"deleted": [running], "moved": [error], "kept": []})
+        self.assertEqual(out, {"deleted": [running], "moved": [error], "kept": [], "empty": [done]})
         self.assertEqual(files_in(prompt), [done])
         self.assertEqual(files_in(wf), [done])
         self.assertEqual(files_in(err), sorted([error, error.replace(".json", "_02.json")]))
@@ -615,11 +615,30 @@ class RunFileTest(unittest.TestCase):
         self.assertEqual(read_json(os.path.join(err, error.replace(".json", "_02.json")))["status"], "error")
         self.assertTrue(os.path.isfile(vid))  # fichiers produits laisses en place
         self.assertEqual([r["file"] for r in rr.list_runs(self.p)], [done])
-        self.assertEqual(rr.purge_runs(self.p), {"deleted": [], "moved": [], "kept": []})
+        self.assertEqual(rr.purge_runs(self.p), {"deleted": [], "moved": [], "kept": [], "empty": [done]})
+
+    def test_purge_empty_done(self):
+        empty = self._status_run(self.when, "done")
+        gone = self._status_run(self.when + 60, "done")
+        path = os.path.join(self.p, "04.Prompt", gone)
+        data = read_json(path)
+        data["outputs"] = [{"source": "Z:/gone.png", "kind": "image", "copy": None}]  # fichier disparu : garde
+        rr._write(path, data)
+        prompt = os.path.join(self.p, "04.Prompt")
+        wf = os.path.join(self.p, "00.Workflows", "Run")
+        # Sans la case : listes, rien n'est supprime.
+        self.assertEqual(rr.purge_runs(self.p)["empty"], [empty])
+        self.assertEqual(files_in(prompt), sorted([empty, gone]))
+        self.assertEqual(rr.purge_runs(self.p, dry_run=True, empty_done=True)["empty"], [empty])
+        self.assertEqual(files_in(prompt), sorted([empty, gone]))
+        # Avec la case : JSON et workflow supprimes ; la sortie citee disparue reste.
+        self.assertEqual(rr.purge_runs(self.p, empty_done=True)["empty"], [empty])
+        self.assertEqual(files_in(prompt), [gone])
+        self.assertEqual(files_in(wf), [gone])
 
     def test_purge_busy_keeps_running(self):
         running = self._status_run(self.when, "running")
-        self.assertEqual(rr.purge_runs(self.p, busy=True), {"deleted": [], "moved": [], "kept": [running]})
+        self.assertEqual(rr.purge_runs(self.p, busy=True), {"deleted": [], "moved": [], "kept": [running], "empty": []})
         self.assertEqual(files_in(os.path.join(self.p, "04.Prompt")), [running])
         self.assertFalse(os.path.exists(os.path.join(self.p, "98.Error")))
 

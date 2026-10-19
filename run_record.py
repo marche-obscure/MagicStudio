@@ -789,22 +789,27 @@ def tidy_rush(project):
     return moved
 
 
-def purge_runs(project, busy=False, dry_run=False):
+def purge_runs(project, busy=False, dry_run=False, empty_done=False):
     """
     Purge des Runs du projet (bouton Purge, choix utilisateur 19/10/2026) :
     - status "running" alors qu'aucun Run ne tourne : JSON de 04.Prompt et son
       workflow de 00.Workflows/Run supprimes ; ComfyUI occupe (busy) : gardes ;
     - status "error" : JSON deplace dans 98.Error, son workflow dans
       98.Error/Workflows ("_02"... si le nom est pris) ; les fichiers produits
-      restent en place.
+      restent en place ;
+    - status "done" sans aucune sortie image ou video citee (choix utilisateur
+      19/10/2026 ; une sortie citee dont le fichier a disparu ne compte pas) :
+      toujours listes dans empty, supprimes (JSON et workflow) seulement avec
+      empty_done (case de la fenetre d'avertissement).
     dry_run : rien n'est touche, seulement compte.
-    Renvoie {deleted: [noms], moved: [noms], kept: [noms "running" gardes]}.
+    Renvoie {deleted: [noms], moved: [noms], kept: [noms "running" gardes],
+    empty: [noms "done" sans sortie]}.
     """
     if not project or not os.path.isdir(project):
         raise FileNotFoundError("Project folder not found: %s" % project)
     folder = os.path.join(project, PROMPT_FOLDER)
     names = sorted(n for n in os.listdir(folder) if _RUN_NAME.match(n)) if os.path.isdir(folder) else []
-    out = {"deleted": [], "moved": [], "kept": []}
+    out = {"deleted": [], "moved": [], "kept": [], "empty": []}
     for name in names:
         path = os.path.join(folder, name)
         try:
@@ -832,6 +837,11 @@ def purge_runs(project, busy=False, dry_run=False):
                     os.replace(wf, _free_path(wf_dir, name))
                 os.replace(path, _free_path(err, name))
             out["moved"].append(name)
+        elif status == "done" and not any(isinstance(o, dict) and output_kind(o) for o in data.get("outputs") or []):
+            if empty_done and not dry_run:
+                os.remove(path)
+                _remove_run_workflow(project, name)
+            out["empty"].append(name)
     return out
 
 

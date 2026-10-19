@@ -236,7 +236,9 @@ const HELP_SECTIONS = [
                 "<b>02.Models/yyyyMMdd_HHmmss_models.json</b> and <b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (a known set " +
                 "keeps its index, a new one gets the next) and the run keeps their indices.") +
             hNote(textBadge("Purge", PURGE_RED) + " deletes the runs still marked running while no run is in progress " +
-                "and moves the runs in error to <b>98.Error</b>; their files stay in place."),
+                "and moves the runs in error to <b>98.Error</b>; their files stay in place. A box of its warning " +
+                "(unchecked) also deletes the runs <b>done</b> without any image or video output (a run naming a file " +
+                "that is gone is kept)."),
     },
     {
         id: "rushsort", title: "Sorting the rushes", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
@@ -523,7 +525,9 @@ const HELP_SECTIONS_FR = [
                 "<b>02.Models/yyyyMMdd_HHmmss_models.json</b> et <b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (un ensemble " +
                 "connu garde son indice, un nouveau prend le suivant) et le Run garde leurs indices.", "Remarque :") +
             hNote(textBadge("Purge", PURGE_RED) + " supprime les Runs encore marqués running alors qu'aucun Run ne " +
-                "tourne et déplace les Runs en erreur dans <b>98.Error</b> ; leurs fichiers restent en place.", "Remarque :"),
+                "tourne et déplace les Runs en erreur dans <b>98.Error</b> ; leurs fichiers restent en place. Une case " +
+                "de son avertissement (décochée) supprime aussi les Runs <b>done</b> sans aucune sortie image ou vidéo " +
+                "(un Run qui cite un fichier disparu est gardé).", "Remarque :"),
     },
     {
         id: "rushsort", title: "Tri des rushs",
@@ -3997,25 +4001,45 @@ app.registerExtension({
                 }
                 const keptText = plan.kept.length ? plan.kept.length + " run(s) marked running kept: ComfyUI is " +
                     "running something, purge again later." : "";
-                if (!plan.deleted.length && !plan.moved.length) {
+                const empty = plan.empty || [];
+                if (!plan.deleted.length && !plan.moved.length && !empty.length) {
                     say("Nothing to purge." + (keptText ? " " + keptText : ""), !keptText);
                     return;
                 }
+                // Runs "done" sans sortie image ou video (choix utilisateur, 19/10/2026) : case
+                // decochee par defaut, lue apres la reponse (le texte de la fenetre reste en place).
+                const boxId = "mmPurgeEmpty" + Date.now();
+                const lines = [];
+                if (plan.deleted.length) {
+                    lines.push("<b>" + plan.deleted.length + "</b> run(s) marked <b>running</b> while no run is in " +
+                        "progress: deleted (JSON in 04.Prompt and its workflow in 00.Workflows/Run).");
+                }
+                if (plan.moved.length) {
+                    lines.push("<b>" + plan.moved.length + "</b> run(s) in <b>error</b>: moved to <b>98.Error</b> " +
+                        "(workflow in 98.Error/Workflows); their files stay in place.");
+                }
+                if (keptText) lines.push('<span style="color:' + ORANGE + '">' + keptText + "</span>");
+                if (empty.length) {
+                    lines.push('<label style="display:flex;gap:6px;align-items:flex-start;cursor:pointer;margin:4px 0">' +
+                        '<input type="checkbox" id="' + boxId + '" style="margin-top:3px">' +
+                        "<span>Also delete the <b>" + empty.length + "</b> run(s) <b>done</b> without image or video " +
+                        "output (JSON and workflow).</span></label>");
+                }
+                lines.push('<span style="color:#999">98.Error is in the project folder; it is not shown in the node.</span>');
                 const ok = await confirm.ask({
                     title: "Purge the project " + s.name + "?",
-                    html: "<b>" + plan.deleted.length + "</b> run(s) marked <b>running</b> while no run is in progress: " +
-                        "deleted (JSON in 04.Prompt and its workflow in 00.Workflows/Run).<br><b>" + plan.moved.length +
-                        "</b> run(s) in <b>error</b>: moved to <b>98.Error</b> (workflow in 98.Error/Workflows); their " +
-                        "files stay in place." + (keptText ? '<br><span style="color:' + ORANGE + '">' + keptText + "</span>" : "") +
-                        '<br><span style="color:#999">98.Error is in the project folder; it is not shown in the node.</span>',
+                    html: lines.map((l) => "<div>" + l + "</div>").join(""),
                     okLabel: "Purge", okColor: PURGE_RED,
                 });
+                const box = document.getElementById(boxId);
+                const emptyDone = !!(box && box.checked);
                 if (!ok) return;
                 try {
-                    const data = await apiPost("/mmproject/purge", { project: s.path });
+                    const data = await apiPost("/mmproject/purge", { project: s.path, empty_done: emptyDone });
                     await loadFolderFiles();
                     say("Purge: " + data.deleted.length + " run(s) deleted, " + data.moved.length +
-                        " moved to 98.Error" + (data.kept.length ? ", " + data.kept.length + " running kept" : "") + ".", true);
+                        " moved to 98.Error" + (emptyDone ? ", " + (data.empty || []).length + " done run(s) without " +
+                        "output deleted" : "") + (data.kept.length ? ", " + data.kept.length + " running kept" : "") + ".", true);
                 } catch (e) {
                     say(e.message);
                     await loadFolderFiles();
