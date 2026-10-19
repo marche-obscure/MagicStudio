@@ -409,12 +409,13 @@ try:
         """
         Purge du projet (bouton Purge) : dry_run = compte seulement (fenetre
         d'avertissement) ; sinon supprime les Runs "running" sans Run en cours
-        et range les Runs "error" dans 98.Error.
+        et range les Runs "error" dans 98.Error ; empty_done : supprime aussi
+        les Runs "done" sans sortie image ou video.
         """
         try:
             body = await request.json()
             data = await _in_executor(run_record.purge_runs, body.get("project", ""), _comfy_busy(),
-                                      bool(body.get("dry_run")))
+                                      bool(body.get("dry_run")), bool(body.get("empty_done")))
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
