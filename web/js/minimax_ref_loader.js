@@ -3,7 +3,7 @@ import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
 import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
-    relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter } from "./project_paths.js";
+    relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder } from "./project_paths.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -235,7 +235,9 @@ const HELP_SECTIONS = [
             "type after each name; <b>(root folder)</b> shows the root folder itself. The choice is kept per type.",
             "<b>Project</b> (when the node is wired to a MiniMax H3 Project node and the root folder is its " +
             "projects folder): <b>All</b> lists the subfolders of every project; a project lists only its own. " +
-            "It opens on the project picked in the Project node.",
+            "It opens on the project picked in the Project node. There, <b>Subfolder</b> lists only the media " +
+            "folders of the projects (08.Images to 14.Video-Audio; only 08.Images in F2VA / FL2VA); their " +
+            "Archives open with <b>View archives</b>.",
             iconBadge(SEARCH_ICON, VIOLET) + " of <b>Root folder</b> finds the subfolders again and shows the " +
             "root folder; the one of <b>Subfolder</b> shows the chosen subfolder. Greyed out without a root folder.",
             "A mixed folder shows a section per kind. Only the files of the button that opened the gallery " +
@@ -468,7 +470,9 @@ const HELP_SECTIONS_FR = [
             "gardé par type.",
             "<b>Project</b> (quand le nœud est relié à un nœud MiniMax H3 Project et que le dossier racine est son " +
             "dossier des projets) : <b>All</b> liste les sous-dossiers de tous les projets ; un projet ne liste que " +
-            "les siens. Il s'ouvre sur le projet choisi dans le nœud Project.",
+            "les siens. Il s'ouvre sur le projet choisi dans le nœud Project. Là, <b>Subfolder</b> ne liste que " +
+            "les dossiers de médias des projets (08.Images à 14.Video-Audio ; seulement 08.Images en F2VA / " +
+            "FL2VA) ; leurs Archives s'ouvrent avec <b>View archives</b>.",
             "La " + iconBadge(SEARCH_ICON, VIOLET) + " de <b>Root folder</b> retrouve les sous-dossiers et " +
             "affiche le dossier racine ; celle de <b>Subfolder</b> affiche le sous-dossier choisi. Grisées " +
             "sans dossier racine.",
@@ -2335,9 +2339,10 @@ function buildGallery(container, ctx) {
         };
         const rootEntry = subfolders.find((e) => !e.path);
         add("", "(root folder)" + (rootEntry ? "  ·  " + rootEntry.count : ""));
-        // Tous les sous-dossiers (ceux du projet du filtre) ; le nombre est celui des fichiers du type.
-        const list = filterSubfolders(subfolders.filter((e) => e.path), projFilter);
-        if (sub && inProjectFilter(sub, projFilter) && !list.some((e) => e.path === sub)) list.unshift({ path: sub, count: null });
+        // Sous-dossiers (ceux du projet du filtre ; dossier des projets : 08 a 14 seulement,
+        // 08 en F2VA / FL2VA) ; le nombre est celui des fichiers du type de la galerie.
+        const list = subfolders.filter((e) => e.path && allowedSub(e.path));
+        if (sub && allowedSub(sub) && !list.some((e) => e.path === sub)) list.unshift({ path: sub, count: null });
         list.forEach((e) => add(e.path, e.path + (e.count != null ? "  ·  " + e.count : "")));
         subSelect.value = sub;
         const usable = !!base && subSelect.options.length > 1;
@@ -2347,6 +2352,12 @@ function buildGallery(container, ctx) {
         subSelect.title = !base ? "Set a root folder first"
             : usable ? "Subfolders of the root folder (number of " + (kind === "audio" ? "audio or video" : fileKind(kind)) + " files after the name)"
             : "No subfolder: the root folder itself is shown";
+    }
+
+    /** Sous-dossier propose : dans le projet du filtre et, sur le dossier des projets, un dossier de medias. */
+    function allowedSub(path) {
+        if (!inProjectFilter(path, projFilter)) return false;
+        return projRow.style.display === "none" || isMediaSubfolder(path, ctx.getState().mode);
     }
 
     /** Ligne Project : seulement quand le Root folder affiche est le dossier des projets. */
@@ -3269,7 +3280,7 @@ function buildGallery(container, ctx) {
     // Filtre Project : sous-dossier hors du projet choisi -> retour au Root folder.
     projSelect.addEventListener("change", () => {
         projFilter = projSelect.value;
-        if (sub && !inProjectFilter(sub, projFilter)) {
+        if (sub && !allowedSub(sub)) {
             sub = "";
             saveNav();
             loadFolder();
@@ -3303,7 +3314,8 @@ function buildGallery(container, ctx) {
             // Filtre Project : le projet choisi dans H3 Project, sinon All.
             projList = ctx.getProjects ? ctx.getProjects() : null;
             projFilter = projList ? projList.current : "";
-            if (projList && base && samePath(base, projList.root) && sub && !inProjectFilter(sub, projFilter)) {
+            if (projList && projList.names.length && base && samePath(base, projList.root) && sub &&
+                !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, st.mode))) {
                 sub = "";
                 saveNav();
             }

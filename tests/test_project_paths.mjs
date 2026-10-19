@@ -9,7 +9,7 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -169,6 +169,15 @@ test("galerie : filtre Project des sous-dossiers", () => {
     assert.ok(!inProjectFilter("Speech-012", "Speech-01"));
     assert.ok(inProjectFilter("anything", ""));
     assert.deepEqual(filterSubfolders(null, "x"), []);
+});
+
+test("galerie : sous-dossiers de medias seulement (08 a 14, 08 en FL2VA)", () => {
+    for (const f of ["08.Images", "10.Son", "12.Video", "14.Video-Audio"]) assert.ok(isMediaSubfolder("P/" + f, "ref2va"));
+    for (const f of ["00.Workflows", "40.Rush Videos", "99.Project-Config"]) assert.ok(!isMediaSubfolder("P/" + f, "ref2va"));
+    assert.ok(!isMediaSubfolder("P", "ref2va"));
+    assert.ok(!isMediaSubfolder("P/08.Images/Archives", "ref2va"));
+    assert.ok(isMediaSubfolder("P\\08.Images", "fl2va"));
+    assert.ok(!isMediaSubfolder("P/12.Video", "fl2va"));
 });
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
