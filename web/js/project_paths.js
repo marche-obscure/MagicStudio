@@ -590,3 +590,30 @@ export function groupByDot(items) {
 export function rushKey(it) {
     return it ? (it.run && it.run.file) + "#" + (it.output && it.output.index) : "";
 }
+
+/**
+ * Fichier introuvable apres un renommage de dossier hors de ComfyUI (choix
+ * utilisateur, 19/10/2026) : chemins a essayer sous le nouveau Root folder,
+ * en gardant les maxDepth derniers elements du chemin, puis moins (au moins
+ * le dossier parent et le nom). Ex. ...\Ancien\Projet\08.Images\a.png ->
+ * <root>\Projet\08.Images\a.png, puis <root>\08.Images\a.png.
+ */
+export function relinkCandidates(path, root, maxDepth = 4) {
+    const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
+    const base = String(root || "").replace(/[\\/]+$/, "");
+    if (!base || parts.length < 2) return [];
+    const sep = base.includes("\\") || !base.includes("/") ? "\\" : "/";
+    const norm = (p) => p.replace(/\\/g, "/").toLowerCase();
+    const out = [];
+    for (let k = Math.min(maxDepth, parts.length - 1); k >= 2; k--) {
+        const c = base + sep + parts.slice(-k).join(sep);
+        if (norm(c) !== norm(String(path)) && !out.includes(c)) out.push(c);
+    }
+    return out;
+}
+
+/** Liste du Ref Loader sans les chemins de 'gone' (comparaison sans casse) ; rognages nettoyes par remapState. */
+export function withoutPaths(paths, gone) {
+    const g = new Set((gone || []).map((p) => String(p).replace(/\\/g, "/").toLowerCase()));
+    return (paths || []).filter((p) => !g.has(String(p).replace(/\\/g, "/").toLowerCase()));
+}

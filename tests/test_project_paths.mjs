@@ -9,7 +9,7 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -142,6 +142,20 @@ test("40 / 60 : groupes par pastille, puis date", () => {
     assert.deepEqual(groupByDot(null), []);
     assert.equal(rushKey(items[0]), "d5.json#0");
     assert.equal(rushKey(undefined), "");
+});
+
+test("dossier renomme : candidats sous le nouveau Root folder, retrait des manquants", () => {
+    const old = "F:\\Appli\\Porjet-Yatch\\Speech-01\\08.Images\\a.png";
+    assert.deepEqual(relinkCandidates(old, "F:\\Appli\\Projet-Yatch\\"), [
+        "F:\\Appli\\Projet-Yatch\\Porjet-Yatch\\Speech-01\\08.Images\\a.png",
+        "F:\\Appli\\Projet-Yatch\\Speech-01\\08.Images\\a.png",
+        "F:\\Appli\\Projet-Yatch\\08.Images\\a.png",
+    ]);
+    assert.deepEqual(relinkCandidates("D:/r/p/x.png", "E:/new", 2), ["E:/new/p/x.png"]);
+    assert.deepEqual(relinkCandidates("a.png", "E:\\new"), []);
+    assert.deepEqual(relinkCandidates(old, ""), []);
+    assert.deepEqual(withoutPaths(["C:\\A\\x.png", "C:\\A\\y.png"], ["c:/a/X.PNG"]), ["C:\\A\\y.png"]);
+    assert.deepEqual(withoutPaths(null, ["x"]), []);
 });
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
