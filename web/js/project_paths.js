@@ -632,3 +632,15 @@ export function inProjectFilter(path, project) {
 export function filterSubfolders(entries, project) {
     return (entries || []).filter((e) => inProjectFilter(e.path, project));
 }
+
+/**
+ * Sous-dossier de la galerie quand elle montre le dossier des projets (choix
+ * utilisateur, 19/10/2026) : seulement <projet>/08.Images ... 14.Video-Audio
+ * en Ref2VA, seulement <projet>/08.Images en F2VA / FL2VA (pas d'Archives :
+ * bouton View archives).
+ */
+export function isMediaSubfolder(path, mode) {
+    const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
+    const allowed = mode === "fl2va" ? ["08.Images"] : UPDATE_FOLDERS;
+    return parts.length === 2 && allowed.includes(parts[1]);
+}
