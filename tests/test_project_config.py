@@ -238,6 +238,95 @@ class ProjectConfigTest(unittest.TestCase):
         self.assertRegex(arch[0], r"^\d{8}-\d{6}_Clip\.json$")
 
 
+class ResetCopyTest(unittest.TestCase):
+    """Boutons Reset et Copy du noeud Projet (choix utilisateur 19/10/2026)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.p = projects.create_project(self.root, "Proj")
+        self.src = projects.create_project(self.root, "Src")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def files_of(self, project):
+        return sorted(os.path.relpath(p, project).replace(os.sep, "/") for _t, p, _s in projects._project_files(project))
+
+    def test_reset_moves_every_file_and_keeps_the_folders(self):
+        write(os.path.join(self.p, "08.Images", "a.png"), b"A")
+        write(os.path.join(self.p, "08.Images", "Archives", "old.png"), b"O")
+        write(os.path.join(self.p, "40.Rush Videos", "Footage", "r.mp4"), b"R" * 10)
+        write(os.path.join(self.p, "99.Project-Config", "config_projets_Proj.json"), b"{}")
+        plan = projects.reset_project(self.p, dry_run=True)
+        self.assertEqual(plan["total"], 4)
+        self.assertEqual(plan["size"], 14)
+        self.assertEqual({f["folder"]: f["files"] for f in plan["folders"]},
+                         {"08.Images": 2, "40.Rush Videos": 1, "99.Project-Config": 1})
+        self.assertEqual(len(self.files_of(self.p)), 4)  # rien touche
+        sent = []
+        old_bin, old_ok = projects._to_recycle_bin, projects.TRASH_AVAILABLE
+        projects._to_recycle_bin = lambda paths: [sent.extend(paths)] + [os.remove(x) for x in paths]
+        projects.TRASH_AVAILABLE = True
+        try:
+            out = projects.reset_project(self.p)
+        finally:
+            projects._to_recycle_bin, projects.TRASH_AVAILABLE = old_bin, old_ok
+        self.assertEqual((out["total"], out["trash"], len(sent)), (4, True, 4))
+        self.assertEqual(self.files_of(self.p), [])
+        for sub in projects.SUBFOLDERS:
+            self.assertTrue(os.path.isdir(os.path.join(self.p, sub)))
+        self.assertTrue(os.path.isdir(os.path.join(self.p, "40.Rush Videos", "Footage")))
+
+    def test_reset_without_recycle_bin_deletes(self):
+        write(os.path.join(self.p, "10.Son", "s.wav"), b"S")
+        old_ok = projects.TRASH_AVAILABLE
+        projects.TRASH_AVAILABLE = False
+        try:
+            self.assertFalse(projects.reset_project(self.p)["trash"])
+        finally:
+            projects.TRASH_AVAILABLE = old_ok
+        self.assertEqual(self.files_of(self.p), [])
+
+    def test_copy_media_from_another_project(self):
+        a = write(os.path.join(self.src, "08.Images", "a.png"), b"A")
+        b = write(os.path.join(self.src, "08.Images", "b.png"), b"B")
+        v = write(os.path.join(self.src, "12.Video", "shot.mp4"), b"V")
+        write(os.path.join(self.src, "08.Images", "Archives", "arch.png"), b"OLD")
+        write(os.path.join(self.src, "40.Rush Videos", "Footage", "r.mp4"), b"R")  # hors 08-14 : jamais copie
+        pc.save_config(self.src, {"images": [b, a], "first_frame": [a], "videos": [v]},
+                       {"video": {pc.trim_key(v): [5, 7]}})
+        write(os.path.join(self.p, "08.Images", "x.png"), b"A")   # meme SHA256 que a.png : pas recopie
+        write(os.path.join(self.p, "08.Images", "b.png"), b"Z")   # meme nom, autre contenu : b_02.png
+        before = self.files_of(self.p)
+        plan = pc.copy_media(self.p, self.src, dry_run=True)
+        self.assertEqual(self.files_of(self.p), before)
+        self.assertEqual((plan["copied"], plan["skipped"]), (3, 1))
+        out = pc.copy_media(self.p, self.src)
+        self.assertEqual((out["copied"], out["skipped"]), (3, 1))
+        rows = {f["folder"]: f for f in out["folders"]}
+        self.assertEqual((rows["08.Images"]["files"], rows["08.Images"]["archives"]), (2, 1))
+        self.assertEqual(self.files_of(self.p), [
+            "08.Images/Archives/arch.png", "08.Images/b.png", "08.Images/b_02.png", "08.Images/x.png",
+            "12.Video/shot.mp4"])
+        self.assertEqual(read(os.path.join(self.p, "08.Images", "b_02.png")), b"B")
+        # Listes de la configuration de l'autre projet, ramenees aux fichiers du projet ouvert.
+        rep = {f["folder"]: f["files"] for f in out["report"]["folders"]}
+        self.assertEqual([(x["Liste"], x["Indice"], x["nom"]) for x in rep["08.Images"]],
+                         [("images", 1, "b_02.png"), ("images", 2, "x.png"), ("first_frame", 1, "x.png")])
+        self.assertEqual([(x["nom"], x["trim"]) for x in rep["12.Video"]], [("shot.mp4", [5, 7])])
+        self.assertEqual(out["report"]["mode"], "REF2VA")
+        # L'autre projet n'a pas change ; un second Copy ne recopie rien.
+        self.assertEqual(pc.copy_media(self.p, self.src)["copied"], 0)
+        with self.assertRaises(ValueError):
+            pc.copy_media(self.p, self.p)
+
+    def test_copy_media_without_configuration(self):
+        write(os.path.join(self.src, "10.Son", "s.wav"), b"S")
+        out = pc.copy_media(self.p, self.src)
+        self.assertEqual(out["copied"], 1)
+        self.assertIsNone(out["report"])
+
+
 class StructureTest(unittest.TestCase):
     def test_list_and_dict_links(self):
         a = pc.workflow_structure({"nodes": [{"id": 10, "type": "B"}, {"id": 2, "type": "A"}],

@@ -363,6 +363,27 @@ try:
             return _project_error(e)
         return web.json_response({"deleted": names})
 
+    @routes.post("/mmproject/reset")
+    async def mmproject_reset(request):
+        """Reset du projet (bouton Reset) : dry_run = bilan ; sinon tous ses fichiers vers la Corbeille."""
+        try:
+            body = await request.json()
+            data = await _in_executor(projects.reset_project, body.get("project", ""), bool(body.get("dry_run")))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.post("/mmproject/copy_media")
+    async def mmproject_copy_media(request):
+        """Copy (bouton Copy) : 08 a 14 (et leurs Archives) d'un autre projet ; dry_run = bilan."""
+        try:
+            body = await request.json()
+            data = await _in_executor(project_config.copy_media, body.get("project", ""), body.get("source", ""),
+                                      bool(body.get("dry_run")))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
     @routes.post("/mmproject/run_done")
     async def mmproject_run_done(request):
         """Fin d'un Run enregistre : fichiers generes copies dans les rushs et listes dans son JSON."""

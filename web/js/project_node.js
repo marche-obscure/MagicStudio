@@ -159,6 +159,8 @@ const HELP_SECTIONS = [
             [iconBadge(PLUS_ICON, PINK), "Create a new project (a window asks for the name)"],
             [textBadge("Load"), "Load: check the files, then load the saved configuration of the project"],
             [textBadge("Save"), "Save: copy the files of the Reference Loader into the project, save the workflow and the configuration of the project"],
+            [textBadge("Copy", "#1e88e5"), "Copy: copy the files of 08.Images to 14.Video-Audio, Archives included, from another project of the folder (a file whose SHA256 is already there is skipped, a taken name gets _02); its saved configuration fills the Reference Loader (same order and trims). The other project is never changed"],
+            [textBadge("Reset", "#e53935"), "Reset: after a summary and typing the project name, every file of the project (all its folders and subfolders, 99.Project-Config included) goes to the Recycle Bin; the folders stay, and the selection of the Reference Loader is emptied in both modes (its root folder does not change)"],
             [textBadge("Purge", PURGE_RED), "Purge (after a warning): delete the runs still marked running while no run is in progress (kept while ComfyUI is running something), move the runs in error (JSON and workflow) to 98.Error; their files stay in place. 98.Error is in the project folder, not shown in the node"],
             [textBadge("Date ↓", INACTIVE_BG), "In the folder windows: newest first (Date ↓) or oldest first (Date ↑), one setting for all the windows; in 08 to 14 the files used by the Reference Loader stay first"],
             [iconBadge(REFRESH_ICON, VIOLET), "Read the list of projects again"],
@@ -467,6 +469,8 @@ const HELP_SECTIONS_FR = [
             [iconBadge(PLUS_ICON, PINK), "Créer un nouveau projet (une fenêtre demande le nom)"],
             [textBadge("Load"), "Load : vérifier les fichiers, puis charger la configuration sauvegardée du projet"],
             [textBadge("Save"), "Save : copier les fichiers du Reference Loader dans le projet, sauvegarder le workflow et la configuration du projet"],
+            [textBadge("Copy", "#1e88e5"), "Copy : copier les fichiers de 08.Images à 14.Video-Audio, Archives comprises, depuis un autre projet du dossier (un fichier dont le SHA256 est déjà là est sauté, un nom pris reçoit _02) ; sa configuration sauvegardée remplit le Reference Loader (même ordre et rognages). L'autre projet n'est jamais modifié"],
+            [textBadge("Reset", "#e53935"), "Reset : après un bilan et le nom du projet tapé, tous les fichiers du projet (tous ses dossiers et sous-dossiers, 99.Project-Config compris) partent dans la Corbeille ; les dossiers restent, et la sélection du Reference Loader est vidée dans les deux modes (son Root folder ne change pas)"],
             [textBadge("Purge", PURGE_RED), "Purge (après un avertissement) : supprimer les Runs encore marqués running alors qu'aucun Run ne tourne (gardés tant que ComfyUI exécute quelque chose), déplacer les Runs en erreur (JSON et workflow) dans 98.Error ; leurs fichiers restent en place. 98.Error est dans le dossier du projet, pas affiché dans le nœud"],
             [textBadge("Date ↓", INACTIVE_BG), "Dans les fenêtres des dossiers : plus récent d'abord (Date ↓) ou plus ancien d'abord (Date ↑), un seul réglage pour toutes les fenêtres ; dans 08 à 14 les fichiers utilisés par le Reference Loader restent en tête"],
             [iconBadge(REFRESH_ICON, VIOLET), "Relire la liste des projets"],
@@ -1001,6 +1005,203 @@ function buildCreateDialog(container, ctx) {
 // Confirmation (toute modification la demande)
 // --------------------------------------------------------------------
 /** ask({title, html, okLabel, okColor}) -> Promise<boolean> ; Echap ou clic a cote = non. */
+// --------------------------------------------------------------------
+// Reset du projet (choix utilisateur, 19/10/2026) : bilan par dossier, puis le
+// bouton Reset ne s'active qu'une fois le nom du projet tape.
+// --------------------------------------------------------------------
+const RESET_RED = "#e53935";
+const COPY_BLUE = "#1e88e5";
+function buildResetDialog(container) {
+    const { overlay, card } = makeOverlay();
+    overlay.style.zIndex = "10002";
+    Object.assign(card.style, { width: "min(480px, 92vw)", padding: "12px 14px", borderColor: RESET_RED });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: RESET_RED, marginBottom: "8px" });
+    const text = document.createElement("div");
+    Object.assign(text.style, { lineHeight: "1.5", color: "#ccc", wordBreak: "break-word" });
+    const label = document.createElement("div");
+    Object.assign(label.style, { marginTop: "10px", color: "#ddd" });
+    const input = document.createElement("input");
+    input.type = "text";
+    Object.assign(input.style, {
+        width: "100%", boxSizing: "border-box", marginTop: "4px", background: "#111", color: "#ddd",
+        border: "1px solid #444", borderRadius: "6px", padding: "5px 8px", fontSize: "12px",
+    });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const okBtn = makeTextButton("Reset", RESET_RED);
+    footer.append(cancelBtn, okBtn);
+    card.append(title, text, label, input, footer);
+
+    let resolve = null;
+    let expected = "";
+    const matches = () => input.value.trim() === expected;
+    const paint = () => {
+        okBtn.disabled = !matches();
+        okBtn.style.opacity = matches() ? "1" : "0.4";
+        okBtn.style.cursor = matches() ? "pointer" : "default";
+    };
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            finish(false);
+        }
+    };
+    function finish(answer) {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        const r = resolve;
+        resolve = null;
+        if (r) r(answer);
+    }
+    input.addEventListener("input", paint);
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && matches()) finish(true);
+    });
+    cancelBtn.addEventListener("click", () => finish(false));
+    okBtn.addEventListener("click", () => matches() && finish(true));
+    overlay.addEventListener("mousedown", () => finish(false));
+
+    return {
+        /** ask({name, html}) -> Promise<true si le nom tape est confirme> */
+        ask(opts) {
+            if (resolve) finish(false);
+            expected = opts.name;
+            title.textContent = "Reset the project " + opts.name + "?";
+            text.innerHTML = opts.html;
+            label.innerHTML = "Type <b>" + escapeHtml(opts.name) + "</b> to confirm:";
+            input.value = "";
+            paint();
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 480);
+            setTimeout(() => input.focus(), 0);
+            return new Promise((r) => (resolve = r));
+        },
+        remove() {
+            finish(false);
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
+// Copy (choix utilisateur, 19/10/2026) : fichiers de 08 a 14 (et leurs Archives)
+// d'un autre projet ; liste deroulante (premier projet propose), bilan relu a
+// chaque choix ; la configuration de l'autre projet remplit le Reference Loader.
+// --------------------------------------------------------------------
+function buildCopyDialog(container) {
+    const { overlay, card } = makeOverlay();
+    overlay.style.zIndex = "10002";
+    Object.assign(card.style, { width: "min(520px, 92vw)", padding: "12px 14px", borderColor: COPY_BLUE });
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "8px" });
+    const row = document.createElement("div");
+    Object.assign(row.style, { display: "flex", alignItems: "center", gap: "8px" });
+    const lab = document.createElement("span");
+    lab.textContent = "From:";
+    Object.assign(lab.style, { color: "#9fd6cf", fontWeight: "bold" });
+    const select = document.createElement("select");
+    Object.assign(select.style, {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833",
+        borderRadius: "6px", padding: "3px 6px", fontSize: "12px",
+    });
+    row.append(lab, select);
+    const body = document.createElement("div");
+    Object.assign(body.style, { lineHeight: "1.5", color: "#ccc", marginTop: "10px", minHeight: "60px" });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const okBtn = makeTextButton("Copy", COPY_BLUE);
+    footer.append(cancelBtn, okBtn);
+    card.append(title, row, body, footer);
+
+    let resolve = null;
+    let plan = null;
+    let probe = null;
+    let reqId = 0;
+    const setOk = (on) => {
+        okBtn.disabled = !on;
+        okBtn.style.opacity = on ? "1" : "0.4";
+        okBtn.style.cursor = on ? "pointer" : "default";
+    };
+    async function refresh() {
+        const id = ++reqId;
+        plan = null;
+        setOk(false);
+        body.textContent = "Reading the project…";
+        try {
+            const data = await probe(select.value);
+            if (id !== reqId) return;
+            plan = data;
+            const total = data.folders.reduce((a, f) => a + f.files + f.archives, 0);
+            body.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:12px">' +
+                '<tr style="color:#9fd6cf"><td>Folder</td><td style="text-align:right">Files</td>' +
+                '<td style="text-align:right">Archives</td><td style="text-align:right">To copy</td>' +
+                '<td style="text-align:right">Same SHA256</td></tr>' +
+                data.folders.map((f) => "<tr><td><b>" + f.folder + '</b></td><td style="text-align:right">' + f.files +
+                    '</td><td style="text-align:right">' + f.archives + '</td><td style="text-align:right">' + f.copy +
+                    '</td><td style="text-align:right;color:#888">' + f.skip + "</td></tr>").join("") + "</table>" +
+                '<div style="margin-top:8px;color:' + (data.report ? "#9fd6cf" : ORANGE) + '">' + (data.report
+                    ? "The Reference Loader will be filled with the saved configuration of this project " +
+                    "(same order and trims, pointing to the copies)."
+                    : "This project has no saved configuration: the files are only copied; pick them in the gallery.") +
+                "</div>" + '<div style="color:#999;margin-top:4px">The other project is never changed. A file whose ' +
+                "SHA256 is already in the folder is not copied again; a taken name gets _02, _03…</div>";
+            setOk(total > 0);
+        } catch (e) {
+            if (id !== reqId) return;
+            body.textContent = e.message;
+        }
+    }
+    const onKey = (e) => {
+        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        finish(null);
+    };
+    function finish(answer) {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+        const r = resolve;
+        resolve = null;
+        if (r) r(answer);
+    }
+    select.addEventListener("change", refresh);
+    cancelBtn.addEventListener("click", () => finish(null));
+    okBtn.addEventListener("click", () => plan && finish(select.value));
+    overlay.addEventListener("mousedown", () => finish(null));
+
+    return {
+        /** ask({project, sources: [{name, path}], probe(path) -> Promise<bilan>}) -> Promise<chemin choisi | null> */
+        ask(opts) {
+            if (resolve) finish(null);
+            probe = opts.probe;
+            title.textContent = "Copy media files into " + opts.project;
+            select.innerHTML = "";
+            for (const src of opts.sources) {
+                const o = document.createElement("option");
+                o.value = src.path;
+                o.textContent = src.name;
+                o.style.background = "#111";
+                select.appendChild(o);
+            }
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 520);
+            refresh();
+            return new Promise((r) => (resolve = r));
+        },
+        remove() {
+            finish(null);
+            overlay.remove();
+        },
+    };
+}
+
 function buildConfirm(container) {
     const { overlay, card } = makeOverlay();
     overlay.style.zIndex = "10002";
@@ -3425,6 +3626,9 @@ app.registerExtension({
             const saveBtn = smallText("Save");
             // Purge (choix utilisateur, 19/10/2026) : Runs "running" orphelins supprimes, Runs en erreur -> 98.Error.
             const purgeBtn = smallText("Purge");
+            // Copy et Reset (choix utilisateur, 19/10/2026), a gauche de Purge.
+            const copyBtn = smallText("Copy");
+            const resetBtn = smallText("Reset");
             const reloadBtn = makeIconButton(VIOLET, REFRESH_ICON, "Read the list of projects again");
             reloadBtn.style.width = reloadBtn.style.height = "22px";
             const helpBtn = document.createElement("button");
@@ -3434,7 +3638,7 @@ app.registerExtension({
                 width: "22px", height: "22px", borderRadius: "50%", border: "none", background: PINK,
                 color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
             });
-            bottom.append(status, purgeBtn, loadBtn, saveBtn, reloadBtn, helpBtn);
+            bottom.append(status, copyBtn, resetBtn, purgeBtn, loadBtn, saveBtn, reloadBtn, helpBtn);
 
             // Une ligne par sous-dossier : bouton (pastille coloree + nom) et
             // petite cloche. Pas encore d'action : leur role viendra plus tard.
@@ -3499,6 +3703,8 @@ app.registerExtension({
                 sectionsFor: projectHelpSections, nodeTitle: "MiniMax H3 Project", sectionKey: "mmproject.helpSection",
             });
             const confirm = buildConfirm(container);
+            const resetDialog = buildResetDialog(container);
+            const copyDialog = buildCopyDialog(container);
             const renameDialog = buildRenameMoveDialog(container, { confirm, apply: applyRenameMove });
             const workflowDialog = buildWorkflowDialog(container);
             const archiveMenu = buildArchiveMenu(container);
@@ -3508,7 +3714,7 @@ app.registerExtension({
             const folderViewer = buildFolderViewer(container);
             const runViewer = buildRunViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run));
             const setViewer = buildSetViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run));
-            node.__mmprojectOverlays = [createDialog, help, confirm, renameDialog, workflowDialog, archiveMenu, deleteDialog,
+            node.__mmprojectOverlays = [createDialog, help, confirm, resetDialog, copyDialog, renameDialog, workflowDialog, archiveMenu, deleteDialog,
                 loadDialog, duplicatesDialog, folderViewer, runViewer, setViewer];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
@@ -3589,6 +3795,10 @@ app.registerExtension({
                         "the configuration of the project (" + configPathOf(s.name) + ")");
                 setOn(loadBtn, current && !locked, PINK, !current ? "Pick a project first" : locked ? LOCKED
                     : "Load: check the files, then load the saved configuration of the project (" + configPathOf(s.name) + ")");
+                setOn(copyBtn, current && !locked, COPY_BLUE, !current ? "Pick a project first" : locked ? LOCKED
+                    : "Copy: copy the files of 08.Images to 14.Video-Audio (and their Archives) from another project");
+                setOn(resetBtn, current && !locked, RESET_RED, !current ? "Pick a project first" : locked ? LOCKED
+                    : "Reset: every file of the project goes to the Recycle Bin, and the Reference Loader is emptied");
                 setOn(purgeBtn, current, PURGE_RED, current ? "Purge: delete the runs still marked running while no " +
                     "run is in progress, move the runs in error to 98.Error" : "Pick a project first");
                 syncModelsLink();
@@ -4111,6 +4321,92 @@ app.registerExtension({
                     say("Purge: " + data.deleted.length + " run(s) deleted, " + data.moved.length +
                         " moved to 98.Error" + (emptyDone ? ", " + (data.empty || []).length + " done run(s) without " +
                         "output deleted" : "") + (data.kept.length ? ", " + data.kept.length + " running kept" : "") + ".", true);
+                } catch (e) {
+                    say(e.message);
+                    await loadFolderFiles();
+                }
+            }
+
+            /**
+             * Reset (choix utilisateur, 19/10/2026) : bilan sans rien toucher, nom du projet a
+             * taper, puis tous les fichiers du projet vers la Corbeille ; le Reference Loader
+             * relie est vide dans les deux modes (son Root folder ne change pas).
+             */
+            async function resetProject() {
+                const s = getState();
+                if (!inProject(s.name)) return;
+                let plan;
+                try {
+                    plan = await apiPost("/mmproject/reset", { project: s.path, dry_run: true });
+                } catch (e) {
+                    say(e.message);
+                    return;
+                }
+                const rows = plan.folders.map((f) => "<tr><td>" + escapeHtml(f.folder) + '</td><td style="text-align:right">' +
+                    f.files + '</td><td style="text-align:right">' + fmtSize(f.size) + "</td></tr>").join("");
+                const ok = await resetDialog.ask({
+                    name: s.name,
+                    html: "<b>" + plan.total + "</b> file(s), " + fmtSize(plan.size) + ", will be " + (plan.trash
+                        ? "moved to the <b>Recycle Bin</b>" : '<b style="color:' + RESET_RED + '">deleted permanently</b>') +
+                        ". The folders stay, empty." + (rows ? '<table style="border-collapse:collapse;width:100%;margin:6px 0;' +
+                        'font-size:12px">' + rows + "</table>" : "") +
+                        "The selection of the <b>Reference Loader</b> is emptied in both modes (its root folder does not change)." +
+                        '<div style="color:#999;margin-top:4px">Files outside the project are never touched.</div>',
+                });
+                if (!ok) return;
+                try {
+                    const data = await apiPost("/mmproject/reset", { project: s.path });
+                    const loader = linkedLoader(node);
+                    if (loader) {
+                        const st = loader.mmGetState();
+                        for (const k of ["images", "videos", "video_audios", "audios", "first_frame", "last_frame"]) st[k] = [];
+                        st.trims = { video: {}, video_audio: {}, audio: {} };
+                        loader.mmSetState(st);
+                        setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: s.path });
+                    }
+                    await loadWorkflowInfo();
+                    await loadFolderFiles();
+                    say("Reset: " + data.total + " file(s) " + (data.trash ? "moved to the Recycle Bin" : "deleted") +
+                        "; the Reference Loader is empty.", true);
+                } catch (e) {
+                    say(e.message);
+                    await loadFolderFiles();
+                }
+            }
+
+            /**
+             * Copy (choix utilisateur, 19/10/2026) : fichiers de 08 a 14 et de leurs Archives
+             * d'un autre projet ; la configuration sauvegardee de l'autre projet remplit le
+             * Reference Loader (ordre et rognages, chemins des copies).
+             */
+            async function copyFromProject() {
+                const s = getState();
+                if (!inProject(s.name)) return;
+                const sep = folder.root.includes("\\") || !folder.root.includes("/") ? "\\" : "/";
+                const sources = projects.filter((p) => p !== s.name)
+                    .map((p) => ({ name: p, path: folder.root.replace(/[\\/]+$/, "") + sep + p }));
+                if (!sources.length) {
+                    say("No other project in this folder to copy from.");
+                    return;
+                }
+                const source = await copyDialog.ask({
+                    project: s.name, sources,
+                    probe: (path) => apiPost("/mmproject/copy_media", { project: s.path, source: path, dry_run: true }),
+                });
+                if (!source) return;
+                try {
+                    const data = await apiPost("/mmproject/copy_media", { project: s.path, source });
+                    const loader = linkedLoader(node);
+                    let filled = "";
+                    if (loader && data.report) {
+                        const media = Object.keys(MEDIA_FOLDERS);
+                        loader.mmSetState(loadedState(loader.mmGetState(), data.report, s.path, media));
+                        setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: s.path });
+                        filled = "; the Reference Loader follows its configuration";
+                    }
+                    await loadFolderFiles();
+                    say("Copy: " + data.copied + " file(s) copied, " + data.skipped + " already there (same SHA256)" +
+                        filled + ".", true);
                 } catch (e) {
                     say(e.message);
                     await loadFolderFiles();
@@ -4753,6 +5049,8 @@ app.registerExtension({
             });
             loadBtn.addEventListener("click", () => loadProject());
             purgeBtn.addEventListener("click", () => purgeProject());
+            resetBtn.addEventListener("click", () => resetProject());
+            copyBtn.addEventListener("click", () => copyFromProject());
             newBtn.addEventListener("click", async () => {
                 if (!wired()) return;
                 await loadProjects();

@@ -277,6 +277,87 @@ def config_entries(cfg, folder):
     return out
 
 
+def _free_copy_name(folder, name, taken):
+    """name, sinon stem_02.ext, stem_03.ext... libre dans folder et hors de taken."""
+    stem, ext = os.path.splitext(name)
+    candidate, n = name, 1
+    while os.path.exists(os.path.join(folder, candidate)) or candidate.lower() in taken:
+        n += 1
+        candidate = "%s_%02d%s" % (stem, n, ext)
+    return candidate
+
+
+def copy_media(project, source, dry_run=False):
+    """
+    Copy (choix utilisateur 19/10/2026) : fichiers de 08.Images, 10.Son,
+    12.Video et 14.Video-Audio d'un autre projet copies dans les memes dossiers
+    du projet ouvert, Archives comprises ; un fichier dont le SHA256 est deja
+    dans le dossier d'arrivee n'est pas recopie ; nom pris -> _02, _03...
+    L'autre projet n'est jamais modifie. dry_run : bilan seulement.
+    Renvoie {folders: [{folder, files, archives, copy, skip}], copied, skipped,
+    report} ; report = listes de la configuration de l'autre projet ramenees
+    aux fichiers du projet ouvert (meme forme que check_config, pour remplir le
+    Ref Loader), None sans configuration.
+    """
+    project, source = os.path.abspath(project or ""), os.path.abspath(source or "")
+    for p in (project, source):
+        if not os.path.isdir(p):
+            raise FileNotFoundError("Project folder not found: %s" % p)
+    if os.path.normcase(project) == os.path.normcase(source):
+        raise ValueError("Pick another project to copy from.")
+    out = {"folders": [], "copied": 0, "skipped": 0, "report": None}
+    names = {}  # (dossier, nom dans l'autre projet) -> nom dans le projet ouvert (racine)
+    for folder in MEDIA:
+        row = {"folder": folder, "files": 0, "archives": 0, "copy": 0, "skip": 0}
+        for sub in ("", projects.ARCHIVE_FOLDER):
+            sdir = os.path.join(source, folder, sub)
+            ddir = os.path.join(project, folder, sub)
+            here = _root_files(ddir) if os.path.isdir(ddir) else []
+            known = {}
+            for n in here:
+                sha = projects.file_hash(os.path.join(ddir, n))
+                if sha:
+                    known.setdefault(sha, n)
+            taken = set()
+            for n in (_root_files(sdir) if os.path.isdir(sdir) else []):
+                row["archives" if sub else "files"] += 1
+                src = os.path.join(sdir, n)
+                sha = projects.file_hash(src)
+                if sha in known:
+                    row["skip"] += 1
+                    dst_name = known[sha]
+                else:
+                    row["copy"] += 1
+                    dst_name = _free_copy_name(ddir, n, taken)
+                    taken.add(dst_name.lower())
+                    if not dry_run:
+                        os.makedirs(ddir, exist_ok=True)
+                        shutil.copy2(src, os.path.join(ddir, dst_name))
+                    if sha:
+                        known[sha] = dst_name
+                if not sub:
+                    names[(folder, n)] = dst_name
+        out["folders"].append(row)
+        out["copied"] += row["copy"]
+        out["skipped"] += row["skip"]
+    try:
+        cfg = read_config(source)
+    except (OSError, ValueError):
+        cfg = None
+    if cfg:
+        report = {"mode": cfg.get("mode"), "folders": []}
+        for folder in MEDIA:
+            files = []
+            for e in config_entries(cfg, folder):
+                dst_name = names.get((folder, e["nom"]))
+                if dst_name:
+                    files.append({"nom": dst_name, "Indice": e.get("Indice"), "Liste": e.get("Liste"),
+                                  "trim": e.get("trim"), "status": "ok"})
+            report["folders"].append({"folder": folder, "kind": "media", "files": files})
+        out["report"] = report
+    return out
+
+
 def _archive_match(project, folder, name, sha, cache):
     """
     Fichier de <dossier>/Archives de meme SHA256, sinon None : celui du meme
