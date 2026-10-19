@@ -617,3 +617,18 @@ export function withoutPaths(paths, gone) {
     const g = new Set((gone || []).map((p) => String(p).replace(/\\/g, "/").toLowerCase()));
     return (paths || []).filter((p) => !g.has(String(p).replace(/\\/g, "/").toLowerCase()));
 }
+
+/**
+ * Filtre "Project" de la galerie du Ref Loader (choix utilisateur, 19/10/2026) :
+ * sous-dossiers (chemins relatifs au Root folder) du projet choisi ; "" = All.
+ */
+export function inProjectFilter(path, project) {
+    if (!project) return true;
+    const p = String(path || "").replace(/\\/g, "/").toLowerCase();
+    const n = String(project).toLowerCase();
+    return p === n || p.startsWith(n + "/");
+}
+
+export function filterSubfolders(entries, project) {
+    return (entries || []).filter((e) => inProjectFilter(e.path, project));
+}
