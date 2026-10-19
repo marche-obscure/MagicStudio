@@ -7,6 +7,8 @@
 
 **Two ComfyUI custom nodes for the native MiniMax H3 models:** pick your references in thumbnail galleries, then keep every project, run and rush organised.
 
+https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
+
 <p align="center">
   <img src="assets/screenshot.webp" alt="MiniMax H3 Reference Loader node with its project overview and preview windows" width="960">
 </p>
