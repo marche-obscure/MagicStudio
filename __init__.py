@@ -333,6 +333,10 @@ try:
             if q.get("archives") == "1":
                 out["archives"] = await _in_executor(projects.folder_files, q.get("project", ""), folders,
                                                      projects.ARCHIVE_FOLDER)
+            if q.get("dates") == "1":
+                groups = dict(files)
+                groups.update({"Archives/" + k: v for k, v in (out.get("archives") or {}).items()})
+                out["mtimes"] = await _in_executor(projects.file_mtimes, groups)
         except Exception as e:
             return _project_error(e)
         return web.json_response(out)
@@ -388,6 +392,29 @@ try:
         q = request.rel_url.query
         try:
             data = await _in_executor(run_record.read_run_workflow, q.get("project", "").strip(), q.get("name", ""))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    def _comfy_busy():
+        """Un Run tourne dans ComfyUI (file d'attente : prompt en cours d'execution)."""
+        try:
+            running, _pending = PromptServer.instance.prompt_queue.get_current_queue()
+            return bool(running)
+        except Exception:
+            return True  # file illisible : on garde les Runs "running"
+
+    @routes.post("/mmproject/purge")
+    async def mmproject_purge(request):
+        """
+        Purge du projet (bouton Purge) : dry_run = compte seulement (fenetre
+        d'avertissement) ; sinon supprime les Runs "running" sans Run en cours
+        et range les Runs "error" dans 98.Error.
+        """
+        try:
+            body = await request.json()
+            data = await _in_executor(run_record.purge_runs, body.get("project", ""), _comfy_busy(),
+                                      bool(body.get("dry_run")))
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)

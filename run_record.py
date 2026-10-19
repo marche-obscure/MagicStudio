@@ -36,6 +36,11 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 SORT_FOLDERS = {"rejected": "Rejected", "validated": "Validated", "footage": "Footage"}
 DEFAULT_SORT = "footage"
 
+# Purge (choix utilisateur, 19/10/2026) : JSON des Runs en erreur et leur
+# workflow ranges dans 98.Error (cree a la premiere purge, sans ligne dans le noeud).
+ERROR_FOLDER = "98.Error"
+ERROR_WORKFLOW_FOLDER = "Workflows"
+
 # Taille maximale des videos copiees dans 40.Rush Videos (choix utilisateur).
 MAX_VIDEO_SIZE = (960, 544)
 
@@ -782,6 +787,52 @@ def tidy_rush(project):
         if changed:
             _write(path, data)
     return moved
+
+
+def purge_runs(project, busy=False, dry_run=False):
+    """
+    Purge des Runs du projet (bouton Purge, choix utilisateur 19/10/2026) :
+    - status "running" alors qu'aucun Run ne tourne : JSON de 04.Prompt et son
+      workflow de 00.Workflows/Run supprimes ; ComfyUI occupe (busy) : gardes ;
+    - status "error" : JSON deplace dans 98.Error, son workflow dans
+      98.Error/Workflows ("_02"... si le nom est pris) ; les fichiers produits
+      restent en place.
+    dry_run : rien n'est touche, seulement compte.
+    Renvoie {deleted: [noms], moved: [noms], kept: [noms "running" gardes]}.
+    """
+    if not project or not os.path.isdir(project):
+        raise FileNotFoundError("Project folder not found: %s" % project)
+    folder = os.path.join(project, PROMPT_FOLDER)
+    names = sorted(n for n in os.listdir(folder) if _RUN_NAME.match(n)) if os.path.isdir(folder) else []
+    out = {"deleted": [], "moved": [], "kept": []}
+    for name in names:
+        path = os.path.join(folder, name)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        status = data.get("status") if isinstance(data, dict) else None
+        if status == "running":
+            if busy:
+                out["kept"].append(name)
+                continue
+            if not dry_run:
+                os.remove(path)
+                _remove_run_workflow(project, name)
+            out["deleted"].append(name)
+        elif status == "error":
+            if not dry_run:
+                err = os.path.join(project, ERROR_FOLDER)
+                os.makedirs(err, exist_ok=True)
+                wf = run_workflow_path(project, name)
+                if os.path.isfile(wf):
+                    wf_dir = os.path.join(err, ERROR_WORKFLOW_FOLDER)
+                    os.makedirs(wf_dir, exist_ok=True)
+                    os.replace(wf, _free_path(wf_dir, name))
+                os.replace(path, _free_path(err, name))
+            out["moved"].append(name)
+    return out
 
 
 def sort_output(project, run_name, index, target):

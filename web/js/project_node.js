@@ -14,7 +14,7 @@ import {
     copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -120,8 +120,10 @@ async function apiPost(url, body) {
 const folderList = PROJECT_SUBFOLDERS.map((f) => "<b>" + f + "</b>").join(", ");
 // Dossiers avec leur pastille, comme dans le noeud.
 const folderBadges = () => hList(PROJECT_SUBFOLDERS.map((f) => iconBadge(FOLDER_ICONS[f], FOLDER_COLORS[f]) + " <b>" + f + "</b>"));
-// Boutons texte du bas du noeud (Load, Save), comme dans le noeud.
-const textBadge = (t) => '<span style="display:inline-block;background:' + PINK + ';color:white;font-weight:bold;' +
+// Bouton Purge du noeud (choix utilisateur, 19/10/2026) : rouge fonce.
+const PURGE_RED = "#8b1a1a";
+// Boutons texte du bas du noeud (Load, Save, Purge), comme dans le noeud.
+const textBadge = (t, color) => '<span style="display:inline-block;background:' + (color || PINK) + ';color:white;font-weight:bold;' +
     'font-size:11px;border-radius:5px;padding:0 7px;line-height:18px">' + t + "</span>";
 // Fichiers de la configuration du projet (Load / Save).
 // Noms des fichiers du projet (choix utilisateur) : workflows_<projet>.json, config_projets_<projet>.json.
@@ -143,6 +145,8 @@ const HELP_SECTIONS = [
             [iconBadge(PLUS_ICON, PINK), "Create a new project (a window asks for the name)"],
             [textBadge("Load"), "Load: check the files, then load the saved configuration of the project"],
             [textBadge("Save"), "Save: copy the files of the Reference Loader into the project, save the workflow and the configuration of the project"],
+            [textBadge("Purge", PURGE_RED), "Purge (after a warning): delete the runs still marked running while no run is in progress (kept while ComfyUI is running something), move the runs in error (JSON and workflow) to 98.Error; their files stay in place. 98.Error is in the project folder, not shown in the node"],
+            [textBadge("Date ↓", INACTIVE_BG), "In the folder windows: newest first (Date ↓) or oldest first (Date ↑), one setting for all the windows; in 08 to 14 the files used by the Reference Loader stay first"],
             [iconBadge(REFRESH_ICON, VIOLET), "Read the list of projects again"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "One row per folder of the project (greyed until a project is picked; its tooltip gives the path)"],
             [iconBadge(BELL_ICON, BELL_ORANGE), "Bell of 00.Workflows: save the workflow (orange = changes to save, green = saved)"],
@@ -389,6 +393,8 @@ const HELP_SECTIONS_FR = [
             [iconBadge(PLUS_ICON, PINK), "Créer un nouveau projet (une fenêtre demande le nom)"],
             [textBadge("Load"), "Load : vérifier les fichiers, puis charger la configuration sauvegardée du projet"],
             [textBadge("Save"), "Save : copier les fichiers du Reference Loader dans le projet, sauvegarder le workflow et la configuration du projet"],
+            [textBadge("Purge", PURGE_RED), "Purge (après un avertissement) : supprimer les Runs encore marqués running alors qu'aucun Run ne tourne (gardés tant que ComfyUI exécute quelque chose), déplacer les Runs en erreur (JSON et workflow) dans 98.Error ; leurs fichiers restent en place. 98.Error est dans le dossier du projet, pas affiché dans le nœud"],
+            [textBadge("Date ↓", INACTIVE_BG), "Dans les fenêtres des dossiers : plus récent d'abord (Date ↓) ou plus ancien d'abord (Date ↑), un seul réglage pour toutes les fenêtres ; dans 08 à 14 les fichiers utilisés par le Reference Loader restent en tête"],
             [iconBadge(REFRESH_ICON, VIOLET), "Relire la liste des projets"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "Une ligne par dossier du projet (grisée tant qu'aucun projet n'est choisi ; l'infobulle donne le chemin)"],
             [iconBadge(BELL_ICON, BELL_ORANGE), "Cloche de 00.Workflows : sauvegarder le workflow (orange = changements, vert = sauvegardé)"],
@@ -1930,6 +1936,38 @@ function buildDuplicatesDialog(container) {
 // Fenetre de visualisation d'un dossier (bouton de 08.Images ... 14.Video-Audio) :
 // fichiers de la racine (numero du Ref Loader) et de Archives ; Close seulement.
 // --------------------------------------------------------------------
+// Tri par date des fenetres des dossiers (choix utilisateur, 19/10/2026) : un
+// seul reglage pour toutes les fenetres, garde dans le navigateur.
+const DATE_ORDER_KEY = "mmproject.dateOrder";
+let dateOrder = "desc";
+try {
+    if (localStorage.getItem(DATE_ORDER_KEY) === "asc") dateOrder = "asc";
+} catch (e) {
+    // stockage indisponible : plus recent d'abord
+}
+
+/** Bouton Date ↓ / Date ↑ d'une fenetre : onChange() apres un clic ; b.refresh() relit le reglage. */
+function makeDateOrderButton(onChange) {
+    const b = makeTextButton("", INACTIVE_BG);
+    Object.assign(b.style, { height: "22px", padding: "0 10px", fontSize: "11px", flex: "0 0 auto" });
+    b.refresh = () => {
+        b.textContent = dateOrder === "asc" ? "Date ↑" : "Date ↓";
+        b.title = dateOrder === "asc" ? "Oldest first (click: newest first)" : "Newest first (click: oldest first)";
+    };
+    b.refresh();
+    b.addEventListener("click", () => {
+        dateOrder = dateOrder === "asc" ? "desc" : "asc";
+        try {
+            localStorage.setItem(DATE_ORDER_KEY, dateOrder);
+        } catch (e) {
+            // reglage non garde
+        }
+        b.refresh();
+        onChange();
+    });
+    return b;
+}
+
 function buildFolderViewer(container) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
@@ -1958,7 +1996,13 @@ function buildFolderViewer(container) {
     Object.assign(footer.style, { display: "flex", justifyContent: "flex-end" });
     const closeBtn = makeTextButton("Close", INACTIVE_BG);
     footer.appendChild(closeBtn);
-    card.append(title, rootLabel, rootRow, archLabel, archFrame, footer);
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "8px" });
+    title.style.flex = "1";
+    let current = null;
+    const orderBtn = makeDateOrderButton(() => current && render());
+    head.append(title, orderBtn);
+    card.append(head, rootLabel, rootRow, archLabel, archFrame, footer);
     const preview = buildPreviewWindow();
 
     const onKey = (e) => {
@@ -2006,30 +2050,37 @@ function buildFolderViewer(container) {
         return t;
     }
 
+    function render() {
+        const { folder, projectName, rootFiles, archivePaths, mtimes } = current;
+        const kind = PREVIEW_KIND[folder];
+        orderBtn.refresh();
+        title.textContent = folder + " – " + projectName;
+        rootLabel.textContent = folder + " (" + rootFiles.length + " file(s))";
+        archLabel.textContent = "Archives (" + archivePaths.length + " file(s))";
+        rootRow.innerHTML = "";
+        archRow.innerHTML = "";
+        for (const f of orderByMtime(rootFiles, mtimes, dateOrder)) {
+            rootRow.appendChild(tile(f.path, f.badge, kind, folder + "/" + baseOf(f.path), !f.badge));
+        }
+        for (const f of orderByMtime(archivePaths.map((p) => ({ path: p, badge: "" })), mtimes, dateOrder)) {
+            archRow.appendChild(tile(f.path, "", kind, folder + "/Archives/" + baseOf(f.path), false));
+        }
+        const empty = (row, text) => {
+            if (row.children.length) return;
+            const d = document.createElement("div");
+            d.textContent = text;
+            Object.assign(d.style, { color: "#888", alignSelf: "center" });
+            row.appendChild(d);
+        };
+        empty(rootRow, "No file in " + folder + ".");
+        empty(archRow, "No file in Archives.");
+    }
+
     return {
-        /** open(folder, projectName, rootFiles [{path, badge}], archivePaths) */
-        open(folder, projectName, rootFiles, archivePaths) {
-            const kind = PREVIEW_KIND[folder];
-            title.textContent = folder + " – " + projectName;
-            rootLabel.textContent = folder + " (" + rootFiles.length + " file(s))";
-            archLabel.textContent = "Archives (" + archivePaths.length + " file(s))";
-            rootRow.innerHTML = "";
-            archRow.innerHTML = "";
-            for (const f of rootFiles) {
-                rootRow.appendChild(tile(f.path, f.badge, kind, folder + "/" + baseOf(f.path), !f.badge));
-            }
-            for (const p of archivePaths) {
-                archRow.appendChild(tile(p, "", kind, folder + "/Archives/" + baseOf(p), false));
-            }
-            const empty = (row, text) => {
-                if (row.children.length) return;
-                const d = document.createElement("div");
-                d.textContent = text;
-                Object.assign(d.style, { color: "#888", alignSelf: "center" });
-                row.appendChild(d);
-            };
-            empty(rootRow, "No file in " + folder + ".");
-            empty(archRow, "No file in Archives.");
+        /** open(folder, projectName, rootFiles [{path, badge}], archivePaths, mtimes {chemin: secondes}) */
+        open(folder, projectName, rootFiles, archivePaths, mtimes) {
+            current = { folder, projectName, rootFiles, archivePaths, mtimes: mtimes || {} };
+            render();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 860);
@@ -2112,7 +2163,17 @@ function buildRunViewer(container, onSort, onWorkflow) {
     Object.assign(title.style, { flex: "1", fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR });
     const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
     Object.assign(closeBtn.style, { width: "22px", height: "22px" });
-    head.append(title, closeBtn);
+    // Date ↓ / ↑ : ordre inverse, la meme vignette ou le meme Run reste choisi.
+    const orderBtn = makeDateOrderButton(() => {
+        if (folder === "04.Prompt") {
+            runIndex = Math.max(0, filteredRuns().length - 1 - runIndex);
+            renderPrompt();
+        } else {
+            rushIndex = Math.max(0, rushItems(runs, folder).length - 1 - rushIndex);
+            renderRush();
+        }
+    });
+    head.append(title, orderBtn, closeBtn);
 
     // 04.Prompt : filtre et liste des Runs.
     const pick = document.createElement("div");
@@ -2376,7 +2437,7 @@ function buildRunViewer(container, onSort, onWorkflow) {
     const showPreview = (file, kind) => preview.toggle(file, kind, shownOf(file), card);
 
     // ---- 04.Prompt ----
-    const filteredRuns = () => runsOfKind(runs, filter === "all" ? null : filter);
+    const filteredRuns = () => inDateOrder(runsOfKind(runs, filter === "all" ? null : filter), dateOrder);
     function renderPrompt() {
         filterBtns.forEach((b) => {
             const on = b.dataset.filter === filter;
@@ -2505,7 +2566,7 @@ function buildRunViewer(container, onSort, onWorkflow) {
 
     // ---- 40.Rush Videos / 60.Rush Images ----
     function renderRush() {
-        const items = rushItems(runs, folder);
+        const items = rushItems(inDateOrder(runs, dateOrder), folder);
         strip.innerHTML = "";
         if (!items.length) {
             const d = document.createElement("div");
@@ -2566,6 +2627,7 @@ function buildRunViewer(container, onSort, onWorkflow) {
                 modelRun = null;
             }
             const promptMode = name === "04.Prompt";
+            orderBtn.refresh();
             if (!same) note.textContent = "";
             title.textContent = name + " – " + projectName;
             conf.label.textContent = "Configuration";
@@ -2637,7 +2699,13 @@ function buildSetViewer(container, onSort, onWorkflow) {
     Object.assign(title.style, { flex: "1", fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR });
     const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
     Object.assign(closeBtn.style, { width: "22px", height: "22px" });
-    head.append(title, closeBtn);
+    // Date ↓ / ↑ : ensembles par date de leur dernier Run, prompts du plus recent ou du plus ancien.
+    const orderBtn = makeDateOrderButton(() => {
+        const c = setsWithRuns(registries, runs, kind).find((x) => x.set.index === setIndex);
+        promptIndex = Math.max(0, (c ? promptGroups(c.runs).length : 0) - 1 - promptIndex);
+        render();
+    });
+    head.append(title, orderBtn, closeBtn);
 
     const column = () => {
         const c = document.createElement("div");
@@ -2727,7 +2795,7 @@ function buildSetViewer(container, onSort, onWorkflow) {
 
     function render() {
         const color = FOLDER_COLORS[folder] || VIOLET;
-        const cards = setsWithRuns(registries, runs, kind);
+        const cards = orderSetCards(setsWithRuns(registries, runs, kind), dateOrder);
         setsHead.textContent = SET_NAMES[kind] + " (" + cards.length + ")";
         setsList.innerHTML = "";
         if (!cards.length) {
@@ -2757,7 +2825,7 @@ function buildSetViewer(container, onSort, onWorkflow) {
     }
 
     function renderPrompts(current, color) {
-        const groups = current ? promptGroups(current.runs) : [];
+        const groups = current ? inDateOrder(promptGroups(current.runs), dateOrder) : [];
         promptHead.textContent = "Prompts (" + groups.length + ")";
         promptList.innerHTML = "";
         if (current && !groups.length) promptList.appendChild(empty("No run uses this set."));
@@ -2832,6 +2900,7 @@ function buildSetViewer(container, onSort, onWorkflow) {
             }
             title.textContent = name + " – " + project;
             card.style.borderColor = FOLDER_COLORS[name] || VIOLET;
+            orderBtn.refresh();
             render();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
@@ -3158,6 +3227,8 @@ app.registerExtension({
             };
             const loadBtn = smallText("Load");
             const saveBtn = smallText("Save");
+            // Purge (choix utilisateur, 19/10/2026) : Runs "running" orphelins supprimes, Runs en erreur -> 98.Error.
+            const purgeBtn = smallText("Purge");
             const reloadBtn = makeIconButton(VIOLET, REFRESH_ICON, "Read the list of projects again");
             reloadBtn.style.width = reloadBtn.style.height = "22px";
             const helpBtn = document.createElement("button");
@@ -3167,7 +3238,7 @@ app.registerExtension({
                 width: "22px", height: "22px", borderRadius: "50%", border: "none", background: PINK,
                 color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
             });
-            bottom.append(status, loadBtn, saveBtn, reloadBtn, helpBtn);
+            bottom.append(status, purgeBtn, loadBtn, saveBtn, reloadBtn, helpBtn);
 
             // Une ligne par sous-dossier : bouton (pastille coloree + nom) et
             // petite cloche. Pas encore d'action : leur role viendra plus tard.
@@ -3313,6 +3384,8 @@ app.registerExtension({
                         "the configuration of the project (" + configPathOf(s.name) + ")");
                 setOn(loadBtn, current && !locked, PINK, !current ? "Pick a project first" : locked ? LOCKED
                     : "Load: check the files, then load the saved configuration of the project (" + configPathOf(s.name) + ")");
+                setOn(purgeBtn, current, PURGE_RED, current ? "Purge: delete the runs still marked running while no " +
+                    "run is in progress, move the runs in error to 98.Error" : "Pick a project first");
                 syncModelsLink();
             }
 
@@ -3778,16 +3851,57 @@ app.registerExtension({
                 }
             }
 
+            /**
+             * Purge (choix utilisateur, 19/10/2026) : compte d'abord (rien n'est touche),
+             * avertissement avec rappel de 98.Error, puis purge et relecture des listes.
+             */
+            async function purgeProject() {
+                const s = getState();
+                if (!s.name || !projects.includes(s.name)) return;
+                let plan;
+                try {
+                    plan = await apiPost("/mmproject/purge", { project: s.path, dry_run: true });
+                } catch (e) {
+                    say(e.message);
+                    return;
+                }
+                const keptText = plan.kept.length ? plan.kept.length + " run(s) marked running kept: ComfyUI is " +
+                    "running something, purge again later." : "";
+                if (!plan.deleted.length && !plan.moved.length) {
+                    say("Nothing to purge." + (keptText ? " " + keptText : ""), !keptText);
+                    return;
+                }
+                const ok = await confirm.ask({
+                    title: "Purge the project " + s.name + "?",
+                    html: "<b>" + plan.deleted.length + "</b> run(s) marked <b>running</b> while no run is in progress: " +
+                        "deleted (JSON in 04.Prompt and its workflow in 00.Workflows/Run).<br><b>" + plan.moved.length +
+                        "</b> run(s) in <b>error</b>: moved to <b>98.Error</b> (workflow in 98.Error/Workflows); their " +
+                        "files stay in place." + (keptText ? '<br><span style="color:' + ORANGE + '">' + keptText + "</span>" : "") +
+                        '<br><span style="color:#999">98.Error is in the project folder; it is not shown in the node.</span>',
+                    okLabel: "Purge", okColor: PURGE_RED,
+                });
+                if (!ok) return;
+                try {
+                    const data = await apiPost("/mmproject/purge", { project: s.path });
+                    await loadFolderFiles();
+                    say("Purge: " + data.deleted.length + " run(s) deleted, " + data.moved.length +
+                        " moved to 98.Error" + (data.kept.length ? ", " + data.kept.length + " running kept" : "") + ".", true);
+                } catch (e) {
+                    say(e.message);
+                    await loadFolderFiles();
+                }
+            }
+
             /** Fenetre de visualisation d'un dossier : racine (ordre du Ref Loader) et Archives. */
             async function showFolder(f) {
                 const s = getState();
                 if (!s.name || !projects.includes(s.name)) return;
                 try {
                     const data = await apiGet("/mmproject/folder_files?project=" + encodeURIComponent(s.path) +
-                        "&folders=" + encodeURIComponent(f) + "&archives=1");
+                        "&folders=" + encodeURIComponent(f) + "&archives=1&dates=1");
                     const loader = linkedLoader(node);
                     const rootFiles = orderedFolderFiles(data.files[f] || [], loader ? loader.mmGetState() : null, f);
-                    folderViewer.open(f, s.name, rootFiles, (data.archives || {})[f] || []);
+                    folderViewer.open(f, s.name, rootFiles, (data.archives || {})[f] || [], data.mtimes);
                 } catch (e) {
                     say(e.message);
                 }
@@ -4413,6 +4527,7 @@ app.registerExtension({
                 await saveProjectConfig();
             });
             loadBtn.addEventListener("click", () => loadProject());
+            purgeBtn.addEventListener("click", () => purgeProject());
             newBtn.addEventListener("click", async () => {
                 await loadProjects();
                 createDialog.open({

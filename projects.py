@@ -507,6 +507,18 @@ def folder_files(project, folders, sub=""):
     return out
 
 
+def file_mtimes(groups):
+    """{chemin: date de modification} des fichiers de {dossier: [chemins]} (tri par date des fenetres)."""
+    out = {}
+    for paths in groups.values():
+        for p in paths:
+            try:
+                out[p] = os.path.getmtime(p)
+            except OSError:
+                pass
+    return out
+
+
 def import_name(folder, name):
     """
     Nom libre pour 'name' dans 'folder' : le nom lui-meme s'il est libre,
