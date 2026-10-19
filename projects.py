@@ -713,6 +713,55 @@ def delete_duplicates(project, folder, shas, trash):
     return names
 
 
+def _project_files(project):
+    """Tous les fichiers du projet (sous-dossiers compris) : [(dossier du haut, chemin, taille)]."""
+    out = []
+    for dirpath, _dirs, names in os.walk(project):
+        rel = os.path.relpath(dirpath, project)
+        top = "" if rel == "." else rel.split(os.sep)[0]
+        for n in names:
+            p = os.path.join(dirpath, n)
+            try:
+                size = os.path.getsize(p)
+            except OSError:
+                size = 0
+            out.append((top, p, size))
+    return out
+
+
+def reset_project(project, dry_run=False):
+    """
+    Remise a zero du projet (bouton Reset, choix utilisateur 19/10/2026) : tous
+    les fichiers de tous ses dossiers et sous-dossiers partent dans la Corbeille
+    de Windows (suppression definitive ailleurs) ; les dossiers restent, ceux
+    qui manquent sont recrees. dry_run : bilan seulement, rien n'est touche.
+    Renvoie {folders: [{folder, files, size}], total, size, trash}.
+    """
+    if not project or not os.path.isdir(project):
+        raise FileNotFoundError("Project folder not found: %s" % project)
+    files = _project_files(project)
+    per = {}
+    for top, _p, size in files:
+        f = per.setdefault(top, {"folder": top or ".", "files": 0, "size": 0})
+        f["files"] += 1
+        f["size"] += size
+    out = {"folders": sorted(per.values(), key=lambda f: f["folder"].lower()), "total": len(files),
+           "size": sum(s for _t, _p, s in files), "trash": TRASH_AVAILABLE}
+    if dry_run or not files:
+        return out
+    paths = [p for _t, p, _s in files]
+    if TRASH_AVAILABLE:
+        for i in range(0, len(paths), 200):  # par lots : longueur de la liste passee a Windows
+            _to_recycle_bin(paths[i:i + 200])
+    else:
+        for p in paths:
+            os.remove(p)
+    for p in paths:
+        _HASH_CACHE.pop(_norm(p), None)
+    ensure_project(project)
+    return out
+
+
 def delete_archive(project, name):
     """Supprime un .json de 00.Workflows/Archives (jamais un fichier de la racine)."""
     if not (name or "").lower().endswith(".json"):
