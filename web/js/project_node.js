@@ -5111,6 +5111,12 @@ app.registerExtension({
                 const s = getState();
                 return inProject(s.name) ? { name: s.name, path: s.path } : null;
             };
+            // Lu par la galerie du Reference Loader (filtre "Project", choix utilisateur
+            // 19/10/2026) : dossier des projets, leurs noms, projet choisi ("" sans).
+            node.mmProjectList = () => {
+                const s = getState();
+                return { root: folder.root, names: projects.slice(), current: inProject(s.name) ? s.name : "" };
+            };
 
             node.addDOMWidget("mmproject_ui", "mmproject", container, {
                 serialize: false,

@@ -9,7 +9,7 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -156,6 +156,19 @@ test("dossier renomme : candidats sous le nouveau Root folder, retrait des manqu
     assert.deepEqual(relinkCandidates(old, ""), []);
     assert.deepEqual(withoutPaths(["C:\\A\\x.png", "C:\\A\\y.png"], ["c:/a/X.PNG"]), ["C:\\A\\y.png"]);
     assert.deepEqual(withoutPaths(null, ["x"]), []);
+});
+
+test("galerie : filtre Project des sous-dossiers", () => {
+    const subs = [{ path: "Speech-01" }, { path: "Speech-01/08.Images" }, { path: "Speech-01/08.Images/Archives" },
+        { path: "Speech-012/08.Images" }, { path: "Yatch/12.Video" }];
+    assert.deepEqual(filterSubfolders(subs, ""), subs);
+    assert.deepEqual(filterSubfolders(subs, "Speech-01").map((e) => e.path),
+        ["Speech-01", "Speech-01/08.Images", "Speech-01/08.Images/Archives"]);
+    assert.deepEqual(filterSubfolders(subs, "yatch").map((e) => e.path), ["Yatch/12.Video"]);
+    assert.ok(inProjectFilter("Speech-01\\10.Son", "Speech-01"));
+    assert.ok(!inProjectFilter("Speech-012", "Speech-01"));
+    assert.ok(inProjectFilter("anything", ""));
+    assert.deepEqual(filterSubfolders(null, "x"), []);
 });
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {

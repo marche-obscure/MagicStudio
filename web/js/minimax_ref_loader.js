@@ -3,7 +3,7 @@ import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
 import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
-    relinkCandidates, withoutPaths } from "./project_paths.js";
+    relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter } from "./project_paths.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -233,6 +233,9 @@ const HELP_SECTIONS = [
             " and its content is shown.",
             "<b>Subfolder</b> is a drop-down list of all its subfolders, with the number of files of that " +
             "type after each name; <b>(root folder)</b> shows the root folder itself. The choice is kept per type.",
+            "<b>Project</b> (when the node is wired to a MiniMax H3 Project node and the root folder is its " +
+            "projects folder): <b>All</b> lists the subfolders of every project; a project lists only its own. " +
+            "It opens on the project picked in the Project node.",
             iconBadge(SEARCH_ICON, VIOLET) + " of <b>Root folder</b> finds the subfolders again and shows the " +
             "root folder; the one of <b>Subfolder</b> shows the chosen subfolder. Greyed out without a root folder.",
             "A mixed folder shows a section per kind. Only the files of the button that opened the gallery " +
@@ -463,6 +466,9 @@ const HELP_SECTIONS_FR = [
             "<b>Subfolder</b> est une liste déroulante de tous ses sous-dossiers, avec le nombre de fichiers " +
             "du type après chaque nom ; <b>(root folder)</b> affiche le dossier racine lui-même. Le choix est " +
             "gardé par type.",
+            "<b>Project</b> (quand le nœud est relié à un nœud MiniMax H3 Project et que le dossier racine est son " +
+            "dossier des projets) : <b>All</b> liste les sous-dossiers de tous les projets ; un projet ne liste que " +
+            "les siens. Il s'ouvre sur le projet choisi dans le nœud Project.",
             "La " + iconBadge(SEARCH_ICON, VIOLET) + " de <b>Root folder</b> retrouve les sous-dossiers et " +
             "affiche le dossier racine ; celle de <b>Subfolder</b> affiche le sous-dossier choisi. Grisées " +
             "sans dossier racine.",
@@ -2222,6 +2228,23 @@ function buildGallery(container, ctx) {
         "Reload (back to the root folder of the gear button when another folder is shown)");
     baseRow.append(baseInput, pickBtn, browseBtn, refreshBtn);
 
+    // Filtre "Project" (choix utilisateur, 19/10/2026) : visible quand le Root folder
+    // est le dossier des projets du noeud H3 Project relie ; All ou un projet.
+    const projRow = makeRow("Project");
+    const projSelect = document.createElement("select");
+    Object.assign(projSelect.style, {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833",
+        borderRadius: "10px", padding: "4px 8px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+        cursor: "pointer",
+    });
+    projSelect.title = "Show only the subfolders of this project in Subfolder";
+    const projSpacer = document.createElement("div");
+    projSpacer.style.flex = "0 0 86px";
+    projRow.append(projSelect, projSpacer);
+    projRow.style.display = "none";
+    let projFilter = "";     // "" = All
+    let projList = null;     // {root, names, current} du noeud H3 Project relie
+
     const subRow = makeRow("Subfolder");
     const subSelect = document.createElement("select");
     Object.assign(subSelect.style, {
@@ -2258,7 +2281,7 @@ function buildGallery(container, ctx) {
     const doneBtn = makeTextButton("Done", PINK);
     footer.append(clearBtn, footerInfo, doneBtn);
 
-    card.append(header, baseRow, subRow, status, grid, footer);
+    card.append(header, baseRow, projRow, subRow, status, grid, footer);
 
     // Apercu d'une image / video cliquee (lecteur seul, pas de vignettes).
     const sidePreview = buildSidePreview(card, overlay);
@@ -2312,9 +2335,9 @@ function buildGallery(container, ctx) {
         };
         const rootEntry = subfolders.find((e) => !e.path);
         add("", "(root folder)" + (rootEntry ? "  ·  " + rootEntry.count : ""));
-        // Tous les sous-dossiers ; le nombre est celui des fichiers du type de la galerie.
-        const list = subfolders.filter((e) => e.path);
-        if (sub && !list.some((e) => e.path === sub)) list.unshift({ path: sub, count: null });
+        // Tous les sous-dossiers (ceux du projet du filtre) ; le nombre est celui des fichiers du type.
+        const list = filterSubfolders(subfolders.filter((e) => e.path), projFilter);
+        if (sub && inProjectFilter(sub, projFilter) && !list.some((e) => e.path === sub)) list.unshift({ path: sub, count: null });
         list.forEach((e) => add(e.path, e.path + (e.count != null ? "  ·  " + e.count : "")));
         subSelect.value = sub;
         const usable = !!base && subSelect.options.length > 1;
@@ -2326,8 +2349,29 @@ function buildGallery(container, ctx) {
             : "No subfolder: the root folder itself is shown";
     }
 
+    /** Ligne Project : seulement quand le Root folder affiche est le dossier des projets. */
+    function paintProjRow() {
+        const on = !!(projList && projList.names.length && base && samePath(base, projList.root));
+        projRow.style.display = on ? "flex" : "none";
+        if (!on) {
+            projFilter = "";
+            return;
+        }
+        projSelect.innerHTML = "";
+        for (const [value, text] of [["", "All"]].concat(projList.names.map((n) => [n, n]))) {
+            const o = document.createElement("option");
+            o.value = value;
+            o.textContent = text;
+            o.style.background = "#111";
+            projSelect.appendChild(o);
+        }
+        if (projFilter && !projList.names.includes(projFilter)) projFilter = "";
+        projSelect.value = projFilter;
+    }
+
     function updateNav() {
         baseInput.value = base;
+        paintProjRow();
         fillSelect();
         setEnabled(pickBtn, !!base);
         setEnabled(showBtn, !!base);
@@ -3222,6 +3266,16 @@ function buildGallery(container, ctx) {
         }
         loadFolder();
     });
+    // Filtre Project : sous-dossier hors du projet choisi -> retour au Root folder.
+    projSelect.addEventListener("change", () => {
+        projFilter = projSelect.value;
+        if (sub && !inProjectFilter(sub, projFilter)) {
+            sub = "";
+            saveNav();
+            loadFolder();
+        }
+        fillSelect();
+    });
     // Choix dans la liste : memorise et affiche ce sous-dossier ("" = Root folder).
     subSelect.addEventListener("change", () => {
         sub = subSelect.value;
@@ -3246,6 +3300,13 @@ function buildGallery(container, ctx) {
             const st = ctx.getState();
             base = st.folders[fileKind(kind)] || st.root || "";
             sub = base ? st.subs[fileKind(kind)] || "" : "";
+            // Filtre Project : le projet choisi dans H3 Project, sinon All.
+            projList = ctx.getProjects ? ctx.getProjects() : null;
+            projFilter = projList ? projList.current : "";
+            if (projList && base && samePath(base, projList.root) && sub && !inProjectFilter(sub, projFilter)) {
+                sub = "";
+                saveNav();
+            }
             subfolders = [];
             files = [];
             // Sortie project reliee a un projet : zone de son dossier (Images -> 08.Images...).
@@ -4255,6 +4316,16 @@ app.registerExtension({
                 }
                 return null;
             };
+            // Projets du noeud MiniMax H3 Project relie (filtre "Project" de la galerie).
+            const getProjects = () => {
+                const i = node.outputs.findIndex((o) => o.name === PROJECT_KEY);
+                if (i < 0) return null;
+                for (const l of outputLinksOf(node, i)) {
+                    const t = node.graph && node.graph.getNodeById(l.target_id);
+                    if (t && typeof t.mmProjectList === "function") return t.mmProjectList();
+                }
+                return null;
+            };
             // Remplacements valides dans la galerie : le noeud Projet reprend l'instantane du dossier.
             const resnapProject = (folder) => {
                 const i = node.outputs.findIndex((o) => o.name === PROJECT_KEY);
@@ -4276,7 +4347,8 @@ app.registerExtension({
                 orderSnap = null;
                 if (before) orderWarning.check(before, getState());
             };
-            const gallery = buildGallery(container, { getState, setState, getProject, resnapProject, onClosed: checkOrder });
+            const gallery = buildGallery(container, { getState, setState, getProject, getProjects, resnapProject,
+                onClosed: checkOrder });
             const viewer = buildSelectionViewer(container, { getState, setState, onClosed: checkOrder });
             const clearConfirm = buildConfirmDialog(container);
             // Root folder change (choix utilisateur, 19/10/2026) : references introuvables
