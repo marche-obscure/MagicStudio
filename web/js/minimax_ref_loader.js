@@ -246,45 +246,63 @@ const HELP_SECTIONS = [
     {
         id: "project", title: "Gallery with a project", icon: FOLDER_ICON, color: ORANGE,
         html: "<p>When the <b>project</b> output is wired to a <b>MiniMax H3 Project</b> node with a project " +
-            "picked, the gallery shows two zones:</p>" +
+            "picked, the gallery works with the folders of the project.</p>" +
+            hCard("Two zones", [
+                ["Above", "the selected folder (Root folder / Subfolder), as usual"],
+                ["Below the line", "the matching folder of the project"],
+            ]) +
+            hCard("Folder of the project for each list", [
+                ["Images", "<b>08.Images</b>"],
+                ["Video", "<b>12.Video</b>"],
+                ["Video/Audio", "<b>14.Video-Audio</b>"],
+                ["Audio", "<b>10.Son</b>"],
+            ]) +
+            "<p><b>Good to know</b></p>" +
             hList([
-                "above: the content of the selected folder (Root folder / Subfolder), as usual;",
-                "below the line: the content of the matching folder of the project (Images → <b>08.Images</b>, " +
-                "Video → <b>12.Video</b>, Video/Audio → <b>14.Video-Audio</b>, Audio → <b>10.Son</b>). The orange " +
-                "badge always gives the selection number; clicking a file of the project that is not selected " +
-                "selects it.",
-                "The check box under a selected file of the project (unchecked at first) marks it <b>to replace</b>. " +
-                "The next file you pick above goes to the <b>pending replacements</b> (shown above the line, greyed " +
-                "out in the top row) with that number; the replaced file is locked and shows <b>n → A</b>.",
-                "In the pending replacements, the orange number under the green ✓ is the number the file takes. " +
-                "The green ✓ validates one replacement (confirmed), the red ✕ cancels " +
-                "it and frees the locked file. <b>Validate changes</b> applies them all: each new file takes its " +
-                "number and the replaced files go to <b>Archives</b>; <b>Cancel changes</b> (confirmed) puts " +
-                "everything back. Closing with pending replacements asks Validate or Discard.",
-                "On validation the new file enters the project folder: <b>copied</b> from the selected folder (the " +
-                "original stays), <b>moved</b> when it comes from <b>Archives</b>. If its name is taken there it gets " +
-                "<b>_02</b>, <b>_03</b>…; a file that replaces one with the same name keeps its name.",
-                "A small coloured bar under the name marks <b>duplicates</b> (same SHA256 content) among the " +
-                "pending replacements and the files of the project folder: one colour per group of identical files.",
-                "Only one file can wait for its replacement: while a checked file has none, the other boxes are " +
-                "greyed out; pick its replacement above or uncheck it.",
-                "Closing with a checked file that has no replacement asks <b>Cancel</b> (back to the gallery) or " +
-                "<b>Continue</b>: that file stays as it was, the pending replacements are applied and the window " +
-                "closes (no Add or Replace question).",
-                "On closing, <b>every file of the list goes to its folder of the project</b> (08.Images, 12.Video, " +
-                "14.Video-Audio, 10.Son): copied from elsewhere (the original stays), moved from <b>Archives</b>, " +
-                "<b>_02</b> added if the name is taken; the trims follow.",
+                "The orange badge always gives the selection number; clicking a file of the project that is not " +
+                "selected selects it.",
+                "<b>View archives</b> (shown when the <b>Archives</b> of the project folder has files) turns green " +
+                "and shows them above instead of the selected folder; click it again to go back.",
+                "<b>Clear</b> is greyed out: the order of the files of the project cannot be emptied at once; " +
+                "check the files to replace instead (see <b>Replace a file of the project</b>).",
                 "The selection is full: a message above the line asks you to check below the file to replace, " +
                 "then to pick the new one above.",
-                "When the <b>Archives</b> folder of the project folder has files, a <b>View archives</b> button " +
-                "appears: it turns green and shows them above instead of the selected folder; click it again to " +
-                "go back to the selected folder.",
-                "<b>Clear</b> is greyed out: the order of the files of the project cannot be emptied at once; " +
-                "check the files to replace instead.",
-                "On closing (Done, ✕, Escape): new files added to an existing selection ask <b>Add</b> (keep the " +
-                "current files) or <b>Replace</b> (only the new ones stay). <b>Cancel</b> there cancels all the " +
-                "changes made in the window (the selection goes back to what it was when you opened it, replacements " +
-                "already validated stay) and closes it.",
+            ]),
+    },
+    {
+        id: "replace", title: "Replace a file of the project", icon: REFRESH_ICON, color: ORANGE,
+        html: hSteps([
+            "Check the box under a selected file of the project (unchecked at first): it is marked <b>to replace</b>.",
+            "Pick the new file above: it goes to the <b>pending replacements</b> (above the line, greyed out in the " +
+            "top row) with that number; the replaced file is locked and shows <b>n → A</b>.",
+            "Under the green ✓, the orange number is the number the file will take. The green ✓ validates this " +
+            "replacement (confirmed); the red ✕ cancels it and frees the locked file.",
+            "Or all at once: <b>Validate changes</b> applies them all (each new file takes its number, the " +
+            "replaced files go to <b>Archives</b>); <b>Cancel changes</b> (confirmed) puts everything back.",
+        ]) +
+        hList([
+            "<b>One at a time</b>: while a checked file has no replacement, the other boxes are greyed out; pick " +
+            "its replacement above or uncheck it.",
+            "<b>Duplicates</b>: a small coloured bar under the name marks files with the same content (SHA256) " +
+            "among the pending replacements and the project folder, one colour per group.",
+            "<b>On validation</b> the new file enters the project folder: <b>copied</b> from the selected folder " +
+            "(the original stays), <b>moved</b> when it comes from Archives; <b>_02</b>, <b>_03</b>… if its name " +
+            "is taken, except when it replaces a file with the same name (it keeps its name).",
+        ]),
+    },
+    {
+        id: "closing", title: "Closing the gallery of a project", icon: CLOSE_ICON, color: ORANGE,
+        html: "<p>On closing (Done, ✕, Escape), depending on the case:</p>" +
+            hList([
+                "<b>Pending replacements</b>: <b>Validate</b> or <b>Discard</b>.",
+                "<b>A checked file without replacement</b>: <b>Cancel</b> (back to the gallery) or <b>Continue</b> " +
+                "(that file stays as it was, the pending replacements are applied and the window closes, without " +
+                "the Add or Replace question).",
+                "<b>New files added to an existing selection</b>: <b>Add</b> (keep the current files), " +
+                "<b>Replace</b> (only the new ones stay) or <b>Cancel</b> (every change made in the window is " +
+                "undone, replacements already validated stay, and the window closes).",
+                "Then <b>every file of the list goes to its folder of the project</b>: copied from elsewhere (the " +
+                "original stays), moved from <b>Archives</b>, <b>_02</b> added if the name is taken; the trims follow.",
             ]) +
             hNote("no unused file stays in the project: the files of its folder that no list of the node uses " +
                 "anymore go to <b>Archives</b> inside that folder (e.g. 08.Images/Archives), after a confirmation. " +
@@ -454,47 +472,66 @@ const HELP_SECTIONS_FR = [
     {
         id: "project", title: "Galerie avec un projet",
         html: "<p>Quand la sortie <b>project</b> est reliée à un nœud <b>MiniMax H3 Project</b> dont un projet " +
-            "est choisi, la galerie affiche deux zones :</p>" +
+            "est choisi, la galerie travaille avec les dossiers du projet.</p>" +
+            hCard("Deux zones", [
+                ["En haut", "le dossier choisi (Root folder / Subfolder), comme d'habitude"],
+                ["Sous le trait", "le dossier correspondant du projet"],
+            ]) +
+            hCard("Dossier du projet pour chaque liste", [
+                ["Images", "<b>08.Images</b>"],
+                ["Video", "<b>12.Video</b>"],
+                ["Video/Audio", "<b>14.Video-Audio</b>"],
+                ["Audio", "<b>10.Son</b>"],
+            ]) +
+            "<p><b>Bon à savoir</b></p>" +
             hList([
-                "en haut : le contenu du dossier choisi (Root folder / Subfolder), comme d'habitude ;",
-                "sous le trait : le contenu du dossier correspondant du projet (Images → <b>08.Images</b>, " +
-                "Video → <b>12.Video</b>, Video/Audio → <b>14.Video-Audio</b>, Audio → <b>10.Son</b>). La " +
-                "pastille orange donne toujours le numéro dans la sélection ; cliquer sur un fichier du projet non " +
-                "sélectionné le sélectionne.",
-                "La case à cocher sous un fichier sélectionné du projet (décochée au départ) le marque <b>à " +
-                "remplacer</b>. Le prochain fichier choisi en haut entre dans le <b>pool de remplacements</b> " +
-                "(au-dessus du trait, grisé dans la ligne du haut) avec ce numéro ; le fichier remplacé est " +
-                "verrouillé et affiche <b>n → A</b>.",
-                "Dans le pool, le numéro orange sous la ✓ verte est le numéro que prendra le fichier. " +
-                "La ✓ verte valide un remplacement (avec confirmation), la ✕ rouge l'annule et " +
-                "libère le fichier verrouillé. <b>Validate changes</b> les applique tous : chaque nouveau fichier " +
-                "prend son numéro et les fichiers remplacés partent dans <b>Archives</b> ; <b>Cancel changes</b> " +
-                "(avec confirmation) remet tout en place. Fermer avec un pool non vide demande Validate ou Discard.",
-                "À la validation, le nouveau fichier entre dans le dossier du projet : <b>copié</b> depuis le " +
-                "dossier choisi (l'original reste), <b>déplacé</b> s'il vient d'<b>Archives</b>. Si son nom y est " +
-                "pris, il reçoit <b>_02</b>, <b>_03</b>… ; un fichier qui en remplace un du même nom garde son nom.",
-                "Une petite barre de couleur sous le nom signale les <b>doublons</b> (même contenu SHA256) entre le " +
-                "pool de remplacements et les fichiers du dossier du projet : une couleur par groupe de fichiers " +
-                "identiques.",
-                "Un seul fichier peut attendre son remplaçant : tant qu'un fichier coché n'en a pas, les autres " +
-                "cases sont grisées ; choisissez son remplaçant en haut ou décochez-le.",
-                "Fermer avec un fichier coché sans remplaçant demande <b>Cancel</b> (retour à la galerie) ou " +
-                "<b>Continue</b> : ce fichier reste tel quel, les remplacements en attente sont appliqués et la " +
-                "fenêtre se ferme (sans question Add ou Replace).",
-                "À la fermeture, <b>tous les fichiers de la liste vont dans leur dossier du projet</b> (08.Images, " +
-                "12.Video, 14.Video-Audio, 10.Son) : copiés d'ailleurs (l'original reste), déplacés depuis " +
-                "<b>Archives</b>, <b>_02</b> ajouté si le nom est pris ; les rognages suivent.",
+                "La pastille orange donne toujours le numéro dans la sélection ; cliquer sur un fichier du projet " +
+                "non sélectionné le sélectionne.",
+                "<b>View archives</b> (affiché quand l'<b>Archives</b> du dossier du projet contient des fichiers) " +
+                "passe au vert et les affiche en haut à la place du dossier choisi ; un nouveau clic y revient.",
+                "<b>Clear</b> est grisé : l'ordre des fichiers du projet ne peut pas être vidé d'un coup ; cochez " +
+                "plutôt les fichiers à remplacer (voir <b>Remplacer un fichier du projet</b>).",
                 "Sélection pleine : un message au-dessus du trait invite à cocher en bas le fichier à remplacer, " +
                 "puis à choisir le nouveau en haut.",
-                "Quand le dossier <b>Archives</b> du dossier du projet contient des fichiers, un bouton <b>View " +
-                "archives</b> apparaît : il passe au vert et les affiche en haut à la place du dossier choisi ; " +
-                "un nouveau clic revient au dossier choisi.",
-                "<b>Clear</b> est grisé : l'ordre des fichiers du projet ne peut pas être vidé d'un coup ; cochez " +
-                "plutôt les fichiers à remplacer.",
-                "À la fermeture (Done, ✕, Échap) : de nouveaux fichiers ajoutés à une sélection existante " +
-                "demandent <b>Add</b> (garder les fichiers actuels) ou <b>Replace</b> (seuls les nouveaux restent). " +
-                "<b>Cancel</b> y annule toutes les modifications faites dans la fenêtre (la sélection revient à " +
-                "celle de l'ouverture, les remplacements déjà validés restent) et la ferme.",
+            ]),
+    },
+    {
+        id: "replace", title: "Remplacer un fichier du projet",
+        html: hSteps([
+            "Cochez la case sous un fichier sélectionné du projet (décochée au départ) : il est marqué <b>à " +
+            "remplacer</b>.",
+            "Choisissez le nouveau fichier en haut : il entre dans le <b>pool de remplacements</b> (au-dessus du " +
+            "trait, grisé dans la ligne du haut) avec ce numéro ; le fichier remplacé est verrouillé et affiche " +
+            "<b>n → A</b>.",
+            "Sous la ✓ verte, le numéro orange est celui que prendra le fichier. La ✓ verte valide ce remplacement " +
+            "(avec confirmation) ; la ✕ rouge l'annule et libère le fichier verrouillé.",
+            "Ou tout d'un coup : <b>Validate changes</b> les applique tous (chaque nouveau fichier prend son numéro, " +
+            "les remplacés partent dans <b>Archives</b>) ; <b>Cancel changes</b> (avec confirmation) remet tout en place.",
+        ]) +
+        hList([
+            "<b>Un à la fois</b> : tant qu'un fichier coché n'a pas de remplaçant, les autres cases sont grisées ; " +
+            "choisissez son remplaçant en haut ou décochez-le.",
+            "<b>Doublons</b> : une petite barre de couleur sous le nom signale les fichiers de même contenu (SHA256) " +
+            "entre le pool et le dossier du projet, une couleur par groupe.",
+            "<b>À la validation</b>, le nouveau fichier entre dans le dossier du projet : <b>copié</b> depuis le " +
+            "dossier choisi (l'original reste), <b>déplacé</b> s'il vient d'Archives ; <b>_02</b>, <b>_03</b>… si " +
+            "son nom est pris, sauf s'il remplace un fichier du même nom (il garde son nom).",
+        ]),
+    },
+    {
+        id: "closing", title: "Fermer la galerie d'un projet",
+        html: "<p>À la fermeture (Done, ✕, Échap), selon le cas :</p>" +
+            hList([
+                "<b>Pool de remplacements non vide</b> : <b>Validate</b> ou <b>Discard</b>.",
+                "<b>Un fichier coché sans remplaçant</b> : <b>Cancel</b> (retour à la galerie) ou <b>Continue</b> " +
+                "(ce fichier reste tel quel, les remplacements en attente sont appliqués et la fenêtre se ferme, " +
+                "sans question Add ou Replace).",
+                "<b>Nouveaux fichiers ajoutés à une sélection existante</b> : <b>Add</b> (garder les fichiers " +
+                "actuels), <b>Replace</b> (seuls les nouveaux restent) ou <b>Cancel</b> (toutes les modifications " +
+                "faites dans la fenêtre sont annulées, les remplacements déjà validés restent, et la fenêtre se ferme).",
+                "Ensuite <b>tous les fichiers de la liste vont dans leur dossier du projet</b> : copiés d'ailleurs " +
+                "(l'original reste), déplacés depuis <b>Archives</b>, <b>_02</b> ajouté si le nom est pris ; les " +
+                "rognages suivent.",
             ]) +
             hNote("aucun fichier inutilisé ne reste dans le projet : les fichiers de son dossier qu'aucune liste " +
                 "du nœud n'utilise plus partent dans <b>Archives</b> de ce dossier (ex. 08.Images/Archives), après " +
