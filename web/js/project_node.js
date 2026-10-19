@@ -14,7 +14,7 @@ import {
     copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -256,6 +256,8 @@ const HELP_SECTIONS = [
                 "SHA256 check, then the original is deleted. A video replaces its reduced copy; an image takes the " +
                 "name of the run.",
                 "On an error the original is untouched: <b>Retry</b> or <b>Abandon</b> (abandoned after 3 failed attempts).",
+                "<b>Filter:</b> (top of the 40 / 60 windows): click dots to show only the thumbnails with those dots " +
+                "(several at once; none = all; back to all at each opening). Its tooltip gives the number of files.",
             ]),
     },
     {
@@ -539,6 +541,9 @@ const HELP_SECTIONS_FR = [
                 "SHA256, puis suppression de l'original. Une vidéo remplace sa copie réduite ; une image prend le nom " +
                 "du Run.",
                 "En cas d'erreur l'original n'est pas touché : <b>Retry</b> ou <b>Abandon</b> (abandon après 3 échecs).",
+                "<b>Filter:</b> (en haut des fenêtres 40 / 60) : cliquez sur des pastilles pour n'afficher que les " +
+                "vignettes de ces couleurs (plusieurs à la fois ; aucune = tout ; remis à tout à chaque ouverture). " +
+                "L'infobulle donne le nombre de fichiers.",
             ]),
     },
     {
@@ -2234,11 +2239,38 @@ function buildRunViewer(container, onSort, onWorkflow) {
             runIndex = Math.max(0, filteredRuns().length - 1 - runIndex);
             renderPrompt();
         } else {
-            rushIndex = Math.max(0, rushItems(runs, folder).length - 1 - rushIndex);
+            rushIndex = Math.max(0, shownRush().length - 1 - rushIndex);
             renderRush();
         }
     });
-    head.append(title, orderBtn, closeBtn);
+    // 40 / 60 : filtre par pastille (choix utilisateur, 19/10/2026) ; plusieurs pastilles
+    // possibles, aucune active = tout ; remis a "tout" a chaque ouverture.
+    const dotFilter = new Set();
+    const filterBox = document.createElement("div");
+    Object.assign(filterBox.style, { display: "flex", alignItems: "center", gap: "6px", flex: "0 0 auto" });
+    const filterLabel = document.createElement("span");
+    filterLabel.textContent = "Filter:";
+    Object.assign(filterLabel.style, { color: "#9fd6cf", fontWeight: "bold", fontSize: "12px" });
+    const filterDots = DOT_FILTER.map((key) => {
+        const d = document.createElement("button");
+        d.type = "button";
+        Object.assign(d.style, {
+            width: "16px", height: "16px", borderRadius: "50%", padding: "0", cursor: "pointer",
+            background: SORT_COLORS[key] || DOT_GREY, boxSizing: "border-box",
+        });
+        d.addEventListener("click", () => {
+            const cur = shownRush()[rushIndex];
+            if (dotFilter.has(key)) dotFilter.delete(key);
+            else dotFilter.add(key);
+            const i = cur ? shownRush().findIndex((x) => x.file === cur.file) : -1;
+            rushIndex = i >= 0 ? i : 0;
+            preview.close();
+            renderRush();
+        });
+        return { key, d };
+    });
+    filterBox.append(filterLabel, ...filterDots.map((x) => x.d));
+    head.append(title, filterBox, orderBtn, closeBtn);
 
     // 04.Prompt : filtre et liste des Runs.
     const pick = document.createElement("div");
@@ -2630,12 +2662,26 @@ function buildRunViewer(container, onSort, onWorkflow) {
     });
 
     // ---- 40.Rush Videos / 60.Rush Images ----
+    const allRush = () => rushItems(inDateOrder(runs, dateOrder), folder);
+    const shownRush = () => filterByDot(allRush(), dotFilter);
+    function paintFilter(all) {
+        const counts = dotCounts(all);
+        for (const { key, d } of filterDots) {
+            const on = dotFilter.has(key);
+            d.style.opacity = on ? "1" : "0.35";
+            d.style.border = on ? "2px solid #fff" : "2px solid transparent";
+            d.title = (key === "outside" ? "Outside the project" : SORT_NAME[key]) + ": " + counts[key] +
+                (on ? " (click: hide)" : " (click: show only these)");
+        }
+    }
     function renderRush() {
-        const items = rushItems(inDateOrder(runs, dateOrder), folder);
+        const all = allRush();
+        paintFilter(all);
+        const items = filterByDot(all, dotFilter);
         strip.innerHTML = "";
         if (!items.length) {
             const d = document.createElement("div");
-            d.textContent = "No " + (RUN_FOLDERS[folder] || "file") + " recorded by a run.";
+            d.textContent = all.length ? "No file with this dot." : "No " + (RUN_FOLDERS[folder] || "file") + " recorded by a run.";
             Object.assign(d.style, { color: "#888", alignSelf: "center" });
             strip.appendChild(d);
             rushSort.innerHTML = "";
@@ -2688,6 +2734,7 @@ function buildRunViewer(container, onSort, onWorkflow) {
                 runIndex = 0;
                 outIndex = 0;
                 rushIndex = 0;
+                dotFilter.clear();
                 openBlock = null;
                 modelRun = null;
             }
@@ -2699,6 +2746,7 @@ function buildRunViewer(container, onSort, onWorkflow) {
             pick.style.display = promptMode ? "flex" : "none";
             strip.style.display = promptMode ? "none" : "flex";
             rushSort.style.display = promptMode ? "none" : "block";
+            filterBox.style.display = promptMode ? "none" : "flex";
             thumb.box.style.display = promptMode ? "block" : "none";
             grid.style.gridTemplateColumns = promptMode ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)";
             if (promptMode) renderPrompt();
