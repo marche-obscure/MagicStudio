@@ -9,6 +9,7 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
+    switchSourceInput,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -333,4 +334,13 @@ test("visualisation : ordre du Ref Loader, F / L, puis sans numero par nom", () 
     ]);
     // Sans Reference Loader : tout par nom, sans numero.
     assert.deepEqual(orderedFolderFiles([D + "b.png", D + "a.png"], null, "10.Son").map((x) => x.badge), ["", ""]);
+});
+
+test("Switch MultiIN-OUT : entree du groupe actif qui alimente une sortie", () => {
+    const inputs = ["group", "pairs", "show_c", "select", "a1", "a2", "b1", "b2"].map((name) => ({ name, link: null }));
+    const sw = (group) => ({ type: "SwitchMultiInOut", inputs, widgets: [{ name: "group", value: group }] });
+    assert.equal(switchSourceInput(sw("A"), 0), 4);      // S1 -> A1
+    assert.equal(switchSourceInput(sw("B"), 1), 7);      // S2 -> B2
+    assert.equal(switchSourceInput(sw("C"), 0), -1);     // C absent
+    assert.equal(switchSourceInput({ type: "Other", inputs }, 0), -1);
 });
