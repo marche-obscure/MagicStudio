@@ -14,7 +14,7 @@ import {
     copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -256,6 +256,8 @@ const HELP_SECTIONS = [
                 "SHA256 check, then the original is deleted. A video replaces its reduced copy; an image takes the " +
                 "name of the run.",
                 "On an error the original is untouched: <b>Retry</b> or <b>Abandon</b> (abandoned after 3 failed attempts).",
+                "In 40 / 60 the thumbnails are grouped by dot (green, orange, red, grey), then by date in each " +
+                "group (Date ↓ / ↑); a file that is sorted stays selected.",
                 "<b>Filter:</b> (top of the 40 / 60 windows): click dots to show only the thumbnails with those dots " +
                 "(several at once; none = all; back to all at each opening). Its tooltip gives the number of files.",
             ]),
@@ -541,6 +543,8 @@ const HELP_SECTIONS_FR = [
                 "SHA256, puis suppression de l'original. Une vidéo remplace sa copie réduite ; une image prend le nom " +
                 "du Run.",
                 "En cas d'erreur l'original n'est pas touché : <b>Retry</b> ou <b>Abandon</b> (abandon après 3 échecs).",
+                "Dans 40 / 60 les vignettes sont groupées par pastille (verte, orange, rouge, grise), puis par date " +
+                "dans chaque groupe (Date ↓ / ↑) ; un fichier rangé reste sélectionné.",
                 "<b>Filter:</b> (en haut des fenêtres 40 / 60) : cliquez sur des pastilles pour n'afficher que les " +
                 "vignettes de ces couleurs (plusieurs à la fois ; aucune = tout ; remis à tout à chaque ouverture). " +
                 "L'infobulle donne le nombre de fichiers.",
@@ -2233,13 +2237,12 @@ function buildRunViewer(container, onSort, onWorkflow) {
     Object.assign(title.style, { flex: "1", fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR });
     const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
     Object.assign(closeBtn.style, { width: "22px", height: "22px" });
-    // Date ↓ / ↑ : ordre inverse, la meme vignette ou le meme Run reste choisi.
+    // Date ↓ / ↑ : ordre inverse, la meme vignette (selKey) ou le meme Run reste choisi.
     const orderBtn = makeDateOrderButton(() => {
         if (folder === "04.Prompt") {
             runIndex = Math.max(0, filteredRuns().length - 1 - runIndex);
             renderPrompt();
         } else {
-            rushIndex = Math.max(0, shownRush().length - 1 - rushIndex);
             renderRush();
         }
     });
@@ -2259,11 +2262,8 @@ function buildRunViewer(container, onSort, onWorkflow) {
             background: SORT_COLORS[key] || DOT_GREY, boxSizing: "border-box",
         });
         d.addEventListener("click", () => {
-            const cur = shownRush()[rushIndex];
             if (dotFilter.has(key)) dotFilter.delete(key);
             else dotFilter.add(key);
-            const i = cur ? shownRush().findIndex((x) => x.file === cur.file) : -1;
-            rushIndex = i >= 0 ? i : 0;
             preview.close();
             renderRush();
         });
@@ -2406,6 +2406,8 @@ function buildRunViewer(container, onSort, onWorkflow) {
     let runIndex = 0;
     let outIndex = 0;
     let rushIndex = 0;
+    // Vignette choisie de 40 / 60 (rushKey) : suivie quand l'ordre, le filtre ou son dossier change.
+    let selKey = null;
 
     const onKey = (e) => {
         if (overlay.style.display === "none" || moving || e.key !== "Escape") return;
@@ -2662,7 +2664,8 @@ function buildRunViewer(container, onSort, onWorkflow) {
     });
 
     // ---- 40.Rush Videos / 60.Rush Images ----
-    const allRush = () => rushItems(inDateOrder(runs, dateOrder), folder);
+    // Groupes par pastille (vert, orange, rouge, gris), puis date dans chaque groupe (choix utilisateur).
+    const allRush = () => groupByDot(rushItems(inDateOrder(runs, dateOrder), folder));
     const shownRush = () => filterByDot(allRush(), dotFilter);
     function paintFilter(all) {
         const counts = dotCounts(all);
@@ -2690,7 +2693,14 @@ function buildRunViewer(container, onSort, onWorkflow) {
             setPrompt("");
             return;
         }
-        rushIndex = Math.min(rushIndex, items.length - 1);
+        if (selKey) {
+            // Vignette choisie masquee par le filtre : la premiere visible.
+            const k = items.findIndex((x) => rushKey(x) === selKey);
+            rushIndex = k >= 0 ? k : 0;
+        } else {
+            rushIndex = Math.min(rushIndex, items.length - 1);
+        }
+        selKey = rushKey(items[rushIndex]);
         items.forEach((it, i) => {
             const t = document.createElement("div");
             Object.assign(t.style, {
@@ -2710,6 +2720,7 @@ function buildRunViewer(container, onSort, onWorkflow) {
             t.addEventListener("click", () => {
                 if (rushIndex !== i) {
                     rushIndex = i;
+                    selKey = rushKey(it);
                     renderRush();
                 }
                 showPreview(it.file, it.output.kind);
@@ -2734,6 +2745,7 @@ function buildRunViewer(container, onSort, onWorkflow) {
                 runIndex = 0;
                 outIndex = 0;
                 rushIndex = 0;
+                selKey = null;
                 dotFilter.clear();
                 openBlock = null;
                 modelRun = null;

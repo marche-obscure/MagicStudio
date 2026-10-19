@@ -576,3 +576,17 @@ export function dotCounts(items) {
     for (const it of items || []) out[sortDot(it.output)] += 1;
     return out;
 }
+
+/**
+ * Vignettes de 40 / 60 groupees par pastille (choix utilisateur, 19/10/2026) :
+ * vert, orange, rouge, gris ; l'ordre recu (date) est garde dans chaque groupe.
+ */
+export function groupByDot(items) {
+    const rank = (it) => DOT_FILTER.indexOf(sortDot(it.output));
+    return (items || []).map((it, i) => [it, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map((x) => x[0]);
+}
+
+/** Cle stable d'une vignette de 40 / 60 (le chemin change quand le fichier est range) : Run + sortie. */
+export function rushKey(it) {
+    return it ? (it.run && it.run.file) + "#" + (it.output && it.output.index) : "";
+}
