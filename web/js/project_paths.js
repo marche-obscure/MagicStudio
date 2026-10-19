@@ -559,3 +559,20 @@ export function orderByMtime(items, mtimes, order) {
     rest.sort((a, b) => (t(b.path) - t(a.path)) || base(a.path).localeCompare(base(b.path)));
     return fixed.concat(inDateOrder(rest, order));
 }
+
+// Filtre par pastille des fenetres 40 / 60 (choix utilisateur, 19/10/2026), dans
+// l'ordre du filtre : vert, orange, rouge, gris.
+export const DOT_FILTER = ["validated", "footage", "rejected", "outside"];
+
+/** Vignettes [{file, run, output}] dont la pastille est active ; aucune active = toutes. */
+export function filterByDot(items, active) {
+    if (!active || !active.size) return items || [];
+    return (items || []).filter((it) => active.has(sortDot(it.output)));
+}
+
+/** Nombre de vignettes par pastille : {validated, footage, rejected, outside}. */
+export function dotCounts(items) {
+    const out = Object.fromEntries(DOT_FILTER.map((k) => [k, 0]));
+    for (const it of items || []) out[sortDot(it.output)] += 1;
+    return out;
+}

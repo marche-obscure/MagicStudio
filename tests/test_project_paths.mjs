@@ -9,7 +9,7 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -118,6 +118,18 @@ test("tri par date : Runs, ensembles 02 / 06 et fichiers 08 a 14", () => {
         ["D/b.png", "D/a.png", "D/new.png", "D/mid.png", "D/old.png"]);
     assert.deepEqual(orderByMtime(items, mtimes, "asc").map((x) => x.path),
         ["D/b.png", "D/a.png", "D/old.png", "D/mid.png", "D/new.png"]);
+});
+
+test("40 / 60 : filtre par pastille", () => {
+    assert.deepEqual(DOT_FILTER, ["validated", "footage", "rejected", "outside"]);
+    const it = (file, place, inside = true) => ({ file, output: { in_project: inside, place } });
+    const items = [it("a", "validated"), it("b", "footage"), it("c", "rejected"), it("d", "footage", false),
+        it("e", "footage")];
+    assert.equal(filterByDot(items, new Set()), items);
+    assert.deepEqual(filterByDot(items, new Set(["footage"])).map((x) => x.file), ["b", "e"]);
+    assert.deepEqual(filterByDot(items, new Set(["validated", "outside"])).map((x) => x.file), ["a", "d"]);
+    assert.deepEqual(filterByDot(null, new Set(["rejected"])), []);
+    assert.deepEqual(dotCounts(items), { validated: 1, footage: 2, rejected: 1, outside: 1 });
 });
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
