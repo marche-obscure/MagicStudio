@@ -680,9 +680,15 @@ def list_runs(project):
         wf = run_workflow_path(project, name)
         run["workflow"] = wf if data.get("workflow") and os.path.isfile(wf) else None
         outs = []
+        restored = False
         for index, o in enumerate(data.get("outputs") or []):
             if not isinstance(o, dict) or not output_kind(o):
                 continue
+            gone = o.get("deleted")
+            if isinstance(gone, dict) and gone.get("from") and os.path.isfile(gone["from"]):
+                # Fichier restaure depuis la Corbeille a son ancien chemin : la marque est retiree.
+                o.pop("deleted")
+                restored = True
             src = o.get("source") or ""
             copy = _abs_copy(project, o)
             kind = output_kind(o)
@@ -694,8 +700,13 @@ def list_runs(project):
                    "in_project": bool(src) and place is not None,
                    # Sous-dossier du fichier montre (pastille et bouton grise) : original, sinon copie video.
                    "place": place if place is not None else sort_of(project, kind, copy)}
-            out.update({k: o[k] for k in ("size", "copy_size", "in_place", "resize_error") if o.get(k)})
+            out.update({k: o[k] for k in ("size", "copy_size", "in_place", "resize_error", "deleted") if o.get(k)})
             outs.append(out)
+        if restored:
+            try:
+                _write(os.path.join(folder, name), data)
+            except OSError:
+                pass
         run["outputs"] = outs
         runs.append(run)
     return runs
@@ -725,6 +736,29 @@ def _free_path(folder, name):
         n += 1
         dst = os.path.join(folder, "%s_%02d%s" % (stem, n, ext))
     return dst
+
+
+def _move_verified(src, dst):
+    """
+    Deplacement en trois temps (choix utilisateur, 20/10/2026) : 1) copie dans
+    dst.part, 2) SHA256 de la copie = celui de l'original, 3) la copie prend
+    sa place, puis l'original est supprime. Toute erreur laisse l'original
+    intact (la copie est retiree).
+    """
+    part = dst + ".part"
+    try:
+        shutil.copy2(src, part)
+        if file_sha256(part) != file_sha256(src):
+            raise IOError("The copy differs from the original (SHA256)")
+        os.replace(part, dst)
+    finally:
+        if os.path.exists(part):
+            os.remove(part)
+    try:
+        os.remove(src)
+    except OSError:
+        os.remove(dst)
+        raise
 
 
 def _rel(project, path):
@@ -762,12 +796,19 @@ def _project_file(project, o, kind):
     return copy if copy and sort_of(project, kind, copy) is not None else ""
 
 
-def _rename_into(project, o, kind, path, key):
-    """Deplace path (deja dans 40 / 60) dans le sous-dossier key (renommage) ; met a jour source / copy."""
+def _rename_into(project, o, kind, path, key, verified=False):
+    """
+    Deplace path (deja dans 40 / 60) dans le sous-dossier key ; met a jour
+    source / copy. verified : copie + SHA256 + suppression (tri par l'utilisateur),
+    sinon simple renommage (rangement automatique de tidy_rush).
+    """
     folder = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[key])
     os.makedirs(folder, exist_ok=True)
     dst = _free_path(folder, os.path.basename(path))
-    os.replace(path, dst)
+    if verified:
+        _move_verified(path, dst)
+    else:
+        os.replace(path, dst)
     if o.get("source") and _same_dir(o["source"], path):
         o["source"] = dst
     if o.get("copy") is not None and (_same_dir(_abs_copy(project, o), path) or o.get("in_place")):
@@ -879,18 +920,8 @@ def sort_output(project, run_name, index, target):
     """
     if target not in SORT_FOLDERS:
         raise ValueError("Unknown folder: %s" % target)
-    run_file = os.path.join(project or "", PROMPT_FOLDER, os.path.basename(run_name or ""))
-    _check_run_file(run_file)
-    with open(run_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    outputs = data.get("outputs") or []
-    if not isinstance(index, int) or not 0 <= index < len(outputs) or not isinstance(outputs[index], dict):
-        raise ValueError("Output not found in %s" % os.path.basename(run_file))
-    o = outputs[index]
-    kind = output_kind(o)
+    run_file, data, o, kind = _load_output(project, run_name, index)
     src = o.get("source") or ""
-    if kind not in ("video", "image"):
-        raise ValueError("Not a video or an image: %s" % src)
     folder = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[target])
     outside = bool(src) and os.path.isfile(src) and sort_of(project, kind, src) is None
     res = {}
@@ -905,19 +936,10 @@ def sort_output(project, run_name, index, target):
         dst = os.path.join(folder, name)
         if os.path.exists(dst) and not (old_copy and _same_dir(old_copy, dst)):
             dst = _free_path(folder, name)
-        part = dst + ".part"
-        try:
-            shutil.copy2(src, part)
-            if file_sha256(part) != file_sha256(src):
-                raise IOError("The copy differs from the original (SHA256)")
-            os.replace(part, dst)
-        finally:
-            if os.path.exists(part):
-                os.remove(part)
+        _move_verified(src, dst)
         if (old_copy and not _same_dir(old_copy, dst) and os.path.isfile(old_copy)
                 and sort_of(project, kind, old_copy) is not None):
             os.remove(old_copy)
-        os.remove(src)
         o.update({"source": dst, "copy": _rel(project, dst), "moved_from": src, "in_place": True})
         for key in ("copy_size", "resize_error"):
             o.pop(key, None)
@@ -928,10 +950,49 @@ def sort_output(project, run_name, index, target):
             raise FileNotFoundError("File not found: %s" % (src or o.get("copy") or "?"))
         if sort_of(project, kind, p) == target:
             raise ValueError("Already in %s" % SORT_FOLDERS[target])
-        _rename_into(project, o, kind, p, target)
+        _rename_into(project, o, kind, p, target, verified=True)
     _write(run_file, data)
     res.update({"source": o.get("source"), "copy": o.get("copy"), "place": target})
     return res
+
+
+def _load_output(project, run_name, index):
+    """(chemin du JSON, donnees, sortie index, kind) ; ValueError si la sortie n'est ni video ni image."""
+    run_file = os.path.join(project or "", PROMPT_FOLDER, os.path.basename(run_name or ""))
+    _check_run_file(run_file)
+    with open(run_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    outputs = data.get("outputs") or []
+    if not isinstance(index, int) or not 0 <= index < len(outputs) or not isinstance(outputs[index], dict):
+        raise ValueError("Output not found in %s" % os.path.basename(run_file))
+    o = outputs[index]
+    kind = output_kind(o)
+    if kind not in ("video", "image"):
+        raise ValueError("Not a video or an image: %s" % (o.get("source") or ""))
+    return run_file, data, o, kind
+
+
+def delete_rush(project, run_name, index, trash_fn=None, now=None):
+    """
+    Supprime le fichier d'une sortie rangee dans Rejected de 40 / 60 (choix
+    utilisateur, 20/10/2026) : trash_fn([chemin]) = Corbeille, sinon
+    suppression definitive. Le JSON garde la sortie avec la marque
+    "deleted": {date, how: "trash" | "permanent", from} : ni erreur, ni
+    fichier disparu sans explication. Refus hors de Rejected.
+    """
+    run_file, data, o, kind = _load_output(project, run_name, index)
+    p = _project_file(project, o, kind)
+    if not p or not os.path.isfile(p):
+        raise FileNotFoundError("File not found: %s" % (o.get("source") or o.get("copy") or "?"))
+    if sort_of(project, kind, p) != "rejected":
+        raise ValueError("Only the files in %s can be deleted: %s" % (SORT_FOLDERS["rejected"], os.path.basename(p)))
+    if trash_fn:
+        trash_fn([p])
+    else:
+        os.remove(p)
+    o["deleted"] = {"date": now or time.strftime("%Y%m%d_%H%M%S"), "how": "trash" if trash_fn else "permanent", "from": p}
+    _write(run_file, data)
+    return {"deleted": o["deleted"]}
 
 
 # ----------------------------------------------------------------------

@@ -453,6 +453,20 @@ try:
             return _project_error(e)
         return web.json_response(data)
 
+    @routes.post("/mmproject/delete_rush")
+    async def mmproject_delete_rush(request):
+        """Supprime une sortie rangee dans Rejected (Corbeille si trash, sinon definitif) ; le JSON la marque deleted."""
+        try:
+            body = await request.json()
+            trash = bool(body.get("trash"))
+            if trash and not projects.TRASH_AVAILABLE:
+                raise ValueError("The Recycle Bin is only available on Windows")
+            data = await _in_executor(run_record.delete_rush, body.get("project", ""), body.get("run", ""),
+                                      body.get("index"), projects._to_recycle_bin if trash else None)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
     @routes.post("/mmproject/hashes")
     async def mmproject_hashes(request):
         """SHA256 des fichiers demandes (doublons de la galerie)."""
