@@ -462,7 +462,25 @@ def _check_run_file(path):
 RUN_START_MARGIN = 2
 
 
-def finish_run(run_file, files, status, output_dir, now=None):
+def run_duration(duration, data, now=None):
+    """
+    Duree totale du Run en secondes (une decimale) : celle donnee par ComfyUI
+    (heures de execution_start et de fin), sinon depuis la date du JSON ;
+    None si aucune n'est lisible.
+    """
+    try:
+        d = float(duration)
+        if d >= 0 and d == d and d != float("inf"):
+            return round(d, 1)
+    except (TypeError, ValueError):
+        pass
+    started = _run_start(data)
+    if started is None:
+        return None
+    return round(max(0.0, (time.time() if now is None else now) - started), 1)
+
+
+def finish_run(run_file, files, status, output_dir, now=None, duration=None):
     """
     Fin du Run : files = [{filename, subfolder, type}] des sorties (seulement
     type "output", sous output_dir). Seuls les fichiers NOUVEAUX comptent :
@@ -473,7 +491,7 @@ def finish_run(run_file, files, status, output_dir, now=None):
     MAX_VIDEO_SIZE (ratio garde, en .mp4) si plus grandes, copiees sinon ;
     une video deja dans 40.Rush Videos du projet (ou un sous-dossier) n'est pas touchee
     (in_place). Images : pas de copie (choix utilisateur), seulement citees.
-    Le JSON recoit status et outputs. Aucun fichier
+    Le JSON recoit status, outputs et duration (run_duration). Aucun fichier
     nouveau alors que le Run en a renvoye, ou Run arrete sans fichier : le
     JSON est retire, rien n'est copie ({skipped, same_as, status}). Deja
     termine : rien n'est refait.
@@ -484,6 +502,7 @@ def finish_run(run_file, files, status, output_dir, now=None):
     if data.get("status") != "running":
         return data
     data["status"] = "done" if status == "done" else "error"
+    data["duration"] = run_duration(duration, data)
     root = os.path.normcase(os.path.abspath(output_dir))
     sources = []
     for item in files or []:
@@ -651,7 +670,7 @@ def list_runs(project):
             continue
         if not isinstance(data, dict):
             continue
-        run = {k: data.get(k) for k in ("date", "mode", "prompt", "cfg", "steps", "seed", "status")}
+        run = {k: data.get(k) for k in ("date", "mode", "prompt", "cfg", "steps", "seed", "status", "duration")}
         run.update({k: data[k] for k in ("cfg_from", "steps_from", "seed_from") if data.get(k)})
         models = run_models_of(project, data, regs)
         if models is not None:

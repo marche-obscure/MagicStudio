@@ -9,7 +9,7 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -178,6 +178,15 @@ test("galerie : sous-dossiers de medias seulement (08 a 14, 08 en FL2VA)", () =>
     assert.ok(!isMediaSubfolder("P/08.Images/Archives", "ref2va"));
     assert.ok(isMediaSubfolder("P\\08.Images", "fl2va"));
     assert.ok(!isMediaSubfolder("P/12.Video", "fl2va"));
+});
+
+test("duree du Run : s, min s, h min s ; vide si absente", () => {
+    assert.equal(durationText(45.4), "45 s");
+    assert.equal(durationText(0), "0 s");
+    assert.equal(durationText(187.4), "3 min 07 s");
+    assert.equal(durationText(3725), "1 h 02 min 05 s");
+    assert.equal(durationText(59.6), "1 min 00 s");
+    for (const v of [null, undefined, "", -1, "abc", Infinity]) assert.equal(durationText(v), "");
 });
 
 test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
