@@ -1046,6 +1046,26 @@ function buildCreateDialog(container, ctx) {
 // bouton Reset ne s'active qu'une fois le nom du projet tape.
 // --------------------------------------------------------------------
 const RESET_RED = "#e53935";
+// Au-dessus de l'apercu (10003) : fenetres de suppression ouvertes depuis 40 / 60.
+const TOP_DIALOG_Z = "10005";
+
+/**
+ * Place la fenetre juste sous l'element (bouton Delete, choix utilisateur
+ * 20/10/2026), au-dessus s'il n'y a pas la place, toujours dans l'ecran.
+ */
+function positionCardBelow(card, el, maxWidth) {
+    const rect = el.getBoundingClientRect();
+    const margin = 14;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const width = Math.min(maxWidth, vw - margin * 2);
+    const left = Math.max(margin, Math.min(rect.left, vw - width - margin));
+    const height = Math.min(card.offsetHeight || 200, vh - margin * 2);
+    let top = rect.bottom + 6;
+    if (top + height + margin > vh) top = rect.top - 6 - height;
+    card.style.left = left + "px";
+    card.style.top = Math.max(margin, Math.min(top, vh - height - margin)) + "px";
+}
 const COPY_BLUE = "#1e88e5";
 function buildResetDialog(container) {
     const { overlay, card } = makeOverlay();
@@ -1114,7 +1134,9 @@ function buildResetDialog(container) {
             paint();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
-            positionCardNextToNode(card, container, 480);
+            overlay.style.zIndex = opts.below ? TOP_DIALOG_Z : "10002";
+            if (opts.below) positionCardBelow(card, opts.below, 480);
+            else positionCardNextToNode(card, container, 480);
             setTimeout(() => input.focus(), 0);
             return new Promise((r) => (resolve = r));
         },
@@ -2106,7 +2128,7 @@ function buildDeleteChoice() {
     return {
         isOpen: () => overlay.style.display !== "none",
         cancel: () => finish(null),
-        /** ask(noms, trashOk, ancre, {title, note}?) : title / note remplacent ceux des doublons. */
+        /** ask(noms, trashOk, ancre, {title, note, below}?) : title / note remplacent ceux des doublons ; below = element sous lequel s'ouvrir. */
         ask(names, trashOk, anchor, opts = {}) {
             if (resolve) finish(null);
             title.textContent = opts.title || "Delete " + names.length + " duplicate file(s)?";
@@ -2120,7 +2142,9 @@ function buildDeleteChoice() {
             trashBtn.title = trashOk ? "Move the copies to the Recycle Bin (they can be restored)"
                 : "The Recycle Bin is only available on Windows";
             overlay.style.display = "block";
-            positionCardNextToNode(card, anchor, 440);
+            overlay.style.zIndex = opts.below ? TOP_DIALOG_Z : "10003";
+            if (opts.below) positionCardBelow(card, opts.below, 440);
+            else positionCardNextToNode(card, anchor, 440);
             return new Promise((r) => (resolve = r));
         },
         remove() {
@@ -2531,7 +2555,7 @@ function runConfigHtml(run, out) {
 
 /**
  * rush (40 / 60, choix utilisateur 20/10/2026) : {move(run, out, key), remove(run, out, trash),
- * reload() -> runs, askDelete(noms, ancre) -> "trash" | "delete" | null, askWord(n) -> bool}.
+ * reload() -> runs, askDelete(noms, ancre, bouton) -> "trash" | "delete" | null, askWord(n, bouton) -> bool}.
  */
 function buildRunViewer(container, onSort, onWorkflow, rush) {
     const { overlay, card } = makeOverlay();
@@ -3151,7 +3175,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             const d = makeTextButton("Delete (" + doomed.length + ")", SORT_COLORS.rejected);
             Object.assign(d.style, { gridColumn: "1", border: "2px solid " + SORT_COLORS.rejected });
             d.title = "Delete the " + doomed.length + " checked file(s) of " + where + "Rejected";
-            d.addEventListener("click", () => deleteChecked(doomed));
+            d.addEventListener("click", () => deleteChecked(doomed, d));
             bar.appendChild(d);
         }
         return bar;
@@ -3211,12 +3235,12 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         report(ok + " file(s) moved to " + dest + " – " + ko + " failed" +
             (skipped ? " – " + skipped + " already there" : ""), ko);
     }
-    async function deleteChecked(doomed) {
+    async function deleteChecked(doomed, button) {
         moving = true;
         let how = null;
         try {
-            how = await rush.askDelete(doomed.map((x) => baseOf(x.file)), card);
-            if (how === "delete" && !(await rush.askWord(doomed.length))) how = null;
+            how = await rush.askDelete(doomed.map((x) => baseOf(x.file)), card, button);
+            if (how === "delete" && !(await rush.askWord(doomed.length, button))) how = null;
         } finally {
             moving = false;
         }
@@ -3956,13 +3980,14 @@ app.registerExtension({
                     paintFolders();
                     return runList;
                 },
-                askDelete: (names, anchor) => rushDeleteChoice.ask(names, /Windows/i.test(navigator.userAgent), anchor, {
+                askDelete: (names, anchor, below) => rushDeleteChoice.ask(names, /Windows/i.test(navigator.userAgent), anchor, {
+                    below,
                     title: "Delete " + names.length + " file(s) of Rejected?",
                     note: "Files moved to the Recycle Bin can be restored from it; <b>Delete permanently</b> cannot be " +
                         "undone. The runs keep a <b>deleted</b> mark.",
                 }),
-                askWord: (n) => resetDialog.ask({
-                    name: "CONFIRMER", title: "Delete " + n + " file(s) permanently?", okLabel: "Delete permanently",
+                askWord: (n, below) => resetDialog.ask({
+                    name: "CONFIRMER", below, title: "Delete " + n + " file(s) permanently?", okLabel: "Delete permanently",
                     html: '<span style="color:#e53935;font-weight:bold">These files will be destroyed: this cannot be undone.</span>',
                 }),
             };
