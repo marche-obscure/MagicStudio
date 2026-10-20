@@ -315,6 +315,23 @@ class RunFileTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             rr.read_run_workflow(self.p, "../x.json")
 
+    def test_run_duration(self):
+        from PIL import Image
+        os.makedirs(self.out, exist_ok=True)
+        Image.new("RGB", (4, 4)).save(os.path.join(self.out, "d.png"))
+        path = rr.start_run(self.p, "p", PROMPT, self.when)
+        data = rr.finish_run(path, [{"filename": "d.png", "type": "output"}], "done", self.out, duration=187.44)
+        self.assertEqual(data["duration"], 187.4)
+        run = [r for r in rr.list_runs(self.p) if r["file"] == os.path.basename(path)][0]
+        self.assertEqual(run["duration"], 187.4)
+        # Sans duree de ComfyUI : depuis la date du JSON ; illisible : None.
+        self.assertEqual(rr.run_duration(None, {"date": "2026-10-17 15:30:00"},
+                                         rr._run_start({"date": "2026-10-17 15:30:00"}) + 65), 65.0)
+        self.assertEqual(rr.run_duration("x", {"date": "2026-10-17 15:30:00"},
+                                         rr._run_start({"date": "2026-10-17 15:30:00"}) + 3), 3.0)
+        self.assertIsNone(rr.run_duration(-5, {}))
+        self.assertEqual(rr.run_duration(0, {}), 0.0)
+
     def test_skipped_run_removes_its_workflow(self):
         path = rr.start_run(self.p, "p", PROMPT, self.when, workflow={"nodes": []})
         self.assertEqual(rr.finish_run(path, [], "interrupted", self.out)["skipped"], True)

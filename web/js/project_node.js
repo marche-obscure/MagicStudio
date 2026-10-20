@@ -12,7 +12,7 @@ import {
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
     copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
-    RUN_FOLDERS, runDateText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
+    RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
 } from "./project_paths.js";
@@ -271,7 +271,8 @@ const HELP_SECTIONS = [
                 "output (‹ › when there are several).",
                 "<b>40.Rush Videos</b> / <b>60.Rush Images</b>: the videos (copies) or images (originals) named by the " +
                 "runs, scrolling sideways.",
-                "<b>Configuration</b>: date, mode, Steps, CFG, Seed, status, size of the video, folder of the " +
+                "<b>Configuration</b>: date, mode, Steps, CFG, Seed, status, <b>Duration</b> (total time of the " +
+                "run, model loading included; not shown for older runs), size of the video, folder of the " +
                 "<b>Original</b>. Under it, the folded blocks <b>Models</b> and <b>LoRA</b>: what the run really used " +
                 "(chosen branch of a switch, active LoRA), one open at a time.",
                 "<b>Prompt</b>: its text; the copy icon at the top left copies it to the clipboard.",
@@ -589,7 +590,8 @@ const HELP_SECTIONS_FR = [
                 "(‹ › s'il y en a plusieurs).",
                 "<b>40.Rush Videos</b> / <b>60.Rush Images</b> : les vidéos (copies) ou les images (originaux) citées " +
                 "par les Runs, défilement horizontal.",
-                "<b>Configuration</b> : date, mode, Steps, CFG, Seed, status, taille de la vidéo, dossier de " +
+                "<b>Configuration</b> : date, mode, Steps, CFG, Seed, status, <b>Duration</b> (temps total du " +
+                "Run, chargement des modèles compris ; absente pour les anciens Runs), taille de la vidéo, dossier de " +
                 "l'<b>Original</b>. En dessous, les blocs repliés <b>Models</b> et <b>LoRA</b> : ce que le Run a " +
                 "vraiment utilisé (branche choisie d'un switch, LoRA actives), un seul ouvert à la fois.",
                 "<b>Prompt</b> : son texte ; l'icône de copie en haut à gauche le copie dans le presse-papiers.",
@@ -2488,6 +2490,8 @@ function runConfigHtml(run, out) {
     let h = row("Run", escapeHtml(runDateText(run.date)) + (run.mode ? " – " + escapeHtml(run.mode) : "")) +
         row("Steps", val("steps")) + row("CFG", val("cfg")) + row("Seed", val("seed")) +
         row("Status", '<span style="color:' + color + '">' + escapeHtml(run.status || "?") + "</span>");
+    const took = durationText(run.duration);
+    if (took) h += row("Duration", escapeHtml(took), "Total time of the run, model loading included");
     if (!out) return h + row("Output", '<span style="color:#888">none</span>');
     if (out.size) h += row("Size", escapeHtml(out.size + (out.copy_size ? " → " + out.copy_size : "")));
     h += row("Original", '<span style="font-family:monospace;font-size:11px">' + escapeHtml(out.folder || "?") + "</span>" +
@@ -4799,13 +4803,15 @@ app.registerExtension({
             // ---- Enregistrement des Runs (entree text_prompt) ----
             // Le noeud ecrit 04.Prompt/yyyyMMdd_HHmmss_run.json au Run (ui.mmrun) ; les
             // fichiers des noeuds de sortie du meme Run sont notes, puis associes a la fin.
-            const runs = new Map(); // prompt_id -> {file, files}
+            const runs = new Map(); // prompt_id -> {file, files, start}
             // Runs en cours qui contiennent ce noeud : Load et Save verrouilles. Un Run deja
             // termine avant la reponse de /queue (Run tres court) n'est jamais verrouille.
             const endedRuns = [];
             const onRunStart = async (e) => {
                 const id = e && e.detail && e.detail.prompt_id;
                 if (!id) return;
+                // Heure de debut donnee par ComfyUI (ms) : duree totale du Run a la fin.
+                if (typeof e.detail.timestamp === "number") runOf(id).start = e.detail.timestamp;
                 try {
                     const q = await apiGet("/queue");
                     const item = (q.queue_running || []).find((x) => x[1] === id);
@@ -4827,7 +4833,7 @@ app.registerExtension({
                 if (runLock.delete(id)) render();
             };
             const runOf = (id) => {
-                if (!runs.has(id)) runs.set(id, { file: "", files: [] });
+                if (!runs.has(id)) runs.set(id, { file: "", files: [], start: null });
                 while (runs.size > 8) runs.delete(runs.keys().next().value);
                 return runs.get(id);
             };
@@ -4860,7 +4866,10 @@ app.registerExtension({
                 runs.delete(id);
                 if (!run.file) return;
                 try {
-                    const data = await apiPost("/mmproject/run_done", { run_file: run.file, files: run.files, status });
+                    const end = e.detail.timestamp;
+                    const duration = typeof end === "number" && typeof run.start === "number" && end >= run.start
+                        ? (end - run.start) / 1000 : null;
+                    const data = await apiPost("/mmproject/run_done", { run_file: run.file, files: run.files, status, duration });
                     if (data.skipped) {
                         say(data.same_as ? "Run not recorded: nothing changed since " + data.same_as + "."
                             : "Run not recorded: stopped or failed without any file.", !!data.same_as);

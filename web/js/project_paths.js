@@ -644,3 +644,18 @@ export function isMediaSubfolder(path, mode) {
     const allowed = mode === "fl2va" ? ["08.Images"] : UPDATE_FOLDERS;
     return parts.length === 2 && allowed.includes(parts[1]);
 }
+
+/**
+ * Duree d'un Run (secondes) : "45 s", "3 min 07 s", "1 h 02 min 05 s" ;
+ * "" si absente (anciens Runs).
+ */
+export function durationText(seconds) {
+    if (seconds === null || seconds === undefined || seconds === "") return "";
+    const n = Number(seconds);
+    if (!Number.isFinite(n) || n < 0) return "";
+    const t = Math.round(n), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    const two = (v) => String(v).padStart(2, "0");
+    if (h) return h + " h " + two(m) + " min " + two(s) + " s";
+    if (m) return m + " min " + two(s) + " s";
+    return s + " s";
+}

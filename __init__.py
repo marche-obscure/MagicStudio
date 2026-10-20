@@ -391,7 +391,8 @@ try:
             import folder_paths
             body = await request.json()
             data = await _in_executor(run_record.finish_run, body.get("run_file", ""), list(body.get("files") or []),
-                                      body.get("status", ""), folder_paths.get_output_directory())
+                                      body.get("status", ""), folder_paths.get_output_directory(), None,
+                                      body.get("duration"))
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
