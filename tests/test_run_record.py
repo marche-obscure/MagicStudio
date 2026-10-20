@@ -679,6 +679,62 @@ class RunFileTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             rr.sort_output(self.p, name, 0, "footage")
 
+    def test_sort_inside_project_is_verified(self):
+        # D'un sous-dossier a l'autre : copie + SHA256 + suppression ; echec = original garde.
+        foot = os.path.join(self.p, "60.Rush Images", "Footage", "a.png")
+        write(foot, b"img")
+        name = self._run_with([{"source": foot, "kind": "image", "copy": "60.Rush Images/Footage/a.png", "in_place": True}])
+        old = rr.file_sha256
+        rr.file_sha256 = lambda p: "x" if p.endswith(".part") else "y"
+        try:
+            with self.assertRaises(IOError):
+                rr.sort_output(self.p, name, 0, "validated")
+        finally:
+            rr.file_sha256 = old
+        self.assertTrue(os.path.isfile(foot))
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Validated")), [])
+        rr.sort_output(self.p, name, 0, "validated")
+        self.assertFalse(os.path.exists(foot))
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Validated")), ["a.png"])
+
+    def test_delete_rush(self):
+        rej = os.path.join(self.p, "40.Rush Videos", "Rejected", "v.mp4")
+        foot = os.path.join(self.p, "60.Rush Images", "Footage", "i.png")
+        write(rej, b"v")
+        write(foot, b"i")
+        name = self._run_with([
+            {"source": rej, "kind": "video", "copy": "40.Rush Videos/Rejected/v.mp4", "in_place": True},
+            {"source": foot, "kind": "image", "copy": "60.Rush Images/Footage/i.png", "in_place": True},
+        ])
+        with self.assertRaises(ValueError):          # hors de Rejected : refus
+            rr.delete_rush(self.p, name, 1)
+        self.assertTrue(os.path.isfile(foot))
+        trashed = []
+        res = rr.delete_rush(self.p, name, 0, trash_fn=lambda ps: [trashed.extend(ps), os.remove(ps[0])], now="20261020_101010")
+        self.assertEqual(res["deleted"], {"date": "20261020_101010", "how": "trash", "from": rej})
+        self.assertEqual(trashed, [rej])
+        o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]
+        self.assertEqual(o["deleted"]["how"], "trash")
+        run = rr.list_runs(self.p)[0]
+        self.assertEqual(run["status"], "done")
+        out = run["outputs"][0]
+        self.assertEqual(out["deleted"]["from"], rej)
+        self.assertFalse(out["copy_exists"])
+        # Deja supprime : FileNotFoundError ; la Purge garde le Run (pas vide).
+        with self.assertRaises(FileNotFoundError):
+            rr.delete_rush(self.p, name, 0)
+        self.assertEqual(rr.purge_runs(self.p, dry_run=True)["empty"], [])
+        # Restaure depuis la Corbeille : la marque est retiree a la lecture.
+        write(rej, b"v")
+        out = rr.list_runs(self.p)[0]["outputs"][0]
+        self.assertNotIn("deleted", out)
+        self.assertEqual(out["place"], "rejected")
+        self.assertNotIn("deleted", read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0])
+        # Suppression definitive.
+        rr.delete_rush(self.p, name, 0)
+        self.assertFalse(os.path.exists(rej))
+        self.assertEqual(read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]["deleted"]["how"], "permanent")
+
     def test_registries_at_the_end_of_the_run(self):
         img = os.path.join(self.out, "a.png")
         models = {"diffusion_model": ["u.safetensors"], "text_encoder": ["t.safetensors"], "vae": ["v1", "v2"],

@@ -445,6 +445,28 @@ export function sortTargets(o) {
 }
 
 /**
+ * Boutons de tri pour les fichiers coches (choix utilisateur, 20/10/2026) : un
+ * dossier est actif si au moins un fichier coche peut y aller.
+ */
+export function batchSortTargets(outs) {
+    const keys = new Set((outs || []).flatMap((o) => sortTargets(o)));
+    return SORT_KEYS.filter((k) => keys.has(k));
+}
+
+/** Sortie supprimable par le bouton Delete : fichier present dans Rejected. */
+export function canDeleteRush(o) {
+    return sortDot(o) === "rejected" && !!outputFile(o);
+}
+
+/** Marque "deleted" d'une sortie : "Deleted (Recycle Bin) – dd/MM/yyyy hh:mm:ss", "" sans marque. */
+export function deletedText(d) {
+    if (!d || typeof d !== "object") return "";
+    const m = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/.exec(String(d.date || ""));
+    const when = m ? m[3] + "/" + m[2] + "/" + m[1] + " " + m[4] + ":" + m[5] + ":" + m[6] : String(d.date || "");
+    return (d.how === "trash" ? "Deleted (Recycle Bin)" : "Deleted permanently") + (when ? " – " + when : "");
+}
+
+/**
  * Vignettes de 40.Rush Videos / 60.Rush Images (choix utilisateur) : seulement
  * les sorties citees par les JSON et presentes, [{file, run, output}], Run le
  * plus recent d'abord.

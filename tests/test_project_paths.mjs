@@ -8,6 +8,7 @@ import {
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
+    batchSortTargets, canDeleteRush, deletedText,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
 } from "../web/js/project_paths.js";
@@ -455,4 +456,20 @@ test("Switch MultiIN-OUT : entree du groupe actif qui alimente une sortie", () =
     assert.equal(switchSourceInput(sw("B"), 1), 7);      // S2 -> B2
     assert.equal(switchSourceInput(sw("C"), 0), -1);     // C absent
     assert.equal(switchSourceInput({ type: "Other", inputs }, 0), -1);
+});
+
+test("lot de 40 / 60 : boutons actifs, suppression, marque deleted", () => {
+    const inRej = { kind: "image", in_project: true, place: "rejected", source: "P/60/Rejected/a.png", source_exists: true };
+    const inVal = { kind: "image", in_project: true, place: "validated", source: "P/60/Validated/b.png", source_exists: true };
+    assert.deepEqual(batchSortTargets([inRej]), ["validated", "footage"]);
+    assert.deepEqual(batchSortTargets([inRej, inVal]), ["rejected", "validated", "footage"]);
+    assert.deepEqual(batchSortTargets([]), []);
+    assert.equal(canDeleteRush(inRej), true);
+    assert.equal(canDeleteRush(inVal), false);
+    assert.equal(canDeleteRush({ ...inRej, source_exists: false }), false);
+    const vid = { kind: "video", in_project: false, place: "rejected", copy: "P/40/Rejected/v.mp4", copy_exists: true };
+    assert.equal(canDeleteRush(vid), false); // original hors du projet : pastille grise
+    assert.equal(deletedText({ date: "20261020_101010", how: "trash" }), "Deleted (Recycle Bin) – 20/10/2026 10:10:10");
+    assert.equal(deletedText({ date: "20261020_101010", how: "permanent" }), "Deleted permanently – 20/10/2026 10:10:10");
+    assert.equal(deletedText(null), "");
 });

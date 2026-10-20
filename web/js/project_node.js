@@ -3,7 +3,7 @@ import { api } from "../../scripts/api.js";
 import {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, INACTIVE_BG,
     svg, iconBadge, hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, REFRESH_ICON, GEAR_ICON, START_ICON,
-    IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, EYE_ICON, CLOSE_ICON,
+    IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, EYE_ICON, CLOSE_ICON, TRASH_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode,
 } from "./minimax_ref_loader.js";
@@ -13,6 +13,7 @@ import {
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
     copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
+    batchSortTargets, canDeleteRush, deletedText,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
 } from "./project_paths.js";
@@ -311,6 +312,18 @@ const HELP_SECTIONS = [
                 "group (Date ↓ / ↑); a file that is sorted stays selected.",
                 "<b>Filter:</b> (top of the 40 / 60 windows): click dots to show only the thumbnails with those dots " +
                 "(several at once; none = all; back to all at each opening). Its tooltip gives the number of files.",
+            ]) +
+            hCard("Several files at once (40 / 60)", [
+                ["☑", "Check the box under the thumbnails: the three buttons then move <b>all the checked files</b>, " +
+                    "one by one, with a progress bar and no confirmation."],
+                ["SHA256", "Each move is done in three steps: copy, SHA256 check of the copy against the original, then " +
+                    "the original is deleted. A failed file is skipped and the others go on."],
+                ['<span style="color:#e53935;font-weight:bold">✕</span>', "At the end a message gives the files moved " +
+                    "and the failures; a failed file keeps its box checked and gets a red ✕ next to its dot (tooltip = error)."],
+                [iconBadge(TRASH_ICON, INACTIVE_BG), "Files in <b>Rejected</b> have a trash icon at the top right, red " +
+                    "when checked. <b>Delete</b> (under Reject) deletes the checked files of Rejected: Move to Recycle Bin " +
+                    "or Delete permanently (type <b>CONFIRMER</b>). The run keeps a <b>deleted</b> mark: 04.Prompt shows " +
+                    "“Deleted”; a file restored from the Recycle Bin comes back."],
             ]),
     },
     {
@@ -632,6 +645,19 @@ const HELP_SECTIONS_FR = [
                 "<b>Filter:</b> (en haut des fenêtres 40 / 60) : cliquez sur des pastilles pour n'afficher que les " +
                 "vignettes de ces couleurs (plusieurs à la fois ; aucune = tout ; remis à tout à chaque ouverture). " +
                 "L'infobulle donne le nombre de fichiers.",
+            ]) +
+            hCard("Plusieurs fichiers à la fois (40 / 60)", [
+                ["☑", "Cochez la case sous les vignettes : les trois boutons déplacent alors <b>tous les fichiers " +
+                    "cochés</b>, un par un, avec une barre de progression et sans confirmation."],
+                ["SHA256", "Chaque déplacement se fait en trois temps : copie, contrôle SHA256 de la copie avec " +
+                    "l'original, puis suppression de l'original. Un fichier en échec est passé, les autres continuent."],
+                ['<span style="color:#e53935;font-weight:bold">✕</span>', "À la fin, un message donne les fichiers " +
+                    "déplacés et les échecs ; un fichier en échec reste coché et reçoit un ✕ rouge à côté de sa pastille " +
+                    "(infobulle = erreur)."],
+                [iconBadge(TRASH_ICON, INACTIVE_BG), "Les fichiers de <b>Rejected</b> ont une poubelle en haut à droite, " +
+                    "rouge quand ils sont cochés. <b>Delete</b> (sous Reject) supprime les fichiers cochés de Rejected : " +
+                    "Move to Recycle Bin ou Delete permanently (tapez <b>CONFIRMER</b>). Le Run garde une marque " +
+                    "<b>deleted</b> : 04.Prompt affiche « Deleted » ; un fichier restauré depuis la Corbeille revient."],
             ]),
     },
     {
@@ -1080,7 +1106,8 @@ function buildResetDialog(container) {
         ask(opts) {
             if (resolve) finish(false);
             expected = opts.name;
-            title.textContent = "Reset the project " + opts.name + "?";
+            title.textContent = opts.title || "Reset the project " + opts.name + "?";
+            okBtn.textContent = opts.okLabel || "Reset";
             text.innerHTML = opts.html;
             label.innerHTML = "Type <b>" + escapeHtml(opts.name) + "</b> to confirm:";
             input.value = "";
@@ -2079,13 +2106,14 @@ function buildDeleteChoice() {
     return {
         isOpen: () => overlay.style.display !== "none",
         cancel: () => finish(null),
-        ask(names, trashOk, anchor) {
+        /** ask(noms, trashOk, ancre, {title, note}?) : title / note remplacent ceux des doublons. */
+        ask(names, trashOk, anchor, opts = {}) {
             if (resolve) finish(null);
-            title.textContent = "Delete " + names.length + " duplicate file(s)?";
+            title.textContent = opts.title || "Delete " + names.length + " duplicate file(s)?";
             const shown = names.slice(0, 15).map((n) => "<div>• " + escapeHtml(n) + "</div>").join("");
             text.innerHTML = shown + (names.length > 15 ? "<div>… (+" + (names.length - 15) + ")</div>" : "") +
-                '<div style="color:#999;margin-top:8px">One copy of each group stays in Archives. Files moved to ' +
-                "the Recycle Bin can be restored from it; <b>Delete permanently</b> cannot be undone.</div>";
+                '<div style="color:#999;margin-top:8px">' + (opts.note || "One copy of each group stays in Archives. " +
+                "Files moved to the Recycle Bin can be restored from it; <b>Delete permanently</b> cannot be undone.") + "</div>";
             trashBtn.disabled = !trashOk;
             trashBtn.style.opacity = trashOk ? "1" : "0.45";
             trashBtn.style.cursor = trashOk ? "pointer" : "default";
@@ -2500,7 +2528,11 @@ function runConfigHtml(run, out) {
     return h;
 }
 
-function buildRunViewer(container, onSort, onWorkflow) {
+/**
+ * rush (40 / 60, choix utilisateur 20/10/2026) : {move(run, out, key), remove(run, out, trash),
+ * reload() -> runs, askDelete(noms, ancre) -> "trash" | "delete" | null, askWord(n) -> bool}.
+ */
+function buildRunViewer(container, onSort, onWorkflow, rush) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
         width: "min(760px, 94vw)", padding: "12px 14px", borderColor: VIOLET, display: "flex",
@@ -2667,9 +2699,20 @@ function buildRunViewer(container, onSort, onWorkflow) {
     grid.append(left, thumb.box);
     const note = document.createElement("div");
     Object.assign(note.style, { minHeight: "14px", fontSize: "11px", color: "#9fd6cf" });
-    // 40 / 60 : boutons de tri du fichier choisi, sous les vignettes.
+    // 40 / 60 : boutons de tri du fichier choisi (ou des fichiers coches), sous les vignettes.
     const rushSort = document.createElement("div");
-    card.append(head, pick, strip, rushSort, grid, note);
+    // Barre de progression des deplacements / suppressions par lot.
+    const progress = document.createElement("div");
+    Object.assign(progress.style, { display: "none", flexDirection: "column", gap: "3px" });
+    const progressText = document.createElement("div");
+    Object.assign(progressText.style, { fontSize: "11px", color: "#9fd6cf", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+    const progressTrack = document.createElement("div");
+    Object.assign(progressTrack.style, { height: "6px", background: "#2a2a2a", borderRadius: "3px", overflow: "hidden" });
+    const progressFill = document.createElement("div");
+    Object.assign(progressFill.style, { height: "100%", width: "0%", background: VIOLET, transition: "width 0.15s" });
+    progressTrack.appendChild(progressFill);
+    progress.append(progressText, progressTrack);
+    card.append(head, pick, strip, rushSort, progress, grid, note);
     const preview = buildPreviewWindow();
     let moving = false;
 
@@ -2683,6 +2726,9 @@ function buildRunViewer(container, onSort, onWorkflow) {
     let rushIndex = 0;
     // Vignette choisie de 40 / 60 (rushKey) : suivie quand l'ordre, le filtre ou son dossier change.
     let selKey = null;
+    // Cases cochees (rushKey) et fichiers en echec (rushKey -> erreur), vides a chaque ouverture.
+    const checked = new Set();
+    const failed = new Map();
 
     const onKey = (e) => {
         if (overlay.style.display === "none" || moving || e.key !== "Escape") return;
@@ -2693,6 +2739,8 @@ function buildRunViewer(container, onSort, onWorkflow) {
     };
     function close() {
         preview.close();
+        checked.clear();
+        failed.clear();
         note.textContent = "";
         overlay.style.display = "none";
         window.removeEventListener("keydown", onKey, true);
@@ -2777,7 +2825,7 @@ function buildRunViewer(container, onSort, onWorkflow) {
             if (!onSort || !active.includes(key)) {
                 b.disabled = true;
                 Object.assign(b.style, { cursor: "default", opacity: here ? "1" : "0.45" });
-                b.title = here ? "Already in " + where + name : "File not found";
+                b.title = here ? "Already in " + where + name : out.deleted ? "File deleted" : "File not found";
                 bar.appendChild(b);
                 continue;
             }
@@ -2853,7 +2901,8 @@ function buildRunViewer(container, onSort, onWorkflow) {
         const file = outputFile(out);
         if (!out || !file) {
             const d = document.createElement("div");
-            d.textContent = !out ? "No output" : out.kind === "video" ? "Copy not found in 40.Rush Videos" : "Original not found";
+            d.textContent = !out ? "No output" : out.deleted ? deletedText(out.deleted)
+                : out.kind === "video" ? "Copy not found in 40.Rush Videos" : "Original not found";
             Object.assign(d.style, { color: "#888", padding: "40px 0" });
             thumb.body.appendChild(d);
         } else {
@@ -2956,6 +3005,10 @@ function buildRunViewer(container, onSort, onWorkflow) {
         const all = allRush();
         paintFilter(all);
         const items = filterByDot(all, dotFilter);
+        // Cases des vignettes masquees (filtre) ou disparues : decochees.
+        const visible = new Set(items.map(rushKey));
+        for (const k of [...checked]) if (!visible.has(k)) checked.delete(k);
+        const scroll = strip.scrollLeft;
         strip.innerHTML = "";
         if (!items.length) {
             const d = document.createElement("div");
@@ -2984,14 +3037,59 @@ function buildRunViewer(container, onSort, onWorkflow) {
                 border: i === rushIndex ? "2px solid " + VIOLET : "1px solid #333",
             });
             const [dir, name] = splitPath(it.file);
+            const key = rushKey(it);
             const pic = dupThumb(dir, name, it.output.kind, 108);
             addStatusDot(pic, it.output);
+            if (failed.has(key)) {
+                // Echec du dernier lot : ✕ rouge a droite de la pastille.
+                const x = document.createElement("div");
+                x.textContent = "✕";
+                Object.assign(x.style, {
+                    position: "absolute", top: "2px", left: "22px", color: "#ff3b30", fontWeight: "bold",
+                    fontSize: "14px", lineHeight: "16px", textShadow: "0 0 3px #000", zIndex: "1",
+                });
+                x.title = "Failed: " + failed.get(key);
+                pic.appendChild(x);
+            }
+            let trash = null;
+            if (canDeleteRush(it.output)) {
+                // Poubelle des fichiers de Rejected : grise, rouge quand la case est cochee.
+                trash = document.createElement("div");
+                trash.innerHTML = TRASH_ICON;
+                Object.assign(trash.style, {
+                    position: "absolute", top: "4px", right: "4px", width: "18px", height: "18px", borderRadius: "4px",
+                    display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", zIndex: "1",
+                    pointerEvents: "none",
+                });
+                pic.appendChild(trash);
+            }
+            const paintTrash = () => {
+                if (!trash) return;
+                trash.style.background = checked.has(key) ? TRASH_RED : INACTIVE_BG;
+                trash.title = checked.has(key) ? "Checked: Delete removes it" : "In Rejected: check it to delete it";
+            };
+            paintTrash();
             t.appendChild(pic);
             const label = document.createElement("div");
             label.textContent = runDateText(it.run.date);
             label.title = name;
             Object.assign(label.style, { fontSize: "11px", marginTop: "4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
             t.appendChild(label);
+            if (rush) {
+                const cb = document.createElement("input");
+                cb.type = "checkbox";
+                cb.checked = checked.has(key);
+                cb.title = "Check to move or delete several files at once";
+                Object.assign(cb.style, { display: "block", margin: "4px auto 0", cursor: "pointer" });
+                cb.addEventListener("click", (e) => e.stopPropagation());
+                cb.addEventListener("change", () => {
+                    if (cb.checked) checked.add(key);
+                    else checked.delete(key);
+                    paintTrash();
+                    paintRushSort(items);
+                });
+                t.appendChild(cb);
+            }
             t.addEventListener("click", () => {
                 if (rushIndex !== i) {
                     rushIndex = i;
@@ -3002,12 +3100,129 @@ function buildRunViewer(container, onSort, onWorkflow) {
             });
             strip.appendChild(t);
         });
+        strip.scrollLeft = scroll;
         const it = items[rushIndex];
-        rushSort.innerHTML = "";
-        rushSort.appendChild(sortBar(it.run, it.output));
+        paintRushSort(items);
         conf.label.textContent = "Configuration – " + baseOf(it.file);
         fillConfig(it.run, it.output);
         setPrompt(it.run.prompt);
+    }
+
+    /** Sous les vignettes : boutons du fichier choisi, ou boutons du lot s'il y a des cases cochees. */
+    function paintRushSort(items) {
+        rushSort.innerHTML = "";
+        const sel = items.filter((x) => checked.has(rushKey(x)));
+        if (!sel.length) {
+            const it = items[rushIndex];
+            if (it) rushSort.appendChild(sortBar(it.run, it.output));
+            return;
+        }
+        rushSort.appendChild(batchBar(sel));
+    }
+
+    /**
+     * Boutons du lot (choix utilisateur, 20/10/2026) : Reject / Validate / Footage
+     * deplacent tous les fichiers coches, sans confirmation ; Delete (sous Reject)
+     * apparait si un fichier coche est dans Rejected.
+     */
+    function batchBar(sel) {
+        const bar = document.createElement("div");
+        Object.assign(bar.style, { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "6px", width: "100%" });
+        const active = batchSortTargets(sel.map((x) => x.output));
+        const where = RUSH_FOLDER_OF[sel[0].output.kind] + "/";
+        for (const [key, label, name] of SORT_FOLDERS) {
+            const b = makeTextButton(label + " (" + sel.length + ")", INACTIVE_BG);
+            Object.assign(b.style, { border: "2px solid " + SORT_COLORS[key] });
+            if (!active.includes(key)) {
+                b.disabled = true;
+                Object.assign(b.style, { cursor: "default", opacity: "0.45" });
+                b.title = "All the checked files are already in " + where + name;
+            } else {
+                b.title = "Move the " + sel.length + " checked file(s) into " + where + name +
+                    " (copy, SHA256 check, then the original is deleted)";
+                b.addEventListener("click", () => moveChecked(sel, key, where + name));
+            }
+            bar.appendChild(b);
+        }
+        const doomed = sel.filter((x) => canDeleteRush(x.output));
+        if (doomed.length) {
+            const d = makeTextButton("Delete (" + doomed.length + ")", SORT_COLORS.rejected);
+            Object.assign(d.style, { gridColumn: "1", border: "2px solid " + SORT_COLORS.rejected });
+            d.title = "Delete the " + doomed.length + " checked file(s) of " + where + "Rejected";
+            d.addEventListener("click", () => deleteChecked(doomed));
+            bar.appendChild(d);
+        }
+        return bar;
+    }
+
+    /** Lot : un fichier apres l'autre, barre de progression ; un echec n'arrete pas les autres. */
+    async function runBatch(list, op) {
+        moving = true;
+        preview.close();
+        note.textContent = "";
+        strip.style.pointerEvents = "none";
+        rushSort.style.pointerEvents = "none";
+        progress.style.display = "flex";
+        let ok = 0;
+        let ko = 0;
+        try {
+            for (let i = 0; i < list.length; i++) {
+                const it = list[i];
+                const key = rushKey(it);
+                progressText.textContent = i + 1 + " / " + list.length + " – " + baseOf(it.file);
+                progressFill.style.width = Math.round((i / list.length) * 100) + "%";
+                try {
+                    await op(it);
+                    ok++;
+                    failed.delete(key);
+                    checked.delete(key);
+                } catch (e) {
+                    ko++;
+                    failed.set(key, (e && e.message) || String(e));
+                }
+            }
+            progressFill.style.width = "100%";
+            try {
+                runs = (await rush.reload()) || runs;
+            } catch (e) {
+                // liste gardee : relue a la prochaine ouverture
+            }
+            if (modelRun) modelRun = runs.find((r) => r.file === modelRun.file) || modelRun;
+        } finally {
+            progress.style.display = "none";
+            progressFill.style.width = "0%";
+            strip.style.pointerEvents = "";
+            rushSort.style.pointerEvents = "";
+            moving = false;
+        }
+        return { ok, ko };
+    }
+    function report(text, ko) {
+        note.textContent = text;
+        note.style.color = ko ? ORANGE : "#9fd6cf";
+    }
+    async function moveChecked(sel, key, dest) {
+        const list = sel.filter((x) => sortTargets(x.output).includes(key));
+        const skipped = sel.length - list.length;
+        const { ok, ko } = await runBatch(list, (it) => rush.move(it.run, it.output, key));
+        renderRush();
+        report(ok + " file(s) moved to " + dest + " – " + ko + " failed" +
+            (skipped ? " – " + skipped + " already there" : ""), ko);
+    }
+    async function deleteChecked(doomed) {
+        moving = true;
+        let how = null;
+        try {
+            how = await rush.askDelete(doomed.map((x) => baseOf(x.file)), card);
+            if (how === "delete" && !(await rush.askWord(doomed.length))) how = null;
+        } finally {
+            moving = false;
+        }
+        if (!how) return;
+        const trash = how === "trash";
+        const { ok, ko } = await runBatch(doomed, (it) => rush.remove(it.run, it.output, trash));
+        renderRush();
+        report(ok + " file(s) deleted " + (trash ? "(Recycle Bin)" : "permanently") + " – " + ko + " failed", ko);
     }
 
     return {
@@ -3022,6 +3237,8 @@ function buildRunViewer(container, onSort, onWorkflow) {
                 rushIndex = 0;
                 selKey = null;
                 dotFilter.clear();
+                checked.clear();
+                failed.clear();
                 openBlock = null;
                 modelRun = null;
             }
@@ -3087,7 +3304,7 @@ function setLinesHtml(lines) {
 
 const SET_NAMES = { models: "Models", lora: "LoRA" };
 
-function buildSetViewer(container, onSort, onWorkflow) {
+function buildSetViewer(container, onSort, onWorkflow, rush) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
         width: "min(980px, 96vw)", height: "min(660px, 86vh)", padding: "12px 14px", display: "flex",
@@ -3155,7 +3372,7 @@ function buildSetViewer(container, onSort, onWorkflow) {
         const res = await onWorkflow(run);
         if (res && res.ok) close();
         return res;
-    });
+    }, rush);
 
     let folder = "";
     let kind = "models";
@@ -3724,10 +3941,33 @@ app.registerExtension({
             const loadDialog = buildLoadDialog(container);
             const duplicatesDialog = buildDuplicatesDialog(container);
             const folderViewer = buildFolderViewer(container);
-            const runViewer = buildRunViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run));
-            const setViewer = buildSetViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run));
+            // Lots de 40 / 60 (choix utilisateur, 20/10/2026) : deplacement sans confirmation,
+            // suppression de Rejected avec Corbeille ou definitive (mot CONFIRMER a taper).
+            const rushDeleteChoice = buildDeleteChoice();
+            const rushOps = {
+                move: (run, out, key) => apiPost("/mmproject/sort_output",
+                    { project: getState().path, run: run.file, index: out.index, target: key }),
+                remove: (run, out, trash) => apiPost("/mmproject/delete_rush",
+                    { project: getState().path, run: run.file, index: out.index, trash }),
+                async reload() {
+                    await loadRuns(getState());
+                    paintFolders();
+                    return runList;
+                },
+                askDelete: (names, anchor) => rushDeleteChoice.ask(names, /Windows/i.test(navigator.userAgent), anchor, {
+                    title: "Delete " + names.length + " file(s) of Rejected?",
+                    note: "Files moved to the Recycle Bin can be restored from it; <b>Delete permanently</b> cannot be " +
+                        "undone. The runs keep a <b>deleted</b> mark.",
+                }),
+                askWord: (n) => resetDialog.ask({
+                    name: "CONFIRMER", title: "Delete " + n + " file(s) permanently?", okLabel: "Delete permanently",
+                    html: '<span style="color:#e53935;font-weight:bold">These files will be destroyed: this cannot be undone.</span>',
+                }),
+            };
+            const runViewer = buildRunViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run), rushOps);
+            const setViewer = buildSetViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run), rushOps);
             node.__mmprojectOverlays = [createDialog, help, confirm, resetDialog, copyDialog, renameDialog, workflowDialog, archiveMenu, deleteDialog,
-                loadDialog, duplicatesDialog, folderViewer, runViewer, setViewer];
+                loadDialog, duplicatesDialog, folderViewer, runViewer, setViewer, rushDeleteChoice];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
