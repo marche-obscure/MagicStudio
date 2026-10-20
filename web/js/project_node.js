@@ -2523,7 +2523,8 @@ function runConfigHtml(run, out) {
     if (!out) return h + row("Output", '<span style="color:#888">none</span>');
     if (out.size) h += row("Size", escapeHtml(out.size + (out.copy_size ? " → " + out.copy_size : "")));
     h += row("Original", '<span style="font-family:monospace;font-size:11px">' + escapeHtml(out.folder || "?") + "</span>" +
-        (out.source_exists ? "" : ' <span style="color:' + ORANGE + '">(missing)</span>'), out.source);
+        (out.source_exists ? "" : out.deleted ? ' <span style="color:#888">(deleted)</span>'
+            : ' <span style="color:' + ORANGE + '">(missing)</span>'), out.source);
     if (out.resize_error) h += row("Resize", '<span style="color:' + ORANGE + '">' + escapeHtml(out.resize_error) + "</span>");
     return h;
 }
@@ -2818,7 +2819,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         const active = sortTargets(out);
         const where = RUSH_FOLDER_OF[out.kind] + "/";
         for (const [key, label, name] of SORT_FOLDERS) {
-            const here = out.in_project && out.place === key;
+            // Fichier supprime : plus de dossier actuel, les trois boutons grises.
+            const here = out.in_project && out.place === key && !out.deleted;
             const b = makeTextButton(label, here ? SORT_COLORS[key] : INACTIVE_BG);
             Object.assign(b.style, { flex: "1", border: "2px solid " + SORT_COLORS[key] });
             if (here) Object.assign(b.style, { color: SORT_TEXT_COLORS[key], fontWeight: "bold" });
