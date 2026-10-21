@@ -79,19 +79,19 @@ test("Runs : vignettes de 40 / 60 = fichiers cites et presents", () => {
 });
 
 test("Runs : pastille et boutons de tri Reject / Validate / Footage", () => {
-    assert.deepEqual(SORT_FOLDERS.map((x) => x[2]), ["Rejected", "Validated", "Footage"]);
+    assert.deepEqual(SORT_FOLDERS.map((x) => x[2]), ["Validated", "Footage", "Rejected"]);
     const inside = { kind: "video", in_project: true, place: "validated", source_exists: true,
         copy: "P/40.Rush Videos/Validated/a.mp4", copy_exists: true };
     assert.equal(sortDot(inside), "validated");
-    assert.deepEqual(sortTargets(inside), ["rejected", "footage"]);
+    assert.deepEqual(sortTargets(inside), ["footage", "rejected"]);
     // Original hors du projet : pastille grise, les trois boutons le rapatrient.
     const outside = { kind: "video", in_project: false, place: "footage", source_exists: true,
         copy: "P/40.Rush Videos/Footage/a.mp4", copy_exists: true };
     assert.equal(sortDot(outside), "outside");
-    assert.deepEqual(sortTargets(outside), ["rejected", "validated", "footage"]);
+    assert.deepEqual(sortTargets(outside), ["validated", "footage", "rejected"]);
     // Original disparu, copie video dans Footage : deplacable ailleurs.
     const gone = { ...outside, source_exists: false };
-    assert.deepEqual(sortTargets(gone), ["rejected", "validated"]);
+    assert.deepEqual(sortTargets(gone), ["validated", "rejected"]);
     // Aucun fichier : aucun bouton.
     assert.deepEqual(sortTargets({ ...gone, copy_exists: false }), []);
     assert.deepEqual(sortTargets(null), []);
@@ -462,7 +462,7 @@ test("lot de 40 / 60 : boutons actifs, suppression, marque deleted", () => {
     const inRej = { kind: "image", in_project: true, place: "rejected", source: "P/60/Rejected/a.png", source_exists: true };
     const inVal = { kind: "image", in_project: true, place: "validated", source: "P/60/Validated/b.png", source_exists: true };
     assert.deepEqual(batchSortTargets([inRej]), ["validated", "footage"]);
-    assert.deepEqual(batchSortTargets([inRej, inVal]), ["rejected", "validated", "footage"]);
+    assert.deepEqual(batchSortTargets([inRej, inVal]), ["validated", "footage", "rejected"]);
     assert.deepEqual(batchSortTargets([]), []);
     assert.equal(canDeleteRush(inRej), true);
     assert.equal(canDeleteRush(inVal), false);

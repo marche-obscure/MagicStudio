@@ -423,9 +423,10 @@ export function outputFile(o) {
     return o.source_exists ? o.source : "";
 }
 
-// Tri des fichiers de 40 / 60 (choix utilisateur, 19/10/2026) : [cle, bouton, sous-dossier].
-export const SORT_FOLDERS = [["rejected", "Reject", "Rejected"], ["validated", "Validate", "Validated"],
-    ["footage", "Footage", "Footage"]];
+// Tri des fichiers de 40 / 60 (choix utilisateur, 19/10/2026) : [cle, bouton, sous-dossier] ;
+// ordre des boutons Validate, Footage, Reject (choix utilisateur, 21/10/2026).
+export const SORT_FOLDERS = [["validated", "Validate", "Validated"], ["footage", "Footage", "Footage"],
+    ["rejected", "Reject", "Rejected"]];
 const SORT_KEYS = SORT_FOLDERS.map((x) => x[0]);
 
 /** Pastille d'une sortie : sous-dossier de l'original s'il est dans le projet, sinon "outside". */
