@@ -11,7 +11,7 @@ import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
-    copyTabName, unusedProjectFiles, orderedFolderFiles, folderUse,
+    unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     batchSortTargets, canDeleteRush, deletedText,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
@@ -392,8 +392,12 @@ const HELP_SECTIONS = [
             "to Archives first) and fills the Reference Loader for the checked folders. The workflow:</p>" +
             hList([
                 "same structure (nodes and links) as the current one: the current workflow is replaced;",
-                "another structure: the current workflow is never replaced, the saved one opens in a new tab " +
-                "<b>name-copie</b> (the window lists the nodes and links in more or missing);",
+                "another structure: Load of the project of this tab replaces the current workflow too; " +
+                "another project picked in the list opens in a new tab named after its workflow, this tab keeps " +
+                "its project, then <b>OK</b> stays here and <b>Open the project</b> goes to the new tab " +
+                "(the window lists the nodes and links in more or missing);",
+                "replacing the current workflow asks first: the changes since the last save are lost;",
+                "picking another project in the list (from a project) opens this Load window by itself;",
                 "unchecked: nothing opens, the folders checked go to the Reference Loader of this tab.",
             ]),
     },
@@ -729,8 +733,13 @@ const HELP_SECTIONS_FR = [
             "nom part d'abord dans Archives) et remplit le Reference Loader pour les dossiers cochés. Le workflow :</p>" +
             hList([
                 "même structure (nœuds et liaisons) que l'actuel : le workflow en cours est remplacé ;",
-                "autre structure : le workflow en cours n'est jamais remplacé, celui sauvegardé s'ouvre dans un " +
-                "nouvel onglet <b>nom-copie</b> (la fenêtre liste les nœuds et liaisons en plus ou manquants) ;",
+                "autre structure : le Load du projet de cet onglet remplace aussi le workflow en cours ; " +
+                "un autre projet choisi dans la liste s'ouvre dans un nouvel onglet au nom de son workflow, cet " +
+                "onglet garde son projet, puis <b>OK</b> reste ici et <b>Open the project</b> va au nouvel onglet " +
+                "(la fenêtre liste les nœuds et liaisons en plus ou manquants) ;",
+                "remplacer le workflow en cours demande d'abord confirmation : les modifications depuis la " +
+                "dernière sauvegarde sont perdues ;",
+                "choisir un autre projet dans la liste (depuis un projet) ouvre cette fenêtre Load d'elle-même ;",
                 "décoché : rien ne s'ouvre, les dossiers cochés vont dans le Reference Loader de cet onglet.",
             ]),
     },
@@ -3692,7 +3701,10 @@ function buildSetViewer(container, onSort, onWorkflow, rush) {
     };
 }
 
-/** open(report, projectPath) -> Promise<dossiers coches | null> (Cancel, Echap, clic a cote = null). */
+/**
+ * open(report, projectPath, switching) -> Promise<dossiers coches | null> (Cancel, Echap, clic a
+ * cote = null) ; switching = changement de projet (autre structure -> nouvel onglet).
+ */
 function buildLoadDialog(container) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
@@ -3804,15 +3816,20 @@ function buildLoadDialog(container) {
         if (wf.same) {
             html += '<div style="color:' + GREEN + '">Same structure (nodes and links): the current workflow is replaced.</div>';
         } else {
-            html += '<div style="color:' + ORANGE + '">Different structure: the current workflow is kept, the saved ' +
-                "one opens in a new tab <b>" + escapeHtml(copyTabName(wf.name)) + "</b>.</div>" +
+            // Autre projet : nouvel onglet ; meme projet : l'onglet actuel le recoit (choix utilisateur, 22/10/2026).
+            html += '<div style="color:' + ORANGE + '">' + (switching
+                ? "Different structure: this tab keeps its project, the saved workflow opens in a new tab <b>" +
+                    escapeHtml(String(wf.name).replace(/\.json$/i, "")) + "</b>."
+                : "Different structure: the current workflow is replaced by the saved one.") + "</div>" +
                 (wf.diff ? structureHtml(wf.diff, "Only in the saved workflow", "Only in the current workflow") : "");
         }
         return html;
     }
 
+    let switching = false;
     return {
-        open(report, projectPath) {
+        open(report, projectPath, isSwitching) {
+            switching = !!isSwitching;
             if (resolve) finish(null);
             sub.textContent = "Saved on " + (report.datemodifi || "?") + " · mode " + (report.mode || "?");
             body.innerHTML = "";
@@ -4611,6 +4628,27 @@ app.registerExtension({
                 }
             }
 
+            /**
+             * Workflow dans un nouvel onglet SANS y basculer (choix utilisateur, 22/10/2026) ;
+             * renvoie {name, open()} (open() bascule dessus), null si ComfyUI ne le permet pas.
+             */
+            function openInBackground(workflow, name) {
+                const wm = app.extensionManager && app.extensionManager.workflow;
+                if (!wm || typeof wm.createTemporary !== "function" || typeof wm.openWorkflowsInBackground !== "function") {
+                    return null;
+                }
+                let tab;
+                try {
+                    tab = wm.createTemporary(name + ".json", workflow);
+                } catch (e) {
+                    return null;
+                }
+                wm.openWorkflowsInBackground({ right: [tab.path] });
+                // Nom deja pris par un onglet ouvert : ComfyUI en donne un autre ("name (2)").
+                const tabName = String(tab.path || name).split("/").pop().replace(/\.json$/i, "");
+                return { name: tabName, open: () => app.loadGraphData(workflow, true, true, tab) };
+            }
+
             /** Workflow d'un Run dans un nouvel onglet (nom du JSON du Run) ; {ok, text}. */
             async function openRunWorkflow(run) {
                 const s = getState();
@@ -5365,7 +5403,16 @@ app.registerExtension({
                 say((moved ? "Moved to " : "Renamed: ") + data.path, true);
             }
 
-            select.addEventListener("change", () => openProject(select.value));
+            // D'un projet a un autre (choix utilisateur, 22/10/2026) : Load du nouveau projet,
+            // comme un clic sur Load ; depuis (no project), rien de plus.
+            select.addEventListener("change", async () => {
+                const prev = getState();
+                await openProject(select.value);
+                const s = getState();
+                if (prev.name && s.name && prev.name !== s.name && inProject(s.name)) {
+                    await loadProject({ root: prev.root, name: prev.name, path: prev.path });
+                }
+            });
             editBtn.addEventListener("click", () => {
                 const s = getState();
                 if (inProject(s.name)) renameDialog.open(s.path);
@@ -5438,7 +5485,15 @@ app.registerExtension({
              * structure = nouvel onglet "<nom>-copie" ; decoche = medias dans le
              * Reference Loader de cet onglet.
              */
-            async function loadProject() {
+            /**
+             * Load (bouton) ou changement de projet (from = projet quitte {root, name, path}).
+             * Choix utilisateur, 22/10/2026 : workflow de meme structure -> l'onglet actuel le
+             * recoit ; autre structure : meme projet -> l'onglet actuel aussi, autre projet ->
+             * nouvel onglet en arriere-plan, l'onglet actuel garde son projet, puis message
+             * (OK = rester, Open the project = y aller). Remplacer l'onglet actuel demande
+             * confirmation (modifications non sauvegardees perdues).
+             */
+            async function loadProject(from) {
                 const s = getState();
                 if (!inProject(s.name)) return;
                 let report;
@@ -5450,7 +5505,7 @@ app.registerExtension({
                     return;
                 }
                 say("");
-                const checked = await loadDialog.open(report, s.path);
+                const checked = await loadDialog.open(report, s.path, !!from);
                 if (!checked) return;
                 try {
                     const items = restoreItems(report, checked);
@@ -5473,15 +5528,38 @@ app.registerExtension({
                             }
                             ln.widgets_values[0] = JSON.stringify(loadedState(st, report, s.path, media));
                         }
-                        if (wf.same) {
-                            // Meme structure : l'onglet actuel recoit la configuration sauvegardee.
-                            const active = app.extensionManager && app.extensionManager.workflow &&
-                                app.extensionManager.workflow.activeWorkflow;
-                            await app.loadGraphData(data, true, true, active || null);
-                        } else {
-                            await openInNewTab(data, copyTabName(wf.name));
-                            say("Loaded in a new tab: " + copyTabName(wf.name) + "." + restored, true);
+                        if (from && !wf.same) {
+                            // Autre projet, autre structure : nouvel onglet, l'onglet actuel garde son projet.
+                            const tabName = String(wf.name).replace(/\.json$/i, "");
+                            setState(from);
+                            loadWorkflowInfo();
+                            loadFolderFiles();
+                            render();
+                            const tab = openInBackground(data, tabName);
+                            if (!tab) {
+                                await openInNewTab(data, tabName);
+                                return;
+                            }
+                            const go = await confirm.ask({
+                                title: "Project opened in a new tab",
+                                html: "The project <b>" + escapeHtml(shortName(s.name)) + "</b> is open in a new tab named <b>" +
+                                    escapeHtml(tab.name) + "</b>." + restored,
+                                okLabel: "Open the project", okColor: PINK, cancelLabel: "OK",
+                            });
+                            if (go) await tab.open();
+                            else say("Project " + shortName(s.name) + " is open in the tab " + tab.name + "." + restored, true);
+                            return;
                         }
+                        // L'onglet actuel recoit le workflow sauvegarde : modifications non sauvegardees perdues.
+                        const replace = await confirm.ask({
+                            title: "Load the project " + shortName(s.name) + " in this tab?",
+                            html: "All the changes made in this tab since the last save will be lost.",
+                            okLabel: "Load", okColor: PINK,
+                        });
+                        if (!replace) return;
+                        const active = app.extensionManager && app.extensionManager.workflow &&
+                            app.extensionManager.workflow.activeWorkflow;
+                        await app.loadGraphData(data, true, true, active || null);
                         return;
                     }
                     if (media.length) {
