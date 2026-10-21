@@ -48,6 +48,8 @@ const LINK_ICON = svg(
 // Aide Simple / MultiProject (choix utilisateur, 22/10/2026) : dossier ouvert, arborescence.
 const FOLDER_OPEN_ICON = svg('<path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 ' +
     '1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"></path>', 13);
+const SIMPLE_COLOR = PINK;      // rose (bouton +)
+const MULTI_COLOR = "#2e9d8f";  // vert d'eau
 const TREE_ICON = svg('<rect x="13" y="3" width="8" height="6" rx="1"></rect><rect x="13" y="15" width="8" height="6" rx="1"></rect>' +
     '<path d="M3 3v13a2 2 0 0 0 2 2h8"></path><path d="M3 6h10"></path>', 13);
 /** Titre d'un bloc de l'aide avec son icone. */
@@ -367,13 +369,13 @@ const HELP_SECTIONS = [
             "The Root folder does not exist yet: the window of " + iconBadge(PLUS_ICON, PINK) +
             " warns you, and <b>Create</b> makes it first.",
         ]) +
-        hTitle(FOLDER_OPEN_ICON, PINK, "Simple project") +
+        hTitle(FOLDER_OPEN_ICON, SIMPLE_COLOR, "Simple project") +
         hList([
             "One folder = one project.",
             "Its folders <b>00.Workflows</b> to <b>99.Project-Config</b> are created inside it.",
         ]) +
         hWarn("a Simple project cannot hold other projects.", "Warning:") +
-        hTitle(TREE_ICON, PINK, "MultiProject") +
+        hTitle(TREE_ICON, MULTI_COLOR, "MultiProject") +
         hList([
             "One folder that holds several projects (for example the shots of one film).",
             "<b>(new)</b>: type the name of the folder, then the name of its first project.",
@@ -719,13 +721,13 @@ const HELP_SECTIONS_FR = [
             "Le Root folder n'existe pas encore : la fenêtre de " + iconBadge(PLUS_ICON, PINK) +
             " vous prévient, et <b>Create</b> le crée d'abord.",
         ]) +
-        hTitle(FOLDER_OPEN_ICON, PINK, "Projet Simple") +
+        hTitle(FOLDER_OPEN_ICON, SIMPLE_COLOR, "Projet Simple") +
         hList([
             "Un dossier = un projet.",
             "Ses dossiers <b>00.Workflows</b> à <b>99.Project-Config</b> sont créés dedans.",
         ]) +
         hWarn("un projet Simple ne peut pas contenir d'autres projets.", "Attention :") +
-        hTitle(TREE_ICON, PINK, "MultiProject") +
+        hTitle(TREE_ICON, MULTI_COLOR, "MultiProject") +
         hList([
             "Un dossier qui contient plusieurs projets (par exemple les plans d'un même film).",
             "<b>(new)</b> : tapez le nom du dossier, puis le nom de son premier projet.",
@@ -1304,17 +1306,63 @@ function buildCopyDialog(container) {
         flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833",
         borderRadius: "6px", padding: "3px 6px", fontSize: "12px",
     });
-    // Icone du projet choisi (choix utilisateur, 22/10/2026) : dossier ouvert = Simple,
-    // arborescence = MultiProject ; dans la liste (texte seul), 📂 et 🗂️.
-    const kindBadge = document.createElement("span");
-    Object.assign(kindBadge.style, { display: "inline-flex", flex: "0 0 auto" });
+    // Liste From avec les icones de l'aide (choix utilisateur, 22/10/2026) : une liste
+    // deroulante native n'affiche que du texte, d'ou cette liste en ligne ; select (cache)
+    // garde la valeur et son evenement change.
+    const picker = document.createElement("div");
+    Object.assign(picker.style, { position: "relative", flex: "1", minWidth: "0" });
+    const pickBtn = document.createElement("button");
+    Object.assign(pickBtn.style, {
+        width: "100%", display: "flex", alignItems: "center", gap: "8px", background: "#111", color: "#ddd",
+        border: "1px solid #0c3833", borderRadius: "6px", padding: "3px 8px", fontSize: "12px", cursor: "pointer",
+        textAlign: "left",
+    });
+    const pickList = document.createElement("div");
+    Object.assign(pickList.style, {
+        display: "none", position: "absolute", left: "0", right: "0", top: "calc(100% + 2px)", zIndex: "1",
+        background: "#111", border: "1px solid #0c3833", borderRadius: "6px", padding: "3px 0",
+        maxHeight: "240px", overflowY: "auto", boxShadow: "0 6px 18px rgba(0,0,0,0.5)",
+    });
+    picker.append(pickBtn, pickList);
+    const kindIcon = (multi) => iconBadge(multi ? TREE_ICON : FOLDER_OPEN_ICON, multi ? MULTI_COLOR : SIMPLE_COLOR);
+    const kindTitle = (multi) => (multi ? "MultiProject (folder of projects)" : "Simple project");
+    const pickRow = (o) => '<span style="display:inline-flex;flex:0 0 auto">' + kindIcon(o.dataset.multi === "1") +
+        '</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+        escapeHtml(o.textContent) + "</span>";
     const paintKind = () => {
         const o = select.options[select.selectedIndex];
-        const multi = !!(o && o.dataset.multi === "1");
-        kindBadge.innerHTML = iconBadge(multi ? TREE_ICON : FOLDER_OPEN_ICON, PINK);
-        kindBadge.title = multi ? "MultiProject (folder of projects)" : "Simple project";
+        pickBtn.innerHTML = o ? pickRow(o) + '<span style="color:#888">▾</span>' : "";
+        pickBtn.title = o ? kindTitle(o.dataset.multi === "1") : "";
     };
-    row.append(lab, kindBadge, select);
+    const closeList = () => (pickList.style.display = "none");
+    pickBtn.addEventListener("click", () => {
+        if (pickList.style.display !== "none") return closeList();
+        pickList.innerHTML = "";
+        for (const o of select.options) {
+            const item = document.createElement("div");
+            item.innerHTML = pickRow(o);
+            item.title = kindTitle(o.dataset.multi === "1");
+            Object.assign(item.style, {
+                display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", cursor: "pointer",
+                background: o.value === select.value ? "#1d3a36" : "transparent",
+            });
+            item.addEventListener("mouseenter", () => (item.style.background = "#24433f"));
+            item.addEventListener("mouseleave", () => (item.style.background = o.value === select.value ? "#1d3a36" : "transparent"));
+            item.addEventListener("click", () => {
+                closeList();
+                if (select.value === o.value) return;
+                select.value = o.value;
+                select.dispatchEvent(new Event("change"));
+            });
+            pickList.appendChild(item);
+        }
+        pickList.style.display = "block";
+    });
+    // Clic ailleurs dans la fenetre : la liste se ferme.
+    card.addEventListener("mousedown", (e) => {
+        if (!picker.contains(e.target)) closeList();
+    });
+    row.append(lab, picker);
     // Dossier de projets (choix utilisateur, 21/10/2026) : All ou un de ses sous-projets.
     const subRow = document.createElement("div");
     Object.assign(subRow.style, { display: "none", alignItems: "center", gap: "8px", marginTop: "6px" });
@@ -1324,6 +1372,8 @@ function buildCopyDialog(container) {
     const subSelect = document.createElement("select");
     subSelect.style.cssText = select.style.cssText;
     subRow.append(subLab, subSelect);
+    select.style.display = "none";
+    row.append(select);
     const body = document.createElement("div");
     Object.assign(body.style, { lineHeight: "1.5", color: "#ccc", marginTop: "10px", minHeight: "60px" });
     const footer = document.createElement("div");
@@ -1432,11 +1482,12 @@ function buildCopyDialog(container) {
             for (const src of opts.sources) {
                 const o = document.createElement("option");
                 o.value = src.path;
-                o.textContent = (src.multi ? "🗂️ " : "📂 ") + src.name;
+                o.textContent = src.name;
                 o.dataset.multi = src.multi ? "1" : "";
                 o.style.background = "#111";
                 select.appendChild(o);
             }
+            closeList();
             paintKind();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
