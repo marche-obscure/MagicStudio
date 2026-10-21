@@ -45,6 +45,19 @@ const PROJECT_ICON = svg(
 const LINK_ICON = svg(
     '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>' +
     '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>', 13);
+// Aide Simple / MultiProject (choix utilisateur, 22/10/2026) : dossier ouvert, arborescence.
+const FOLDER_OPEN_ICON = svg('<path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 ' +
+    '1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"></path>', 13);
+const TREE_ICON = svg('<rect x="13" y="3" width="8" height="6" rx="1"></rect><rect x="13" y="15" width="8" height="6" rx="1"></rect>' +
+    '<path d="M3 3v13a2 2 0 0 0 2 2h8"></path><path d="M3 6h10"></path>', 13);
+/** Titre d'un bloc de l'aide avec son icone. */
+const hTitle = (icon, color, text) =>
+    '<div style="display:flex;align-items:center;gap:8px;margin:14px 0 4px;font-weight:bold;color:#e6e6e6">' +
+    iconBadge(icon, color) + "<span>" + text + "</span></div>";
+/** Avertissement de l'aide (orange). */
+const hWarn = (t, label) =>
+    '<div style="border-left:3px solid ' + ORANGE + ';background:#241b15;color:#efcfb6;padding:6px 10px;' +
+    'margin:6px 0 10px">⚠ <b>' + label + "</b> " + t + "</div>";
 const PENCIL_ICON = svg('<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path>', 13);
 const SAVE_ICON = svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>' +
     '<polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline>', 13);
@@ -354,19 +367,18 @@ const HELP_SECTIONS = [
             "The Root folder does not exist yet: the window of " + iconBadge(PLUS_ICON, PINK) +
             " warns you, and <b>Create</b> makes it first.",
         ]) +
-        "<p><b>Simple or MultiProject</b> (window of " + iconBadge(PLUS_ICON, PINK) + "):</p>" +
+        hTitle(FOLDER_OPEN_ICON, PINK, "Simple project") +
         hList([
-            "<b>Simple</b>: one project. A folder of that name is created in the Root folder, with its folders " +
-            "<b>00.Workflows</b> to <b>99.Project-Config</b> inside it.",
-            "<b>MultiProject</b>: a folder of projects, to keep several projects of the same film together. " +
-            "<b>Folder of projects</b>: <b>(new)</b> asks for the name of the new folder, or pick one that " +
-            "exists to add a project to it. <b>Project name</b> is the project inside it: its folders 00 to 99 " +
-            "are created in that project, never in the folder of projects.",
-            "In the list <b>Project name</b>, a folder of projects is a title (it cannot be picked) with its " +
-            "projects under it. Only project folders are listed: the folders 00 to 99 and the folders without a " +
-            "project are hidden.",
-            "A project never holds another project: no project inside a Simple project, no project inside a " +
-            "project of a folder of projects (one level only).",
+            "One folder = one project.",
+            "Its folders <b>00.Workflows</b> to <b>99.Project-Config</b> are created inside it.",
+        ]) +
+        hWarn("a Simple project cannot hold other projects.", "Warning:") +
+        hTitle(TREE_ICON, PINK, "MultiProject") +
+        hList([
+            "One folder that holds several projects (for example the shots of one film).",
+            "<b>(new)</b>: type the name of the folder, then the name of its first project.",
+            "To add a project later: pick the folder in <b>Folder of projects</b>.",
+            "In the <b>Project name</b> list, the folder is a title and its projects are under it.",
         ]) +
         hNote("The tooltip of a folder row gives its path; the bottom line of the node only shows messages."),
     },
@@ -707,19 +719,18 @@ const HELP_SECTIONS_FR = [
             "Le Root folder n'existe pas encore : la fenêtre de " + iconBadge(PLUS_ICON, PINK) +
             " vous prévient, et <b>Create</b> le crée d'abord.",
         ]) +
-        "<p><b>Simple ou MultiProject</b> (fenêtre de " + iconBadge(PLUS_ICON, PINK) + ") :</p>" +
+        hTitle(FOLDER_OPEN_ICON, PINK, "Projet Simple") +
         hList([
-            "<b>Simple</b> : un projet. Un dossier de ce nom est créé dans le Root folder, avec ses dossiers " +
-            "<b>00.Workflows</b> à <b>99.Project-Config</b> dedans.",
-            "<b>MultiProject</b> : un dossier de projets, pour garder ensemble plusieurs projets d'un même film. " +
-            "<b>Folder of projects</b> : <b>(new)</b> demande le nom du nouveau dossier, ou choisissez-en un " +
-            "existant pour y ajouter un projet. <b>Project name</b> est le projet dedans : ses dossiers 00 à 99 " +
-            "sont créés dans ce projet, jamais dans le dossier de projets.",
-            "Dans la liste <b>Project name</b>, un dossier de projets est un titre (on ne peut pas le choisir) " +
-            "avec ses projets en dessous. Seuls les dossiers de projet y sont : les dossiers 00 à 99 et les " +
-            "dossiers sans projet sont masqués.",
-            "Un projet ne contient jamais un autre projet : pas de projet dans un projet Simple, pas de projet " +
-            "dans un projet d'un dossier de projets (un seul niveau).",
+            "Un dossier = un projet.",
+            "Ses dossiers <b>00.Workflows</b> à <b>99.Project-Config</b> sont créés dedans.",
+        ]) +
+        hWarn("un projet Simple ne peut pas contenir d'autres projets.", "Attention :") +
+        hTitle(TREE_ICON, PINK, "MultiProject") +
+        hList([
+            "Un dossier qui contient plusieurs projets (par exemple les plans d'un même film).",
+            "<b>(new)</b> : tapez le nom du dossier, puis le nom de son premier projet.",
+            "Pour ajouter un projet plus tard : choisissez le dossier dans <b>Folder of projects</b>.",
+            "Dans la liste <b>Project name</b>, le dossier est un titre et ses projets sont en dessous.",
         ]) +
         hNote("L'infobulle d'une ligne de dossier donne son chemin ; la ligne du bas du nœud ne montre que " +
             "les messages.", "Remarque :"),
