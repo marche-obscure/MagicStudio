@@ -296,13 +296,13 @@ const HELP_SECTIONS = [
             "<b>Validated</b> and <b>Footage</b>. The copies of the runs go to <b>Footage</b> (files of older runs left " +
             "in the root are put there when the window opens).</p>" +
             hCard("Dot of each thumbnail", [
-                [helpDot("#e53935"), "Rejected"],
+                [helpDot("#d32f2f"), "Rejected"],
                 [helpDot("#7ee081"), "Validated"],
                 [helpDot("#fb8c00"), "Footage"],
                 [helpDot("#8a8a8a"), "the original is outside the project"],
             ]) +
             hList([
-                "Under the image (04, 40, 60), <b>Reject</b> / <b>Validate</b> / <b>Footage</b> move the file into that " +
+                "Under the image (04, 40, 60), <b>Validate</b> / <b>Footage</b> / <b>Reject</b> move the file into that " +
                 "folder; the button of its current folder is greyed.",
                 "From outside the project, the three buttons bring the original back after a confirmation: copy, " +
                 "SHA256 check, then the original is deleted. A video replaces its reduced copy; an image takes the " +
@@ -628,13 +628,13 @@ const HELP_SECTIONS_FR = [
             "<b>Validated</b> et <b>Footage</b>. Les copies des Runs vont dans <b>Footage</b> (les fichiers d'anciens " +
             "Runs restés à la racine y sont rangés à l'ouverture de la fenêtre).</p>" +
             hCard("Pastille de chaque vignette", [
-                [helpDot("#e53935"), "Rejected"],
+                [helpDot("#d32f2f"), "Rejected"],
                 [helpDot("#7ee081"), "Validated"],
                 [helpDot("#fb8c00"), "Footage"],
                 [helpDot("#8a8a8a"), "l'original est hors du projet"],
             ]) +
             hList([
-                "Sous l'image (04, 40, 60), <b>Reject</b> / <b>Validate</b> / <b>Footage</b> déplacent le fichier dans " +
+                "Sous l'image (04, 40, 60), <b>Validate</b> / <b>Footage</b> / <b>Reject</b> déplacent le fichier dans " +
                 "ce dossier ; le bouton de son dossier actuel est grisé.",
                 "Hors du projet, les trois boutons rapatrient l'original après confirmation : copie, comparaison " +
                 "SHA256, puis suppression de l'original. Une vidéo remplace sa copie réduite ; une image prend le nom " +
@@ -2508,6 +2508,8 @@ const DOT_ORANGE = "#d35400";
 const DOT_GREY = "#8a8a8a";
 const SORT_COLORS = { rejected: "#e53935", validated: "#7ee081", footage: "#fb8c00" };
 const SORT_TEXT_COLORS = { rejected: "#fff", validated: "#102010", footage: "#1a1000" };
+// Pastilles (vignettes et filtre) : rouge = celui de la poubelle des vignettes (choix utilisateur, 21/10/2026).
+const DOT_COLORS = { ...SORT_COLORS, rejected: TRASH_RED };
 const RUSH_FOLDER_OF = { video: "40.Rush Videos", image: "60.Rush Images" };
 const SORT_NAME = Object.fromEntries(SORT_FOLDERS.map(([key, , name]) => [key, name]));
 
@@ -2518,7 +2520,7 @@ function addStatusDot(box, out) {
     const key = sortDot(out);
     Object.assign(dot.style, {
         position: "absolute", top: "6px", left: "6px", width: "12px", height: "12px", borderRadius: "50%",
-        background: SORT_COLORS[key] || DOT_GREY, border: "2px solid #1e1e1e", zIndex: "1",
+        background: DOT_COLORS[key] || DOT_GREY, border: "2px solid #1e1e1e", zIndex: "1",
     });
     dot.title = key !== "outside" ? "In " + RUSH_FOLDER_OF[out.kind] + "/" + SORT_NAME[key]
         : "Original outside the project: " + (out.folder || "?");
@@ -2591,7 +2593,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         d.type = "button";
         Object.assign(d.style, {
             width: "16px", height: "16px", borderRadius: "50%", padding: "0", cursor: "pointer",
-            background: SORT_COLORS[key] || DOT_GREY, boxSizing: "border-box",
+            background: DOT_COLORS[key] || DOT_GREY, boxSizing: "border-box",
         });
         d.addEventListener("click", () => {
             if (dotFilter.has(key)) dotFilter.delete(key);
@@ -3173,7 +3175,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         const doomed = sel.filter((x) => canDeleteRush(x.output));
         if (doomed.length) {
             const d = makeTextButton("Delete (" + doomed.length + ")", SORT_COLORS.rejected);
-            Object.assign(d.style, { gridColumn: "1", border: "2px solid " + SORT_COLORS.rejected });
+            Object.assign(d.style, { gridColumn: "3", border: "2px solid " + SORT_COLORS.rejected });
             d.title = "Delete the " + doomed.length + " checked file(s) of " + where + "Rejected";
             d.addEventListener("click", () => deleteChecked(doomed, d));
             bar.appendChild(d);
