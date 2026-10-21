@@ -1304,7 +1304,17 @@ function buildCopyDialog(container) {
         flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833",
         borderRadius: "6px", padding: "3px 6px", fontSize: "12px",
     });
-    row.append(lab, select);
+    // Icone du projet choisi (choix utilisateur, 22/10/2026) : dossier ouvert = Simple,
+    // arborescence = MultiProject ; dans la liste (texte seul), 📂 et 🗂️.
+    const kindBadge = document.createElement("span");
+    Object.assign(kindBadge.style, { display: "inline-flex", flex: "0 0 auto" });
+    const paintKind = () => {
+        const o = select.options[select.selectedIndex];
+        const multi = !!(o && o.dataset.multi === "1");
+        kindBadge.innerHTML = iconBadge(multi ? TREE_ICON : FOLDER_OPEN_ICON, PINK);
+        kindBadge.title = multi ? "MultiProject (folder of projects)" : "Simple project";
+    };
+    row.append(lab, kindBadge, select);
     // Dossier de projets (choix utilisateur, 21/10/2026) : All ou un de ses sous-projets.
     const subRow = document.createElement("div");
     Object.assign(subRow.style, { display: "none", alignItems: "center", gap: "8px", marginTop: "6px" });
@@ -1399,7 +1409,10 @@ function buildCopyDialog(container) {
         resolve = null;
         if (r) r(answer);
     }
-    select.addEventListener("change", () => refresh(true));
+    select.addEventListener("change", () => {
+        paintKind();
+        refresh(true);
+    });
     subSelect.addEventListener("change", () => refresh(false));
     cancelBtn.addEventListener("click", () => finish(null));
     okBtn.addEventListener("click", () => plan && finish({
@@ -1408,7 +1421,7 @@ function buildCopyDialog(container) {
 
     return {
         /**
-         * ask({project, sources: [{name, path}], probe(path, sub) -> Promise<bilan>})
+         * ask({project, sources: [{name, path, multi}], probe(path, sub) -> Promise<bilan>})
          * -> Promise<{source, sub} | null> ; sub : "" (projet), ALL_SUBS ou un sous-projet.
          */
         ask(opts) {
@@ -1419,10 +1432,12 @@ function buildCopyDialog(container) {
             for (const src of opts.sources) {
                 const o = document.createElement("option");
                 o.value = src.path;
-                o.textContent = src.name;
+                o.textContent = (src.multi ? "🗂️ " : "📂 ") + src.name;
+                o.dataset.multi = src.multi ? "1" : "";
                 o.style.background = "#111";
                 select.appendChild(o);
             }
+            paintKind();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 520);
@@ -4893,7 +4908,7 @@ app.registerExtension({
                 // Projets de la racine et dossiers de projets (All ou l'un d'eux), sans le projet ouvert.
                 const sources = tree.filter((e) => e.projects
                     ? e.projects.some((p) => e.name + GROUP_SEP + p !== s.name) : e.name !== s.name)
-                    .map((e) => ({ name: e.name, path: folder.root.replace(/[\\/]+$/, "") + sep + e.name }));
+                    .map((e) => ({ name: e.name, path: folder.root.replace(/[\\/]+$/, "") + sep + e.name, multi: !!e.projects }));
                 if (!sources.length) {
                     say("No other project in this folder to copy from.");
                     return;
