@@ -380,7 +380,7 @@ try:
         try:
             body = await request.json()
             data = await _in_executor(project_config.copy_media, body.get("project", ""), body.get("source", ""),
-                                      bool(body.get("dry_run")))
+                                      bool(body.get("dry_run")), str(body.get("sub") or ""))
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
