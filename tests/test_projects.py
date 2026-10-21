@@ -82,6 +82,19 @@ class ProjectFoldersTest(unittest.TestCase):
             projects.create_project(r, "X", group="Film/Shot1")
         self.assertFalse(os.path.exists(os.path.join(r, "G")))
 
+    def test_folder_of_projects_with_stray_parts_stays_a_group(self):
+        r = self.root
+        projects.create_project(r, "Shot1", group="Film", new_group=True)
+        os.makedirs(os.path.join(r, "Film", "08.Images"))      # cree par erreur (ancienne version)
+        self.assertFalse(projects.is_project(os.path.join(r, "Film")))
+        self.assertEqual(projects.project_tree(r), [{"name": "Film", "projects": ["Shot1"]}])
+        self.assertEqual(projects.project_children(os.path.join(r, "Film")), ["Shot1"])
+        projects.create_project(r, "Shot2", group="Film")       # on peut toujours y ajouter un projet
+        with self.assertRaises(ValueError):                      # jamais complete en projet
+            projects.ensure_project(os.path.join(r, "Film"))
+        self.assertFalse(os.path.isdir(os.path.join(r, "Film", "00.Workflows")))
+        self.assertEqual(projects.list_projects(r), ["Film/Shot1", "Film/Shot2"])
+
     def test_create_existing_project_refused(self):
         projects.create_project(self.root, "Clip")
         with self.assertRaises(FileExistsError):

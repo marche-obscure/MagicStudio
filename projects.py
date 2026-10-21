@@ -68,9 +68,23 @@ def _sub_dirs(path):
         return []
 
 
-def is_project(path):
-    """Dossier de projet : il contient au moins un dossier 00 a 99 (choix utilisateur 22/10/2026)."""
+def _has_parts(path):
     return any(_PROJECT_PART.match(n) for n in _sub_dirs(path))
+
+
+def project_children(path):
+    """Sous-dossiers de path qui ont des dossiers 00 a 99 (projets d'un dossier de projets)."""
+    return [n for n in _sub_dirs(path) if not _PROJECT_PART.match(n) and _has_parts(os.path.join(path, n))]
+
+
+def is_project(path):
+    """
+    Dossier de projet (choix utilisateur 22/10/2026) : il contient au moins un
+    dossier 00 a 99 et aucun projet (un projet ne contient jamais de projet) :
+    un dossier qui contient des projets est un dossier de projets, meme avec
+    des dossiers 00 a 99 (crees par erreur).
+    """
+    return _has_parts(path) and not project_children(path)
 
 
 def project_tree(root):
@@ -87,12 +101,11 @@ def project_tree(root):
         if _PROJECT_PART.match(n):
             continue
         p = os.path.join(root, n)
-        if is_project(p):
-            out.append({"name": n, "projects": None})
-            continue
-        subs = [s for s in _sub_dirs(p) if not _PROJECT_PART.match(s) and is_project(os.path.join(p, s))]
+        subs = project_children(p)
         if subs:
             out.append({"name": n, "projects": subs})
+        elif _has_parts(p):
+            out.append({"name": n, "projects": None})
     return out
 
 
@@ -119,6 +132,9 @@ def ensure_project(path):
     """Recree les sous-dossiers manquants du projet ; renvoie leurs noms."""
     if not path or not os.path.isdir(path):
         raise FileNotFoundError("Project folder not found: %s" % path)
+    # Dossier de projets : jamais complete en projet (choix utilisateur 22/10/2026).
+    if project_children(path):
+        raise ValueError("This folder holds projects: pick one of them.")
     created = []
     for sub in SUBFOLDERS:
         full = os.path.join(path, sub)
@@ -155,7 +171,7 @@ def create_project(root, name, create_root=False, group=None, new_group=False):
         os.makedirs(root, exist_ok=True)
     if not root or not os.path.isdir(root):
         raise FileNotFoundError("Projects folder not found: %s" % root)
-    if is_project(root):
+    if _has_parts(root) and not project_children(root):
         raise ValueError("The projects folder is itself a project: a project cannot hold another project.")
     where = root
     if group is not None:
@@ -166,7 +182,7 @@ def create_project(root, name, create_root=False, group=None, new_group=False):
                 raise FileExistsError('A project or file named "%s" already exists.' % group)
         elif not os.path.isdir(where):
             raise FileNotFoundError('Folder of projects "%s" not found in %s' % (group, root))
-        elif is_project(where):
+        elif not project_children(where) and _has_parts(where):
             raise ValueError('"%s" is a project: a project cannot hold another project.' % group)
     # Comparaison sans casse : sous Windows, "Clip" et "clip" sont le meme dossier.
     if os.path.isdir(where) and _taken(where, name):

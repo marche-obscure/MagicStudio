@@ -224,8 +224,7 @@ try:
             root = await _in_executor(_projects_root, body.get("root", ""))
             path = projects.project_path(root, body.get("name", ""))
             # Dossier de projets : jamais ouvert comme projet (ses dossiers 00 a 99 seraient crees).
-            if os.path.isdir(path) and not projects.is_project(path) and any(
-                    projects.is_project(os.path.join(path, n)) for n in os.listdir(path)):
+            if os.path.isdir(path) and projects.project_children(path):
                 raise ValueError("This folder holds projects: pick one of them.")
             created = await _in_executor(projects.ensure_project, path)
         except Exception as e:
