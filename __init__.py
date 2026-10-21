@@ -190,11 +190,15 @@ try:
         try:
             root = await _in_executor(_projects_root, request.rel_url.query.get("root", ""))
             exists = os.path.isdir(root)
-            names = await _in_executor(projects.list_projects, root) if exists else []
+            tree = await _in_executor(projects.project_tree, root) if exists else []
         except Exception as e:
             return _project_error(e)
+        names = []
+        for e in tree:
+            names.extend([e["name"]] if e["projects"] is None
+                         else [e["name"] + projects.GROUP_SEP + s for s in e["projects"]])
         return web.json_response({"root": root, "exists": exists, "default_root": default_projects_root(),
-                                  "projects": names})
+                                  "projects": names, "tree": tree})
 
     @routes.post("/mmproject/create")
     async def mmproject_create(request):
@@ -202,11 +206,15 @@ try:
         try:
             body = await request.json()
             root = await _in_executor(_projects_root, body.get("root", ""))
+            group = body.get("group")  # MultiProject : dossier de projets (new_group : a creer)
             path = await _in_executor(projects.create_project, root, body.get("name", ""),
-                                      bool(body.get("create_root")))
+                                      bool(body.get("create_root")), group or None, bool(body.get("new_group")))
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"root": root, "path": path, "name": os.path.basename(path)})
+        name = os.path.basename(path)
+        return web.json_response({"root": root, "path": path,
+                                  "name": os.path.basename(os.path.dirname(path)) + projects.GROUP_SEP + name
+                                  if group else name})
 
     @routes.post("/mmproject/open")
     async def mmproject_open(request):
@@ -214,11 +222,14 @@ try:
         try:
             body = await request.json()
             root = await _in_executor(_projects_root, body.get("root", ""))
-            name = body.get("name", "")
-            created = await _in_executor(projects.ensure_project, os.path.join(root, projects.validate_name(name)))
+            path = projects.project_path(root, body.get("name", ""))
+            # Dossier de projets : jamais ouvert comme projet (ses dossiers 00 a 99 seraient crees).
+            if os.path.isdir(path) and projects.project_children(path):
+                raise ValueError("This folder holds projects: pick one of them.")
+            created = await _in_executor(projects.ensure_project, path)
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"root": root, "path": os.path.join(root, name.strip()), "created": created})
+        return web.json_response({"root": root, "path": path, "created": created})
 
     @routes.post("/mmproject/save_plan")
     async def mmproject_save_plan(request):

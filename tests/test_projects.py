@@ -56,6 +56,45 @@ class ProjectFoldersTest(unittest.TestCase):
         for sub in projects.SUBFOLDERS:
             self.assertTrue(os.path.isdir(os.path.join(path, sub)), sub)
 
+    def test_create_multi_project(self):
+        r = self.root
+        first = projects.create_project(r, "Shot1", group="Film", new_group=True)
+        self.assertEqual(first, os.path.join(r, "Film", "Shot1"))
+        self.assertTrue(projects.is_project(first))
+        self.assertFalse(projects.is_project(os.path.join(r, "Film")))
+        second = projects.create_project(r, "Shot2", group="Film")
+        self.assertEqual(projects.list_projects(r), ["Film/Shot1", "Film/Shot2"])
+        self.assertTrue(os.path.isdir(os.path.join(second, "08.Images")))
+        with self.assertRaises(FileExistsError):      # dossier de projets deja pris
+            projects.create_project(r, "X", group="film", new_group=True)
+        with self.assertRaises(FileExistsError):      # sous-projet deja pris
+            projects.create_project(r, "shot1", group="Film")
+        with self.assertRaises(FileNotFoundError):
+            projects.create_project(r, "X", group="Nope")
+        simple = projects.create_project(r, "Simple")
+        with self.assertRaises(ValueError):           # un projet simple ne contient pas de projet
+            projects.create_project(r, "X", group="Simple")
+        with self.assertRaises(ValueError):           # un sous-projet non plus (racine = projet)
+            projects.create_project(first, "X")
+        with self.assertRaises(ValueError):
+            projects.create_project(simple, "X", group="G", new_group=True)
+        with self.assertRaises(ValueError):           # un seul niveau : pas de separateur
+            projects.create_project(r, "X", group="Film/Shot1")
+        self.assertFalse(os.path.exists(os.path.join(r, "G")))
+
+    def test_folder_of_projects_with_stray_parts_stays_a_group(self):
+        r = self.root
+        projects.create_project(r, "Shot1", group="Film", new_group=True)
+        os.makedirs(os.path.join(r, "Film", "08.Images"))      # cree par erreur (ancienne version)
+        self.assertFalse(projects.is_project(os.path.join(r, "Film")))
+        self.assertEqual(projects.project_tree(r), [{"name": "Film", "projects": ["Shot1"]}])
+        self.assertEqual(projects.project_children(os.path.join(r, "Film")), ["Shot1"])
+        projects.create_project(r, "Shot2", group="Film")       # on peut toujours y ajouter un projet
+        with self.assertRaises(ValueError):                      # jamais complete en projet
+            projects.ensure_project(os.path.join(r, "Film"))
+        self.assertFalse(os.path.isdir(os.path.join(r, "Film", "00.Workflows")))
+        self.assertEqual(projects.list_projects(r), ["Film/Shot1", "Film/Shot2"])
+
     def test_create_existing_project_refused(self):
         projects.create_project(self.root, "Clip")
         with self.assertRaises(FileExistsError):
@@ -78,9 +117,29 @@ class ProjectFoldersTest(unittest.TestCase):
 
     def test_list_projects_sorted_without_files_and_hidden(self):
         for name in ["beta", "Alpha", ".cache"]:
-            os.makedirs(os.path.join(self.root, name))
+            os.makedirs(os.path.join(self.root, name, "08.Images"))
         open(os.path.join(self.root, "notes.txt"), "w").close()
         self.assertEqual(projects.list_projects(self.root), ["Alpha", "beta"])
+
+    def test_project_tree_with_folders_of_projects(self):
+        r = self.root
+        projects.create_project(r, "Solo")
+        os.makedirs(os.path.join(r, "Group"))
+        projects.create_project(os.path.join(r, "Group"), "Two")
+        projects.create_project(os.path.join(r, "Group"), "one")
+        os.makedirs(os.path.join(r, "Group", "Prompt"))           # pas un projet : masque
+        os.makedirs(os.path.join(r, "Videos"))                     # sans projet : masque
+        open(os.path.join(r, "Videos", "a.mp4"), "w").close()
+        os.makedirs(os.path.join(r, "12.Video"))                   # racine = un projet : ses dossiers masques
+        self.assertFalse(projects.is_project(os.path.join(r, "Videos")))
+        self.assertEqual(projects.project_tree(r), [
+            {"name": "Group", "projects": ["one", "Two"]}, {"name": "Solo", "projects": None}])
+        self.assertEqual(projects.list_projects(r), ["Group/one", "Group/Two", "Solo"])
+        self.assertEqual(projects.project_path(r, "Group/one"), os.path.join(r, "Group", "one"))
+        self.assertEqual(projects.project_path(r, " Solo "), os.path.join(r, "Solo"))
+        for bad in ("a/b/c", "Group/", "Group/x:y"):
+            with self.assertRaises(ValueError):
+                projects.project_path(r, bad)
 
     def test_list_missing_root_raises(self):
         with self.assertRaises(FileNotFoundError):

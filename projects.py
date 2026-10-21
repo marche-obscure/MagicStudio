@@ -54,18 +54,87 @@ def validate_name(name):
     return name
 
 
-def list_projects(root):
-    """Dossiers de projet de la racine (sans fichiers ni dossiers caches), tries sans casse."""
+# Dossiers d'un projet : deux chiffres puis un point (00.Workflows ... 99.Project-Config).
+_PROJECT_PART = re.compile(r"^\d\d\.")
+# Separateur du nom d'un sous-projet : "<dossier de projets>/<projet>".
+GROUP_SEP = "/"
+
+
+def _sub_dirs(path):
+    try:
+        return sorted((e.name for e in os.scandir(path) if e.is_dir() and not e.name.startswith(".")),
+                      key=lambda n: (n.lower(), n))
+    except OSError:
+        return []
+
+
+def _has_parts(path):
+    return any(_PROJECT_PART.match(n) for n in _sub_dirs(path))
+
+
+def project_children(path):
+    """Sous-dossiers de path qui ont des dossiers 00 a 99 (projets d'un dossier de projets)."""
+    return [n for n in _sub_dirs(path) if not _PROJECT_PART.match(n) and _has_parts(os.path.join(path, n))]
+
+
+def is_project(path):
+    """
+    Dossier de projet (choix utilisateur 22/10/2026) : il contient au moins un
+    dossier 00 a 99 et aucun projet (un projet ne contient jamais de projet) :
+    un dossier qui contient des projets est un dossier de projets, meme avec
+    des dossiers 00 a 99 (crees par erreur).
+    """
+    return _has_parts(path) and not project_children(path)
+
+
+def project_tree(root):
+    """
+    Projets de la racine (choix utilisateur 22/10/2026) : [{name, projects}] ;
+    projects None = projet de la racine ; liste = dossier de projets (aucun
+    dossier 00 a 99, au moins un projet dedans, un seul niveau). Les dossiers
+    00 a 99 et les autres dossiers (sans projet) ne sont pas renvoyes.
+    """
     if not root or not os.path.isdir(root):
         raise FileNotFoundError("Projects folder not found: %s" % root)
-    names = [e.name for e in os.scandir(root) if e.is_dir() and not e.name.startswith(".")]
-    return sorted(names, key=lambda n: (n.lower(), n))
+    out = []
+    for n in _sub_dirs(root):
+        if _PROJECT_PART.match(n):
+            continue
+        p = os.path.join(root, n)
+        subs = project_children(p)
+        if subs:
+            out.append({"name": n, "projects": subs})
+        elif _has_parts(p):
+            out.append({"name": n, "projects": None})
+    return out
+
+
+def list_projects(root):
+    """Noms des projets a choisir : ceux de la racine et "<dossier>/<projet>" des dossiers de projets."""
+    names = []
+    for e in project_tree(root):
+        if e["projects"] is None:
+            names.append(e["name"])
+        else:
+            names.extend(e["name"] + GROUP_SEP + s for s in e["projects"])
+    return names
+
+
+def project_path(root, name):
+    """Chemin d'un projet de list_projects (projet de la racine ou "<dossier>/<projet>")."""
+    parts = (name or "").strip().split(GROUP_SEP)
+    if len(parts) > 2:
+        raise ValueError("A project is inside a folder of projects at most.")
+    return os.path.join(root, *[validate_name(p) for p in parts])
 
 
 def ensure_project(path):
     """Recree les sous-dossiers manquants du projet ; renvoie leurs noms."""
     if not path or not os.path.isdir(path):
         raise FileNotFoundError("Project folder not found: %s" % path)
+    # Dossier de projets : jamais complete en projet (choix utilisateur 22/10/2026).
+    if project_children(path):
+        raise ValueError("This folder holds projects: pick one of them.")
     created = []
     for sub in SUBFOLDERS:
         full = os.path.join(path, sub)
@@ -86,24 +155,46 @@ def ensure_project(path):
     return created
 
 
-def create_project(root, name, create_root=False):
+def create_project(root, name, create_root=False, group=None, new_group=False):
     """
     Cree le dossier du projet et ses sous-dossiers ; renvoie son chemin.
     create_root : cree aussi la racine si elle n'existe pas (l'utilisateur
     l'a accepte dans la fenetre de creation).
+    MultiProject (choix utilisateur 22/10/2026) : group = dossier de projets
+    de la racine ou le projet est cree (new_group : cree, son nom ne doit
+    exister nulle part ; sinon existant). Un projet (dossiers 00 a 99) ne
+    contient jamais de projet : ni la racine ni le dossier de projets ne
+    peuvent en etre un ; un seul niveau.
     """
     name = validate_name(name)
     if root and create_root and not os.path.isdir(root):
         os.makedirs(root, exist_ok=True)
     if not root or not os.path.isdir(root):
         raise FileNotFoundError("Projects folder not found: %s" % root)
+    if _has_parts(root) and not project_children(root):
+        raise ValueError("The projects folder is itself a project: a project cannot hold another project.")
+    where = root
+    if group is not None:
+        group = validate_name(group)
+        where = os.path.join(root, group)
+        if new_group:
+            if _taken(root, group):
+                raise FileExistsError('A project or file named "%s" already exists.' % group)
+        elif not os.path.isdir(where):
+            raise FileNotFoundError('Folder of projects "%s" not found in %s' % (group, root))
+        elif not project_children(where) and _has_parts(where):
+            raise ValueError('"%s" is a project: a project cannot hold another project.' % group)
     # Comparaison sans casse : sous Windows, "Clip" et "clip" sont le meme dossier.
-    if any(n.lower() == name.lower() for n in os.listdir(root)):
+    if os.path.isdir(where) and _taken(where, name):
         raise FileExistsError('A project or file named "%s" already exists.' % name)
-    path = os.path.join(root, name)
+    path = os.path.join(where, name)
     os.makedirs(path)
     ensure_project(path)
     return path
+
+
+def _taken(folder, name):
+    return any(n.lower() == name.lower() for n in os.listdir(folder))
 
 
 def open_project(root, name):
