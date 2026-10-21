@@ -56,6 +56,32 @@ class ProjectFoldersTest(unittest.TestCase):
         for sub in projects.SUBFOLDERS:
             self.assertTrue(os.path.isdir(os.path.join(path, sub)), sub)
 
+    def test_create_multi_project(self):
+        r = self.root
+        first = projects.create_project(r, "Shot1", group="Film", new_group=True)
+        self.assertEqual(first, os.path.join(r, "Film", "Shot1"))
+        self.assertTrue(projects.is_project(first))
+        self.assertFalse(projects.is_project(os.path.join(r, "Film")))
+        second = projects.create_project(r, "Shot2", group="Film")
+        self.assertEqual(projects.list_projects(r), ["Film/Shot1", "Film/Shot2"])
+        self.assertTrue(os.path.isdir(os.path.join(second, "08.Images")))
+        with self.assertRaises(FileExistsError):      # dossier de projets deja pris
+            projects.create_project(r, "X", group="film", new_group=True)
+        with self.assertRaises(FileExistsError):      # sous-projet deja pris
+            projects.create_project(r, "shot1", group="Film")
+        with self.assertRaises(FileNotFoundError):
+            projects.create_project(r, "X", group="Nope")
+        simple = projects.create_project(r, "Simple")
+        with self.assertRaises(ValueError):           # un projet simple ne contient pas de projet
+            projects.create_project(r, "X", group="Simple")
+        with self.assertRaises(ValueError):           # un sous-projet non plus (racine = projet)
+            projects.create_project(first, "X")
+        with self.assertRaises(ValueError):
+            projects.create_project(simple, "X", group="G", new_group=True)
+        with self.assertRaises(ValueError):           # un seul niveau : pas de separateur
+            projects.create_project(r, "X", group="Film/Shot1")
+        self.assertFalse(os.path.exists(os.path.join(r, "G")))
+
     def test_create_existing_project_refused(self):
         projects.create_project(self.root, "Clip")
         with self.assertRaises(FileExistsError):

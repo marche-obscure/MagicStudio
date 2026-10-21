@@ -156,7 +156,7 @@ const HELP_SECTIONS = [
         html: hSteps([
             "Wire the <b>project</b> output of the <b>MiniMax H3 Reference Loader</b> (always its last output) " +
             "to the <b>project</b> input of this node: its root folder becomes the projects folder.",
-            "Click " + iconBadge(PLUS_ICON, PINK) + ", type the name of the project and click <b>Create</b>.",
+            "Click " + iconBadge(PLUS_ICON, PINK) + ", type the name of the project and click <b>Create</b>. <b>Simple</b>: a project (folders 00 to 99 in it). <b>MultiProject</b>: a folder of projects, new (its name) or existing, and the project created inside it. A project never holds another project.",
             "Or pick an existing project in the drop-down list: only project folders are listed (a folder with 00 to 99 folders); a folder of projects (none of them, projects inside) shows its projects under its name.",
         ]) +
         hCard("Buttons of the node", [
@@ -483,7 +483,7 @@ const HELP_SECTIONS_FR = [
         html: hSteps([
             "Reliez la sortie <b>project</b> du <b>MiniMax H3 Reference Loader</b> (toujours sa dernière sortie) " +
             "à l'entrée <b>project</b> de ce nœud : son dossier racine devient le dossier des projets.",
-            "Cliquez sur " + iconBadge(PLUS_ICON, PINK) + ", tapez le nom du projet et cliquez sur <b>Create</b>.",
+            "Cliquez sur " + iconBadge(PLUS_ICON, PINK) + ", tapez le nom du projet et cliquez sur <b>Create</b>. <b>Simple</b> : un projet (dossiers 00 à 99 dedans). <b>MultiProject</b> : un dossier de projets, nouveau (son nom) ou existant, et le projet créé dedans. Un projet ne contient jamais un autre projet.",
             "Ou choisissez un projet existant dans la liste déroulante : seuls les dossiers de projet y sont (un dossier avec des dossiers 00 à 99) ; un dossier de projets (sans eux, des projets dedans) montre ses projets sous son nom.",
         ]) +
         hCard("Boutons du nœud", [
@@ -886,6 +886,32 @@ function buildCreateDialog(container, ctx) {
         padding: "6px 10px", marginBottom: "8px",
     });
 
+    // Simple ou MultiProject (choix utilisateur, 22/10/2026) : MultiProject = projet cree dans
+    // un dossier de projets, nouveau ((new) + son nom) ou existant.
+    let multi = false;
+    const modeRow = document.createElement("div");
+    Object.assign(modeRow.style, { display: "flex", gap: "6px", marginBottom: "8px" });
+    const simpleBtn = makeTextButton("Simple", PINK);
+    const multiBtn = makeTextButton("MultiProject", INACTIVE_BG);
+    simpleBtn.title = "A project: its folders 00 to 99 are created in it";
+    multiBtn.title = "A folder of projects: the project is created inside it, with its folders 00 to 99";
+    modeRow.append(simpleBtn, multiBtn);
+    const groupBox = document.createElement("div");
+    Object.assign(groupBox.style, { display: "none", marginBottom: "8px" });
+    const groupRow = document.createElement("div");
+    Object.assign(groupRow.style, { display: "flex", gap: "6px", alignItems: "center" });
+    const groupLab = document.createElement("span");
+    groupLab.textContent = "Folder of projects:";
+    Object.assign(groupLab.style, { color: "#9fd6cf", fontWeight: "bold", whiteSpace: "nowrap" });
+    const groupSelect = document.createElement("select");
+    Object.assign(groupSelect.style, fieldStyle, { padding: "4px 8px" });
+    groupRow.append(groupLab, groupSelect);
+    const groupInput = document.createElement("input");
+    groupInput.type = "text";
+    groupInput.placeholder = "Name of the new folder of projects";
+    Object.assign(groupInput.style, fieldStyle, { width: "100%", flex: "0 0 auto", marginTop: "6px" });
+    groupBox.append(groupRow, groupInput);
+
     const input = document.createElement("input");
     input.type = "text";
     input.placeholder = "Project name";
@@ -898,10 +924,32 @@ function buildCreateDialog(container, ctx) {
     const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
     const createBtn = makeTextButton("Create", GREEN);
     footer.append(cancelBtn, createBtn);
-    card.append(title, where, folderBox, warning, input, error, footer);
+    card.append(title, where, folderBox, warning, modeRow, groupBox, input, error, footer);
 
     let info = null; // {root, exists, fixed, fallback}
     let checkId = 0;
+
+    function paintMode() {
+        simpleBtn.style.background = multi ? INACTIVE_BG : PINK;
+        multiBtn.style.background = multi ? PINK : INACTIVE_BG;
+        groupBox.style.display = multi ? "block" : "none";
+        groupInput.style.display = multi && !groupSelect.value ? "block" : "none";
+        input.placeholder = multi ? "Project name (inside the folder of projects)" : "Project name";
+    }
+    /** Dossiers de projets de la destination : (new), puis les existants. */
+    function fillGroups(list) {
+        const keep = groupSelect.value;
+        groupSelect.innerHTML = "";
+        for (const [value, text] of [["", "(new)"], ...list.map((g) => [g, g])]) {
+            const o = document.createElement("option");
+            o.value = value;
+            o.textContent = text;
+            o.style.background = "#111";
+            groupSelect.appendChild(o);
+        }
+        groupSelect.value = list.includes(keep) ? keep : "";
+        paintMode();
+    }
 
     /** Dossier ou le projet sera cree. */
     const destination = () => (info.fixed ? info.root : folderInput.value.trim());
@@ -916,9 +964,13 @@ function buildCreateDialog(container, ctx) {
         }
         try {
             const data = await ctx.check(path);
-            if (id === checkId) warning.style.display = data.exists === false ? "block" : "none";
+            if (id !== checkId) return;
+            warning.style.display = data.exists === false ? "block" : "none";
+            fillGroups((data.tree || []).filter((e) => e.projects).map((e) => e.name));
         } catch (e) {
-            if (id === checkId) warning.style.display = "none";
+            if (id !== checkId) return;
+            warning.style.display = "none";
+            fillGroups([]);
         }
     }
 
@@ -936,10 +988,20 @@ function buildCreateDialog(container, ctx) {
             folderInput.style.borderColor = ORANGE;
             return;
         }
+        const newGroup = multi && !groupSelect.value;
+        const group = !multi ? null : newGroup ? groupInput.value.trim() : groupSelect.value;
+        if (newGroup) {
+            const gErr = projectNameError(group);
+            if (gErr) {
+                error.textContent = gErr.replace("project name", "name of the folder of projects");
+                groupInput.style.borderColor = ORANGE;
+                return;
+            }
+        }
         createBtn.disabled = true;
         error.textContent = "";
         try {
-            await ctx.create(name, folder);
+            await ctx.create(name, folder, group, newGroup);
             close();
         } catch (e) {
             error.textContent = e.message;
@@ -973,7 +1035,7 @@ function buildCreateDialog(container, ctx) {
             close();
             return;
         }
-        if (e.target === input || e.target === folderInput) {
+        if (e.target === input || e.target === folderInput || e.target === groupInput) {
             e.stopImmediatePropagation();
             if (e.key === "Enter") {
                 e.preventDefault();
@@ -995,6 +1057,20 @@ function buildCreateDialog(container, ctx) {
         error.textContent = "";
         folderInput.style.borderColor = "#0c3833";
         checkFolder();
+    });
+    groupInput.addEventListener("input", () => {
+        error.textContent = "";
+        groupInput.style.borderColor = "#0c3833";
+    });
+    groupSelect.addEventListener("change", paintMode);
+    simpleBtn.addEventListener("click", () => {
+        multi = false;
+        paintMode();
+    });
+    multiBtn.addEventListener("click", () => {
+        multi = true;
+        paintMode();
+        (groupSelect.value ? input : groupInput).focus();
     });
     browseBtn.addEventListener("click", browse);
     fallbackBtn.addEventListener("click", () => {
@@ -1025,6 +1101,11 @@ function buildCreateDialog(container, ctx) {
                 fallbackBtn.title = "Back to the fallback folder: " + info.fallback;
             }
             warning.style.display = info.exists ? "none" : "block";
+            multi = false;
+            groupInput.value = "";
+            groupInput.style.borderColor = "#0c3833";
+            fillGroups([]);
+            checkFolder();
             input.value = "";
             input.style.borderColor = "#0c3833";
             error.textContent = "";
@@ -4290,8 +4371,9 @@ app.registerExtension({
              * branche (sa roue), sinon dans le noeud ; le dossier de repli ne
              * se memorise pas.
              */
-            async function createProject(name, root) {
-                const data = await apiPost("/mmproject/create", { root, name, create_root: true });
+            async function createProject(name, root, group, newGroup) {
+                const data = await apiPost("/mmproject/create",
+                    { root, name, create_root: true, group: group || null, new_group: !!newGroup });
                 const custom = folder.linked || samePath(data.root, fallbackRoot) ? "" : data.root;
                 const loader = linkedLoader(node);
                 if (!folder.linked && loader && custom) {

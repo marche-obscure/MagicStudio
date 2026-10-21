@@ -139,24 +139,46 @@ def ensure_project(path):
     return created
 
 
-def create_project(root, name, create_root=False):
+def create_project(root, name, create_root=False, group=None, new_group=False):
     """
     Cree le dossier du projet et ses sous-dossiers ; renvoie son chemin.
     create_root : cree aussi la racine si elle n'existe pas (l'utilisateur
     l'a accepte dans la fenetre de creation).
+    MultiProject (choix utilisateur 22/10/2026) : group = dossier de projets
+    de la racine ou le projet est cree (new_group : cree, son nom ne doit
+    exister nulle part ; sinon existant). Un projet (dossiers 00 a 99) ne
+    contient jamais de projet : ni la racine ni le dossier de projets ne
+    peuvent en etre un ; un seul niveau.
     """
     name = validate_name(name)
     if root and create_root and not os.path.isdir(root):
         os.makedirs(root, exist_ok=True)
     if not root or not os.path.isdir(root):
         raise FileNotFoundError("Projects folder not found: %s" % root)
+    if is_project(root):
+        raise ValueError("The projects folder is itself a project: a project cannot hold another project.")
+    where = root
+    if group is not None:
+        group = validate_name(group)
+        where = os.path.join(root, group)
+        if new_group:
+            if _taken(root, group):
+                raise FileExistsError('A project or file named "%s" already exists.' % group)
+        elif not os.path.isdir(where):
+            raise FileNotFoundError('Folder of projects "%s" not found in %s' % (group, root))
+        elif is_project(where):
+            raise ValueError('"%s" is a project: a project cannot hold another project.' % group)
     # Comparaison sans casse : sous Windows, "Clip" et "clip" sont le meme dossier.
-    if any(n.lower() == name.lower() for n in os.listdir(root)):
+    if os.path.isdir(where) and _taken(where, name):
         raise FileExistsError('A project or file named "%s" already exists.' % name)
-    path = os.path.join(root, name)
+    path = os.path.join(where, name)
     os.makedirs(path)
     ensure_project(path)
     return path
+
+
+def _taken(folder, name):
+    return any(n.lower() == name.lower() for n in os.listdir(folder))
 
 
 def open_project(root, name):

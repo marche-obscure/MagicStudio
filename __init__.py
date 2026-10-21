@@ -206,11 +206,15 @@ try:
         try:
             body = await request.json()
             root = await _in_executor(_projects_root, body.get("root", ""))
+            group = body.get("group")  # MultiProject : dossier de projets (new_group : a creer)
             path = await _in_executor(projects.create_project, root, body.get("name", ""),
-                                      bool(body.get("create_root")))
+                                      bool(body.get("create_root")), group or None, bool(body.get("new_group")))
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"root": root, "path": path, "name": os.path.basename(path)})
+        name = os.path.basename(path)
+        return web.json_response({"root": root, "path": path,
+                                  "name": os.path.basename(os.path.dirname(path)) + projects.GROUP_SEP + name
+                                  if group else name})
 
     @routes.post("/mmproject/open")
     async def mmproject_open(request):
