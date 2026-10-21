@@ -17,6 +17,7 @@ from . import media
 from . import projects
 from . import project_config
 from . import run_record
+from . import run_tracker
 from .nodes import MiniMaxH3RefLoader, MiniMaxH3Project, default_projects_root
 
 NODE_CLASS_MAPPINGS = {
@@ -390,9 +391,9 @@ try:
         try:
             import folder_paths
             body = await request.json()
-            data = await _in_executor(run_record.finish_run, body.get("run_file", ""), list(body.get("files") or []),
-                                      body.get("status", ""), folder_paths.get_output_directory(), None,
-                                      body.get("duration"))
+            # Deja enregistre par le serveur (suivi des messages) : meme resultat, rien n'est refait.
+            data = await _in_executor(_run_tracker.finish, body.get("run_file", ""), list(body.get("files") or []),
+                                      body.get("status", ""), body.get("duration"))
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
@@ -525,6 +526,30 @@ try:
 
 except Exception:
     print("[ComfyUI-MiniMaxRefLoader] Could not register the API routes:")
+    traceback.print_exc()
+
+# ------------------------------------------------------------------
+# Fin des Runs enregistree par le serveur (run_tracker) : les messages
+# envoyes a l'interface sont aussi lus ici, sans dependre de l'onglet.
+# ------------------------------------------------------------------
+try:
+    import folder_paths
+    from server import PromptServer
+
+    _run_tracker = run_tracker.RunTracker(folder_paths.get_output_directory)
+    _server = PromptServer.instance
+    _send_sync = _server.send_sync
+
+    def _tracked_send_sync(event, data, sid=None):
+        try:
+            _run_tracker.handle(event, data)
+        except Exception:
+            traceback.print_exc()
+        return _send_sync(event, data, sid)
+
+    _server.send_sync = _tracked_send_sync
+except Exception:
+    print("[ComfyUI-MiniMaxRefLoader] Could not follow the runs on the server:")
     traceback.print_exc()
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
