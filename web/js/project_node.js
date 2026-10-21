@@ -354,6 +354,20 @@ const HELP_SECTIONS = [
             "The Root folder does not exist yet: the window of " + iconBadge(PLUS_ICON, PINK) +
             " warns you, and <b>Create</b> makes it first.",
         ]) +
+        "<p><b>Simple or MultiProject</b> (window of " + iconBadge(PLUS_ICON, PINK) + "):</p>" +
+        hList([
+            "<b>Simple</b>: one project. A folder of that name is created in the Root folder, with its folders " +
+            "<b>00.Workflows</b> to <b>99.Project-Config</b> inside it.",
+            "<b>MultiProject</b>: a folder of projects, to keep several projects of the same film together. " +
+            "<b>Folder of projects</b>: <b>(new)</b> asks for the name of the new folder, or pick one that " +
+            "exists to add a project to it. <b>Project name</b> is the project inside it: its folders 00 to 99 " +
+            "are created in that project, never in the folder of projects.",
+            "In the list <b>Project name</b>, a folder of projects is a title (it cannot be picked) with its " +
+            "projects under it. Only project folders are listed: the folders 00 to 99 and the folders without a " +
+            "project are hidden.",
+            "A project never holds another project: no project inside a Simple project, no project inside a " +
+            "project of a folder of projects (one level only).",
+        ]) +
         hNote("The tooltip of a folder row gives its path; the bottom line of the node only shows messages."),
     },
     {
@@ -692,6 +706,20 @@ const HELP_SECTIONS_FR = [
             "Non relié : le nœud est grisé (l'entrée <b>project</b> est obligatoire).",
             "Le Root folder n'existe pas encore : la fenêtre de " + iconBadge(PLUS_ICON, PINK) +
             " vous prévient, et <b>Create</b> le crée d'abord.",
+        ]) +
+        "<p><b>Simple ou MultiProject</b> (fenêtre de " + iconBadge(PLUS_ICON, PINK) + ") :</p>" +
+        hList([
+            "<b>Simple</b> : un projet. Un dossier de ce nom est créé dans le Root folder, avec ses dossiers " +
+            "<b>00.Workflows</b> à <b>99.Project-Config</b> dedans.",
+            "<b>MultiProject</b> : un dossier de projets, pour garder ensemble plusieurs projets d'un même film. " +
+            "<b>Folder of projects</b> : <b>(new)</b> demande le nom du nouveau dossier, ou choisissez-en un " +
+            "existant pour y ajouter un projet. <b>Project name</b> est le projet dedans : ses dossiers 00 à 99 " +
+            "sont créés dans ce projet, jamais dans le dossier de projets.",
+            "Dans la liste <b>Project name</b>, un dossier de projets est un titre (on ne peut pas le choisir) " +
+            "avec ses projets en dessous. Seuls les dossiers de projet y sont : les dossiers 00 à 99 et les " +
+            "dossiers sans projet sont masqués.",
+            "Un projet ne contient jamais un autre projet : pas de projet dans un projet Simple, pas de projet " +
+            "dans un projet d'un dossier de projets (un seul niveau).",
         ]) +
         hNote("L'infobulle d'une ligne de dossier donne son chemin ; la ligne du bas du nœud ne montre que " +
             "les messages.", "Remarque :"),
