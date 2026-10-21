@@ -78,9 +78,29 @@ class ProjectFoldersTest(unittest.TestCase):
 
     def test_list_projects_sorted_without_files_and_hidden(self):
         for name in ["beta", "Alpha", ".cache"]:
-            os.makedirs(os.path.join(self.root, name))
+            os.makedirs(os.path.join(self.root, name, "08.Images"))
         open(os.path.join(self.root, "notes.txt"), "w").close()
         self.assertEqual(projects.list_projects(self.root), ["Alpha", "beta"])
+
+    def test_project_tree_with_folders_of_projects(self):
+        r = self.root
+        projects.create_project(r, "Solo")
+        os.makedirs(os.path.join(r, "Group"))
+        projects.create_project(os.path.join(r, "Group"), "Two")
+        projects.create_project(os.path.join(r, "Group"), "one")
+        os.makedirs(os.path.join(r, "Group", "Prompt"))           # pas un projet : masque
+        os.makedirs(os.path.join(r, "Videos"))                     # sans projet : masque
+        open(os.path.join(r, "Videos", "a.mp4"), "w").close()
+        os.makedirs(os.path.join(r, "12.Video"))                   # racine = un projet : ses dossiers masques
+        self.assertFalse(projects.is_project(os.path.join(r, "Videos")))
+        self.assertEqual(projects.project_tree(r), [
+            {"name": "Group", "projects": ["one", "Two"]}, {"name": "Solo", "projects": None}])
+        self.assertEqual(projects.list_projects(r), ["Group/one", "Group/Two", "Solo"])
+        self.assertEqual(projects.project_path(r, "Group/one"), os.path.join(r, "Group", "one"))
+        self.assertEqual(projects.project_path(r, " Solo "), os.path.join(r, "Solo"))
+        for bad in ("a/b/c", "Group/", "Group/x:y"):
+            with self.assertRaises(ValueError):
+                projects.project_path(r, bad)
 
     def test_list_missing_root_raises(self):
         with self.assertRaises(FileNotFoundError):

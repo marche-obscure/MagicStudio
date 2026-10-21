@@ -665,7 +665,8 @@ export function filterSubfolders(entries, project) {
 export function isMediaSubfolder(path, mode) {
     const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
     const allowed = mode === "fl2va" ? ["08.Images"] : UPDATE_FOLDERS;
-    return parts.length === 2 && allowed.includes(parts[1]);
+    // Projet de la racine (P/08.Images) ou d'un dossier de projets (G/P/08.Images, 22/10/2026).
+    return (parts.length === 2 || parts.length === 3) && allowed.includes(parts[parts.length - 1]);
 }
 
 /**

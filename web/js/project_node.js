@@ -143,8 +143,12 @@ const textBadge = (t, color) => '<span style="display:inline-block;background:' 
 // Fichiers de la configuration du projet (Load / Save).
 // Noms des fichiers du projet (choix utilisateur) : workflows_<projet>.json, config_projets_<projet>.json.
 const CONFIG_PATH = "99.Project-Config/config_projets_&lt;project&gt;.json";
-const configPathOf = (project) => "99.Project-Config/config_projets_" + project + ".json";
-const workflowNameOf = (project) => "workflows_" + project;
+// Nom d'un sous-projet : "<dossier de projets>/<projet>" (choix utilisateur, 22/10/2026) ;
+// fichiers et titres prennent le nom du dossier du projet seul.
+const GROUP_SEP = "/";
+const shortName = (name) => String(name || "").split(GROUP_SEP).pop();
+const configPathOf = (project) => "99.Project-Config/config_projets_" + shortName(project) + ".json";
+const workflowNameOf = (project) => "workflows_" + shortName(project);
 
 const HELP_SECTIONS = [
     {
@@ -153,7 +157,7 @@ const HELP_SECTIONS = [
             "Wire the <b>project</b> output of the <b>MiniMax H3 Reference Loader</b> (always its last output) " +
             "to the <b>project</b> input of this node: its root folder becomes the projects folder.",
             "Click " + iconBadge(PLUS_ICON, PINK) + ", type the name of the project and click <b>Create</b>.",
-            "Or pick an existing project in the drop-down list.",
+            "Or pick an existing project in the drop-down list: only project folders are listed (a folder with 00 to 99 folders); a folder of projects (none of them, projects inside) shows its projects under its name.",
         ]) +
         hCard("Buttons of the node", [
             [iconBadge(PENCIL_ICON, VIOLET), "Rename or move the project"],
@@ -480,7 +484,7 @@ const HELP_SECTIONS_FR = [
             "Reliez la sortie <b>project</b> du <b>MiniMax H3 Reference Loader</b> (toujours sa dernière sortie) " +
             "à l'entrée <b>project</b> de ce nœud : son dossier racine devient le dossier des projets.",
             "Cliquez sur " + iconBadge(PLUS_ICON, PINK) + ", tapez le nom du projet et cliquez sur <b>Create</b>.",
-            "Ou choisissez un projet existant dans la liste déroulante.",
+            "Ou choisissez un projet existant dans la liste déroulante : seuls les dossiers de projet y sont (un dossier avec des dossiers 00 à 99) ; un dossier de projets (sans eux, des projets dedans) montre ses projets sous son nom.",
         ]) +
         hCard("Boutons du nœud", [
             [iconBadge(PENCIL_ICON, VIOLET), "Renommer ou déplacer le projet"],
@@ -3854,6 +3858,8 @@ app.registerExtension({
             let folder = { root: "", exists: true, linked: false, custom: false };
             let fallbackRoot = ""; // dossier de repli <input de ComfyUI>/Projets
             let projects = [];
+            // Projets de la racine et dossiers de projets ([{name, projects: null | [noms]}], /mmproject/list).
+            let tree = [];
             // Entree project obligatoire (choix utilisateur, 19/10/2026) : sans Reference Loader
             // relie, le noeud est grise ; un projet n'est "choisi" qu'avec ce lien.
             const wired = () => !!linkedLoader(node);
@@ -4064,7 +4070,24 @@ app.registerExtension({
                     select.appendChild(o);
                 };
                 add("", "(no project)", "#888");
-                projects.forEach((p) => add(p, p));
+                // Dossier de projets : titre de groupe (non choisissable), ses projets en dessous.
+                for (const e of tree) {
+                    if (!e.projects) {
+                        add(e.name, e.name);
+                        continue;
+                    }
+                    const g = document.createElement("optgroup");
+                    g.label = e.name;
+                    Object.assign(g.style, { background: "#111", color: "#9fd6cf" });
+                    for (const p of e.projects) {
+                        const o = document.createElement("option");
+                        o.value = e.name + GROUP_SEP + p;
+                        o.textContent = p;
+                        Object.assign(o.style, { background: "#111", color: "#ddd" });
+                        g.appendChild(o);
+                    }
+                    select.appendChild(g);
+                }
                 const current = inProject(s.name);
                 if (s.name && !current) add(s.name, s.name + " (not in this folder)", ORANGE);
                 select.value = s.name;
@@ -4223,11 +4246,13 @@ app.registerExtension({
                     folder = { root: data.root || "", exists: data.exists !== false, linked: req.linked, custom: req.custom };
                     fallbackRoot = data.default_root || fallbackRoot;
                     projects = data.projects || [];
+                    tree = data.tree || projects.map((name) => ({ name, projects: null }));
                     message = "";
                 } catch (e) {
                     if (id !== loadId) return;
                     folder = { root: req.root, exists: false, linked: req.linked, custom: req.custom };
                     projects = [];
+                    tree = [];
                     message = e.message;
                 }
                 const s = getState();
@@ -4479,7 +4504,7 @@ app.registerExtension({
                 if (!inProject(s.name)) return;
                 await loadRuns(s);
                 paintFolders();
-                setViewer.open(f, s.name, runList, registries);
+                setViewer.open(f, shortName(s.name), runList, registries);
             }
 
             /**
@@ -4572,7 +4597,7 @@ app.registerExtension({
                 if (!inProject(s.name)) return;
                 await loadRuns(s);
                 paintFolders();
-                runViewer.open(f, s.name, runList);
+                runViewer.open(f, shortName(s.name), runList);
             }
 
             /** Bouton des doublons a droite de la cloche : visible quand <dossier>/Archives en a. */
@@ -4631,7 +4656,7 @@ app.registerExtension({
                 }
                 lines.push('<span style="color:#999">98.Error is in the project folder; it is not shown in the node.</span>');
                 const ok = await confirm.ask({
-                    title: "Purge the project " + s.name + "?",
+                    title: "Purge the project " + shortName(s.name) + "?",
                     html: lines.map((l) => "<div>" + l + "</div>").join(""),
                     okLabel: "Purge", okColor: PURGE_RED,
                 });
@@ -4668,7 +4693,7 @@ app.registerExtension({
                 const rows = plan.folders.map((f) => "<tr><td>" + escapeHtml(f.folder) + '</td><td style="text-align:right">' +
                     f.files + '</td><td style="text-align:right">' + fmtSize(f.size) + "</td></tr>").join("");
                 const ok = await resetDialog.ask({
-                    name: s.name,
+                    name: shortName(s.name),
                     html: "<b>" + plan.total + "</b> file(s), " + fmtSize(plan.size) + ", will be " + (plan.trash
                         ? "moved to the <b>Recycle Bin</b>" : '<b style="color:' + RESET_RED + '">deleted permanently</b>') +
                         ". The folders stay, empty." + (rows ? '<table style="border-collapse:collapse;width:100%;margin:6px 0;' +
@@ -4706,14 +4731,16 @@ app.registerExtension({
                 const s = getState();
                 if (!inProject(s.name)) return;
                 const sep = folder.root.includes("\\") || !folder.root.includes("/") ? "\\" : "/";
-                const sources = projects.filter((p) => p !== s.name)
-                    .map((p) => ({ name: p, path: folder.root.replace(/[\\/]+$/, "") + sep + p }));
+                // Projets de la racine et dossiers de projets (All ou l'un d'eux), sans le projet ouvert.
+                const sources = tree.filter((e) => e.projects
+                    ? e.projects.some((p) => e.name + GROUP_SEP + p !== s.name) : e.name !== s.name)
+                    .map((e) => ({ name: e.name, path: folder.root.replace(/[\\/]+$/, "") + sep + e.name }));
                 if (!sources.length) {
                     say("No other project in this folder to copy from.");
                     return;
                 }
                 const source = await copyDialog.ask({
-                    project: s.name, sources,
+                    project: shortName(s.name), sources,
                     probe: (path, sub) => apiPost("/mmproject/copy_media",
                         { project: s.path, source: path, sub, dry_run: true }),
                 });
@@ -4746,7 +4773,7 @@ app.registerExtension({
                         "&folders=" + encodeURIComponent(f) + "&archives=1&dates=1");
                     const loader = linkedLoader(node);
                     const rootFiles = orderedFolderFiles(data.files[f] || [], loader ? loader.mmGetState() : null, f);
-                    folderViewer.open(f, s.name, rootFiles, (data.archives || {})[f] || [], data.mtimes);
+                    folderViewer.open(f, shortName(s.name), rootFiles, (data.archives || {})[f] || [], data.mtimes);
                 } catch (e) {
                     say(e.message);
                 }
@@ -5236,8 +5263,11 @@ app.registerExtension({
                 const moved = mode === "move";
                 // Le dossier des projets suit un deplacement : Root folder du Ref Loader relie, sinon le noeud.
                 const custom = moved ? (samePath(data.root, fallbackRoot) ? "" : data.root) : s.folder;
+                // Sous-projet renomme : il reste dans son dossier de projets.
+                const group = !moved && s.name.includes(GROUP_SEP) ? s.name.slice(0, s.name.lastIndexOf(GROUP_SEP) + 1) : "";
                 setState({
-                    root: data.root, name: data.name, path: data.path, folder: loader && moved ? "" : custom,
+                    root: group ? s.root : data.root, name: group + data.name, path: data.path,
+                    folder: loader && moved ? "" : custom,
                     wfPath: s.wfPath === s.path ? data.path : s.wfPath,
                     snap: s.snapPath === s.path ? Object.fromEntries(Object.entries(s.snap)
                         .map(([f, list]) => [f, list.map(mapByPrefix(s.path, data.path))])) : {},

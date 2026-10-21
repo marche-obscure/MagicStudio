@@ -177,6 +177,8 @@ test("galerie : sous-dossiers de medias seulement (08 a 14, 08 en FL2VA)", () =>
     for (const f of ["00.Workflows", "40.Rush Videos", "99.Project-Config"]) assert.ok(!isMediaSubfolder("P/" + f, "ref2va"));
     assert.ok(!isMediaSubfolder("P", "ref2va"));
     assert.ok(!isMediaSubfolder("P/08.Images/Archives", "ref2va"));
+    assert.ok(isMediaSubfolder("G/P/10.Son", "ref2va"));
+    assert.ok(!isMediaSubfolder("G/P/08.Images/Archives", "ref2va"));
     assert.ok(isMediaSubfolder("P\\08.Images", "fl2va"));
     assert.ok(!isMediaSubfolder("P/12.Video", "fl2va"));
 });

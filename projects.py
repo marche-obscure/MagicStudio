@@ -54,12 +54,65 @@ def validate_name(name):
     return name
 
 
-def list_projects(root):
-    """Dossiers de projet de la racine (sans fichiers ni dossiers caches), tries sans casse."""
+# Dossiers d'un projet : deux chiffres puis un point (00.Workflows ... 99.Project-Config).
+_PROJECT_PART = re.compile(r"^\d\d\.")
+# Separateur du nom d'un sous-projet : "<dossier de projets>/<projet>".
+GROUP_SEP = "/"
+
+
+def _sub_dirs(path):
+    try:
+        return sorted((e.name for e in os.scandir(path) if e.is_dir() and not e.name.startswith(".")),
+                      key=lambda n: (n.lower(), n))
+    except OSError:
+        return []
+
+
+def is_project(path):
+    """Dossier de projet : il contient au moins un dossier 00 a 99 (choix utilisateur 22/10/2026)."""
+    return any(_PROJECT_PART.match(n) for n in _sub_dirs(path))
+
+
+def project_tree(root):
+    """
+    Projets de la racine (choix utilisateur 22/10/2026) : [{name, projects}] ;
+    projects None = projet de la racine ; liste = dossier de projets (aucun
+    dossier 00 a 99, au moins un projet dedans, un seul niveau). Les dossiers
+    00 a 99 et les autres dossiers (sans projet) ne sont pas renvoyes.
+    """
     if not root or not os.path.isdir(root):
         raise FileNotFoundError("Projects folder not found: %s" % root)
-    names = [e.name for e in os.scandir(root) if e.is_dir() and not e.name.startswith(".")]
-    return sorted(names, key=lambda n: (n.lower(), n))
+    out = []
+    for n in _sub_dirs(root):
+        if _PROJECT_PART.match(n):
+            continue
+        p = os.path.join(root, n)
+        if is_project(p):
+            out.append({"name": n, "projects": None})
+            continue
+        subs = [s for s in _sub_dirs(p) if not _PROJECT_PART.match(s) and is_project(os.path.join(p, s))]
+        if subs:
+            out.append({"name": n, "projects": subs})
+    return out
+
+
+def list_projects(root):
+    """Noms des projets a choisir : ceux de la racine et "<dossier>/<projet>" des dossiers de projets."""
+    names = []
+    for e in project_tree(root):
+        if e["projects"] is None:
+            names.append(e["name"])
+        else:
+            names.extend(e["name"] + GROUP_SEP + s for s in e["projects"])
+    return names
+
+
+def project_path(root, name):
+    """Chemin d'un projet de list_projects (projet de la racine ou "<dossier>/<projet>")."""
+    parts = (name or "").strip().split(GROUP_SEP)
+    if len(parts) > 2:
+        raise ValueError("A project is inside a folder of projects at most.")
+    return os.path.join(root, *[validate_name(p) for p in parts])
 
 
 def ensure_project(path):
