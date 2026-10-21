@@ -160,7 +160,7 @@ const HELP_SECTIONS = [
             [iconBadge(PLUS_ICON, PINK), "Create a new project (a window asks for the name)"],
             [textBadge("Load"), "Load: check the files, then load the saved configuration of the project"],
             [textBadge("Save"), "Save: copy the files of the Reference Loader into the project, save the workflow and the configuration of the project"],
-            [textBadge("Copy", "#1e88e5"), "Copy: copy the files of 08.Images to 14.Video-Audio, Archives included, from another project of the folder (a file whose SHA256 is already there is skipped, a taken name gets _02); its saved configuration fills the Reference Loader (same order and trims). The other project is never changed"],
+            [textBadge("Copy", "#1e88e5"), "Copy: copy the files of 08.Images to 14.Video-Audio, Archives included, from another project of the folder (a file whose SHA256 is already there is skipped, a taken name gets _02); its saved configuration fills the Reference Loader (same order and trims). A folder of projects shows Project: pick one of them, or All to copy the files of all of them (no configuration loaded). The other project is never changed"],
             [textBadge("Reset", "#e53935"), "Reset: after a summary and typing the project name, every file of the project (all its folders and subfolders, 99.Project-Config included) goes to the Recycle Bin; the folders stay, and the selection of the Reference Loader is emptied in both modes (its root folder does not change)"],
             [textBadge("Purge", PURGE_RED), "Purge (after a warning): delete the runs still marked running while no run is in progress (kept while ComfyUI is running something), move the runs in error (JSON and workflow) to 98.Error; their files stay in place. 98.Error is in the project folder, not shown in the node"],
             [textBadge("Date ↓", INACTIVE_BG), "In the folder windows: newest first (Date ↓) or oldest first (Date ↑), one setting for all the windows; in 08 to 14 the files used by the Reference Loader stay first"],
@@ -487,7 +487,7 @@ const HELP_SECTIONS_FR = [
             [iconBadge(PLUS_ICON, PINK), "Créer un nouveau projet (une fenêtre demande le nom)"],
             [textBadge("Load"), "Load : vérifier les fichiers, puis charger la configuration sauvegardée du projet"],
             [textBadge("Save"), "Save : copier les fichiers du Reference Loader dans le projet, sauvegarder le workflow et la configuration du projet"],
-            [textBadge("Copy", "#1e88e5"), "Copy : copier les fichiers de 08.Images à 14.Video-Audio, Archives comprises, depuis un autre projet du dossier (un fichier dont le SHA256 est déjà là est sauté, un nom pris reçoit _02) ; sa configuration sauvegardée remplit le Reference Loader (même ordre et rognages). L'autre projet n'est jamais modifié"],
+            [textBadge("Copy", "#1e88e5"), "Copy : copier les fichiers de 08.Images à 14.Video-Audio, Archives comprises, depuis un autre projet du dossier (un fichier dont le SHA256 est déjà là est sauté, un nom pris reçoit _02) ; sa configuration sauvegardée remplit le Reference Loader (même ordre et rognages). Un dossier de projets affiche Project : choisir l'un d'eux, ou All pour copier les fichiers de tous (aucune configuration chargée). L'autre projet n'est jamais modifié"],
             [textBadge("Reset", "#e53935"), "Reset : après un bilan et le nom du projet tapé, tous les fichiers du projet (tous ses dossiers et sous-dossiers, 99.Project-Config compris) partent dans la Corbeille ; les dossiers restent, et la sélection du Reference Loader est vidée dans les deux modes (son Root folder ne change pas)"],
             [textBadge("Purge", PURGE_RED), "Purge (après un avertissement) : supprimer les Runs encore marqués running alors qu'aucun Run ne tourne (gardés tant que ComfyUI exécute quelque chose), déplacer les Runs en erreur (JSON et workflow) dans 98.Error ; leurs fichiers restent en place. 98.Error est dans le dossier du projet, pas affiché dans le nœud"],
             [textBadge("Date ↓", INACTIVE_BG), "Dans les fenêtres des dossiers : plus récent d'abord (Date ↓) ou plus ancien d'abord (Date ↑), un seul réglage pour toutes les fenêtres ; dans 08 à 14 les fichiers utilisés par le Reference Loader restent en tête"],
@@ -1067,6 +1067,9 @@ function positionCardBelow(card, el, maxWidth) {
     card.style.top = Math.max(margin, Math.min(top, vh - height - margin)) + "px";
 }
 const COPY_BLUE = "#1e88e5";
+// Copy depuis un dossier de projets : tous ses sous-projets (= project_config.ALL_SUBS).
+const ALL_SUBS = "*";
+
 function buildResetDialog(container) {
     const { overlay, card } = makeOverlay();
     overlay.style.zIndex = "10002";
@@ -1169,6 +1172,15 @@ function buildCopyDialog(container) {
         borderRadius: "6px", padding: "3px 6px", fontSize: "12px",
     });
     row.append(lab, select);
+    // Dossier de projets (choix utilisateur, 21/10/2026) : All ou un de ses sous-projets.
+    const subRow = document.createElement("div");
+    Object.assign(subRow.style, { display: "none", alignItems: "center", gap: "8px", marginTop: "6px" });
+    const subLab = document.createElement("span");
+    subLab.textContent = "Project:";
+    Object.assign(subLab.style, { color: "#9fd6cf", fontWeight: "bold" });
+    const subSelect = document.createElement("select");
+    subSelect.style.cssText = select.style.cssText;
+    subRow.append(subLab, subSelect);
     const body = document.createElement("div");
     Object.assign(body.style, { lineHeight: "1.5", color: "#ccc", marginTop: "10px", minHeight: "60px" });
     const footer = document.createElement("div");
@@ -1176,7 +1188,7 @@ function buildCopyDialog(container) {
     const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
     const okBtn = makeTextButton("Copy", COPY_BLUE);
     footer.append(cancelBtn, okBtn);
-    card.append(title, row, body, footer);
+    card.append(title, row, subRow, body, footer);
 
     let resolve = null;
     let plan = null;
@@ -1187,14 +1199,36 @@ function buildCopyDialog(container) {
         okBtn.style.opacity = on ? "1" : "0.4";
         okBtn.style.cursor = on ? "pointer" : "default";
     };
-    async function refresh() {
+    const fillSubs = (subs) => {
+        subSelect.innerHTML = "";
+        for (const [value, label] of [[ALL_SUBS, "All"], ...subs.map((n) => [n, n])]) {
+            const o = document.createElement("option");
+            o.value = value;
+            o.textContent = label;
+            o.style.background = "#111";
+            subSelect.appendChild(o);
+        }
+    };
+    /** fromChanged : nouveau dossier dans From, ses sous-projets sont relus (All d'abord). */
+    async function refresh(fromChanged) {
         const id = ++reqId;
         plan = null;
         setOk(false);
         body.textContent = "Reading the project…";
         try {
-            const data = await probe(select.value);
+            let sub = subRow.style.display === "none" || fromChanged === true ? "" : subSelect.value;
+            let data = await probe(select.value, sub);
             if (id !== reqId) return;
+            if (fromChanged === true) {
+                const subs = data.subs || [];
+                subRow.style.display = subs.length ? "flex" : "none";
+                fillSubs(subs);
+                if (subs.length) {
+                    sub = ALL_SUBS;
+                    data = await probe(select.value, sub);
+                    if (id !== reqId) return;
+                }
+            }
             plan = data;
             const total = data.folders.reduce((a, f) => a + f.files + f.archives, 0);
             body.innerHTML = '<table style="border-collapse:collapse;width:100%;font-size:12px">' +
@@ -1207,7 +1241,10 @@ function buildCopyDialog(container) {
                 '<div style="margin-top:8px;color:' + (data.report ? "#9fd6cf" : ORANGE) + '">' + (data.report
                     ? "The Reference Loader will be filled with the saved configuration of this project " +
                     "(same order and trims, pointing to the copies)."
-                    : "This project has no saved configuration: the files are only copied; pick them in the gallery.") +
+                    : sub === ALL_SUBS
+                        ? "All: the files of every project of this folder are copied (a file only once); " +
+                        "no configuration is loaded: pick them in the gallery."
+                        : "This project has no saved configuration: the files are only copied; pick them in the gallery.") +
                 "</div>" + '<div style="color:#999;margin-top:4px">The other project is never changed. A file whose ' +
                 "SHA256 is already in the folder is not copied again; a taken name gets _02, _03…</div>";
             setOk(total > 0);
@@ -1229,13 +1266,18 @@ function buildCopyDialog(container) {
         resolve = null;
         if (r) r(answer);
     }
-    select.addEventListener("change", refresh);
+    select.addEventListener("change", () => refresh(true));
+    subSelect.addEventListener("change", () => refresh(false));
     cancelBtn.addEventListener("click", () => finish(null));
-    okBtn.addEventListener("click", () => plan && finish(select.value));
+    okBtn.addEventListener("click", () => plan && finish({
+        source: select.value, sub: subRow.style.display === "none" ? "" : subSelect.value }));
     overlay.addEventListener("mousedown", () => finish(null));
 
     return {
-        /** ask({project, sources: [{name, path}], probe(path) -> Promise<bilan>}) -> Promise<chemin choisi | null> */
+        /**
+         * ask({project, sources: [{name, path}], probe(path, sub) -> Promise<bilan>})
+         * -> Promise<{source, sub} | null> ; sub : "" (projet), ALL_SUBS ou un sous-projet.
+         */
         ask(opts) {
             if (resolve) finish(null);
             probe = opts.probe;
@@ -1251,7 +1293,7 @@ function buildCopyDialog(container) {
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 520);
-            refresh();
+            refresh(true);
             return new Promise((r) => (resolve = r));
         },
         remove() {
@@ -4672,11 +4714,12 @@ app.registerExtension({
                 }
                 const source = await copyDialog.ask({
                     project: s.name, sources,
-                    probe: (path) => apiPost("/mmproject/copy_media", { project: s.path, source: path, dry_run: true }),
+                    probe: (path, sub) => apiPost("/mmproject/copy_media",
+                        { project: s.path, source: path, sub, dry_run: true }),
                 });
                 if (!source) return;
                 try {
-                    const data = await apiPost("/mmproject/copy_media", { project: s.path, source });
+                    const data = await apiPost("/mmproject/copy_media", { project: s.path, ...source });
                     const loader = linkedLoader(node);
                     let filled = "";
                     if (loader && data.report) {

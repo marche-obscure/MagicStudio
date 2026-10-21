@@ -326,6 +326,40 @@ class ResetCopyTest(unittest.TestCase):
         self.assertEqual(out["copied"], 1)
         self.assertIsNone(out["report"])
 
+    def test_copy_media_from_a_folder_of_projects(self):
+        group = os.path.join(self.root, "Group")
+        os.makedirs(group)
+        one, two = (projects.create_project(group, n) for n in ("One", "Two"))
+        os.makedirs(os.path.join(group, "Prompt"))                     # sans 08-14 : pas un projet
+        a = write(os.path.join(one, "08.Images", "a.png"), b"A")
+        write(os.path.join(two, "08.Images", "a.png"), b"OTHER")       # meme nom, autre contenu : a_02.png
+        write(os.path.join(two, "08.Images", "dup.png"), b"A")          # meme SHA256 que One/a.png : une copie
+        write(os.path.join(two, "10.Son", "Archives", "s.wav"), b"S")
+        pc.save_config(one, {"images": [a]}, {})
+        self.assertEqual(pc.sub_projects(group), ["One", "Two"])
+        self.assertEqual(pc.sub_projects(group, exclude=two), ["One"])
+        plan = pc.copy_media(self.p, group, dry_run=True)
+        self.assertEqual((plan["subs"], plan["copied"]), (["One", "Two"], 0))
+        # Un sous-projet : comme un projet, sa configuration remplit le Ref Loader.
+        single = pc.copy_media(self.p, group, dry_run=True, sub="One")
+        self.assertEqual(single["copied"], 1)
+        self.assertEqual([x["nom"] for x in single["report"]["folders"][0]["files"]], ["a.png"])
+        with self.assertRaises(FileNotFoundError):
+            pc.copy_media(self.p, group, sub="Prompt")
+        # All : tous les sous-projets en une passe, sans configuration.
+        plan = pc.copy_media(self.p, group, dry_run=True, sub=pc.ALL_SUBS)
+        self.assertEqual(self.files_of(self.p), [])
+        out = pc.copy_media(self.p, group, sub=pc.ALL_SUBS)
+        self.assertEqual((plan["copied"], plan["skipped"]), (out["copied"], out["skipped"]))
+        self.assertEqual((out["copied"], out["skipped"]), (3, 1))
+        self.assertIsNone(out["report"])
+        self.assertEqual(self.files_of(self.p), ["08.Images/a.png", "08.Images/a_02.png", "10.Son/Archives/s.wav"])
+        self.assertEqual(read(os.path.join(self.p, "08.Images", "a_02.png")), b"OTHER")
+        # Le projet ouvert range dans le meme dossier n'est jamais une source.
+        self.assertEqual(pc.copy_media(one, group, dry_run=True, sub=pc.ALL_SUBS)["subs"], ["Two"])
+        # Un projet garde l'ancien fonctionnement (pas de sous-projets).
+        self.assertEqual(pc.copy_media(self.p, one, dry_run=True)["subs"], [])
+
 
 class StructureTest(unittest.TestCase):
     def test_list_and_dict_links(self):

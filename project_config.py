@@ -287,7 +287,31 @@ def _free_copy_name(folder, name, taken):
     return candidate
 
 
-def copy_media(project, source, dry_run=False):
+ALL_SUBS = "*"
+
+
+def _has_media(path):
+    return any(os.path.isdir(os.path.join(path, f)) for f in MEDIA)
+
+
+def sub_projects(path, exclude=None):
+    """
+    Sous-dossiers de path qui contiennent au moins un dossier de 08 a 14 (projets
+    ranges dans un dossier, choix utilisateur 21/10/2026), tries ; exclude (le
+    projet ouvert) n'est pas renvoye.
+    """
+    if not path or not os.path.isdir(path):
+        return []
+    skip = os.path.normcase(os.path.abspath(exclude)) if exclude else None
+    out = []
+    for n in sorted(os.listdir(path), key=str.lower):
+        p = os.path.join(path, n)
+        if os.path.isdir(p) and os.path.normcase(os.path.abspath(p)) != skip and _has_media(p):
+            out.append(n)
+    return out
+
+
+def copy_media(project, source, dry_run=False, sub=""):
     """
     Copy (choix utilisateur 19/10/2026) : fichiers de 08.Images, 10.Son,
     12.Video et 14.Video-Audio d'un autre projet copies dans les memes dossiers
@@ -298,20 +322,33 @@ def copy_media(project, source, dry_run=False):
     report} ; report = listes de la configuration de l'autre projet ramenees
     aux fichiers du projet ouvert (meme forme que check_config, pour remplir le
     Ref Loader), None sans configuration.
+
+    Dossier de projets (source sans dossier 08 a 14, choix utilisateur
+    21/10/2026) : subs = ses sous-projets (sub_projects, sans le projet ouvert) ;
+    sub = l'un d'eux, ou ALL_SUBS = tous en une passe (un fichier de meme
+    SHA256 n'est copie qu'une fois ; report None : plusieurs configurations).
     """
     project, source = os.path.abspath(project or ""), os.path.abspath(source or "")
     for p in (project, source):
         if not os.path.isdir(p):
             raise FileNotFoundError("Project folder not found: %s" % p)
-    if os.path.normcase(project) == os.path.normcase(source):
+    subs = [] if _has_media(source) else sub_projects(source, project)
+    if sub == ALL_SUBS:
+        sources = [os.path.join(source, n) for n in subs]
+    elif sub:
+        if sub not in subs:
+            raise FileNotFoundError("Project folder not found: %s" % os.path.join(source, sub))
+        sources = [os.path.join(source, sub)]
+    else:
+        sources = [source]
+    if any(os.path.normcase(project) == os.path.normcase(s) for s in sources):
         raise ValueError("Pick another project to copy from.")
-    out = {"folders": [], "copied": 0, "skipped": 0, "report": None}
+    out = {"folders": [], "copied": 0, "skipped": 0, "report": None, "subs": subs}
     names = {}  # (dossier, nom dans l'autre projet) -> nom dans le projet ouvert (racine)
     for folder in MEDIA:
         row = {"folder": folder, "files": 0, "archives": 0, "copy": 0, "skip": 0}
-        for sub in ("", projects.ARCHIVE_FOLDER):
-            sdir = os.path.join(source, folder, sub)
-            ddir = os.path.join(project, folder, sub)
+        for part in ("", projects.ARCHIVE_FOLDER):
+            ddir = os.path.join(project, folder, part)
             here = _root_files(ddir) if os.path.isdir(ddir) else []
             known = {}
             for n in here:
@@ -319,29 +356,31 @@ def copy_media(project, source, dry_run=False):
                 if sha:
                     known.setdefault(sha, n)
             taken = set()
-            for n in (_root_files(sdir) if os.path.isdir(sdir) else []):
-                row["archives" if sub else "files"] += 1
-                src = os.path.join(sdir, n)
-                sha = projects.file_hash(src)
-                if sha in known:
-                    row["skip"] += 1
-                    dst_name = known[sha]
-                else:
-                    row["copy"] += 1
-                    dst_name = _free_copy_name(ddir, n, taken)
-                    taken.add(dst_name.lower())
-                    if not dry_run:
-                        os.makedirs(ddir, exist_ok=True)
-                        shutil.copy2(src, os.path.join(ddir, dst_name))
-                    if sha:
-                        known[sha] = dst_name
-                if not sub:
-                    names[(folder, n)] = dst_name
+            for one in sources:
+                sdir = os.path.join(one, folder, part)
+                for n in (_root_files(sdir) if os.path.isdir(sdir) else []):
+                    row["archives" if part else "files"] += 1
+                    src = os.path.join(sdir, n)
+                    sha = projects.file_hash(src)
+                    if sha in known:
+                        row["skip"] += 1
+                        dst_name = known[sha]
+                    else:
+                        row["copy"] += 1
+                        dst_name = _free_copy_name(ddir, n, taken)
+                        taken.add(dst_name.lower())
+                        if not dry_run:
+                            os.makedirs(ddir, exist_ok=True)
+                            shutil.copy2(src, os.path.join(ddir, dst_name))
+                        if sha:
+                            known[sha] = dst_name
+                    if not part:
+                        names[(folder, n)] = dst_name
         out["folders"].append(row)
         out["copied"] += row["copy"]
         out["skipped"] += row["skip"]
     try:
-        cfg = read_config(source)
+        cfg = read_config(sources[0]) if len(sources) == 1 else None
     except (OSError, ValueError):
         cfg = None
     if cfg:
