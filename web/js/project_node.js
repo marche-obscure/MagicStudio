@@ -165,27 +165,28 @@ const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Wire the <b>project</b> output of the <b>MiniMax H3 Reference Loader</b> (always its last output) " +
-            "to the <b>project</b> input of this node: its root folder becomes the projects folder.",
-            "Click " + iconBadge(PLUS_ICON, PINK) + ", type the name of the project and click <b>Create</b>. <b>Simple</b>: a project (folders 00 to 99 in it). <b>MultiProject</b>: a folder of projects, new (its name) or existing, and the project created inside it. A project never holds another project.",
-            "Or pick an existing project in the drop-down list: only project folders are listed (a folder with 00 to 99 folders); a folder of projects (none of them, projects inside) shows its projects under its name.",
+            "Wire the <b>project</b> output of the <b>MiniMax H3 Reference Loader</b> (its last output) to the " +
+            "<b>project</b> input of this node.",
+            "Click " + iconBadge(PLUS_ICON, PINK) + ", type the name of the project: <b>Simple</b> (one project) or " +
+            "<b>MultiProject</b> (a folder of projects), then <b>Create</b>.",
+            "Or pick an existing project in the list.",
         ]) +
         hCard("Buttons of the node", [
             [iconBadge(PENCIL_ICON, VIOLET), "Rename or move the project"],
-            [iconBadge(PLUS_ICON, PINK), "Create a new project (a window asks for the name)"],
-            [textBadge("Load"), "Load: check the files, then load the saved configuration of the project"],
-            [textBadge("Save"), "Save: copy the files of the Reference Loader into the project, save the workflow and the configuration of the project"],
-            [textBadge("Copy", "#1e88e5"), "Copy: copy the files of 08.Images to 14.Video-Audio, Archives included, from another project of the folder (a file whose SHA256 is already there is skipped, a taken name gets _02); its saved configuration fills the Reference Loader (same order and trims). A folder of projects shows Project: pick one of them, or All to copy the files of all of them (no configuration loaded). The other project is never changed"],
-            [textBadge("Reset", "#e53935"), "Reset: after a summary and typing the project name, every file of the project (all its folders and subfolders, 99.Project-Config included) goes to the Recycle Bin; the folders stay, and the selection of the Reference Loader is emptied in both modes (its root folder does not change)"],
-            [textBadge("Purge", PURGE_RED), "Purge (after a warning): delete the runs still marked running while no run is in progress (kept while ComfyUI is running something), move the runs in error (JSON and workflow) to 98.Error; their files stay in place. 98.Error is in the project folder, not shown in the node"],
-            [textBadge("Date ↓", INACTIVE_BG), "In the folder windows: newest first (Date ↓) or oldest first (Date ↑), one setting for all the windows; in 08 to 14 the files used by the Reference Loader stay first"],
+            [iconBadge(PLUS_ICON, PINK), "New project"],
+            [textBadge("Load"), "Put the project back (see <b>Load and Save</b>)"],
+            [textBadge("Save"), "Record the project (see <b>Load and Save</b>)"],
+            [textBadge("Copy", "#1e88e5"), "Copy the media 08 to 14 of another project (identical files skipped)"],
+            [textBadge("Reset", "#e53935"), "Empty the project (see the warning below)"],
+            [textBadge("Purge", PURGE_RED), "Clean the runs: left “running”, or in error (to 98.Error)"],
+            [textBadge("Date ↓", INACTIVE_BG), "Order of the windows: newest or oldest first"],
             [iconBadge(REFRESH_ICON, VIOLET), "Read the list of projects again"],
-            [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "One row per folder of the project (greyed until a project is picked; its tooltip gives the path)"],
-            [iconBadge(BELL_ICON, BELL_ORANGE), "Bell of 00.Workflows: save the workflow (orange = changes to save, green = saved)"],
-            [iconBadge(WARN_ICON, INACTIVE_BG), "Left of 00.Workflows: the workflow has changed and is not saved yet (gone once saved)"],
-            [iconBadge(BELL_ICON, BELL_ORANGE), "Bell of 08.Images, 10.Son, 12.Video, 14.Video-Audio: references added or removed in the Reference Loader; click to update the folder"],
-            [iconBadge(ARCHIVE_ICON, VIOLET), "Open an archived workflow in a new tab"],
-        ]),
+            [iconBadge(BELL_ICON, BELL_ORANGE), "Bells: workflow (see <b>Workflow</b>) and media 08 to 14 (see <b>Media 08 to 14</b>)"],
+            [iconBadge(ARCHIVE_ICON, VIOLET), "Archived workflows"],
+        ]) +
+        hWarn("<b>Reset</b> sends <b>every file of the project</b> to the Recycle Bin (after a summary and typing " +
+            "the name of the project); the folders stay and the selection of the Reference Loader is emptied.",
+            "Warning:"),
     },
     {
         id: "inputs", title: "Inputs", icon: LINK_ICON, color: ORANGE,
@@ -227,11 +228,11 @@ const HELP_SECTIONS = [
                 [folderBadge("08.Images"), "<b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b>, <b>14.Video-Audio</b>: the files of the Reference Loader (see <b>Media 08 to 14</b>)"],
                 [folderBadge("40.Rush Videos"), "<b>40.Rush Videos</b>, <b>60.Rush Images</b>: the outputs of the runs (see <b>Run windows</b> and <b>Sorting the rushes</b>)"],
             ]) +
-            hList([
-                textBadge("Date ↓", INACTIVE_BG) + " at the top of each window: newest first, or oldest first (Date ↑); one setting for all the windows.",
-                "A subfolder deleted by mistake is created again when you pick the project.",
-                "<b>99.Project-Config</b> (configuration of the project, with its <b>Archives</b>) and <b>98.Error</b> " +
-                "(runs in error, moved by Purge) are in the project folder but have no row in the node.",
+            hCard("Good to know", [
+                [textBadge("Date ↓", INACTIVE_BG), "Top of each window: newest first, or oldest first (Date ↑); one setting for all the windows."],
+                ["Repair", "A subfolder deleted by mistake is created again when you pick the project."],
+                ["Hidden", "<b>99.Project-Config</b> (configuration and its Archives) and <b>98.Error</b> (runs in error) " +
+                    "are in the project folder but have no row in the node."],
             ]) +
             hTip("A project name cannot contain <b>&lt; &gt; : \" / \\ | ? *</b> nor end with a dot."),
     },
@@ -239,27 +240,31 @@ const HELP_SECTIONS = [
         id: "media", title: "Media 08 to 14", icon: FOLDER_ICONS["08.Images"], color: FOLDER_COLORS["08.Images"],
         html: "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> and <b>14.Video-Audio</b> follow the lists of the " +
             "Reference Loader.</p>" +
-            hList([
-                "<b>Bell</b>: a reference added or removed in the Reference Loader shows " + iconBadge(WARN_ICON, INACTIVE_BG) +
-                " left of the folder and turns its " + iconBadge(BELL_ICON, BELL_ORANGE) + " orange (also when the folder " +
-                "keeps unused files). Click it: <b>Update</b> copies the new files (the Reference Loader then uses the " +
-                "copies) and moves every unused file to <b>&lt;folder&gt;/Archives</b>; the bell is then grey again. No " +
-                "file is deleted.",
-                "<b>Row</b>: <b>Use: n/x | Orphelins: m | In Archives: y</b> = n files used out of x allowed (08.Images: " +
-                "9 in Ref2VA, 2 in FL2VA; 10, 12, 14: 3), m orphan files (no number, not archived yet, in orange), y " +
-                "files in Archives.",
-                "<b>Click the row</b>: the files in the order of the Reference Loader with their number (<b>F</b> / " +
-                "<b>L</b> = First / Last frame; files without number last, greyed), then the <b>Archives</b> frame. A " +
-                "thumbnail opens the <b>Preview</b> window; <b>Close</b>, Escape or a click outside closes.",
-                "<b>Missing files</b>: when references of the Reference Loader point to files that are not on disk " +
-                "anymore (a folder renamed outside ComfyUI…), Update copies and archives nothing and offers " +
-                "<b>Remove missing references</b>. Setting the root folder of the Reference Loader again relinks " +
-                "the files found under it.",
-                "<b>Archives</b>: a file is named <b>yyyyMMdd_HHmmss_name.ext</b> (date of the archiving, " +
-                "<b>(2)</b>-like numbers removed; next second if the name is taken) and gets its name back when it " +
-                "comes out.",
+            hCard("The row of the folder", [
+                ["Use: n/x", "files used out of the most allowed (08: 9 in Ref2VA, 2 in FL2VA; 10, 12 and 14: 3)."],
+                ["Orphelins: m", "files no list uses anymore, in orange."],
+                ["In Archives: y", "files in <b>&lt;folder&gt;/Archives</b>."],
             ]) +
-            hNote("This is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
+            "<p><b>Update the folder</b> (orange bell)</p>" +
+            hSteps([
+                "A reference added or removed in the Reference Loader turns the bell " +
+                iconBadge(BELL_ICON, BELL_ORANGE) + " orange, with " + iconBadge(WARN_ICON, INACTIVE_BG) + " left of the folder.",
+                "Click the bell, then <b>Update</b>: the new files are copied (the Reference Loader then uses the " +
+                "copies) and the unused files go to <b>&lt;folder&gt;/Archives</b>.",
+                "The bell turns grey again. No file is deleted.",
+            ]) +
+            hCard("The window of the folder", [
+                ["Files", "in the order of the Reference Loader with their number (<b>F</b> / <b>L</b> = First / Last " +
+                    "frame; files without number at the end, greyed), then the <b>Archives</b> frame."],
+                ["Thumbnail", "opens the <b>Preview</b>; Close, Escape or a click outside closes the window."],
+            ]) +
+            hCard("Special cases", [
+                ["Missing files", "references pointing to files no longer on the disk: Update copies nothing and " +
+                    "proposes <b>Remove missing references</b>."],
+                ["Archives", "a file is named <b>yyyyMMdd_HHmmss_name.ext</b> there and takes its name back when it " +
+                    "leaves."],
+            ]) +
+            hNote("this is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
                 "ignores the lists of the Reference Loader."),
     },
     {
@@ -351,42 +356,39 @@ const HELP_SECTIONS = [
     },
     {
         id: "sets", title: "Sets 02 / 06", icon: FOLDER_ICONS["02.Models"], color: FOLDER_COLORS["02.Models"],
-        html: "<p>The rows of 02.Models and 06.LoRA show <b>Sets: n | Last run: dd/MM/yyyy hh:mm:ss</b>. Click one:</p>" +
-            hList([
-                "<b>Left</b>: one card per set of the registry (number, files, number of runs, last run).",
-                "<b>Right</b>: the prompts of the selected set, identical texts grouped in one card (last run, number " +
-                "of runs); the blue " + iconBadge(EYE_ICON, "#3b82f6") + " opens the runs of this prompt.",
-                "<b>Under the sets</b>: the other side of the selected prompt (its LoRA from 02.Models, its models " +
-                "from 06.LoRA).",
+        html: "<p>The rows of 02.Models and 06.LoRA show <b>Sets: n | Last run: date</b>. A click opens the window.</p>" +
+            hCard("The window", [
+                ["Left", "the sets of the registry: number, files, number of runs, last run."],
+                ["Right", "the prompts of the chosen set, identical texts grouped; the blue " +
+                    iconBadge(EYE_ICON, "#3b82f6") + " opens the runs of the prompt."],
+                ["Below", "the other side of the chosen prompt (its LoRA from 02.Models, its models from 06.LoRA)."],
             ]),
     },
     {
         id: "where", title: "Where projects go", icon: GEAR_ICON, color: VIOLET,
-        html: hList([
-            "Wired to the Reference Loader: in its <b>Root folder</b> (its " + iconBadge(GEAR_ICON, VIOLET) +
-            " button). Change it there and the list of projects follows.",
-            "Root folder empty: the window of " + iconBadge(PLUS_ICON, PINK) + " lets you choose " +
-            "the folder (type it, or " + iconBadge(FOLDER_ICON, VIOLET) + " Browse), with the fallback folder " +
-            "<b>ComfyUI/input/Projets</b> already filled in (" + iconBadge(REFRESH_ICON, INACTIVE_BG) + " brings it back).",
-            "The folder chosen is kept in the Root folder of the Reference Loader (the fallback folder is not kept).",
-            "Not wired: the node is greyed (the <b>project</b> input is required).",
-            "The Root folder does not exist yet: the window of " + iconBadge(PLUS_ICON, PINK) +
-            " warns you, and <b>Create</b> makes it first.",
-        ]) +
-        hTitle(FOLDER_OPEN_ICON, SIMPLE_COLOR, "Simple project") +
-        hList([
-            "One folder = one project.",
-            "Its folders <b>00.Workflows</b> to <b>99.Project-Config</b> are created inside it.",
-        ]) +
-        hWarn("a Simple project cannot hold other projects.", "Warning:") +
-        hTitle(TREE_ICON, MULTI_COLOR, "MultiProject") +
-        hList([
-            "One folder that holds several projects (for example the shots of one film).",
-            "<b>(new)</b>: type the name of the folder, then the name of its first project.",
-            "To add a project later: pick the folder in <b>Folder of projects</b>.",
-            "In the <b>Project name</b> list, the folder is a title and its projects are under it.",
-        ]) +
-        hNote("The tooltip of a folder row gives its path; the bottom line of the node only shows messages."),
+        html: "<p>The projects are created in the <b>Root folder</b> of the Reference Loader.</p>" +
+            hCard("Projects folder", [
+                ["Wired", "the Root folder (" + iconBadge(GEAR_ICON, VIOLET) + " of the Reference Loader); change it " +
+                    "there and the list follows."],
+                ["Root folder empty", "the window of " + iconBadge(PLUS_ICON, PINK) + " proposes " +
+                    "<b>ComfyUI/input/Projets</b>, or " + iconBadge(FOLDER_ICON, VIOLET) + " Browse."],
+                ["Root folder missing", "<b>Create</b> makes it first."],
+                ["Not wired", "the node is greyed (the <b>project</b> input is required)."],
+            ]) +
+            hTitle(FOLDER_OPEN_ICON, SIMPLE_COLOR, "Simple project") +
+            hList([
+                "One folder = one project.",
+                "Its folders <b>00.Workflows</b> to <b>99.Project-Config</b> are created inside it.",
+            ]) +
+            hWarn("a Simple project cannot hold other projects.", "Warning:") +
+            hTitle(TREE_ICON, MULTI_COLOR, "MultiProject") +
+            hList([
+                "One folder that holds several projects (for example the shots of one film).",
+                "<b>(new)</b>: type the name of the folder, then the name of its first project.",
+                "To add a project later: pick the folder in <b>Folder of projects</b>.",
+                "In the <b>Project name</b> list, the folder is a title and its projects are under it.",
+            ]) +
+            hNote("the tooltip of a folder row gives its path; the bottom line of the node only shows messages."),
     },
     {
         id: "save", title: "Load and Save", icon: SAVE_ICON, color: PINK,
@@ -436,35 +438,26 @@ const HELP_SECTIONS = [
     },
     {
         id: "workflow", title: "Workflow", icon: BELL_ICON, color: ORANGE,
-        html: "<p>The workflow is saved in <b>00.Workflows</b>. The bell of that row shows where it stands:</p>" +
-            hList([
-                iconBadge(BELL_ICON, INACTIVE_BG) + " grey: never saved;",
-                iconBadge(BELL_ICON, BELL_ORANGE) + " orange: changes to save (also right after the first save, " +
-                "until you save it once with the bell);",
-                iconBadge(BELL_ICON, BELL_GREEN) + " green: saved, no change since; it turns orange again on " +
-                "the next change (nodes, links, values);",
-                iconBadge(BELL_ICON, BELL_RED) + " red: Load <b>Data only</b> with another structure; it turns green " +
-                "once the workflow is saved (Overwrite or Archive it). While it is red, loading or creating a project " +
-                "first asks <b>Yes, save</b> (like the <b>Save</b> button) / <b>No</b> / <b>Cancel</b>.",
+        html: "<p>The workflow of the project is saved in <b>00.Workflows</b>. Its row shows <b>Last save: date</b>.</p>" +
+            hCard("Colour of the bell", [
+                [iconBadge(BELL_ICON, INACTIVE_BG), "grey: never saved."],
+                [iconBadge(BELL_ICON, BELL_ORANGE), "orange: changes to save (" + iconBadge(WARN_ICON, INACTIVE_BG) +
+                    " left of the row)."],
+                [iconBadge(BELL_ICON, BELL_GREEN), "green: saved, no change since."],
+                [iconBadge(BELL_ICON, BELL_RED), "red: <b>Data only</b> with another structure, to save. While it is " +
+                    "red, changing or creating a project asks <b>Yes, save</b> / <b>No</b> / <b>Cancel</b>."],
             ]) +
-            "<p>Click the bell: the window lists the changes since the last save, asks whether to archive the " +
-            "previous workflow (moved to <b>00.Workflows/Archives</b> as <b>yyyyMMdd-HHmmss_name.json</b>, date " +
-            "of its last save; the archives button lists that folder), and proposes " +
-            "the name of the project, which you can change. With <b>Archive it</b> the button is <b>Save</b> " +
-            "(green), with <b>Overwrite</b> it becomes <b>Overwrite</b> (orange). After saving the window stays " +
-            "open with the changes read again; only <b>Close</b> closes it.</p>" +
-            hList([
-                "The workflow row shows <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
-                iconBadge(ARCHIVE_ICON, VIOLET) + " (right of the bell, active when there are archives) opens an " +
-                "archived workflow in a new tab; the current one is not changed.",
-                "At most <b>5 archives</b> per project. With 5, the archives get a check box: check the ones to " +
-                "delete, then <b>Delete</b> deletes them and proposes the save (<b>Cancel</b> closes the window). " +
-                "In the bell window, <b>Save</b> with <b>Archive it</b> opens this list first; <b>Overwrite</b> " +
-                "saves directly.",
-                "When a project is created, the workflow is saved right away; " + textBadge("Save") +
-                " also saves it (through the bell window when it has changed).",
+            "<p><b>Save the workflow</b></p>" +
+            hSteps([
+                "Click the bell: the window lists the changes since the last save.",
+                "Choose <b>Archive it</b> (the previous one goes to <b>00.Workflows/Archives</b>) or <b>Overwrite</b>.",
+                "<b>Save</b> or <b>Overwrite</b>; the window stays open, <b>Close</b> closes it.",
             ]) +
-            hNote("Moving nodes alone does not turn the bell orange; it is listed as a layout change."),
+            hCard("Archives", [
+                [iconBadge(ARCHIVE_ICON, VIOLET), "Opens an archived workflow in a new tab (the current one does not change)."],
+                ["5 max", "At 5 archives, <b>Archive it</b> first asks which ones to delete."],
+            ]) +
+            hNote("moving nodes only does not turn the bell orange; it is listed as a layout change."),
     },
     {
         id: "runs", title: "Run record", icon: START_ICON, color: GREEN,
@@ -504,14 +497,18 @@ const HELP_SECTIONS = [
     },
     {
         id: "rename", title: "Rename or move", icon: PENCIL_ICON, color: VIOLET,
-        html: hList([
-            iconBadge(PENCIL_ICON, VIOLET) + " opens a window with a <b>Rename | Move</b> switch.",
-            "<b>Rename</b> changes the name of the project folder; <b>Move</b> moves the whole project folder " +
-            "into another folder (" + iconBadge(FOLDER_ICON, VIOLET) + " Browse).",
-            "The window shows the current name or folder and the new one; nothing changes before you confirm.",
-            "The references of the Reference Loader in the project follow it. After a move, the projects folder " +
-            "follows too (Root folder of the Reference Loader, or this node).",
-        ]),
+        html: "<p>" + iconBadge(PENCIL_ICON, VIOLET) + " opens a window with a <b>Rename | Move</b> switch; nothing " +
+            "changes before you confirm.</p>" +
+            hSteps([
+                "<b>Rename</b>: new name of the project folder. <b>Move</b>: new parent folder (" +
+                iconBadge(FOLDER_ICON, VIOLET) + " Browse).",
+                "Check the current and the new one, then confirm.",
+            ]) +
+            hCard("What follows", [
+                ["References", "the references of the Reference Loader that are in the project."],
+                ["Projects folder", "after a move, the Root folder of the Reference Loader."],
+                ["Runs", "their paths are relinked by themselves the next time the runs are read."],
+            ]),
     },
 ];
 
@@ -519,27 +516,27 @@ const HELP_SECTIONS_FR = [
     {
         id: "start", title: "Démarrage rapide",
         html: hSteps([
-            "Reliez la sortie <b>project</b> du <b>MiniMax H3 Reference Loader</b> (toujours sa dernière sortie) " +
-            "à l'entrée <b>project</b> de ce nœud : son dossier racine devient le dossier des projets.",
-            "Cliquez sur " + iconBadge(PLUS_ICON, PINK) + ", tapez le nom du projet et cliquez sur <b>Create</b>. <b>Simple</b> : un projet (dossiers 00 à 99 dedans). <b>MultiProject</b> : un dossier de projets, nouveau (son nom) ou existant, et le projet créé dedans. Un projet ne contient jamais un autre projet.",
-            "Ou choisissez un projet existant dans la liste déroulante : seuls les dossiers de projet y sont (un dossier avec des dossiers 00 à 99) ; un dossier de projets (sans eux, des projets dedans) montre ses projets sous son nom.",
+            "Reliez la sortie <b>project</b> du <b>MiniMax H3 Reference Loader</b> (sa dernière sortie) à l'entrée " +
+            "<b>project</b> de ce nœud.",
+            "Cliquez sur " + iconBadge(PLUS_ICON, PINK) + ", tapez le nom du projet : <b>Simple</b> (un projet) ou " +
+            "<b>MultiProject</b> (un dossier de projets), puis <b>Create</b>.",
+            "Ou choisissez un projet existant dans la liste.",
         ]) +
         hCard("Boutons du nœud", [
             [iconBadge(PENCIL_ICON, VIOLET), "Renommer ou déplacer le projet"],
-            [iconBadge(PLUS_ICON, PINK), "Créer un nouveau projet (une fenêtre demande le nom)"],
-            [textBadge("Load"), "Load : vérifier les fichiers, puis charger la configuration sauvegardée du projet"],
-            [textBadge("Save"), "Save : copier les fichiers du Reference Loader dans le projet, sauvegarder le workflow et la configuration du projet"],
-            [textBadge("Copy", "#1e88e5"), "Copy : copier les fichiers de 08.Images à 14.Video-Audio, Archives comprises, depuis un autre projet du dossier (un fichier dont le SHA256 est déjà là est sauté, un nom pris reçoit _02) ; sa configuration sauvegardée remplit le Reference Loader (même ordre et rognages). Un dossier de projets affiche Project : choisir l'un d'eux, ou All pour copier les fichiers de tous (aucune configuration chargée). L'autre projet n'est jamais modifié"],
-            [textBadge("Reset", "#e53935"), "Reset : après un bilan et le nom du projet tapé, tous les fichiers du projet (tous ses dossiers et sous-dossiers, 99.Project-Config compris) partent dans la Corbeille ; les dossiers restent, et la sélection du Reference Loader est vidée dans les deux modes (son Root folder ne change pas)"],
-            [textBadge("Purge", PURGE_RED), "Purge (après un avertissement) : supprimer les Runs encore marqués running alors qu'aucun Run ne tourne (gardés tant que ComfyUI exécute quelque chose), déplacer les Runs en erreur (JSON et workflow) dans 98.Error ; leurs fichiers restent en place. 98.Error est dans le dossier du projet, pas affiché dans le nœud"],
-            [textBadge("Date ↓", INACTIVE_BG), "Dans les fenêtres des dossiers : plus récent d'abord (Date ↓) ou plus ancien d'abord (Date ↑), un seul réglage pour toutes les fenêtres ; dans 08 à 14 les fichiers utilisés par le Reference Loader restent en tête"],
+            [iconBadge(PLUS_ICON, PINK), "Nouveau projet"],
+            [textBadge("Load"), "Remettre le projet en place (voir <b>Load et Save</b>)"],
+            [textBadge("Save"), "Enregistrer le projet (voir <b>Load et Save</b>)"],
+            [textBadge("Copy", "#1e88e5"), "Copier les médias 08 à 14 d'un autre projet (fichiers identiques sautés)"],
+            [textBadge("Reset", "#e53935"), "Vider le projet (voir l'avertissement ci-dessous)"],
+            [textBadge("Purge", PURGE_RED), "Nettoyer les Runs : restés « running », ou en erreur (vers 98.Error)"],
+            [textBadge("Date ↓", INACTIVE_BG), "Ordre des fenêtres : plus récent ou plus ancien d'abord"],
             [iconBadge(REFRESH_ICON, VIOLET), "Relire la liste des projets"],
-            [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]), "Une ligne par dossier du projet (grisée tant qu'aucun projet n'est choisi ; l'infobulle donne le chemin)"],
-            [iconBadge(BELL_ICON, BELL_ORANGE), "Cloche de 00.Workflows : sauvegarder le workflow (orange = changements, vert = sauvegardé)"],
-            [iconBadge(WARN_ICON, INACTIVE_BG), "À gauche de 00.Workflows : le workflow a changé et n'est pas encore sauvegardé (disparaît une fois sauvegardé)"],
-            [iconBadge(BELL_ICON, BELL_ORANGE), "Cloche de 08.Images, 10.Son, 12.Video, 14.Video-Audio : références ajoutées ou retirées dans le Reference Loader ; cliquez pour mettre le dossier à jour"],
-            [iconBadge(ARCHIVE_ICON, VIOLET), "Ouvrir un workflow archivé dans un nouvel onglet"],
-        ]),
+            [iconBadge(BELL_ICON, BELL_ORANGE), "Cloches : workflow (voir <b>Workflow</b>) et médias 08 à 14 (voir <b>Médias 08 à 14</b>)"],
+            [iconBadge(ARCHIVE_ICON, VIOLET), "Workflows archivés"],
+        ]) +
+        hWarn("<b>Reset</b> envoie <b>tous les fichiers du projet</b> dans la Corbeille (après un bilan et la saisie " +
+            "du nom du projet) ; les dossiers restent et la sélection du Reference Loader est vidée.", "Attention :"),
     },
     {
         id: "inputs", title: "Entrées",
@@ -584,12 +581,11 @@ const HELP_SECTIONS_FR = [
                 [folderBadge("08.Images"), "<b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b>, <b>14.Video-Audio</b> : les fichiers du Reference Loader (voir <b>Médias 08 à 14</b>)"],
                 [folderBadge("40.Rush Videos"), "<b>40.Rush Videos</b>, <b>60.Rush Images</b> : les sorties des Runs (voir <b>Fenêtres des Runs</b> et <b>Tri des rushs</b>)"],
             ]) +
-            hList([
-                textBadge("Date ↓", INACTIVE_BG) + " en haut de chaque fenêtre : plus récent d'abord, ou plus ancien " +
-                "d'abord (Date ↑) ; un seul réglage pour toutes les fenêtres.",
-                "Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet.",
-                "<b>99.Project-Config</b> (configuration du projet, avec son <b>Archives</b>) et <b>98.Error</b> (Runs " +
-                "en erreur, déplacés par Purge) sont dans le dossier du projet mais n'ont pas de ligne dans le nœud.",
+            hCard("Bon à savoir", [
+                [textBadge("Date ↓", INACTIVE_BG), "En haut de chaque fenêtre : plus récent d'abord, ou plus ancien d'abord (Date ↑) ; un seul réglage pour toutes les fenêtres."],
+                ["Réparation", "Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet."],
+                ["Cachés", "<b>99.Project-Config</b> (configuration et ses Archives) et <b>98.Error</b> (Runs en " +
+                    "erreur) sont dans le dossier du projet mais n'ont pas de ligne dans le nœud."],
             ]) +
             hTip("Un nom de projet ne peut pas contenir <b>&lt; &gt; : \" / \\ | ? *</b> ni finir par un point.",
                 "Astuce :"),
@@ -598,26 +594,31 @@ const HELP_SECTIONS_FR = [
         id: "media", title: "Médias 08 à 14",
         html: "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> et <b>14.Video-Audio</b> suivent les listes du " +
             "Reference Loader.</p>" +
-            hList([
-                "<b>Cloche</b> : une référence ajoutée ou retirée dans le Reference Loader affiche " +
-                iconBadge(WARN_ICON, INACTIVE_BG) + " à gauche du dossier et passe sa " + iconBadge(BELL_ICON, BELL_ORANGE) +
-                " à l'orange (aussi quand le dossier garde des fichiers inutilisés). Cliquez dessus : <b>Update</b> " +
-                "copie les nouveaux fichiers (le Reference Loader utilise ensuite les copies) et déplace chaque fichier " +
-                "inutilisé dans <b>&lt;dossier&gt;/Archives</b> ; la cloche redevient grise. Aucun fichier n'est effacé.",
-                "<b>Ligne</b> : <b>Use: n/x | Orphelins: m | In Archives: y</b> = n fichiers utilisés sur x permis " +
-                "(08.Images : 9 en Ref2VA, 2 en FL2VA ; 10, 12, 14 : 3), m fichiers orphelins (sans numéro, pas encore " +
-                "archivés, en orange), y fichiers dans Archives.",
-                "<b>Clic sur la ligne</b> : les fichiers dans l'ordre du Reference Loader avec leur numéro (<b>F</b> / " +
-                "<b>L</b> = First / Last frame ; sans numéro à la fin, grisés), puis le cadre <b>Archives</b>. Une " +
-                "vignette ouvre la fenêtre <b>Preview</b> ; <b>Close</b>, Échap ou un clic à côté ferme.",
-                "<b>Fichiers manquants</b> : quand des références du Reference Loader pointent vers des fichiers " +
-                "qui ne sont plus sur le disque (dossier renommé hors de ComfyUI…), Update ne copie et n'archive " +
-                "rien et propose <b>Remove missing references</b>. Redonner le Root folder du Reference Loader " +
-                "re-lie les fichiers retrouvés dessous.",
-                "<b>Archives</b> : un fichier est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> (date de l'archivage, numéros " +
-                "du type <b>(2)</b> retirés ; seconde suivante si le nom est pris) et reprend son nom en sortant.",
+            hCard("La ligne du dossier", [
+                ["Use: n/x", "fichiers utilisés sur le maximum permis (08 : 9 en Ref2VA, 2 en FL2VA ; 10, 12 et 14 : 3)."],
+                ["Orphelins: m", "fichiers qu'aucune liste n'utilise plus, en orange."],
+                ["In Archives: y", "fichiers dans <b>&lt;dossier&gt;/Archives</b>."],
             ]) +
-            hNote("Ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
+            "<p><b>Mettre le dossier à jour</b> (cloche orange)</p>" +
+            hSteps([
+                "Une référence ajoutée ou retirée dans le Reference Loader passe la cloche " +
+                iconBadge(BELL_ICON, BELL_ORANGE) + " à l'orange, avec " + iconBadge(WARN_ICON, INACTIVE_BG) +
+                " à gauche du dossier.",
+                "Cliquez sur la cloche, puis <b>Update</b> : les nouveaux fichiers sont copiés (le Reference Loader " +
+                "utilise ensuite les copies) et les fichiers inutilisés partent dans <b>&lt;dossier&gt;/Archives</b>.",
+                "La cloche redevient grise. Aucun fichier n'est effacé.",
+            ]) +
+            hCard("La fenêtre du dossier", [
+                ["Fichiers", "dans l'ordre du Reference Loader avec leur numéro (<b>F</b> / <b>L</b> = First / Last " +
+                    "frame ; sans numéro à la fin, grisés), puis le cadre <b>Archives</b>."],
+                ["Vignette", "ouvre l'aperçu (<b>Preview</b>) ; Close, Échap ou un clic à côté ferme la fenêtre."],
+            ]) +
+            hCard("Cas particuliers", [
+                ["Fichiers manquants", "des références pointent vers des fichiers qui ne sont plus sur le disque : " +
+                    "Update ne copie rien et propose <b>Remove missing references</b>."],
+                ["Archives", "un fichier y est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> et reprend son nom en sortant."],
+            ]) +
+            hNote("ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
                 "00.Workflows ignore les listes du Reference Loader.", "Remarque :"),
     },
     {
@@ -712,44 +713,41 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "sets", title: "Ensembles 02 / 06",
-        html: "<p>Les lignes de 02.Models et 06.LoRA affichent <b>Sets: n | Last run: dd/MM/yyyy hh:mm:ss</b>. " +
-            "Cliquez sur l'une d'elles :</p>" +
-            hList([
-                "<b>À gauche</b> : une carte par ensemble du registre (numéro, fichiers, nombre de Runs, dernier Run).",
-                "<b>À droite</b> : les prompts de l'ensemble choisi, les textes identiques regroupés en une carte " +
-                "(dernier Run, nombre de Runs) ; l'" + iconBadge(EYE_ICON, "#3b82f6") + " bleu ouvre les Runs de ce prompt.",
-                "<b>Sous les ensembles</b> : l'autre côté du prompt choisi (ses LoRA depuis 02.Models, ses modèles " +
-                "depuis 06.LoRA).",
+        html: "<p>Les lignes de 02.Models et 06.LoRA affichent <b>Sets: n | Last run: date</b>. Un clic ouvre la " +
+            "fenêtre.</p>" +
+            hCard("La fenêtre", [
+                ["À gauche", "les ensembles du registre : numéro, fichiers, nombre de Runs, dernier Run."],
+                ["À droite", "les prompts de l'ensemble choisi, textes identiques regroupés ; l'" +
+                    iconBadge(EYE_ICON, "#3b82f6") + " bleu ouvre les Runs du prompt."],
+                ["Dessous", "l'autre côté du prompt choisi (ses LoRA depuis 02.Models, ses modèles depuis 06.LoRA)."],
             ]),
     },
     {
         id: "where", title: "Où vont les projets",
-        html: hList([
-            "Relié au Reference Loader : dans son <b>Root folder</b> (son bouton " + iconBadge(GEAR_ICON, VIOLET) +
-            "). Changez-le là-bas et la liste des projets suit.",
-            "Root folder vide : la fenêtre de " + iconBadge(PLUS_ICON, PINK) + " vous laisse choisir " +
-            "le dossier (tapez-le, ou " + iconBadge(FOLDER_ICON, VIOLET) + " Browse), avec le dossier de repli " +
-            "<b>ComfyUI/input/Projets</b> déjà rempli (" + iconBadge(REFRESH_ICON, INACTIVE_BG) + " le remet).",
-            "Le dossier choisi est gardé dans le Root folder du Reference Loader (le dossier de repli n'est pas gardé).",
-            "Non relié : le nœud est grisé (l'entrée <b>project</b> est obligatoire).",
-            "Le Root folder n'existe pas encore : la fenêtre de " + iconBadge(PLUS_ICON, PINK) +
-            " vous prévient, et <b>Create</b> le crée d'abord.",
-        ]) +
-        hTitle(FOLDER_OPEN_ICON, SIMPLE_COLOR, "Projet Simple") +
-        hList([
-            "Un dossier = un projet.",
-            "Ses dossiers <b>00.Workflows</b> à <b>99.Project-Config</b> sont créés dedans.",
-        ]) +
-        hWarn("un projet Simple ne peut pas contenir d'autres projets.", "Attention :") +
-        hTitle(TREE_ICON, MULTI_COLOR, "MultiProject") +
-        hList([
-            "Un dossier qui contient plusieurs projets (par exemple les plans d'un même film).",
-            "<b>(new)</b> : tapez le nom du dossier, puis le nom de son premier projet.",
-            "Pour ajouter un projet plus tard : choisissez le dossier dans <b>Folder of projects</b>.",
-            "Dans la liste <b>Project name</b>, le dossier est un titre et ses projets sont en dessous.",
-        ]) +
-        hNote("L'infobulle d'une ligne de dossier donne son chemin ; la ligne du bas du nœud ne montre que " +
-            "les messages.", "Remarque :"),
+        html: "<p>Les projets sont créés dans le <b>Root folder</b> du Reference Loader.</p>" +
+            hCard("Dossier des projets", [
+                ["Relié", "le Root folder (" + iconBadge(GEAR_ICON, VIOLET) + " du Reference Loader) ; changez-le là-bas " +
+                    "et la liste suit."],
+                ["Root folder vide", "la fenêtre de " + iconBadge(PLUS_ICON, PINK) + " propose " +
+                    "<b>ComfyUI/input/Projets</b>, ou " + iconBadge(FOLDER_ICON, VIOLET) + " Browse."],
+                ["Root folder absent", "<b>Create</b> le crée d'abord."],
+                ["Non relié", "le nœud est grisé (l'entrée <b>project</b> est obligatoire)."],
+            ]) +
+            hTitle(FOLDER_OPEN_ICON, SIMPLE_COLOR, "Projet Simple") +
+            hList([
+                "Un dossier = un projet.",
+                "Ses dossiers <b>00.Workflows</b> à <b>99.Project-Config</b> sont créés dedans.",
+            ]) +
+            hWarn("un projet Simple ne peut pas contenir d'autres projets.", "Attention :") +
+            hTitle(TREE_ICON, MULTI_COLOR, "MultiProject") +
+            hList([
+                "Un dossier qui contient plusieurs projets (par exemple les plans d'un même film).",
+                "<b>(new)</b> : tapez le nom du dossier, puis le nom de son premier projet.",
+                "Pour ajouter un projet plus tard : choisissez le dossier dans <b>Folder of projects</b>.",
+                "Dans la liste <b>Project name</b>, le dossier est un titre et ses projets sont en dessous.",
+            ]) +
+            hNote("l'infobulle d'une ligne de dossier donne son chemin ; la ligne du bas du nœud ne montre que " +
+                "les messages.", "Remarque :"),
     },
     {
         id: "save", title: "Load et Save",
@@ -801,36 +799,27 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "workflow", title: "Workflow",
-        html: "<p>Le workflow est sauvegardé dans <b>00.Workflows</b>. La cloche de cette ligne indique où il en est :</p>" +
-            hList([
-                iconBadge(BELL_ICON, INACTIVE_BG) + " grise : jamais sauvegardé ;",
-                iconBadge(BELL_ICON, BELL_ORANGE) + " orange : changements à sauvegarder (aussi juste après la " +
-                "première sauvegarde, jusqu'à ce que vous le sauvegardiez une fois par la cloche) ;",
-                iconBadge(BELL_ICON, BELL_GREEN) + " verte : sauvegardé, aucun changement depuis ; elle repasse à " +
-                "l'orange au prochain changement (nœuds, liens, valeurs) ;",
-                iconBadge(BELL_ICON, BELL_RED) + " rouge : Load <b>Data only</b> avec une autre structure ; elle " +
-                "redevient verte une fois le workflow sauvegardé (Overwrite ou Archive it). Tant qu'elle est rouge, " +
-                "charger ou créer un projet demande d'abord <b>Yes, save</b> (comme le bouton <b>Save</b>) / <b>No</b> " +
-                "/ <b>Cancel</b>.",
+        html: "<p>Le workflow du projet est sauvegardé dans <b>00.Workflows</b>. Sa ligne affiche <b>Last save: date</b>.</p>" +
+            hCard("Couleur de la cloche", [
+                [iconBadge(BELL_ICON, INACTIVE_BG), "grise : jamais sauvegardé."],
+                [iconBadge(BELL_ICON, BELL_ORANGE), "orange : changements à sauvegarder (" +
+                    iconBadge(WARN_ICON, INACTIVE_BG) + " à gauche de la ligne)."],
+                [iconBadge(BELL_ICON, BELL_GREEN), "verte : sauvegardé, aucun changement depuis."],
+                [iconBadge(BELL_ICON, BELL_RED), "rouge : <b>Data only</b> avec une autre structure, à sauvegarder. " +
+                    "Tant qu'elle est rouge, changer ou créer un projet demande <b>Yes, save</b> / <b>No</b> / " +
+                    "<b>Cancel</b>."],
             ]) +
-            "<p>Cliquez sur la cloche : la fenêtre liste les changements depuis la dernière sauvegarde, demande " +
-            "s'il faut archiver le workflow précédent (déplacé dans <b>00.Workflows/Archives</b> sous " +
-            "<b>yyyyMMdd-HHmmss_nom.json</b>, date de sa dernière sauvegarde ; le bouton d'archives liste ce " +
-            "dossier) et propose le nom du projet, que vous pouvez changer. Avec <b>Archive it</b> le bouton est " +
-            "<b>Save</b> (vert), avec <b>Overwrite</b> il devient <b>Overwrite</b> (orange). Après " +
-            "l'enregistrement la fenêtre reste ouverte avec les changements relus ; seul <b>Close</b> la ferme.</p>" +
-            hList([
-                "La ligne du workflow affiche <b>Last save: dd/MM/yyyy at hh:mm:ss</b>.",
-                iconBadge(ARCHIVE_ICON, VIOLET) + " (à droite de la cloche, actif s'il y a des archives) ouvre un " +
-                "workflow archivé dans un nouvel onglet ; le workflow actuel ne change pas.",
-                "<b>5 archives</b> au plus par projet. À 5, les archives ont une case à cocher : cochez celles à " +
-                "supprimer, puis <b>Delete</b> les supprime et propose la sauvegarde (<b>Cancel</b> ferme la " +
-                "fenêtre). Dans la fenêtre de la cloche, <b>Save</b> avec <b>Archive it</b> ouvre d'abord cette " +
-                "liste ; <b>Overwrite</b> sauvegarde directement.",
-                "À la création d'un projet, le workflow est sauvegardé tout de suite ; " + textBadge("Save") +
-                " le sauvegarde aussi (par la fenêtre de la cloche s'il a changé).",
+            "<p><b>Sauvegarder le workflow</b></p>" +
+            hSteps([
+                "Cliquez sur la cloche : la fenêtre liste les changements depuis la dernière sauvegarde.",
+                "Choisissez <b>Archive it</b> (l'ancien part dans <b>00.Workflows/Archives</b>) ou <b>Overwrite</b>.",
+                "<b>Save</b> ou <b>Overwrite</b> ; la fenêtre reste ouverte, <b>Close</b> la ferme.",
             ]) +
-            hNote("Déplacer des nœuds seulement ne fait pas passer la cloche à l'orange ; c'est listé comme un " +
+            hCard("Archives", [
+                [iconBadge(ARCHIVE_ICON, VIOLET), "Ouvre un workflow archivé dans un nouvel onglet (l'actuel ne change pas)."],
+                ["5 au plus", "À 5 archives, <b>Archive it</b> demande d'abord lesquelles supprimer."],
+            ]) +
+            hNote("déplacer des nœuds seulement ne fait pas passer la cloche à l'orange ; c'est listé comme un " +
                 "changement de disposition.", "Remarque :"),
     },
     {
@@ -871,14 +860,18 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "rename", title: "Renommer ou déplacer",
-        html: hList([
-            iconBadge(PENCIL_ICON, VIOLET) + " ouvre une fenêtre avec un interrupteur <b>Rename | Move</b>.",
-            "<b>Rename</b> change le nom du dossier du projet ; <b>Move</b> déplace tout le dossier du projet " +
-            "dans un autre dossier (" + iconBadge(FOLDER_ICON, VIOLET) + " Browse).",
-            "La fenêtre montre le nom ou le dossier actuel et le nouveau ; rien ne change avant votre confirmation.",
-            "Les références du Reference Loader qui sont dans le projet le suivent. Après un déplacement, le " +
-            "dossier des projets suit aussi (Root folder du Reference Loader, ou ce nœud).",
-        ]),
+        html: "<p>" + iconBadge(PENCIL_ICON, VIOLET) + " ouvre une fenêtre avec un interrupteur <b>Rename | Move</b> ; " +
+            "rien ne change avant votre confirmation.</p>" +
+            hSteps([
+                "<b>Rename</b> : nouveau nom du dossier du projet. <b>Move</b> : nouveau dossier parent (" +
+                iconBadge(FOLDER_ICON, VIOLET) + " Browse).",
+                "Vérifiez l'ancien et le nouveau, puis confirmez.",
+            ]) +
+            hCard("Ce qui suit", [
+                ["Références", "les références du Reference Loader qui sont dans le projet."],
+                ["Dossier des projets", "après un déplacement, le Root folder du Reference Loader."],
+                ["Runs", "leurs chemins sont recâblés d'eux-mêmes à la prochaine lecture des Runs."],
+            ]),
     },
 ];
 
