@@ -298,6 +298,8 @@ export function parseProjectState(raw) {
         root: str(data.root), name: str(data.name), path: str(data.path), folder: str(data.folder),
         wfPath: str(data.wfPath), wfName: str(data.wfName), wfValidated: data.wfValidated === true,
         snap, snapPath: str(data.snapPath),
+        // Data only avec une autre structure (cloche rouge, 22/10/2026) : chemin du projet.
+        wfRed: str(data.wfRed),
     };
 }
 
@@ -688,6 +690,34 @@ export function subfolderLabel(path, project) {
     if (!project) return p;
     const n = String(project).replace(/\\/g, "/");
     return p.toLowerCase().startsWith(n.toLowerCase() + "/") ? p.slice(n.length + 1) : p;
+}
+
+/** MultiProject commun a deux projets "G/A" et "G/B" (meme projet mere), sinon "". */
+export function sameGroup(a, b) {
+    const group = (n) => {
+        const s = String(n || "");
+        return s.includes("/") ? s.slice(0, s.lastIndexOf("/")) : "";
+    };
+    const g = group(a);
+    return g && g.toLowerCase() === group(b).toLowerCase() && String(a).toLowerCase() !== String(b).toLowerCase() ? g : "";
+}
+
+/**
+ * Load "Data only" (choix utilisateur, 22/10/2026) : copie de current (workflow de
+ * l'onglet) ou chaque noeud de meme numero et de meme type que dans saved prend ses
+ * valeurs (widgets_values, widgets_values_named) ; les autres gardent les leurs.
+ */
+export function mergeData(current, saved) {
+    const out = JSON.parse(JSON.stringify(current || {}));
+    const byId = new Map(((saved && saved.nodes) || []).filter((n) => n && n.id != null).map((n) => [String(n.id), n]));
+    for (const n of out.nodes || []) {
+        const src = n && byId.get(String(n.id));
+        if (!src || src.type !== n.type) continue;
+        if ("widgets_values" in src) n.widgets_values = JSON.parse(JSON.stringify(src.widgets_values));
+        if ("widgets_values_named" in src) n.widgets_values_named = JSON.parse(JSON.stringify(src.widgets_values_named));
+        else delete n.widgets_values_named;
+    }
+    return out;
 }
 
 export function filterSubfolders(entries, project) {

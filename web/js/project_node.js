@@ -10,7 +10,7 @@ import {
 } from "./minimax_ref_loader.js";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
-    mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath,
+    mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath, sameGroup, mergeData,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
     unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
@@ -75,6 +75,8 @@ const WARN_WIDTH = 16;
 // Couleurs de la cloche du workflow : orange = changements a sauvegarder, vert = a jour.
 const BELL_ORANGE = "#e0793c";
 const BELL_GREEN = "#43a047";
+// Cloche rouge : Load "Data only" avec une autre structure, workflow a sauvegarder (22/10/2026).
+const BELL_RED = "#d32f2f";
 const WORKFLOWS = "00.Workflows";
 const BELL_ICON = svg(
     '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>', 12);
@@ -432,6 +434,11 @@ const HELP_SECTIONS = [
                 "another project picked in the list opens in a new tab named after its workflow, this tab keeps " +
                 "its project, then <b>OK</b> stays here and <b>Open the project</b> goes to the new tab " +
                 "(the window lists the nodes and links in more or missing);",
+                "another project <b>of the same MultiProject</b>: a <b>Whole workflow | Data only</b> switch at the " +
+                "top. <b>Whole workflow</b>: the rules above. <b>Data only</b>: this tab keeps its workflow; the files " +
+                "and the values of the common nodes (same number and type: prompt, seed, steps, models…) come from " +
+                "the project. Same structure: the bell turns orange. Other structure: the bell turns red; saving " +
+                "with <b>Overwrite</b> replaces the saved workflow of the project (to find it again, use the Archives);",
                 "replacing the current workflow asks first: the changes since the last save are lost;",
                 "picking another project in the list (from a project) opens this Load window by itself;",
                 "unchecked: nothing opens, the folders checked go to the Reference Loader of this tab.",
@@ -445,7 +452,10 @@ const HELP_SECTIONS = [
                 iconBadge(BELL_ICON, BELL_ORANGE) + " orange: changes to save (also right after the first save, " +
                 "until you save it once with the bell);",
                 iconBadge(BELL_ICON, BELL_GREEN) + " green: saved, no change since; it turns orange again on " +
-                "the next change (nodes, links, values).",
+                "the next change (nodes, links, values);",
+                iconBadge(BELL_ICON, BELL_RED) + " red: Load <b>Data only</b> with another structure; it turns green " +
+                "once the workflow is saved (Overwrite or Archive it). While it is red, loading or creating a project " +
+                "first asks <b>Yes, save</b> (like the <b>Save</b> button) / <b>No</b> / <b>Cancel</b>.",
             ]) +
             "<p>Click the bell: the window lists the changes since the last save, asks whether to archive the " +
             "previous workflow (moved to <b>00.Workflows/Archives</b> as <b>yyyyMMdd-HHmmss_name.json</b>, date " +
@@ -802,6 +812,12 @@ const HELP_SECTIONS_FR = [
                 "un autre projet choisi dans la liste s'ouvre dans un nouvel onglet au nom de son workflow, cet " +
                 "onglet garde son projet, puis <b>OK</b> reste ici et <b>Open the project</b> va au nouvel onglet " +
                 "(la fenêtre liste les nœuds et liaisons en plus ou manquants) ;",
+                "un autre projet <b>du même MultiProject</b> : un interrupteur <b>Whole workflow | Data only</b> en " +
+                "haut. <b>Whole workflow</b> : les règles ci-dessus. <b>Data only</b> : cet onglet garde son " +
+                "workflow ; les fichiers et les valeurs des nœuds communs (même numéro et même type : prompt, seed, " +
+                "steps, modèles…) viennent du projet. Même structure : la cloche passe à l'orange. Autre structure : " +
+                "la cloche passe au rouge ; sauvegarder avec <b>Overwrite</b> remplace le workflow sauvegardé du " +
+                "projet (pour le retrouver, passez par les Archives) ;",
                 "remplacer le workflow en cours demande d'abord confirmation : les modifications depuis la " +
                 "dernière sauvegarde sont perdues ;",
                 "choisir un autre projet dans la liste (depuis un projet) ouvre cette fenêtre Load d'elle-même ;",
@@ -816,7 +832,11 @@ const HELP_SECTIONS_FR = [
                 iconBadge(BELL_ICON, BELL_ORANGE) + " orange : changements à sauvegarder (aussi juste après la " +
                 "première sauvegarde, jusqu'à ce que vous le sauvegardiez une fois par la cloche) ;",
                 iconBadge(BELL_ICON, BELL_GREEN) + " verte : sauvegardé, aucun changement depuis ; elle repasse à " +
-                "l'orange au prochain changement (nœuds, liens, valeurs).",
+                "l'orange au prochain changement (nœuds, liens, valeurs) ;",
+                iconBadge(BELL_ICON, BELL_RED) + " rouge : Load <b>Data only</b> avec une autre structure ; elle " +
+                "redevient verte une fois le workflow sauvegardé (Overwrite ou Archive it). Tant qu'elle est rouge, " +
+                "charger ou créer un projet demande d'abord <b>Yes, save</b> (comme le bouton <b>Save</b>) / <b>No</b> " +
+                "/ <b>Cancel</b>.",
             ]) +
             "<p>Cliquez sur la cloche : la fenêtre liste les changements depuis la dernière sauvegarde, demande " +
             "s'il faut archiver le workflow précédent (déplacé dans <b>00.Workflows/Archives</b> sous " +
@@ -1812,7 +1832,11 @@ function buildWorkflowDialog(container) {
     const limitNote = document.createElement("div");
     Object.assign(limitNote.style, { color: ORANGE, margin: "6px 0 0" });
     limitNote.textContent = MAX_ARCHIVES + " archives already: Save asks which ones to delete first.";
-    archiveBox.append(archiveLabel, pill, limitNote);
+    // Cloche rouge (Data only, autre structure) : Overwrite remplace le workflow sauvegarde.
+    const redNote = document.createElement("div");
+    Object.assign(redNote.style, { color: ORANGE, margin: "6px 0 0", lineHeight: "1.4" });
+    archiveBox.append(archiveLabel, pill, limitNote, redNote);
+    let redName = "";
 
     const nameLabel = document.createElement("div");
     nameLabel.textContent = "Name of the workflow (in 00.Workflows):";
@@ -1844,6 +1868,9 @@ function buildWorkflowDialog(container) {
         noBtn.style.background = archive ? INACTIVE_BG : ORANGE;
         noBtn.style.color = archive ? "#888" : "white";
         limitNote.style.display = full && archive ? "block" : "none";
+        redNote.style.display = redName && !archive ? "block" : "none";
+        redNote.innerHTML = redName ? "<b>Overwrite</b> replaces the saved workflow of <b>" + escapeHtml(redName) +
+            "</b> with the workflow of this tab; to find it again, use the Archives." : "";
         // Bouton principal : Save (vert) avec Archive it, Overwrite (orange) sinon.
         const over = archiveBox.style.display !== "none" && !archive;
         saveBtn.textContent = over ? "Overwrite" : "Save";
@@ -1926,6 +1953,7 @@ function buildWorkflowDialog(container) {
                 "<b>yyyyMMdd-HHmmss_" + escapeHtml(opts.previous || "") + "</b> (date of its last save).";
             if (!again) archive = true;
             full = !!opts.full;
+            redName = opts.red || "";
             paintPill();
             input.value = opts.defaultName;
             input.style.borderColor = "#0c3833";
@@ -3817,8 +3845,9 @@ function buildSetViewer(container, onSort, onWorkflow, rush) {
 }
 
 /**
- * open(report, projectPath, switching) -> Promise<dossiers coches | null> (Cancel, Echap, clic a
- * cote = null) ; switching = changement de projet (autre structure -> nouvel onglet).
+ * open(report, projectPath, switching, group, name) -> Promise<dossiers coches | null> (Cancel,
+ * Echap, clic a cote = null) ; switching = changement de projet (autre structure -> nouvel
+ * onglet) ; group = meme MultiProject : interrupteur Data only (dossiers.dataOnly).
  */
 function buildLoadDialog(container) {
     const { overlay, card } = makeOverlay();
@@ -3845,7 +3874,29 @@ function buildLoadDialog(container) {
     const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
     const loadBtn = makeTextButton("Load", PINK);
     footer.append(cancelBtn, loadBtn);
-    card.append(title, sub, body, note, footer);
+    // Projet du meme MultiProject (choix utilisateur, 22/10/2026) : interrupteur pilule
+    // Whole workflow (workflow et donnees) | Data only (le workflow de l'onglet reste).
+    const modePill = document.createElement("div");
+    Object.assign(modePill.style, {
+        display: "none", borderRadius: "999px", overflow: "hidden", border: "1px solid #0c3833", height: "24px",
+        marginBottom: "8px",
+    });
+    const modeBtn = (text, tip) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = text;
+        b.title = tip;
+        Object.assign(b.style, {
+            flex: "1", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold", fontSize: "11px",
+            padding: "0",
+        });
+        modePill.appendChild(b);
+        return b;
+    };
+    const wholeBtn = modeBtn("Whole workflow", "Load the workflow of the project and its data (usual rules)");
+    const dataBtn = modeBtn("Data only", "Keep the workflow of this tab: only the files and the values of the common " +
+        "nodes come from the project");
+    card.append(title, sub, modePill, body, note, footer);
     const preview = buildPreviewWindow();
 
     let resolve = null;
@@ -3877,7 +3928,25 @@ function buildLoadDialog(container) {
     }
     cancelBtn.addEventListener("click", () => finish(null));
     loadBtn.addEventListener("click", () => {
-        if (!loadBtn.disabled) finish(checkedFolders());
+        if (loadBtn.disabled) return;
+        const folders = checkedFolders();
+        folders.dataOnly = !!dataGroup && dataOnly; // Data only : lu par loadProject
+        finish(folders);
+    });
+    function paintMode() {
+        wholeBtn.style.background = dataOnly ? INACTIVE_BG : PINK;
+        wholeBtn.style.color = dataOnly ? "#888" : "white";
+        dataBtn.style.background = dataOnly ? VIOLET : INACTIVE_BG;
+        dataBtn.style.color = dataOnly ? "white" : "#888";
+        if (wfEl && lastReport) wfEl.innerHTML = workflowHtml(lastReport.workflow);
+    }
+    wholeBtn.addEventListener("click", () => {
+        dataOnly = false;
+        paintMode();
+    });
+    dataBtn.addEventListener("click", () => {
+        dataOnly = true;
+        paintMode();
     });
     overlay.addEventListener("mousedown", () => (preview.isOpen() ? preview.close() : finish(null)));
 
@@ -3924,6 +3993,19 @@ function buildLoadDialog(container) {
             return '<div style="color:#d32f2f">The workflow file is missing and not in Archives: it cannot be loaded.</div>';
         }
         let html = "";
+        if (dataGroup && dataOnly) {
+            // Data only : le workflow de l'onglet reste ; meme structure -> cloche orange, sinon rouge.
+            const name = escapeHtml(dataProject);
+            if (wf.same) {
+                return '<div style="color:' + GREEN + '">Data only, same structure: the files and the values of the ' +
+                    "nodes of <b>" + name + "</b> come into this tab; the bell turns orange.</div>";
+            }
+            return '<div style="color:' + ORANGE + '">Data only: this tab keeps its workflow; the files and the ' +
+                "values of the common nodes (same number and type) come from <b>" + name + "</b>. The bell turns " +
+                '<b style="color:' + BELL_RED + '">red</b>. Saving with <b>Overwrite</b> will replace the saved ' +
+                "workflow of <b>" + name + "</b>; to find it again, use the Archives.</div>" +
+                (wf.diff ? structureHtml(wf.diff, "Only in the saved workflow", "Only in the current workflow") : "");
+        }
         if (wf.changes && !wf.changes.same) {
             html += '<div style="color:#bbb">Saved workflow → file:</div>' +
                 structureHtml(wf.changes, "In more since the save", "Missing since the save");
@@ -3942,10 +4024,23 @@ function buildLoadDialog(container) {
     }
 
     let switching = false;
+    let dataGroup = "";     // MultiProject commun : interrupteur Whole workflow | Data only
+    let dataProject = "";
+    let dataOnly = false;
+    let wfEl = null;
+    let lastReport = null;
     return {
-        open(report, projectPath, isSwitching) {
+        /** group = MultiProject commun au projet quitte et a celui-ci ("" : pas d'interrupteur). */
+        open(report, projectPath, isSwitching, group, projectName) {
             switching = !!isSwitching;
             if (resolve) finish(null);
+            dataGroup = group || "";
+            dataProject = projectName || "";
+            dataOnly = false;
+            wfEl = null;
+            lastReport = report;
+            modePill.style.display = dataGroup ? "flex" : "none";
+            paintMode();
             sub.textContent = "Saved on " + (report.datemodifi || "?") + " · mode " + (report.mode || "?");
             body.innerHTML = "";
             boxes = [];
@@ -3976,7 +4071,10 @@ function buildLoadDialog(container) {
                         bad + (f.kind === "prompt" ? " changed" : " to check") + "</span>" : ""));
                 block.appendChild(head);
                 if (!info) for (const x of f.files) block.appendChild(fileLine(f, x, projectPath));
-                if (f.kind === "workflow") block.appendChild(div(workflowHtml(report.workflow), { paddingLeft: "26px" }));
+                if (f.kind === "workflow") {
+                    wfEl = div(workflowHtml(report.workflow), { paddingLeft: "26px" });
+                    block.appendChild(wfEl);
+                }
                 if (f.kind === "prompt") {
                     promptWarn = div(MARK_WARN + " " + PROMPT_WARNING, { color: ORANGE, paddingLeft: "26px" });
                     block.appendChild(promptWarn);
@@ -4659,6 +4757,8 @@ app.registerExtension({
             function bellState(wf) {
                 const s = getState();
                 if (!wfInfo.current || !s.name) return "none";
+                // Data only avec une autre structure : rouge jusqu'a la sauvegarde du workflow.
+                if (s.wfRed && s.wfRed === s.path) return "red";
                 if (!(s.wfValidated && s.wfPath === s.path)) return "orange";
                 return workflowChanged(wf) ? "orange" : "green";
             }
@@ -4679,10 +4779,13 @@ app.registerExtension({
                 wfRow.warn.style.visibility = changed ? "visible" : "hidden";
                 wfRow.warn.title = changed ? "The workflow has changed since the last save and is not saved yet" : "";
                 const b = wfRow.bell;
-                b.style.background = st === "orange" ? BELL_ORANGE : st === "green" ? BELL_GREEN : INACTIVE_BG;
+                b.style.background = st === "red" ? BELL_RED : st === "orange" ? BELL_ORANGE
+                    : st === "green" ? BELL_GREEN : INACTIVE_BG;
                 b.style.opacity = current ? "1" : "0.6";
                 b.style.cursor = current ? "pointer" : "default";
                 b.title = !current ? "" : st === "none" ? "Workflow never saved: click to save it"
+                    : st === "red" ? "Data only: this tab keeps another workflow; save the workflow of " +
+                        shortName(s.name)
                     : st === "green" ? "Workflow saved, no change since the last save"
                         : "Changes to save: click to compare and save the workflow";
             }
@@ -5356,7 +5459,7 @@ app.registerExtension({
                 const info = await apiPost("/mmproject/save_workflow", {
                     project: s.path, name, content: JSON.stringify(wf, null, 2) + "\n", archive: archive || null,
                 });
-                setState({ wfPath: s.path, wfName: info.name, wfValidated: !!validated });
+                setState({ wfPath: s.path, wfName: info.name, wfValidated: !!validated, wfRed: "" });
                 await loadWorkflowInfo();
                 return info;
             }
@@ -5388,7 +5491,7 @@ app.registerExtension({
                     const diff = diffWorkflows(forCompare(savedWf), forCompare(currentWorkflow()), widgetNames());
                     const full = wfInfo.archives.length >= MAX_ARCHIVES;
                     const result = await workflowDialog.open({ changesHtml: changesHtml(diff), previous: prev,
-                        defaultName: name, full, message, again });
+                        defaultName: name, full, message, again, red: bellState() === "red" ? shortName(s.name) : "" });
                     again = true;
                     if (!result) return;
                     name = result.name;
@@ -5630,10 +5733,33 @@ app.registerExtension({
                 say((moved ? "Moved to " : "Renamed: ") + data.path, true);
             }
 
+            /**
+             * Cloche rouge (Data only, workflow pas encore sauvegarde, choix utilisateur
+             * 22/10/2026) : avant de charger ou creer un projet, Yes = comme le bouton Save
+             * puis on continue, No = on continue, Cancel / Echap = on reste. true = continuer.
+             */
+            async function guardUnsaved() {
+                const s = getState();
+                if (!inProject(s.name) || bellState() !== "red") return true;
+                const answer = await confirm.ask({
+                    title: "The workflow of " + shortName(s.name) + " is not saved",
+                    html: "This tab keeps a workflow that is not the saved one of <b>" + escapeHtml(shortName(s.name)) +
+                        '</b> (bell <b style="color:' + BELL_RED + '">red</b>). Save it before?',
+                    okLabel: "Yes, save", okColor: BELL_RED, altLabel: "No", altColor: INACTIVE_BG,
+                });
+                if (!answer) return false;
+                if (answer === true) await saveProjectAll();
+                return true;
+            }
+
             // D'un projet a un autre (choix utilisateur, 22/10/2026) : Load du nouveau projet,
             // comme un clic sur Load ; depuis (no project), rien de plus.
             select.addEventListener("change", async () => {
                 const prev = getState();
+                if (!(await guardUnsaved())) {
+                    select.value = prev.name;
+                    return;
+                }
                 await openProject(select.value);
                 const s = getState();
                 if (prev.name && s.name && prev.name !== s.name && inProject(s.name)) {
@@ -5732,7 +5858,8 @@ app.registerExtension({
                     return;
                 }
                 say("");
-                const checked = await loadDialog.open(report, s.path, !!from);
+                const group = from ? sameGroup(from.name, s.name) : "";
+                const checked = await loadDialog.open(report, s.path, !!from, group, shortName(s.name));
                 if (!checked) return;
                 try {
                     const items = restoreItems(report, checked);
@@ -5754,6 +5881,31 @@ app.registerExtension({
                                 st = {};
                             }
                             ln.widgets_values[0] = JSON.stringify(loadedState(st, report, s.path, media));
+                        }
+                        if (checked.dataOnly) {
+                            // Data only (choix utilisateur, 22/10/2026) : le workflow de l'onglet reste,
+                            // valeurs des noeuds communs et fichiers du projet ; cloche orange (meme
+                            // structure) ou rouge (autre structure, a sauvegarder).
+                            const merged = mergeData(currentWorkflow(), data);
+                            const savedNode = (data.nodes || []).find((n) => n && n.type === NODE_NAME);
+                            let st = {};
+                            try {
+                                st = savedNode && Array.isArray(savedNode.widgets_values)
+                                    ? JSON.parse(savedNode.widgets_values[0] || "{}") : {};
+                            } catch (e) {
+                                st = {};
+                            }
+                            st = Object.assign({}, getState(), st, { root: s.root, name: s.name, path: s.path },
+                                wf.same ? { wfValidated: false, wfRed: "" } : { wfRed: s.path });
+                            for (const n of merged.nodes || []) {
+                                if (!n || n.type !== NODE_NAME || !Array.isArray(n.widgets_values)) continue;
+                                n.widgets_values[0] = JSON.stringify(st);
+                                if (n.widgets_values_named) n.widgets_values_named.state = n.widgets_values[0];
+                            }
+                            const active = app.extensionManager && app.extensionManager.workflow &&
+                                app.extensionManager.workflow.activeWorkflow;
+                            await app.loadGraphData(merged, true, true, active || null);
+                            return;
                         }
                         if (from && !wf.same) {
                             // Autre projet, autre structure : nouvel onglet, l'onglet actuel garde son projet.
@@ -5808,21 +5960,28 @@ app.registerExtension({
             // Save : fichiers, le workflow (directement s'il n'a jamais ete
             // sauvegarde, sinon la fenetre de la cloche s'il a change), puis la
             // configuration du projet.
-            saveBtn.addEventListener("click", async () => {
+            /** Save du noeud : fichiers du Reference Loader, workflow (cloche orange ou rouge), configuration. */
+            async function saveProjectAll() {
                 const r = await saveAll(false);
-                if (r === "cancel" || r === "error") return;
+                if (r === "cancel" || r === "error") return false;
                 await loadWorkflowInfo();
+                const bell = bellState();
                 if (!wfInfo.current) await saveWorkflowDirect();
-                else if (bellState() === "orange") await workflowStep();
+                else if (bell === "orange" || bell === "red") await workflowStep();
                 await loadWorkflowInfo();
                 await saveProjectConfig();
+                return true;
+            }
+            saveBtn.addEventListener("click", () => saveProjectAll());
+            loadBtn.addEventListener("click", async () => {
+                if (await guardUnsaved()) loadProject();
             });
-            loadBtn.addEventListener("click", () => loadProject());
             purgeBtn.addEventListener("click", () => purgeProject());
             resetBtn.addEventListener("click", () => resetProject());
             copyBtn.addEventListener("click", () => copyFromProject());
             newBtn.addEventListener("click", async () => {
                 if (!wired()) return;
+                if (!(await guardUnsaved())) return;
                 await loadProjects();
                 createDialog.open({
                     root: folder.linked ? folder.root : fallbackRoot,
