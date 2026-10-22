@@ -1,0 +1,133 @@
+"""
+Tests du module final_cut (sans ComfyUI) : lancer depuis la racine de
+l'extension avec le Python embarque :
+
+    ..\\..\\..\\python_embeded\\python.exe -m unittest discover -s tests -v
+"""
+
+import os
+import shutil
+import sys
+import tempfile
+import time
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))
+
+import final_cut as fc  # noqa: E402
+import projects  # noqa: E402
+
+
+def write(path, data=b"x"):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+def files_in(folder):
+    return sorted(os.listdir(folder)) if os.path.isdir(folder) else []
+
+
+class FinalCutTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.input = os.path.join(self.root, "input")
+        self.trashed = []
+
+    def tearDown(self):
+        link = os.path.join(self.input)
+        if os.path.isdir(link):
+            for n in os.listdir(link):
+                p = os.path.join(link, n)
+                if fc._is_link(p):
+                    fc.remove_link(p)
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def trash(self, paths):
+        for p in paths:
+            self.trashed.append(os.path.basename(p))
+            os.remove(p)
+
+    def test_new_project_has_70_rush_audio(self):
+        p = projects.create_project(self.root, "Solo")
+        self.assertEqual(sorted(os.listdir(os.path.join(p, "70.Rush Audio"))),
+                         ["Footage", "No Good", "Picture Lock", "Rough Cut"])
+
+    def test_simple_project_mirror(self):
+        p = projects.create_project(self.root, "Solo")
+        self.assertEqual(fc.project_number(p), "00")
+        write(os.path.join(p, "40.Rush Videos", "Picture Lock", "v.mp4"), b"video")
+        write(os.path.join(p, "60.Rush Images", "Picture Lock", "i.png"), b"img")
+        write(os.path.join(p, "60.Rush Images", "Footage", "not_final.png"), b"no")
+        plan = fc.plan(p)
+        self.assertEqual(plan["folder"], os.path.join(p, "Final-Cut_Solo"))
+        self.assertEqual(plan["kinds"]["Video"]["add"], ["_00_v.mp4"])
+        self.assertEqual(plan["kinds"]["Images"]["add"], ["_00_i.png"])
+        self.assertEqual(plan["count"], 2)
+        self.assertFalse(os.path.exists(plan["folder"]))          # plan : rien n'est cree
+        old = time.time() - 3600
+        os.utime(os.path.join(p, "40.Rush Videos", "Picture Lock", "v.mp4"), (old, old))
+        res = fc.sync(p, self.trash, self.input)
+        dest = os.path.join(p, "Final-Cut_Solo")
+        self.assertEqual(files_in(os.path.join(dest, "Video")), ["_00_v.mp4"])
+        self.assertEqual(files_in(os.path.join(dest, "Images")), ["_00_i.png"])
+        self.assertEqual(files_in(os.path.join(dest, "Audio")), [])
+        # Copie datee du jour (en tete dans H3 Director).
+        self.assertGreater(os.path.getmtime(os.path.join(dest, "Video", "_00_v.mp4")), old + 1800)
+        # Jonction : les copies sont vues depuis input.
+        self.assertEqual(res["link"], os.path.join(self.input, "Final-Cut_Solo"))
+        self.assertEqual(files_in(os.path.join(res["link"], "Video")), ["_00_v.mp4"])
+        self.assertEqual(fc.plan(p)["count"], 0)
+        # Remplace, retire, ajoute ; une copie deposee a la main est retiree.
+        write(os.path.join(p, "40.Rush Videos", "Picture Lock", "v.mp4"), b"video v2")
+        os.remove(os.path.join(p, "60.Rush Images", "Picture Lock", "i.png"))
+        write(os.path.join(p, "70.Rush Audio", "Picture Lock", "a.wav"), b"wav")
+        write(os.path.join(dest, "Images", "by_hand.png"), b"h")
+        plan = fc.plan(p)
+        self.assertEqual((plan["kinds"]["Video"]["replace"], plan["kinds"]["Images"]["remove"],
+                          plan["kinds"]["Audio"]["add"]), (["_00_v.mp4"], ["_00_i.png", "by_hand.png"], ["_00_a.wav"]))
+        fc.sync(p, self.trash, self.input)
+        self.assertEqual(sorted(self.trashed), ["_00_i.png", "_00_v.mp4", "by_hand.png"])
+        with open(os.path.join(dest, "Video", "_00_v.mp4"), "rb") as f:
+            self.assertEqual(f.read(), b"video v2")
+        self.assertEqual(files_in(os.path.join(dest, "Audio")), ["_00_a.wav"])
+        # Les originaux ne sont jamais touches.
+        self.assertTrue(os.path.isfile(os.path.join(p, "40.Rush Videos", "Picture Lock", "v.mp4")))
+
+    def test_multiproject_numbers_and_mirror(self):
+        a = projects.create_project(self.root, "Speech", group="Yacht", new_group=True)
+        time.sleep(0.05)
+        b = projects.create_project(self.root, "Walk", group="Yacht")
+        group = os.path.join(self.root, "Yacht")
+        self.assertEqual(fc.group_numbers(group), {"00": "Yacht", "01": "Speech", "02": "Walk"})
+        self.assertEqual((fc.project_number(a), fc.project_number(b)), ("01", "02"))
+        self.assertTrue(projects.is_group(group))                   # la marque reste une marque
+        write(os.path.join(a, "40.Rush Videos", "Picture Lock", "shot.mp4"), b"a")
+        write(os.path.join(b, "40.Rush Videos", "Picture Lock", "shot.mp4"), b"b")
+        fc.sync(b, self.trash, self.input)
+        dest = os.path.join(group, "Final-Cut_Yacht")
+        self.assertEqual(files_in(os.path.join(dest, "Video")), ["_01_shot.mp4", "_02_shot.mp4"])
+        # Le dossier des copies n'est pas pris pour un sous-projet.
+        self.assertEqual(projects.project_children(group), ["Speech", "Walk"])
+        # Renommage : le numero suit ; un numero n'est jamais reattribue.
+        new = projects.rename_project(a, "Speech-01")
+        self.assertEqual(fc.project_number(new), "01")
+        shutil.rmtree(b)
+        c = projects.create_project(self.root, "Fly", group="Yacht")
+        self.assertEqual(fc.project_number(c), "03")
+        fc.sync(new, self.trash, self.input)
+        self.assertEqual(files_in(os.path.join(dest, "Video")), ["_01_shot.mp4"])
+        self.assertEqual(self.trashed, ["_02_shot.mp4"])
+
+    def test_link_never_replaces_a_real_folder(self):
+        p = projects.create_project(self.root, "Solo")
+        os.makedirs(os.path.join(self.input, "Final-Cut_Solo"))
+        with self.assertRaises(ValueError):
+            fc.sync(p, self.trash, self.input)
+        with self.assertRaises(ValueError):
+            fc.remove_link(os.path.join(self.input, "Final-Cut_Solo"))
+
+
+if __name__ == "__main__":
+    unittest.main()
