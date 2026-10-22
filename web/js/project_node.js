@@ -25,6 +25,8 @@ import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./
 // dans le dossier par defaut <input de ComfyUI>/Projets.
 
 const NODE_NAME = "MiniMaxH3Project";
+// Sortie vers le noeud MiniMax H3 Final Cut (choix utilisateur, 22/10/2026).
+const FINAL_CUT_TYPE = "MINIMAX_FINAL_CUT";
 // Entree reliee a la sortie model_link de MultiFiles Select (choix utilisateur).
 const MODELS_LINK = "models_link";
 const FILE_SELECT_TYPE = "MultiFileSelect";
@@ -216,7 +218,8 @@ const HELP_SECTIONS = [
                     "chosen by hand is never replaced)."],
                 ["Without it", "the models are read in the graph (position 0). The LoRA are always read in the graph."],
             ]) +
-            hNote("The node has no output."),
+            hNote("output <b>final_cut</b>: wire it to the <b>MiniMax H3 Final Cut</b> node (copies of the " +
+                "Picture Lock folders for MiniMax H3 Director)."),
     },
     {
         id: "folders", title: "Project folders", icon: PROJECT_ICON, color: VIOLET,
@@ -233,6 +236,8 @@ const HELP_SECTIONS = [
                 ["Repair", "A subfolder deleted by mistake is created again when you pick the project."],
                 ["Hidden", "<b>99.Project-Config</b> (configuration and its Archives) and <b>98.Error</b> (runs in error) " +
                     "are in the project folder but have no row in the node."],
+                ["70.Rush Audio", "same four sort folders as 40 and 60, no row yet; its Picture Lock feeds the Audio " +
+                    "of <b>MiniMax H3 Final Cut</b>."],
             ]) +
             hTip("A project name cannot contain <b>&lt; &gt; : \" / \\ | ? *</b> nor end with a dot."),
     },
@@ -568,7 +573,8 @@ const HELP_SECTIONS_FR = [
                 ["Sans elle", "les modèles sont lus dans le graphe (position 0). Les LoRA sont toujours lues dans le " +
                     "graphe."],
             ]) +
-            hNote("Le nœud n'a pas de sortie.", "Remarque :"),
+            hNote("sortie <b>final_cut</b> : reliez-la au nœud <b>MiniMax H3 Final Cut</b> (copies des Picture " +
+                "Lock pour MiniMax H3 Director).", "Remarque :"),
     },
     {
         id: "folders", title: "Dossiers du projet",
@@ -586,6 +592,8 @@ const HELP_SECTIONS_FR = [
                 ["Réparation", "Un sous-dossier supprimé par erreur est recréé quand vous choisissez le projet."],
                 ["Cachés", "<b>99.Project-Config</b> (configuration et ses Archives) et <b>98.Error</b> (Runs en " +
                     "erreur) sont dans le dossier du projet mais n'ont pas de ligne dans le nœud."],
+                ["70.Rush Audio", "mêmes quatre dossiers de tri que 40 et 60, pas encore de ligne ; son Picture Lock " +
+                    "alimente l'Audio de <b>MiniMax H3 Final Cut</b>."],
             ]) +
             hTip("Un nom de projet ne peut pas contenir <b>&lt; &gt; : \" / \\ | ? *</b> ni finir par un point.",
                 "Astuce :"),
@@ -4806,7 +4814,21 @@ app.registerExtension({
             }
 
             /** Runs enregistres du projet (boutons 04 / 40 / 60). */
+            /** Noeuds MiniMax H3 Final Cut relies a la sortie final_cut : ils relisent leur plan. */
+            function notifyFinalCut() {
+                const i = (node.outputs || []).findIndex((o) => o.name === "final_cut");
+                if (i < 0 || !node.graph || !node.graph.links) return;
+                const links = typeof node.graph.links.values === "function" ? [...node.graph.links.values()]
+                    : Object.values(node.graph.links);
+                for (const l of links) {
+                    if (!l || l.origin_id !== node.id || l.origin_slot !== i) continue;
+                    const t = node.graph.getNodeById(l.target_id);
+                    if (t && typeof t.mmFinalCutRefresh === "function") t.mmFinalCutRefresh();
+                }
+            }
+
             async function loadRuns(s) {
+                setTimeout(notifyFinalCut, 0);
                 try {
                     const data = await apiGet("/mmproject/runs?project=" + encodeURIComponent(s.path));
                     if (getState().path === s.path) {
@@ -6061,8 +6083,12 @@ app.registerExtension({
             const onConfigure = node.onConfigure;
             node.onConfigure = function () {
                 const ret = onConfigure ? onConfigure.apply(this, arguments) : undefined;
-                // Sortie "project" d'une version de test (sens inverse) : retiree avec son lien.
-                while (node.outputs && node.outputs.length) node.removeOutput(node.outputs.length - 1);
+                // Sortie "project" d'une version de test (sens inverse) : retiree avec son lien ;
+                // la sortie final_cut (22/10/2026) reste, et s'ajoute aux anciens workflows.
+                for (let i = (node.outputs || []).length - 1; i >= 0; i--) {
+                    if (node.outputs[i].name !== "final_cut") node.removeOutput(i);
+                }
+                if (!(node.outputs || []).some((o) => o.name === "final_cut")) node.addOutput("final_cut", FINAL_CUT_TYPE);
                 fitWidth();
                 render();
                 setTimeout(loadProjects, 0);

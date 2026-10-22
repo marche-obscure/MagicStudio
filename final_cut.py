@@ -167,8 +167,11 @@ def plan(project):
         add = sorted(n for n in expected if n not in present)
         replace = sorted(n for n in expected if n in present and not _same(expected[n], os.path.join(dest, n)))
         remove = sorted(n for n in present if n not in expected)
-        out["kinds"][kind] = {"add": add, "replace": replace, "remove": remove,
-                              "files": [{"name": n, "source": expected[n]} for n in sorted(expected)]}
+        out["kinds"][kind] = {"add": add, "replace": replace, "remove": remove, "dir": dest,
+                              "files": [{"name": n, "source": expected[n]} for n in sorted(expected)],
+                              # Copies presentes (vignettes du noeud) : nom et date.
+                              "copies": [{"name": n, "mtime": os.path.getmtime(os.path.join(dest, n))}
+                                         for n in sorted(present)]}
         out["count"] += len(add) + len(replace) + len(remove)
     return out
 

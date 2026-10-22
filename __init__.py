@@ -19,16 +19,18 @@ from . import project_config
 from . import run_record
 from . import run_tracker
 from . import final_cut
-from .nodes import MiniMaxH3RefLoader, MiniMaxH3Project, default_projects_root
+from .nodes import MiniMaxH3RefLoader, MiniMaxH3Project, MiniMaxH3FinalCut, default_projects_root
 
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3RefLoader": MiniMaxH3RefLoader,
     "MiniMaxH3Project": MiniMaxH3Project,
+    "MiniMaxH3FinalCut": MiniMaxH3FinalCut,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3RefLoader": "MiniMax H3 Reference Loader",
     "MiniMaxH3Project": "MiniMax H3 Project",
+    "MiniMaxH3FinalCut": "MiniMax H3 Final Cut",
 }
 
 WEB_DIRECTORY = "./web/js"

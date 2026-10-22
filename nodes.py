@@ -34,6 +34,8 @@ ANY_TYPE = AnyType("*")
 
 # Type de la sortie du noeud Projet et de l'entree du Ref Loader.
 PROJECT_TYPE = "MINIMAX_PROJECT"
+# Sortie final_cut du noeud Project -> entree du noeud Final Cut (choix utilisateur, 22/10/2026).
+FINAL_CUT_TYPE = "MINIMAX_FINAL_CUT"
 
 # Noms techniques des 18 sorties (dans l'ordre maximal) : le JS les
 # renomme et les reordonne selon la selection.
@@ -86,7 +88,8 @@ class MiniMaxH3Project:
     utilisateur 19/10/2026), ou <input de ComfyUI>/Projets si ce Root folder
     est vide. Le dossier se gere dans l'interface ; avec
     l'entree text_prompt branchee, chaque Run est enregistre dans
-    04.Prompt (voir run_record.py). Le noeud n'a pas de sortie.
+    04.Prompt (voir run_record.py). Sortie final_cut (22/10/2026) : le dossier du
+    projet, pour le noeud MiniMax H3 Final Cut.
     """
 
     @classmethod
@@ -107,7 +110,8 @@ class MiniMaxH3Project:
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
-    RETURN_TYPES = ()
+    RETURN_TYPES = (FINAL_CUT_TYPE,)
+    RETURN_NAMES = ("final_cut",)
     # Noeud de sortie : execute a chaque Run pour l'enregistrer (choix utilisateur).
     OUTPUT_NODE = True
     FUNCTION = "run"
@@ -125,17 +129,43 @@ class MiniMaxH3Project:
         return float("nan")
 
     def run(self, state, project=None, text_prompt=None, models_link=None, prompt=None, extra_pnginfo=None):
-        # Sans text_prompt : rien a faire (le dossier se gere dans l'interface).
-        if text_prompt is None:
-            return {}
         try:
             path = (json.loads(state or "{}") or {}).get("path") or ""
         except (TypeError, ValueError):
             path = ""
-        if not path or not os.path.isdir(path):
+        # Sortie final_cut : le dossier du projet ("" sans projet).
+        result = (path if path and os.path.isdir(path) else "",)
+        # Sans text_prompt : rien a enregistrer (le dossier se gere dans l'interface).
+        if text_prompt is None:
+            return {"result": result}
+        if not result[0]:
             print("[MiniMax H3 Project] No project picked: this run is not recorded.")
-            return {}
+            return {"result": result}
         workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
         run_file = run_record.start_run(path, text_prompt, prompt, workflow=workflow)
         # Lu par l'interface : a la fin du Run, les fichiers generes sont associes a ce JSON.
-        return {"ui": {"mmrun": [run_file]}}
+        return {"ui": {"mmrun": [run_file]}, "result": result}
+
+
+class MiniMaxH3FinalCut:
+    """
+    Copies des rushs finaux (Picture Lock de 40 / 60 / 70) d'un projet ou d'un
+    MultiProject dans Final-Cut_<Nom>, liees dans le dossier input de ComfyUI pour
+    H3 Director (voir final_cut.py). Tout se passe dans l'interface
+    (web/js/final_cut_node.js) : le noeud ne s'execute pas pendant un Run.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"final_cut": (FINAL_CUT_TYPE,)}}
+
+    RETURN_TYPES = ()
+    FUNCTION = "run"
+    CATEGORY = "loaders/minimax"
+    DESCRIPTION = (
+        "Mirror of the Picture Lock folders of a project (Images, Video, Audio) in Final-Cut_<Name>, linked in "
+        "the input folder of ComfyUI: drag the files into MiniMax H3 Director."
+    )
+
+    def run(self, final_cut=None):
+        return {}
