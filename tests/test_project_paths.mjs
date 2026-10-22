@@ -9,7 +9,6 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     batchSortTargets, canDeleteRush, deletedText, anchoredSubs, projectNameOfPath, subfolderLabel,
-    moreComplete, sameGroup, lessComplete, mergeData,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
 } from "../web/js/project_paths.js";
@@ -351,10 +350,10 @@ test("noms refuses", () => {
 });
 
 test("etat tolerant", () => {
-    const empty = { root: "", name: "", path: "", folder: "", wfPath: "", wfName: "", wfValidated: false, snap: {}, snapPath: "", wfRed: "" };
+    const empty = { root: "", name: "", path: "", folder: "", wfPath: "", wfName: "", wfValidated: false, snap: {}, snapPath: "" };
     assert.deepEqual(parseProjectState(
-        '{"root":"R","name":"N","path":"P","folder":"F","wfPath":"P","wfName":"N.json","wfValidated":true,"wfRed":"P"}'),
-    { root: "R", name: "N", path: "P", folder: "F", wfPath: "P", wfName: "N.json", wfValidated: true, snap: {}, snapPath: "", wfRed: "P" });
+        '{"root":"R","name":"N","path":"P","folder":"F","wfPath":"P","wfName":"N.json","wfValidated":true}'),
+    { root: "R", name: "N", path: "P", folder: "F", wfPath: "P", wfName: "N.json", wfValidated: true, snap: {}, snapPath: "" });
     // Etat d'avant le dossier personnalise et le workflow : champs vides.
     assert.deepEqual(parseProjectState('{"root":"R","name":"N","path":"P"}'),
         Object.assign({}, empty, { root: "R", name: "N", path: "P" }));
@@ -499,46 +498,4 @@ test("subfolder names relative to the Project / Sub-project choice", () => {
     assert.equal(subfolderLabel("Yacht/Speech/08.Images", ""), "Yacht/Speech/08.Images");
     assert.equal(subfolderLabel("Solo\\10.Son", "solo"), "10.Son");
     assert.equal(subfolderLabel("Solo2/10.Son", "Solo"), "Solo2/10.Son");
-});
-
-test("more complete structure of a project of the same MultiProject", () => {
-    const d = (added, missing, ladded = [], lmissing = []) =>
-        ({ nodes_added: added, nodes_missing: missing, links_added: ladded, links_missing: lmissing,
-            same: !added.length && !missing.length && !ladded.length && !lmissing.length });
-    assert.equal(moreComplete(d(["#9 KSampler"], [])), true);
-    assert.equal(moreComplete(d([], [], ["#1:a -> #2:b"])), true);
-    assert.equal(moreComplete(d(["#9 KSampler"], ["#3 VAE"])), false);
-    assert.equal(moreComplete(d(["#9 KSampler"], [], [], ["#1:a -> #2:b"])), false);
-    assert.equal(moreComplete(d([], [])), false);
-    assert.equal(moreComplete(null), false);
-    assert.equal(sameGroup("Yatch/Speech-01", "Yatch/Speech-02"), "Yatch");
-    assert.equal(sameGroup("Yatch/Speech-01", "yatch/Walk"), "Yatch");
-    assert.equal(sameGroup("Yatch/Speech-01", "Other/Speech-01"), "");
-    assert.equal(sameGroup("Solo", "Yatch/Speech-01"), "");
-    assert.equal(sameGroup("Yatch/Speech-01", "Yatch/Speech-01"), "");
-});
-
-test("less complete structure: the data of the saved workflow in the structure of the tab", () => {
-    const d = (added, missing, ladded = [], lmissing = []) =>
-        ({ nodes_added: added, nodes_missing: missing, links_added: ladded, links_missing: lmissing,
-            same: !added.length && !missing.length && !ladded.length && !lmissing.length });
-    assert.equal(lessComplete(d([], ["#9 KSampler"])), true);
-    assert.equal(lessComplete(d([], [], [], ["#1:a -> #2:b"])), true);
-    assert.equal(lessComplete(d(["#3 VAE"], ["#9 KSampler"])), false);
-    assert.equal(lessComplete(d([], [])), false);
-    assert.equal(lessComplete(null), false);
-    const current = { nodes: [
-        { id: 1, type: "Prompt", widgets_values: ["walk"], widgets_values_named: { text: "walk" } },
-        { id: 2, type: "KSampler", widgets_values: [1, 20] },
-        { id: 3, type: "Upscale", widgets_values: [2] },
-    ], links: [[1, 1, 0, 2, 0, "X"]] };
-    const saved = { nodes: [
-        { id: 1, type: "Prompt", widgets_values: ["speech"], widgets_values_named: { text: "speech" } },
-        { id: 2, type: "Other", widgets_values: [9] },
-    ] };
-    const m = mergeData(current, saved);
-    assert.deepEqual(m.nodes.map((n) => n.widgets_values), [["speech"], [1, 20], [2]]);
-    assert.deepEqual(m.nodes[0].widgets_values_named, { text: "speech" });
-    assert.deepEqual(m.links, current.links);
-    assert.deepEqual(current.nodes[0].widgets_values, ["walk"]);   // current n'est pas modifie
 });

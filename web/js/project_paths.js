@@ -298,8 +298,6 @@ export function parseProjectState(raw) {
         root: str(data.root), name: str(data.name), path: str(data.path), folder: str(data.folder),
         wfPath: str(data.wfPath), wfName: str(data.wfName), wfValidated: data.wfValidated === true,
         snap, snapPath: str(data.snapPath),
-        // Structure de l'onglet gardee avec les donnees de ce projet (cloche rouge, 22/10/2026).
-        wfRed: str(data.wfRed),
     };
 }
 
@@ -690,55 +688,6 @@ export function subfolderLabel(path, project) {
     if (!project) return p;
     const n = String(project).replace(/\\/g, "/");
     return p.toLowerCase().startsWith(n.toLowerCase() + "/") ? p.slice(n.length + 1) : p;
-}
-
-/**
- * Structure plus complete (choix utilisateur, 22/10/2026) : le workflow sauvegarde
- * (diff du serveur, saved vs onglet) a tous les noeuds et liaisons de l'onglet, et au
- * moins un noeud ou une liaison en plus.
- */
-export function moreComplete(diff) {
-    if (!diff || diff.same) return false;
-    const n = (k) => (Array.isArray(diff[k]) ? diff[k].length : 0);
-    return !n("nodes_missing") && !n("links_missing") && n("nodes_added") + n("links_added") > 0;
-}
-
-/**
- * Structure moins complete (choix utilisateur, 22/10/2026) : l'onglet a tous les noeuds
- * et liaisons du workflow sauvegarde, et au moins un en plus.
- */
-export function lessComplete(diff) {
-    if (!diff || diff.same) return false;
-    const n = (k) => (Array.isArray(diff[k]) ? diff[k].length : 0);
-    return !n("nodes_added") && !n("links_added") && n("nodes_missing") + n("links_missing") > 0;
-}
-
-/**
- * Donnees d'un workflow dans la structure d'un autre (choix utilisateur, 22/10/2026) :
- * copie de current ou chaque noeud de meme numero et de meme type que dans saved prend
- * ses valeurs (widgets_values, widgets_values_named) ; les autres noeuds gardent les leurs.
- */
-export function mergeData(current, saved) {
-    const out = JSON.parse(JSON.stringify(current || {}));
-    const byId = new Map(((saved && saved.nodes) || []).filter((n) => n && n.id != null).map((n) => [String(n.id), n]));
-    for (const n of out.nodes || []) {
-        const src = n && byId.get(String(n.id));
-        if (!src || src.type !== n.type) continue;
-        if ("widgets_values" in src) n.widgets_values = JSON.parse(JSON.stringify(src.widgets_values));
-        if ("widgets_values_named" in src) n.widgets_values_named = JSON.parse(JSON.stringify(src.widgets_values_named));
-        else delete n.widgets_values_named;
-    }
-    return out;
-}
-
-/** MultiProject commun a deux projets "G/A" et "G/B" (meme projet mere), sinon "". */
-export function sameGroup(a, b) {
-    const group = (n) => {
-        const s = String(n || "");
-        return s.includes("/") ? s.slice(0, s.lastIndexOf("/")) : "";
-    };
-    const g = group(a);
-    return g && g.toLowerCase() === group(b).toLowerCase() && String(a).toLowerCase() !== String(b).toLowerCase() ? g : "";
 }
 
 export function filterSubfolders(entries, project) {

@@ -10,7 +10,7 @@ import {
 } from "./minimax_ref_loader.js";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
-    mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath, moreComplete, sameGroup, lessComplete, mergeData,
+    mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
     unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
@@ -75,8 +75,6 @@ const WARN_WIDTH = 16;
 // Couleurs de la cloche du workflow : orange = changements a sauvegarder, vert = a jour.
 const BELL_ORANGE = "#e0793c";
 const BELL_GREEN = "#43a047";
-// Cloche rouge : structure de l'onglet gardee avec les donnees d'un autre projet (22/10/2026).
-const BELL_RED = "#d32f2f";
 const WORKFLOWS = "00.Workflows";
 const BELL_ICON = svg(
     '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>', 12);
@@ -434,13 +432,6 @@ const HELP_SECTIONS = [
                 "another project picked in the list opens in a new tab named after its workflow, this tab keeps " +
                 "its project, then <b>OK</b> stays here and <b>Open the project</b> goes to the new tab " +
                 "(the window lists the nodes and links in more or missing);",
-                "another project <b>of the same MultiProject</b> whose saved structure is <b>more complete</b> " +
-                "(all the nodes and links of this tab, and more): after Load a question asks to replace the " +
-                "workflow of this tab with it: <b>Yes, replace</b>, or <b>No, new tab</b> (opened in a new tab as above);",
-                "the same, <b>less complete</b> (this tab has all its nodes and links, and more): the question proposes " +
-                "to keep the structure of this tab and load only the data of the project (files of the Reference " +
-                "Loader, values of the common nodes: prompt, seed, steps, models…); the bell turns red until the " +
-                "workflow is saved. The most complete structure wins;",
                 "replacing the current workflow asks first: the changes since the last save are lost;",
                 "picking another project in the list (from a project) opens this Load window by itself;",
                 "unchecked: nothing opens, the folders checked go to the Reference Loader of this tab.",
@@ -454,10 +445,7 @@ const HELP_SECTIONS = [
                 iconBadge(BELL_ICON, BELL_ORANGE) + " orange: changes to save (also right after the first save, " +
                 "until you save it once with the bell);",
                 iconBadge(BELL_ICON, BELL_GREEN) + " green: saved, no change since; it turns orange again on " +
-                "the next change (nodes, links, values);",
-                iconBadge(BELL_ICON, BELL_RED) + " red: this tab kept its structure and took the data of another " +
-                "project of the same MultiProject: save the workflow. While it is red, loading or creating a project " +
-                "first asks <b>Yes, save</b> (like the <b>Save</b> button: files, workflow, configuration) / <b>No</b> / <b>Cancel</b>.",
+                "the next change (nodes, links, values).",
             ]) +
             "<p>Click the bell: the window lists the changes since the last save, asks whether to archive the " +
             "previous workflow (moved to <b>00.Workflows/Archives</b> as <b>yyyyMMdd-HHmmss_name.json</b>, date " +
@@ -814,14 +802,6 @@ const HELP_SECTIONS_FR = [
                 "un autre projet choisi dans la liste s'ouvre dans un nouvel onglet au nom de son workflow, cet " +
                 "onglet garde son projet, puis <b>OK</b> reste ici et <b>Open the project</b> va au nouvel onglet " +
                 "(la fenêtre liste les nœuds et liaisons en plus ou manquants) ;",
-                "un autre projet <b>du même MultiProject</b> dont la structure sauvegardée est <b>plus complète</b> " +
-                "(tous les nœuds et liaisons de cet onglet, et plus) : après Load, une question propose de remplacer " +
-                "le workflow de cet onglet : <b>Yes, replace</b>, ou <b>No, new tab</b> (ouvert dans un nouvel onglet " +
-                "comme ci-dessus) ;",
-                "même chose, <b>moins complète</b> (cet onglet a tous ses nœuds et liaisons, et plus) : la question " +
-                "propose de garder la structure de cet onglet et de ne charger que les données du projet (fichiers " +
-                "du Reference Loader, valeurs des nœuds communs : prompt, seed, steps, modèles…) ; la cloche passe au " +
-                "rouge jusqu'à la sauvegarde du workflow. La structure la plus complète gagne ;",
                 "remplacer le workflow en cours demande d'abord confirmation : les modifications depuis la " +
                 "dernière sauvegarde sont perdues ;",
                 "choisir un autre projet dans la liste (depuis un projet) ouvre cette fenêtre Load d'elle-même ;",
@@ -836,10 +816,7 @@ const HELP_SECTIONS_FR = [
                 iconBadge(BELL_ICON, BELL_ORANGE) + " orange : changements à sauvegarder (aussi juste après la " +
                 "première sauvegarde, jusqu'à ce que vous le sauvegardiez une fois par la cloche) ;",
                 iconBadge(BELL_ICON, BELL_GREEN) + " verte : sauvegardé, aucun changement depuis ; elle repasse à " +
-                "l'orange au prochain changement (nœuds, liens, valeurs) ;",
-                iconBadge(BELL_ICON, BELL_RED) + " rouge : cet onglet a gardé sa structure et pris les données d'un " +
-                "autre projet du même MultiProject : sauvegardez le workflow. Tant qu'elle est rouge, charger ou créer " +
-                "un projet demande d'abord <b>Yes, save</b> (comme le bouton <b>Save</b> : fichiers, workflow, configuration) / <b>No</b> / <b>Cancel</b>.",
+                "l'orange au prochain changement (nœuds, liens, valeurs).",
             ]) +
             "<p>Cliquez sur la cloche : la fenêtre liste les changements depuis la dernière sauvegarde, demande " +
             "s'il faut archiver le workflow précédent (déplacé dans <b>00.Workflows/Archives</b> sous " +
@@ -3840,9 +3817,8 @@ function buildSetViewer(container, onSort, onWorkflow, rush) {
 }
 
 /**
- * open(report, projectPath, switching, group) -> Promise<dossiers coches | null> (Cancel, Echap,
- * clic a cote = null) ; switching = changement de projet (autre structure -> nouvel onglet) ;
- * group = MultiProject commun quand la structure sauvegardee est plus complete (choix propose).
+ * open(report, projectPath, switching) -> Promise<dossiers coches | null> (Cancel, Echap, clic a
+ * cote = null) ; switching = changement de projet (autre structure -> nouvel onglet).
  */
 function buildLoadDialog(container) {
     const { overlay, card } = makeOverlay();
@@ -3956,15 +3932,7 @@ function buildLoadDialog(container) {
             html += '<div style="color:' + GREEN + '">Same structure (nodes and links): the current workflow is replaced.</div>';
         } else {
             // Autre projet : nouvel onglet ; meme projet : l'onglet actuel le recoit (choix utilisateur, 22/10/2026).
-            // Meme MultiProject et structure plus complete : le choix est propose apres Load.
-            html += '<div style="color:' + ORANGE + '">' + (switching && upgradeGroup && best === "less"
-                ? "Different structure, less complete (same MultiProject <b>" + escapeHtml(upgradeGroup) +
-                    "</b>): after Load, a question proposes to keep the structure of this tab and load only the " +
-                    "data of this project (No: new tab)."
-                : switching && upgradeGroup
-                ? "Different structure, more complete (same MultiProject <b>" + escapeHtml(upgradeGroup) +
-                    "</b>): after Load, a question proposes to replace the workflow of this tab (No: new tab)."
-                : switching
+            html += '<div style="color:' + ORANGE + '">' + (switching
                 ? "Different structure: this tab keeps its project, the saved workflow opens in a new tab <b>" +
                     escapeHtml(String(wf.name).replace(/\.json$/i, "")) + "</b>."
                 : "Different structure: the current workflow is replaced by the saved one.") + "</div>" +
@@ -3974,13 +3942,9 @@ function buildLoadDialog(container) {
     }
 
     let switching = false;
-    let upgradeGroup = "";
-    let best = "";
     return {
-        open(report, projectPath, isSwitching, group, kind) {
+        open(report, projectPath, isSwitching) {
             switching = !!isSwitching;
-            upgradeGroup = group || "";
-            best = kind || "";
             if (resolve) finish(null);
             sub.textContent = "Saved on " + (report.datemodifi || "?") + " · mode " + (report.mode || "?");
             body.innerHTML = "";
@@ -4695,8 +4659,6 @@ app.registerExtension({
             function bellState(wf) {
                 const s = getState();
                 if (!wfInfo.current || !s.name) return "none";
-                // Structure d'un autre projet gardee avec les donnees de celui-ci : a sauvegarder.
-                if (s.wfRed && s.wfRed === s.path && workflowChanged(wf)) return "red";
                 if (!(s.wfValidated && s.wfPath === s.path)) return "orange";
                 return workflowChanged(wf) ? "orange" : "green";
             }
@@ -4717,13 +4679,10 @@ app.registerExtension({
                 wfRow.warn.style.visibility = changed ? "visible" : "hidden";
                 wfRow.warn.title = changed ? "The workflow has changed since the last save and is not saved yet" : "";
                 const b = wfRow.bell;
-                b.style.background = st === "red" ? BELL_RED : st === "orange" ? BELL_ORANGE
-                    : st === "green" ? BELL_GREEN : INACTIVE_BG;
+                b.style.background = st === "orange" ? BELL_ORANGE : st === "green" ? BELL_GREEN : INACTIVE_BG;
                 b.style.opacity = current ? "1" : "0.6";
                 b.style.cursor = current ? "pointer" : "default";
                 b.title = !current ? "" : st === "none" ? "Workflow never saved: click to save it"
-                    : st === "red" ? "Structure changed (kept from another project): save the workflow of " +
-                        shortName(s.name)
                     : st === "green" ? "Workflow saved, no change since the last save"
                         : "Changes to save: click to compare and save the workflow";
             }
@@ -5397,7 +5356,7 @@ app.registerExtension({
                 const info = await apiPost("/mmproject/save_workflow", {
                     project: s.path, name, content: JSON.stringify(wf, null, 2) + "\n", archive: archive || null,
                 });
-                setState({ wfPath: s.path, wfName: info.name, wfValidated: !!validated, wfRed: "" });
+                setState({ wfPath: s.path, wfName: info.name, wfValidated: !!validated });
                 await loadWorkflowInfo();
                 return info;
             }
@@ -5671,35 +5630,10 @@ app.registerExtension({
                 say((moved ? "Moved to " : "Renamed: ") + data.path, true);
             }
 
-            /**
-             * Cloche rouge (structure gardee pas encore sauvegardee, choix utilisateur 22/10/2026) :
-             * avant de charger ou creer un projet, Yes = fenetre de la cloche puis on continue,
-             * No = on continue, Cancel / Echap = on reste. Renvoie true pour continuer.
-             */
-            async function guardUnsaved() {
-                const s = getState();
-                if (!inProject(s.name) || bellState() !== "red") return true;
-                const answer = await confirm.ask({
-                    title: "The structure of " + shortName(s.name) + " is not saved",
-                    html: "This tab keeps a structure that is not the saved workflow of <b>" +
-                        escapeHtml(shortName(s.name)) + "</b> (bell <b style=\"color:" + BELL_RED + "\">red</b>). " +
-                        "Save it before?",
-                    okLabel: "Yes, save", okColor: BELL_RED, altLabel: "No", altColor: INACTIVE_BG,
-                });
-                if (!answer) return false;
-                // Oui : comme le bouton Save (fichiers, workflow, configuration).
-                if (answer === true) await saveProjectAll();
-                return true;
-            }
-
             // D'un projet a un autre (choix utilisateur, 22/10/2026) : Load du nouveau projet,
             // comme un clic sur Load ; depuis (no project), rien de plus.
             select.addEventListener("change", async () => {
                 const prev = getState();
-                if (!(await guardUnsaved())) {
-                    select.value = prev.name;
-                    return;
-                }
                 await openProject(select.value);
                 const s = getState();
                 if (prev.name && s.name && prev.name !== s.name && inProject(s.name)) {
@@ -5798,16 +5732,7 @@ app.registerExtension({
                     return;
                 }
                 say("");
-                // Meme MultiProject, structure plus complete (choix utilisateur, 22/10/2026) :
-                // remplacement dans cet onglet propose au lieu du nouvel onglet.
-                const wf0 = report.workflow;
-                const upgrade = from && wf0 && wf0.source && !wf0.same && moreComplete(wf0.diff)
-                    ? sameGroup(from.name, s.name) : "";
-                // Moins complete : la structure de l'onglet est gardee, seules les donnees du projet viennent.
-                const downgrade = from && wf0 && wf0.source && !wf0.same && lessComplete(wf0.diff)
-                    ? sameGroup(from.name, s.name) : "";
-                const checked = await loadDialog.open(report, s.path, !!from, upgrade || downgrade,
-                    upgrade ? "more" : downgrade ? "less" : "");
+                const checked = await loadDialog.open(report, s.path, !!from);
                 if (!checked) return;
                 try {
                     const items = restoreItems(report, checked);
@@ -5830,53 +5755,7 @@ app.registerExtension({
                             }
                             ln.widgets_values[0] = JSON.stringify(loadedState(st, report, s.path, media));
                         }
-                        // Oui : la structure plus complete remplace celle de l'onglet ; Non : nouvel
-                        // onglet comme avant (choix utilisateur, 22/10/2026).
-                        if (from && !wf.same && downgrade) {
-                            // La structure la plus complete gagne (choix utilisateur, 22/10/2026) : Oui =
-                            // l'onglet garde sa structure et prend les donnees du projet ; Non = nouvel onglet.
-                            const keep = await confirm.ask({
-                                title: "Keep the structure of " + shortName(from.name) + " and load the data of " +
-                                    shortName(s.name) + "?",
-                                html: "This tab has all the nodes and links of the workflow of <b>" +
-                                    escapeHtml(shortName(s.name)) + "</b>, and more (same MultiProject <b>" +
-                                    escapeHtml(downgrade) + "</b>)." +
-                                    (wf.diff ? structureHtml(wf.diff, "In more", "Only in this tab") : "") +
-                                    "<br><b>Yes</b>: the structure of this tab stays; the files of the Reference Loader " +
-                                    "and the values of the common nodes (prompt, seed, steps, models…) come from <b>" +
-                                    escapeHtml(shortName(s.name)) + "</b>. The bell turns <b style=\"color:" + BELL_RED +
-                                    "\">red</b> until the workflow is saved. <b>No</b>: it opens in a new tab, this tab " +
-                                    "keeps its project.",
-                                okLabel: "Yes, keep the structure", okColor: PINK, cancelLabel: "No, new tab",
-                            });
-                            if (keep) {
-                                const merged = mergeData(currentWorkflow(), data);
-                                // Etat du noeud Projet : celui du projet charge, cloche rouge.
-                                for (const n of merged.nodes || []) {
-                                    if (!n || n.type !== NODE_NAME || !Array.isArray(n.widgets_values)) continue;
-                                    const st = Object.assign({}, getState(), { wfRed: s.path });
-                                    n.widgets_values[0] = JSON.stringify(st);
-                                    if (n.widgets_values_named) n.widgets_values_named.state = n.widgets_values[0];
-                                }
-                                const active = app.extensionManager && app.extensionManager.workflow &&
-                                    app.extensionManager.workflow.activeWorkflow;
-                                await app.loadGraphData(merged, true, true, active || null);
-                                return;
-                            }
-                        }
-                        let replaced = false;
-                        if (from && !wf.same && upgrade) {
-                            replaced = !!(await confirm.ask({
-                                title: "Replace " + shortName(from.name) + " with " + shortName(s.name) + " in this tab?",
-                                html: "The workflow of <b>" + escapeHtml(shortName(s.name)) + "</b> has all the nodes " +
-                                    "and links of this tab, and more (same MultiProject <b>" + escapeHtml(upgrade) +
-                                    "</b>)." + (wf.diff ? structureHtml(wf.diff, "In more", "Missing") : "") +
-                                    "<br><b>Yes</b>: it replaces the workflow of this tab; all the changes made since the " +
-                                    "last save are lost. <b>No</b>: it opens in a new tab, this tab keeps its project.",
-                                okLabel: "Yes, replace", okColor: PINK, cancelLabel: "No, new tab",
-                            }));
-                        }
-                        if (from && !wf.same && !replaced) {
+                        if (from && !wf.same) {
                             // Autre projet, autre structure : nouvel onglet, l'onglet actuel garde son projet.
                             const tabName = String(wf.name).replace(/\.json$/i, "");
                             setState(from);
@@ -5898,9 +5777,8 @@ app.registerExtension({
                             else say("Project " + shortName(s.name) + " is open in the tab " + tab.name + "." + restored, true);
                             return;
                         }
-                        // L'onglet actuel recoit le workflow sauvegarde : modifications non sauvegardees
-                        // perdues (deja dit par la question de la structure plus complete).
-                        const replace = replaced || await confirm.ask({
+                        // L'onglet actuel recoit le workflow sauvegarde : modifications non sauvegardees perdues.
+                        const replace = await confirm.ask({
                             title: "Load the project " + shortName(s.name) + " in this tab?",
                             html: "All the changes made in this tab since the last save will be lost.",
                             okLabel: "Load", okColor: PINK,
@@ -5930,28 +5808,21 @@ app.registerExtension({
             // Save : fichiers, le workflow (directement s'il n'a jamais ete
             // sauvegarde, sinon la fenetre de la cloche s'il a change), puis la
             // configuration du projet.
-            /** Save du noeud : fichiers du Reference Loader, workflow (cloche orange ou rouge), configuration. */
-            async function saveProjectAll() {
+            saveBtn.addEventListener("click", async () => {
                 const r = await saveAll(false);
-                if (r === "cancel" || r === "error") return false;
+                if (r === "cancel" || r === "error") return;
                 await loadWorkflowInfo();
-                const bell = bellState();
                 if (!wfInfo.current) await saveWorkflowDirect();
-                else if (bell === "orange" || bell === "red") await workflowStep();
+                else if (bellState() === "orange") await workflowStep();
                 await loadWorkflowInfo();
                 await saveProjectConfig();
-                return true;
-            }
-            saveBtn.addEventListener("click", () => saveProjectAll());
-            loadBtn.addEventListener("click", async () => {
-                if (await guardUnsaved()) loadProject();
             });
+            loadBtn.addEventListener("click", () => loadProject());
             purgeBtn.addEventListener("click", () => purgeProject());
             resetBtn.addEventListener("click", () => resetProject());
             copyBtn.addEventListener("click", () => copyFromProject());
             newBtn.addEventListener("click", async () => {
                 if (!wired()) return;
-                if (!(await guardUnsaved())) return;
                 await loadProjects();
                 createDialog.open({
                     root: folder.linked ? folder.root : fallbackRoot,
