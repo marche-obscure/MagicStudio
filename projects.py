@@ -87,6 +87,49 @@ def is_project(path):
     return _has_parts(path) and not project_children(path)
 
 
+# Marque d'un dossier de projets (choix utilisateur 22/10/2026) : un dossier qui ne
+# contient que des projets ressemble a une racine ; la marque dit que c'est un groupe
+# declare sous son dossier mere (posee a sa creation et quand la racine le liste).
+GROUP_MARK = ".mmproject-group"
+
+
+def is_group(path):
+    return os.path.isfile(os.path.join(path, GROUP_MARK))
+
+
+def mark_group(path):
+    """Pose la marque de dossier de projets (fichier cache sous Windows) ; erreur ignoree."""
+    mark = os.path.join(path, GROUP_MARK)
+    if os.path.isfile(mark):
+        return
+    try:
+        with open(mark, "w", encoding="utf-8") as f:
+            f.write("Folder of projects of the MiniMax H3 Project node.\n")
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.kernel32.SetFileAttributesW(mark, 2)  # FILE_ATTRIBUTE_HIDDEN
+    except OSError:
+        pass
+
+
+def anchor_root(root):
+    """
+    Racine des projets ancree sur le dossier mere (choix utilisateur 22/10/2026) :
+    un projet (dossiers 00 a 99) ou un dossier de projets marque n'est jamais la
+    racine, on remonte (deux niveaux au plus : projet dans un dossier de projets).
+    Renvoie (racine, chemin relatif de l'ancienne racine avec "/", "" si inchangee).
+    """
+    p = os.path.abspath(root)
+    parts = []
+    for _ in range(2):
+        parent = os.path.dirname(p)
+        if parent == p or not (is_group(p) or (_has_parts(p) and not project_children(p))):
+            break
+        parts.insert(0, os.path.basename(p))
+        p = parent
+    return p, "/".join(parts)
+
+
 def project_tree(root):
     """
     Projets de la racine (choix utilisateur 22/10/2026) : [{name, projects}] ;
@@ -103,6 +146,7 @@ def project_tree(root):
         p = os.path.join(root, n)
         subs = project_children(p)
         if subs:
+            mark_group(p)
             out.append({"name": n, "projects": subs})
         elif _has_parts(p):
             out.append({"name": n, "projects": None})
@@ -190,6 +234,8 @@ def create_project(root, name, create_root=False, group=None, new_group=False):
     path = os.path.join(where, name)
     os.makedirs(path)
     ensure_project(path)
+    if group is not None:
+        mark_group(where)
     return path
 
 

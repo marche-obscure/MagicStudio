@@ -642,6 +642,30 @@ export function withoutPaths(paths, gone) {
 }
 
 /**
+ * Root folder ancre sur le dossier mere (choix utilisateur, 22/10/2026) : prefix =
+ * ancienne racine relative a la nouvelle ("Groupe" ou "Groupe/Projet"). Sous-dossiers
+ * de la galerie (subs, relatifs a la racine) prefixes pour rester au meme endroit ;
+ * un type avec son propre dossier (folders[k]) n'est pas touche.
+ */
+export function anchoredSubs(subs, folders, prefix) {
+    const out = { ...(subs || {}) };
+    if (!prefix) return out;
+    for (const k of ["image", "video", "audio"]) {
+        if (folders && folders[k]) continue;
+        const v = String(out[k] || "");
+        out[k] = v ? prefix + "/" + v : prefix;
+    }
+    return out;
+}
+
+/** Nom (list_projects) du projet dont le dossier est path, sinon "". */
+export function projectNameOfPath(root, names, path) {
+    const norm = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/$/, "").toLowerCase();
+    const want = norm(path);
+    return (names || []).find((n) => norm(String(root || "") + "/" + n) === want) || "";
+}
+
+/**
  * Filtre "Project" de la galerie du Ref Loader (choix utilisateur, 19/10/2026) :
  * sous-dossiers (chemins relatifs au Root folder) du projet choisi ; "" = All.
  */

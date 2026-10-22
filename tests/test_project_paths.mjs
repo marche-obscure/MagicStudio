@@ -8,7 +8,7 @@ import {
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
-    batchSortTargets, canDeleteRush, deletedText,
+    batchSortTargets, canDeleteRush, deletedText, anchoredSubs, projectNameOfPath,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
 } from "../web/js/project_paths.js";
@@ -474,4 +474,15 @@ test("lot de 40 / 60 : boutons actifs, suppression, marque deleted", () => {
     assert.equal(deletedText({ date: "20261020_101010", how: "trash" }), "Deleted (Recycle Bin) – 20/10/2026 10:10:10");
     assert.equal(deletedText({ date: "20261020_101010", how: "permanent" }), "Deleted permanently – 20/10/2026 10:10:10");
     assert.equal(deletedText(null), "");
+});
+
+test("root folder anchored on the parent folder", () => {
+    const subs = { image: "Speech/08.Images", video: "", audio: "x" };
+    assert.deepEqual(anchoredSubs(subs, { image: "", video: "", audio: "D:/Sons" }, "Yacht"),
+        { image: "Yacht/Speech/08.Images", video: "Yacht", audio: "x" });
+    assert.deepEqual(anchoredSubs(subs, {}, ""), subs);
+    const names = ["Projet de test", "Yacht/Speech", "Yacht/Walk"];
+    assert.equal(projectNameOfPath("F:\\P", names, "F:\\P\\Yacht\\Speech"), "Yacht/Speech");
+    assert.equal(projectNameOfPath("F:/P/", names, "f:/p/projet de test"), "Projet de test");
+    assert.equal(projectNameOfPath("F:\\P", names, "F:\\Q\\Speech"), "");
 });

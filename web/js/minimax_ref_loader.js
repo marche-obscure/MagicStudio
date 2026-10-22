@@ -3,7 +3,7 @@ import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
 import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
-    relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder } from "./project_paths.js";
+    relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, anchoredSubs } from "./project_paths.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -4686,6 +4686,15 @@ app.registerExtension({
                 resetRootSubs(s);
                 setState(s);
                 relinkRoot(root);
+            };
+            // Root folder ancre sur le dossier mere par le noeud Projet (choix utilisateur,
+            // 22/10/2026) : la galerie garde son sous-dossier (prefixe par l'ancienne racine).
+            node.mmAnchorRoot = (root, prefix) => {
+                const s = getState();
+                if (s.root === root) return;
+                s.root = root;
+                s.subs = anchoredSubs(s.subs, s.folders, prefix);
+                setState(s);
             };
             // Save, renommer / deplacer du noeud Projet : il lit la selection et
             // la remplace par les chemins des copies (ou du projet deplace).

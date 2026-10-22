@@ -188,8 +188,10 @@ try:
         propose alors de la creer).
         """
         try:
-            root = await _in_executor(_projects_root, request.rel_url.query.get("root", ""))
-            exists = os.path.isdir(root)
+            requested = await _in_executor(_projects_root, request.rel_url.query.get("root", ""))
+            exists = os.path.isdir(requested)
+            # Racine ancree sur le dossier mere : prefix = ancienne racine relative a la nouvelle.
+            root, prefix = projects.anchor_root(requested) if exists else (requested, "")
             tree = await _in_executor(projects.project_tree, root) if exists else []
         except Exception as e:
             return _project_error(e)
@@ -198,7 +200,7 @@ try:
             names.extend([e["name"]] if e["projects"] is None
                          else [e["name"] + projects.GROUP_SEP + s for s in e["projects"]])
         return web.json_response({"root": root, "exists": exists, "default_root": default_projects_root(),
-                                  "projects": names, "tree": tree})
+                                  "projects": names, "tree": tree, "anchored": prefix})
 
     @routes.post("/mmproject/create")
     async def mmproject_create(request):
