@@ -1,7 +1,7 @@
 import { app } from "../../scripts/app.js";
 import {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, INACTIVE_BG,
-    svg, iconBadge, hList, hSteps, hTip, hNote, hCard, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, CLOSE_ICON,
+    svg, iconBadge, hList, hSteps, hTip, hNote, hCard, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, CLOSE_ICON, EYE_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, escapeHtml, buildHelpOverlay,
 } from "./minimax_ref_loader.js";
 
@@ -57,13 +57,27 @@ const HELP_SECTIONS = [
             "Wire the <b>final_cut</b> output of the <b>MiniMax H3 Project</b> node to the <b>final_cut</b> input " +
             "of this node.",
             "The first time, the node creates the copies and the link in the input folder of ComfyUI.",
-            "Drag a thumbnail onto <b>MiniMax H3 Director</b>, or pick the files in its windows (folder " +
-            "<b>Final-Cut_&lt;Name&gt;</b>).",
+            "Click <b>Images</b>, <b>Video</b> or <b>Audio</b>: the window shows the copies; drag a file onto " +
+            "<b>MiniMax H3 Director</b>.",
         ]) +
         hCard("The node", [
-            [textChip("Sync · n", SYNC_COLOR), "Shown when the Picture Lock folders changed: applies the mirror"],
-            [iconBadge(IMAGE_ICON, VIOLET), "Three rows of thumbnails: Images, Video, Audio (the copies)"],
+            [iconBadge(IMAGE_ICON, VIOLET), "<b>Images · n</b> (and Video, Audio): opens the window of the copies; " +
+                "shows the date of the last sync"],
+            [textChip("Sync · n", SYNC_COLOR), "grey <b>Up to date</b>, or orange <b>Sync · n</b> when the Picture " +
+                "Lock folders changed"],
+            [progressChip(), "progress bar: shown while the copies are initialized or synchronized"],
         ]),
+    },
+    {
+        id: "window", title: "The window", icon: EYE_ICON, color: PINK,
+        html: "<p>A click on <b>Images</b>, <b>Video</b> or <b>Audio</b> opens the copies of this type.</p>" +
+            hCard("The window", [
+                ["Header", "name of the project, <b>List | Thumbnails</b> (remembered) and <b>Sync</b>"],
+                ["Left", "the files grouped by project (<b>01. Name</b>), newest first"],
+                ["Right", "plays the clicked file, with <b>File</b>, <b>Path</b> and <b>Source</b>"],
+                ["Cancel", "closes the window"],
+            ]) +
+            hNote("the window does not block the canvas: move it by its title to see MiniMax H3 Director, then drag."),
     },
     {
         id: "copies", title: "The copies", icon: IMAGE_ICON, color: VIOLET,
@@ -94,7 +108,8 @@ const HELP_SECTIONS = [
             hWarn("a file put by hand in <b>Final-Cut_&lt;Name&gt;</b> is not a copy of a Picture Lock: the next " +
                 "<b>Sync</b> sends it to the Recycle Bin.", "Warning:") +
             hNote("the first sync is done when the node is wired; then <b>Sync · n</b> shows when something changed " +
-                "(its tooltip lists the changes)."),
+                "(its tooltip lists the changes). While it works, the node shows <b>Initializing… / Synchronizing… " +
+                "n / total</b> with a progress bar."),
     },
     {
         id: "director", title: "Into H3 Director", icon: VIDEO_ICON, color: GREEN,
@@ -113,13 +128,28 @@ const HELP_SECTIONS_FR = [
         html: hSteps([
             "Reliez la sortie <b>final_cut</b> du nœud <b>MiniMax H3 Project</b> à l'entrée <b>final_cut</b> de ce nœud.",
             "La première fois, le nœud crée les copies et le lien dans le dossier input de ComfyUI.",
-            "Glissez une vignette sur <b>MiniMax H3 Director</b>, ou choisissez les fichiers dans ses fenêtres " +
-            "(dossier <b>Final-Cut_&lt;Nom&gt;</b>).",
+            "Cliquez sur <b>Images</b>, <b>Video</b> ou <b>Audio</b> : la fenêtre montre les copies ; glissez un " +
+            "fichier sur <b>MiniMax H3 Director</b>.",
         ]) +
         hCard("Le nœud", [
-            [textChip("Sync · n", SYNC_COLOR), "Apparaît quand les Picture Lock ont changé : applique le miroir"],
-            [iconBadge(IMAGE_ICON, VIOLET), "Trois lignes de vignettes : Images, Video, Audio (les copies)"],
+            [iconBadge(IMAGE_ICON, VIOLET), "<b>Images · n</b> (et Video, Audio) : ouvre la fenêtre des copies ; " +
+                "montre la date de la dernière synchro"],
+            [textChip("Sync · n", SYNC_COLOR), "gris <b>Up to date</b>, ou orange <b>Sync · n</b> quand les Picture " +
+                "Lock ont changé"],
+            [progressChip(), "barre de progression : visible pendant l'initialisation et la synchro des copies"],
         ]),
+    },
+    {
+        id: "window", title: "La fenêtre",
+        html: "<p>Un clic sur <b>Images</b>, <b>Video</b> ou <b>Audio</b> ouvre les copies de ce type.</p>" +
+            hCard("La fenêtre", [
+                ["En-tête", "nom du projet, <b>List | Thumbnails</b> (retenu) et <b>Sync</b>"],
+                ["Gauche", "les fichiers groupés par projet (<b>01. Nom</b>), les plus récents d'abord"],
+                ["Droite", "lecture du fichier cliqué, avec <b>File</b>, <b>Path</b> et <b>Source</b>"],
+                ["Cancel", "ferme la fenêtre"],
+            ]) +
+            hNote("la fenêtre ne bloque pas le canevas : déplacez-la par son titre pour voir MiniMax H3 Director, " +
+                "puis glissez.", "Remarque :"),
     },
     {
         id: "copies", title: "Les copies",
@@ -151,7 +181,8 @@ const HELP_SECTIONS_FR = [
             hWarn("un fichier déposé à la main dans <b>Final-Cut_&lt;Nom&gt;</b> n'est pas une copie d'un Picture " +
                 "Lock : le prochain <b>Sync</b> l'envoie dans la Corbeille.", "Attention :") +
             hNote("la première synchronisation se fait au branchement du nœud ; ensuite <b>Sync · n</b> apparaît " +
-                "quand quelque chose a changé (son infobulle liste les changements).", "Remarque :"),
+                "quand quelque chose a changé (son infobulle liste les changements). Pendant le travail, le nœud " +
+                "affiche <b>Initializing… / Synchronizing… n / total</b> avec une barre de progression.", "Remarque :"),
     },
     {
         id: "director", title: "Vers H3 Director",
@@ -170,6 +201,12 @@ const HELP_SECTIONS_FR = [
 function textChip(text, color) {
     return '<span style="display:inline-block;background:' + color + ';color:white;font-weight:bold;' +
         'border-radius:4px;padding:0 5px;font-size:10px">' + escapeHtml(text) + "</span>";
+}
+/** Petite barre de progression dessinee (carte « The node » de l'aide). */
+function progressChip() {
+    return '<span style="display:inline-block;width:28px;height:4px;border-radius:2px;background:#123;' +
+        'vertical-align:middle;overflow:hidden"><span style="display:block;width:60%;height:100%;background:' +
+        SYNC_COLOR + '"></span></span>';
 }
 function helpSections(lang) {
     if (lang !== "fr") return HELP_SECTIONS;
