@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-minimaxrefloader"
 description = "ComfyUI node to pick the references of MiniMax H3 (images, videos, video soundtracks, audio; or first and last frame) in thumbnail galleries, with trimming, overview and JSON configurations."
-version = "1.2.0"
+version = "1.2.1"
 license = {text = "MIT"}
 
 [tool.comfy]
