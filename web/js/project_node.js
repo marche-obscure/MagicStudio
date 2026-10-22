@@ -10,7 +10,7 @@ import {
 } from "./minimax_ref_loader.js";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
-    mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath,
+    mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath, moreComplete, sameGroup,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
     unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
@@ -432,6 +432,9 @@ const HELP_SECTIONS = [
                 "another project picked in the list opens in a new tab named after its workflow, this tab keeps " +
                 "its project, then <b>OK</b> stays here and <b>Open the project</b> goes to the new tab " +
                 "(the window lists the nodes and links in more or missing);",
+                "another project <b>of the same MultiProject</b> whose saved structure is <b>more complete</b> " +
+                "(all the nodes and links of this tab, and more): after Load a window proposes <b>Replace in this " +
+                "tab</b> or <b>New tab</b> (Cancel: nothing is loaded);",
                 "replacing the current workflow asks first: the changes since the last save are lost;",
                 "picking another project in the list (from a project) opens this Load window by itself;",
                 "unchecked: nothing opens, the folders checked go to the Reference Loader of this tab.",
@@ -802,6 +805,9 @@ const HELP_SECTIONS_FR = [
                 "un autre projet choisi dans la liste s'ouvre dans un nouvel onglet au nom de son workflow, cet " +
                 "onglet garde son projet, puis <b>OK</b> reste ici et <b>Open the project</b> va au nouvel onglet " +
                 "(la fenêtre liste les nœuds et liaisons en plus ou manquants) ;",
+                "un autre projet <b>du même MultiProject</b> dont la structure sauvegardée est <b>plus complète</b> " +
+                "(tous les nœuds et liaisons de cet onglet, et plus) : après Load, une fenêtre propose <b>Replace in " +
+                "this tab</b> ou <b>New tab</b> (Cancel : rien n'est chargé) ;",
                 "remplacer le workflow en cours demande d'abord confirmation : les modifications depuis la " +
                 "dernière sauvegarde sont perdues ;",
                 "choisir un autre projet dans la liste (depuis un projet) ouvre cette fenêtre Load d'elle-même ;",
@@ -3817,8 +3823,9 @@ function buildSetViewer(container, onSort, onWorkflow, rush) {
 }
 
 /**
- * open(report, projectPath, switching) -> Promise<dossiers coches | null> (Cancel, Echap, clic a
- * cote = null) ; switching = changement de projet (autre structure -> nouvel onglet).
+ * open(report, projectPath, switching, group) -> Promise<dossiers coches | null> (Cancel, Echap,
+ * clic a cote = null) ; switching = changement de projet (autre structure -> nouvel onglet) ;
+ * group = MultiProject commun quand la structure sauvegardee est plus complete (choix propose).
  */
 function buildLoadDialog(container) {
     const { overlay, card } = makeOverlay();
@@ -3932,7 +3939,11 @@ function buildLoadDialog(container) {
             html += '<div style="color:' + GREEN + '">Same structure (nodes and links): the current workflow is replaced.</div>';
         } else {
             // Autre projet : nouvel onglet ; meme projet : l'onglet actuel le recoit (choix utilisateur, 22/10/2026).
-            html += '<div style="color:' + ORANGE + '">' + (switching
+            // Meme MultiProject et structure plus complete : le choix est propose apres Load.
+            html += '<div style="color:' + ORANGE + '">' + (switching && upgradeGroup
+                ? "Different structure, more complete (same MultiProject <b>" + escapeHtml(upgradeGroup) +
+                    "</b>): after Load, choose <b>Replace in this tab</b> or <b>New tab</b>."
+                : switching
                 ? "Different structure: this tab keeps its project, the saved workflow opens in a new tab <b>" +
                     escapeHtml(String(wf.name).replace(/\.json$/i, "")) + "</b>."
                 : "Different structure: the current workflow is replaced by the saved one.") + "</div>" +
@@ -3942,9 +3953,11 @@ function buildLoadDialog(container) {
     }
 
     let switching = false;
+    let upgradeGroup = "";
     return {
-        open(report, projectPath, isSwitching) {
+        open(report, projectPath, isSwitching, group) {
             switching = !!isSwitching;
+            upgradeGroup = group || "";
             if (resolve) finish(null);
             sub.textContent = "Saved on " + (report.datemodifi || "?") + " · mode " + (report.mode || "?");
             body.innerHTML = "";
@@ -5732,7 +5745,12 @@ app.registerExtension({
                     return;
                 }
                 say("");
-                const checked = await loadDialog.open(report, s.path, !!from);
+                // Meme MultiProject, structure plus complete (choix utilisateur, 22/10/2026) :
+                // remplacement dans cet onglet propose au lieu du nouvel onglet.
+                const wf0 = report.workflow;
+                const upgrade = from && wf0 && wf0.source && !wf0.same && moreComplete(wf0.diff)
+                    ? sameGroup(from.name, s.name) : "";
+                const checked = await loadDialog.open(report, s.path, !!from, upgrade);
                 if (!checked) return;
                 try {
                     const items = restoreItems(report, checked);
@@ -5755,7 +5773,22 @@ app.registerExtension({
                             }
                             ln.widgets_values[0] = JSON.stringify(loadedState(st, report, s.path, media));
                         }
-                        if (from && !wf.same) {
+                        let replaced = false;
+                        if (from && !wf.same && upgrade) {
+                            const answer = await confirm.ask({
+                                title: "More complete structure",
+                                html: "The workflow of <b>" + escapeHtml(shortName(s.name)) + "</b> has all the nodes " +
+                                    "and links of this tab, and more (same MultiProject <b>" + escapeHtml(upgrade) +
+                                    "</b>)." + (wf.diff ? structureHtml(wf.diff, "In more", "Missing") : "") +
+                                    "<br><b>Replace in this tab</b>: all the changes made in this tab since the last " +
+                                    "save will be lost. <b>New tab</b>: this tab keeps its project.",
+                                okLabel: "Replace in this tab", okColor: PINK,
+                                altLabel: "New tab", altColor: VIOLET,
+                            });
+                            if (!answer) return;
+                            replaced = answer === true;
+                        }
+                        if (from && !wf.same && !replaced) {
                             // Autre projet, autre structure : nouvel onglet, l'onglet actuel garde son projet.
                             const tabName = String(wf.name).replace(/\.json$/i, "");
                             setState(from);
@@ -5777,8 +5810,9 @@ app.registerExtension({
                             else say("Project " + shortName(s.name) + " is open in the tab " + tab.name + "." + restored, true);
                             return;
                         }
-                        // L'onglet actuel recoit le workflow sauvegarde : modifications non sauvegardees perdues.
-                        const replace = await confirm.ask({
+                        // L'onglet actuel recoit le workflow sauvegarde : modifications non sauvegardees
+                        // perdues (deja dit par la question de la structure plus complete).
+                        const replace = replaced || await confirm.ask({
                             title: "Load the project " + shortName(s.name) + " in this tab?",
                             html: "All the changes made in this tab since the last save will be lost.",
                             okLabel: "Load", okColor: PINK,
