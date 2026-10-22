@@ -18,6 +18,7 @@ from . import projects
 from . import project_config
 from . import run_record
 from . import run_tracker
+from . import final_cut
 from .nodes import MiniMaxH3RefLoader, MiniMaxH3Project, default_projects_root
 
 NODE_CLASS_MAPPINGS = {
@@ -470,6 +471,40 @@ try:
             body = await request.json()
             data = await _in_executor(run_record.sort_output, body.get("project", ""), body.get("run", ""),
                                       body.get("index"), body.get("target", ""), bool(body.get("swap")))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.get("/mmproject/final_cut/plan")
+    async def mmproject_final_cut_plan(request):
+        """Final Cut : ce que la synchronisation ferait (rien n'est modifie) et la jonction attendue."""
+        try:
+            import folder_paths
+            project = request.rel_url.query.get("project", "").strip()
+            if not project or not os.path.isdir(project):
+                raise FileNotFoundError("Project folder not found: %s" % project)
+            data = await _in_executor(final_cut.plan, project)
+            link = os.path.join(folder_paths.get_input_directory(), os.path.basename(data["folder"]))
+            data["link"] = link
+            data["linked"] = os.path.isdir(link)
+            data["synced"] = os.path.isdir(data["folder"])
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.post("/mmproject/final_cut/sync")
+    async def mmproject_final_cut_sync(request):
+        """Final Cut : miroir des Picture Lock (anciennes copies a la Corbeille) et jonction dans input."""
+        try:
+            import folder_paths
+            body = await request.json()
+            project = (body.get("project") or "").strip()
+            if not project or not os.path.isdir(project):
+                raise FileNotFoundError("Project folder not found: %s" % project)
+            if not projects.TRASH_AVAILABLE:
+                raise ValueError("The Recycle Bin is only available on Windows")
+            data = await _in_executor(final_cut.sync, project, projects._to_recycle_bin,
+                                      folder_paths.get_input_directory())
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)

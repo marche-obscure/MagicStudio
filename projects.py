@@ -189,8 +189,9 @@ def ensure_project(path):
     if not os.path.isdir(arch):
         os.makedirs(arch, exist_ok=True)
         created.append(PROJECT_CONFIG_DIR)
-    # Sous-dossiers de tri de 40 / 60 (run_record.SORT_FOLDERS, choix utilisateur 19/10 et 22/10/2026).
-    for rush in ("40.Rush Videos", "60.Rush Images"):
+    # Sous-dossiers de tri de 40 / 60 (run_record.SORT_FOLDERS, choix utilisateur 19/10 et 22/10/2026) ;
+    # 70.Rush Audio (22/10/2026) : memes dossiers, pas encore de ligne dans le noeud (source Audio du Final Cut).
+    for rush in ("40.Rush Videos", "60.Rush Images", "70.Rush Audio"):
         for sub in ("Picture Lock", "Rough Cut", "Footage", "No Good"):
             os.makedirs(os.path.join(path, rush, sub), exist_ok=True)
     # Workflows des Runs (run_record.RUN_WORKFLOW_FOLDER), a cote de Archives :
@@ -366,6 +367,13 @@ def rename_project(path, new_name):
         raise FileExistsError('A project or file named "%s" already exists.' % new_name)
     new_path = os.path.join(parent, new_name)
     os.rename(path, new_path)
+    # Sous-projet d'un MultiProject : il garde son numero (Final Cut, 22/10/2026).
+    if is_group(parent):
+        try:
+            from . import final_cut
+        except ImportError:
+            import final_cut
+        final_cut.rename_in_group(parent, os.path.basename(os.path.abspath(path)), new_name)
     # Les fichiers nommes d'apres le projet suivent son nouveau nom.
     old_name = os.path.basename(os.path.abspath(path))
     migrate_project_names(new_path)
