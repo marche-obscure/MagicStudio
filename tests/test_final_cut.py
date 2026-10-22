@@ -128,6 +128,38 @@ class FinalCutTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             fc.remove_link(os.path.join(self.input, "Final-Cut_Solo"))
 
+    def test_last_sync_progress_and_groups(self):
+        p1 = projects.create_project(self.root, "Part1", group="Film", new_group=True)
+        write(os.path.join(p1, "60.Rush Images", "Picture Lock", "a.png"), b"image")
+        folder = fc.target(p1)[0]
+        before = fc.plan(p1)
+        self.assertIsNone(before["last_sync"])
+        self.assertEqual(before["projects"], {"01": "Part1"})
+        self.assertIsNone(fc.progress(p1))
+        seen = []
+
+        def trash(paths):
+            seen.append(fc.progress(p1))
+            self.trash(paths)
+
+        t0 = time.time()
+        res = fc.sync(p1, trash, self.input)
+        self.assertTrue(res["first"])
+        self.assertGreaterEqual(res["last_sync"], t0 - 1)
+        self.assertIsNone(fc.progress(p1))  # fini : plus de progression
+        after = fc.plan(p1)
+        self.assertAlmostEqual(after["last_sync"], res["last_sync"], places=3)
+        self.assertEqual(after["kinds"]["Images"]["copies"][0]["size"], 5)
+        # Le fichier de date est a la racine des copies (nom a point), hors Images / Video / Audio.
+        self.assertTrue(os.path.isfile(os.path.join(folder, fc.STAMP)))
+        self.assertEqual(after["count"], 0)
+        # Retrait : la progression est lisible pendant le travail (ici dans la Corbeille).
+        os.remove(os.path.join(p1, "60.Rush Images", "Picture Lock", "a.png"))
+        res = fc.sync(p1, trash, self.input)
+        self.assertFalse(res["first"])
+        self.assertEqual(seen[-1]["total"], 1)
+        self.assertEqual(seen[-1]["done"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

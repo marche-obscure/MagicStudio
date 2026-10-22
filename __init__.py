@@ -494,6 +494,18 @@ try:
             return _project_error(e)
         return web.json_response(data)
 
+    @routes.get("/mmproject/final_cut/progress")
+    async def mmproject_final_cut_progress(request):
+        """Final Cut : progression de la synchronisation en cours ({running: false} sinon)."""
+        try:
+            project = request.rel_url.query.get("project", "").strip()
+            if not project or not os.path.isdir(project):
+                raise FileNotFoundError("Project folder not found: %s" % project)
+            state = final_cut.progress(project)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(dict(state, running=True) if state else {"running": False})
+
     @routes.post("/mmproject/final_cut/sync")
     async def mmproject_final_cut_sync(request):
         """Final Cut : miroir des Picture Lock (anciennes copies a la Corbeille) et jonction dans input."""

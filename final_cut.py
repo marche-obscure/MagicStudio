@@ -21,6 +21,8 @@ import json
 import os
 import shutil
 import sys
+import threading
+import time
 
 try:
     from . import projects
@@ -34,6 +36,13 @@ LOCK = "Picture Lock"
 # Dossier des copies <- dossier de rushs (Picture Lock) de chaque projet.
 KINDS = (("Images", "60.Rush Images"), ("Video", "40.Rush Videos"), ("Audio", RUSH_AUDIO))
 PREFIX = "Final-Cut_"
+# Date de la derniere synchronisation (choix utilisateur 23/10/2026, affichee sur les
+# boutons du noeud) ; nom a point : ignore par les fenetres de H3 Director.
+STAMP = ".final-cut.json"
+# Progression des synchronisations en cours, par dossier des copies (lue par la route
+# /mmproject/final_cut/progress pendant que /sync travaille).
+_progress = {}
+_progress_lock = threading.Lock()
 
 
 # ----------------------------------------------------------------------
@@ -155,7 +164,9 @@ def plan(project):
     files = copies attendues (nom de la copie, source).
     """
     folder, name, sources = target(project)
-    out = {"folder": folder, "name": name, "kinds": {}, "count": 0}
+    out = {"folder": folder, "name": name, "kinds": {}, "count": 0, "last_sync": last_sync(folder),
+           # Titres des groupes de la fenetre : numero -> nom du projet.
+           "projects": {num: os.path.basename(src) for num, src in sources}}
     for kind, rush in KINDS:
         expected = {}
         for num, src_project in sources:
@@ -170,7 +181,8 @@ def plan(project):
         out["kinds"][kind] = {"add": add, "replace": replace, "remove": remove, "dir": dest,
                               "files": [{"name": n, "source": expected[n]} for n in sorted(expected)],
                               # Copies presentes (vignettes du noeud) : nom et date.
-                              "copies": [{"name": n, "mtime": os.path.getmtime(os.path.join(dest, n))}
+                              "copies": [{"name": n, "mtime": os.path.getmtime(os.path.join(dest, n)),
+                                          "size": os.path.getsize(os.path.join(dest, n))}
                                          for n in sorted(present)]}
         out["count"] += len(add) + len(replace) + len(remove)
     return out
@@ -187,26 +199,67 @@ def _copy_new(src, dst):
             os.remove(part)
 
 
+def last_sync(folder):
+    """Date (secondes) de la derniere synchronisation de ce dossier de copies, sinon None."""
+    try:
+        with open(os.path.join(folder, STAMP), "r", encoding="utf-8") as f:
+            value = json.load(f).get("last_sync")
+        return float(value) if value is not None else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def progress(project):
+    """Synchronisation en cours pour ce projet : {done, total, name, first}, sinon None."""
+    folder = target(project)[0]
+    with _progress_lock:
+        state = _progress.get(os.path.normcase(folder))
+        return dict(state) if state else None
+
+
 def sync(project, trash_fn, input_dir=None):
     """
     Applique le miroir : retraits et anciennes versions a la Corbeille (trash_fn),
     puis copies. Cree les dossiers et la jonction dans input_dir. Renvoie le plan
-    applique avec link (chemin de la jonction, "" sans input_dir).
+    applique avec link (chemin de la jonction, "" sans input_dir) et last_sync.
+    Progression lisible par progress(project) pendant le travail.
     """
     p = plan(project)
-    for kind, _rush in KINDS:
-        os.makedirs(os.path.join(p["folder"], kind), exist_ok=True)
-    for kind, _rush in KINDS:
-        k = p["kinds"][kind]
-        dest = os.path.join(p["folder"], kind)
-        old = [os.path.join(dest, n) for n in k["remove"] + k["replace"]]
-        if old:
-            trash_fn(old)
-        sources = {f["name"]: f["source"] for f in k["files"]}
-        for n in k["add"] + k["replace"]:
-            _copy_new(sources[n], os.path.join(dest, n))
-    p["link"] = ensure_link(p["folder"], input_dir) if input_dir else ""
-    return p
+    key = os.path.normcase(p["folder"])
+    first = not os.path.isdir(p["folder"])
+    total = p["count"]
+    state = {"done": 0, "total": total, "name": "", "first": first}
+    with _progress_lock:
+        _progress[key] = state
+    try:
+        for kind, _rush in KINDS:
+            os.makedirs(os.path.join(p["folder"], kind), exist_ok=True)
+        for kind, _rush in KINDS:
+            k = p["kinds"][kind]
+            dest = os.path.join(p["folder"], kind)
+            old = [os.path.join(dest, n) for n in k["remove"] + k["replace"]]
+            if old:
+                with _progress_lock:
+                    state["name"] = kind
+                trash_fn(old)
+                with _progress_lock:
+                    state["done"] += len(k["remove"])
+            sources = {f["name"]: f["source"] for f in k["files"]}
+            for n in k["add"] + k["replace"]:
+                with _progress_lock:
+                    state["name"] = n
+                _copy_new(sources[n], os.path.join(dest, n))
+                with _progress_lock:
+                    state["done"] += 1
+        p["link"] = ensure_link(p["folder"], input_dir) if input_dir else ""
+        p["last_sync"] = time.time()
+        with open(os.path.join(p["folder"], STAMP), "w", encoding="utf-8") as f:
+            json.dump({"note": "Last sync of the MiniMax H3 Final Cut node.", "last_sync": p["last_sync"]}, f)
+        p["first"] = first
+        return p
+    finally:
+        with _progress_lock:
+            _progress.pop(key, None)
 
 
 # ----------------------------------------------------------------------
