@@ -433,8 +433,8 @@ const HELP_SECTIONS = [
                 "its project, then <b>OK</b> stays here and <b>Open the project</b> goes to the new tab " +
                 "(the window lists the nodes and links in more or missing);",
                 "another project <b>of the same MultiProject</b> whose saved structure is <b>more complete</b> " +
-                "(all the nodes and links of this tab, and more): after Load a window proposes <b>Replace in this " +
-                "tab</b> or <b>New tab</b> (Cancel: nothing is loaded);",
+                "(all the nodes and links of this tab, and more): after Load a question asks to replace the " +
+                "workflow of this tab with it: <b>Yes, replace</b>, or <b>No, new tab</b> (opened in a new tab as above);",
                 "replacing the current workflow asks first: the changes since the last save are lost;",
                 "picking another project in the list (from a project) opens this Load window by itself;",
                 "unchecked: nothing opens, the folders checked go to the Reference Loader of this tab.",
@@ -806,8 +806,9 @@ const HELP_SECTIONS_FR = [
                 "onglet garde son projet, puis <b>OK</b> reste ici et <b>Open the project</b> va au nouvel onglet " +
                 "(la fenêtre liste les nœuds et liaisons en plus ou manquants) ;",
                 "un autre projet <b>du même MultiProject</b> dont la structure sauvegardée est <b>plus complète</b> " +
-                "(tous les nœuds et liaisons de cet onglet, et plus) : après Load, une fenêtre propose <b>Replace in " +
-                "this tab</b> ou <b>New tab</b> (Cancel : rien n'est chargé) ;",
+                "(tous les nœuds et liaisons de cet onglet, et plus) : après Load, une question propose de remplacer " +
+                "le workflow de cet onglet : <b>Yes, replace</b>, ou <b>No, new tab</b> (ouvert dans un nouvel onglet " +
+                "comme ci-dessus) ;",
                 "remplacer le workflow en cours demande d'abord confirmation : les modifications depuis la " +
                 "dernière sauvegarde sont perdues ;",
                 "choisir un autre projet dans la liste (depuis un projet) ouvre cette fenêtre Load d'elle-même ;",
@@ -3942,7 +3943,7 @@ function buildLoadDialog(container) {
             // Meme MultiProject et structure plus complete : le choix est propose apres Load.
             html += '<div style="color:' + ORANGE + '">' + (switching && upgradeGroup
                 ? "Different structure, more complete (same MultiProject <b>" + escapeHtml(upgradeGroup) +
-                    "</b>): after Load, choose <b>Replace in this tab</b> or <b>New tab</b>."
+                    "</b>): after Load, a question proposes to replace the workflow of this tab (No: new tab)."
                 : switching
                 ? "Different structure: this tab keeps its project, the saved workflow opens in a new tab <b>" +
                     escapeHtml(String(wf.name).replace(/\.json$/i, "")) + "</b>."
@@ -5773,20 +5774,19 @@ app.registerExtension({
                             }
                             ln.widgets_values[0] = JSON.stringify(loadedState(st, report, s.path, media));
                         }
+                        // Oui : la structure plus complete remplace celle de l'onglet ; Non : nouvel
+                        // onglet comme avant (choix utilisateur, 22/10/2026).
                         let replaced = false;
                         if (from && !wf.same && upgrade) {
-                            const answer = await confirm.ask({
-                                title: "More complete structure",
+                            replaced = !!(await confirm.ask({
+                                title: "Replace " + shortName(from.name) + " with " + shortName(s.name) + " in this tab?",
                                 html: "The workflow of <b>" + escapeHtml(shortName(s.name)) + "</b> has all the nodes " +
                                     "and links of this tab, and more (same MultiProject <b>" + escapeHtml(upgrade) +
                                     "</b>)." + (wf.diff ? structureHtml(wf.diff, "In more", "Missing") : "") +
-                                    "<br><b>Replace in this tab</b>: all the changes made in this tab since the last " +
-                                    "save will be lost. <b>New tab</b>: this tab keeps its project.",
-                                okLabel: "Replace in this tab", okColor: PINK,
-                                altLabel: "New tab", altColor: VIOLET,
-                            });
-                            if (!answer) return;
-                            replaced = answer === true;
+                                    "<br><b>Yes</b>: it replaces the workflow of this tab; all the changes made since the " +
+                                    "last save are lost. <b>No</b>: it opens in a new tab, this tab keeps its project.",
+                                okLabel: "Yes, replace", okColor: PINK, cancelLabel: "No, new tab",
+                            }));
                         }
                         if (from && !wf.same && !replaced) {
                             // Autre projet, autre structure : nouvel onglet, l'onglet actuel garde son projet.
