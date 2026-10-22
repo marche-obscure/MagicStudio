@@ -171,7 +171,7 @@ class ProjectFoldersTest(unittest.TestCase):
         self.assertEqual(sorted(created), ["04.Prompt", "10.Son"])
         self.assertEqual(projects.ensure_project(path), [])
         for rush in ("40.Rush Videos", "60.Rush Images"):
-            self.assertEqual(sorted(os.listdir(os.path.join(path, rush))), ["Footage", "Rejected", "Validated"])
+            self.assertEqual(sorted(os.listdir(os.path.join(path, rush))), ["Footage", "No Good", "Picture Lock", "Rough Cut"])
 
     def test_ensure_missing_project_raises(self):
         with self.assertRaises(FileNotFoundError):

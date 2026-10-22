@@ -78,20 +78,22 @@ test("Runs : vignettes de 40 / 60 = fichiers cites et presents", () => {
     assert.equal(rushItems(RUNS, "60.Rush Images")[0].run, RUNS[1]);
 });
 
-test("Runs : pastille et boutons de tri Reject / Validate / Footage", () => {
-    assert.deepEqual(SORT_FOLDERS.map((x) => x[2]), ["Validated", "Footage", "Rejected"]);
+test("Runs : pastille et boutons de tri Picture Lock / Rough Cut / Footage / No Good", () => {
+    assert.deepEqual(SORT_FOLDERS.map((x) => x[1]), ["Picture Lock", "Rough Cut", "Footage", "No Good"]);
+    assert.deepEqual(SORT_FOLDERS.map((x) => x[2]), ["Picture Lock", "Rough Cut", "Footage", "No Good"]);
     const inside = { kind: "video", in_project: true, place: "validated", source_exists: true,
-        copy: "P/40.Rush Videos/Validated/a.mp4", copy_exists: true };
+        copy: "P/40.Rush Videos/Rough Cut/a.mp4", copy_exists: true };
     assert.equal(sortDot(inside), "validated");
-    assert.deepEqual(sortTargets(inside), ["footage", "rejected"]);
+    assert.deepEqual(sortTargets(inside), ["picture_lock", "footage", "rejected"]);
+    assert.equal(sortDot({ ...inside, place: "picture_lock" }), "picture_lock");
     // Original hors du projet : pastille grise, les trois boutons le rapatrient.
     const outside = { kind: "video", in_project: false, place: "footage", source_exists: true,
         copy: "P/40.Rush Videos/Footage/a.mp4", copy_exists: true };
     assert.equal(sortDot(outside), "outside");
-    assert.deepEqual(sortTargets(outside), ["validated", "footage", "rejected"]);
+    assert.deepEqual(sortTargets(outside), ["picture_lock", "validated", "footage", "rejected"]);
     // Original disparu, copie video dans Footage : deplacable ailleurs.
     const gone = { ...outside, source_exists: false };
-    assert.deepEqual(sortTargets(gone), ["validated", "rejected"]);
+    assert.deepEqual(sortTargets(gone), ["picture_lock", "validated", "rejected"]);
     // Aucun fichier : aucun bouton.
     assert.deepEqual(sortTargets({ ...gone, copy_exists: false }), []);
     assert.deepEqual(sortTargets(null), []);
@@ -122,7 +124,7 @@ test("tri par date : Runs, ensembles 02 / 06 et fichiers 08 a 14", () => {
 });
 
 test("40 / 60 : filtre par pastille", () => {
-    assert.deepEqual(DOT_FILTER, ["validated", "footage", "rejected", "outside"]);
+    assert.deepEqual(DOT_FILTER, ["picture_lock", "validated", "footage", "rejected", "outside"]);
     const it = (file, place, inside = true) => ({ file, output: { in_project: inside, place } });
     const items = [it("a", "validated"), it("b", "footage"), it("c", "rejected"), it("d", "footage", false),
         it("e", "footage")];
@@ -130,7 +132,7 @@ test("40 / 60 : filtre par pastille", () => {
     assert.deepEqual(filterByDot(items, new Set(["footage"])).map((x) => x.file), ["b", "e"]);
     assert.deepEqual(filterByDot(items, new Set(["validated", "outside"])).map((x) => x.file), ["a", "d"]);
     assert.deepEqual(filterByDot(null, new Set(["rejected"])), []);
-    assert.deepEqual(dotCounts(items), { validated: 1, footage: 2, rejected: 1, outside: 1 });
+    assert.deepEqual(dotCounts(items), { picture_lock: 0, validated: 1, footage: 2, rejected: 1, outside: 1 });
 });
 
 test("40 / 60 : groupes par pastille, puis date", () => {
@@ -463,8 +465,11 @@ test("Switch MultiIN-OUT : entree du groupe actif qui alimente une sortie", () =
 test("lot de 40 / 60 : boutons actifs, suppression, marque deleted", () => {
     const inRej = { kind: "image", in_project: true, place: "rejected", source: "P/60/Rejected/a.png", source_exists: true };
     const inVal = { kind: "image", in_project: true, place: "validated", source: "P/60/Validated/b.png", source_exists: true };
-    assert.deepEqual(batchSortTargets([inRej]), ["validated", "footage"]);
-    assert.deepEqual(batchSortTargets([inRej, inVal]), ["validated", "footage", "rejected"]);
+    assert.deepEqual(batchSortTargets([inRej]), ["picture_lock", "validated", "footage"]);
+    assert.deepEqual(batchSortTargets([inRej, inVal]), ["picture_lock", "validated", "footage", "rejected"]);
+    // Projet d'un MultiProject : Picture Lock pour un seul fichier coche.
+    assert.deepEqual(batchSortTargets([inRej], true), ["picture_lock", "validated", "footage"]);
+    assert.deepEqual(batchSortTargets([inRej, inVal], true), ["validated", "footage", "rejected"]);
     assert.deepEqual(batchSortTargets([]), []);
     assert.equal(canDeleteRush(inRej), true);
     assert.equal(canDeleteRush(inVal), false);

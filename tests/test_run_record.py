@@ -514,14 +514,14 @@ class RunFileTest(unittest.TestCase):
     def test_sort_image_from_outside(self):
         src = os.path.join(self.out, "ComfyUI_00001_.png")
         write(src, b"img")
-        rej = os.path.join(self.p, "60.Rush Images", "Rejected")
+        rej = os.path.join(self.p, "60.Rush Images", "No Good")
         write(os.path.join(rej, "20261017_153000_run.png"), b"other")  # nom pris
         name = self._run_with([{"source": src, "kind": "image", "copy": None}])
         out = rr.list_runs(self.p)[0]["outputs"][0]
         self.assertEqual((out["in_project"], out["place"]), (False, None))
         res = rr.sort_output(self.p, name, 0, "rejected")
         dst = os.path.join(rej, "20261017_153000_run_02.png")
-        self.assertEqual(res, {"source": dst, "copy": "60.Rush Images/Rejected/20261017_153000_run_02.png",
+        self.assertEqual(res, {"source": dst, "copy": "60.Rush Images/No Good/20261017_153000_run_02.png",
                                "moved_from": src, "place": "rejected"})
         self.assertFalse(os.path.exists(src))
         with open(dst, "rb") as f:
@@ -532,10 +532,10 @@ class RunFileTest(unittest.TestCase):
             rr.sort_output(self.p, name, 0, "rejected")
         # Puis d'un sous-dossier a l'autre : simple renommage, nom garde.
         rr.sort_output(self.p, name, 0, "validated")
-        val = os.path.join(self.p, "60.Rush Images", "Validated", "20261017_153000_run_02.png")
+        val = os.path.join(self.p, "60.Rush Images", "Rough Cut", "20261017_153000_run_02.png")
         self.assertTrue(os.path.isfile(val))
         o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]
-        self.assertEqual((o["source"], o["copy"]), (val, "60.Rush Images/Validated/20261017_153000_run_02.png"))
+        self.assertEqual((o["source"], o["copy"]), (val, "60.Rush Images/Rough Cut/20261017_153000_run_02.png"))
         with self.assertRaises(ValueError):
             rr.sort_output(self.p, name, 0, "nowhere")
 
@@ -550,10 +550,10 @@ class RunFileTest(unittest.TestCase):
         self.assertEqual((out["in_project"], out["place"]), (False, "footage"))
         rr.sort_output(self.p, name, 0, "validated")
         self.assertEqual(files_in(os.path.join(self.p, "40.Rush Videos", "Footage")), [])
-        self.assertEqual(files_in(os.path.join(self.p, "40.Rush Videos", "Validated")), ["20261017_153000_run.webm"])
+        self.assertEqual(files_in(os.path.join(self.p, "40.Rush Videos", "Rough Cut")), ["20261017_153000_run.webm"])
         self.assertFalse(os.path.exists(src))
         o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]
-        self.assertEqual(o["copy"], "40.Rush Videos/Validated/20261017_153000_run.webm")
+        self.assertEqual(o["copy"], "40.Rush Videos/Rough Cut/20261017_153000_run.webm")
         self.assertEqual(o["moved_from"], src)
         self.assertNotIn("copy_size", o)
         self.assertEqual(o["size"], "1216x672")
@@ -576,8 +576,8 @@ class RunFileTest(unittest.TestCase):
         name = self._run_with([{"source": "Z:/gone.mp4", "kind": "video", "copy": "40.Rush Videos/Footage/20261017_153000_run.mp4"}])
         rr.sort_output(self.p, name, 0, "rejected")
         o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]
-        self.assertEqual((o["source"], o["copy"]), ("Z:/gone.mp4", "40.Rush Videos/Rejected/20261017_153000_run.mp4"))
-        self.assertTrue(os.path.isfile(os.path.join(self.p, "40.Rush Videos", "Rejected", "20261017_153000_run.mp4")))
+        self.assertEqual((o["source"], o["copy"]), ("Z:/gone.mp4", "40.Rush Videos/No Good/20261017_153000_run.mp4"))
+        self.assertTrue(os.path.isfile(os.path.join(self.p, "40.Rush Videos", "No Good", "20261017_153000_run.mp4")))
 
     def test_root_files_go_to_footage(self):
         # Anciens Runs : copie video et image rapatriee a la racine de 40 / 60 ; fichier non cite : laisse.
@@ -692,18 +692,98 @@ class RunFileTest(unittest.TestCase):
         finally:
             rr.file_sha256 = old
         self.assertTrue(os.path.isfile(foot))
-        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Validated")), [])
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Rough Cut")), [])
         rr.sort_output(self.p, name, 0, "validated")
         self.assertFalse(os.path.exists(foot))
-        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Validated")), ["a.png"])
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Rough Cut")), ["a.png"])
+
+    def test_old_sort_folders_are_migrated(self):
+        # Rejected / Validated (avant le 22/10/2026) -> No Good / Rough Cut, JSON suivis.
+        vids = os.path.join(self.p, "40.Rush Videos")
+        shutil.rmtree(os.path.join(vids, "No Good"))
+        old_rej = os.path.join(vids, "Rejected", "a.mp4")
+        old_val = os.path.join(self.p, "60.Rush Images", "Validated", "b.png")
+        clash = os.path.join(self.p, "60.Rush Images", "Rough Cut", "b.png")
+        write(old_rej, b"a")
+        write(old_val, b"b")
+        write(clash, b"other")                       # nouveau dossier deja la, nom pris
+        name = self._run_with([
+            {"source": old_rej, "kind": "video", "copy": "40.Rush Videos/Rejected/a.mp4", "in_place": True},
+            {"source": old_val, "kind": "image", "copy": None},
+        ])
+        a, b = rr.list_runs(self.p)[0]["outputs"]
+        new_rej = os.path.join(vids, "No Good", "a.mp4")
+        new_val = os.path.join(self.p, "60.Rush Images", "Rough Cut", "b_02.png")
+        self.assertEqual((a["source"], a["place"]), (new_rej, "rejected"))
+        self.assertEqual((b["source"], b["place"]), (new_val, "validated"))
+        self.assertFalse(os.path.exists(os.path.join(vids, "Rejected")))
+        self.assertFalse(os.path.exists(os.path.join(self.p, "60.Rush Images", "Validated")))
+        o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"]
+        self.assertEqual(o[0]["copy"], "40.Rush Videos/No Good/a.mp4")
+        # Migration interrompue (dossier renomme, JSON pas encore) : le chemin est retrouve.
+        o[0]["source"] = old_rej
+        rr._write(os.path.join(self.p, "04.Prompt", name), read_json(os.path.join(self.p, "04.Prompt", name)) | {"outputs": o})
+        self.assertEqual(rr.list_runs(self.p)[0]["outputs"][0]["source"], new_rej)
+
+    def _lock_runs(self, kind_dir, files):
+        """Un Run par fichier deja range : [(nom du JSON, chemin)]."""
+        out = []
+        for i, (sub, n) in enumerate(files):
+            path = os.path.join(self.p, kind_dir, sub, n)
+            write(path, n.encode())
+            name = self._run_with([{"source": path, "kind": "image", "copy": None}])
+            out.append((name, path))
+            self.when += 1
+        return out
+
+    def test_picture_lock_is_free_in_a_simple_project(self):
+        self.assertFalse(rr.single_lock(self.p))
+        (a, _), (b, _) = self._lock_runs("60.Rush Images", [("Footage", "a.png"), ("No Good", "b.png")])
+        rr.sort_output(self.p, a, 0, "picture_lock")
+        rr.sort_output(self.p, b, 0, "picture_lock")
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Picture Lock")), ["a.png", "b.png"])
+
+    def test_picture_lock_holds_one_file_in_a_multiproject(self):
+        self.p = projects.create_project(self.root, "Shot", group="Film", new_group=True)
+        self.assertTrue(rr.single_lock(self.p))
+        lock = os.path.join(self.p, "60.Rush Images", "Picture Lock")
+        (a, pa), (b, pb), (c, pc) = self._lock_runs("60.Rush Images",
+                                                    [("Footage", "a.png"), ("No Good", "b.png"), ("Rough Cut", "c.png")])
+        rr.sort_output(self.p, a, 0, "picture_lock")
+        self.assertEqual(files_in(lock), ["a.png"])
+        with self.assertRaises(ValueError):          # occupe : refus sans swap
+            rr.sort_output(self.p, b, 0, "picture_lock")
+        self.assertTrue(os.path.isfile(pb))
+        # Swap : a part dans No Good (dossier de b), b entre ; les deux JSON suivent.
+        res = rr.sort_output(self.p, b, 0, "picture_lock", swap=True)
+        self.assertEqual(res["swapped"], {"file": os.path.join(self.p, "60.Rush Images", "No Good", "a.png"),
+                                          "place": "rejected"})
+        self.assertEqual(files_in(lock), ["b.png"])
+        places = {r["file"]: r["outputs"][0]["place"] for r in rr.list_runs(self.p)}
+        self.assertEqual((places[a], places[b], places[c]), ("rejected", "picture_lock", "validated"))
+        # Fichier venu d'ailleurs : l'ancien part dans Rough Cut.
+        src = os.path.join(self.out, "d.png")
+        write(src, b"d")
+        self.when += 1
+        d = self._run_with([{"source": src, "kind": "image", "copy": None}])
+        rr.sort_output(self.p, d, 0, "picture_lock", swap=True)
+        self.assertEqual(files_in(lock), [os.path.basename(rr.list_runs(self.p)[0]["outputs"][0]["source"])])
+        self.assertTrue(os.path.isfile(os.path.join(self.p, "60.Rush Images", "Rough Cut", "b.png")))
+        # Deux fichiers deposes a la main : refus, rien ne bouge.
+        write(os.path.join(lock, "extra.png"), b"e")
+        with self.assertRaises(ValueError):
+            rr.sort_output(self.p, c, 0, "picture_lock", swap=True)
+        self.assertTrue(os.path.isfile(pc))
+        # Les videos ont leur propre Picture Lock.
+        self.assertEqual(rr.lock_files(self.p, "video"), [])
 
     def test_delete_rush(self):
-        rej = os.path.join(self.p, "40.Rush Videos", "Rejected", "v.mp4")
+        rej = os.path.join(self.p, "40.Rush Videos", "No Good", "v.mp4")
         foot = os.path.join(self.p, "60.Rush Images", "Footage", "i.png")
         write(rej, b"v")
         write(foot, b"i")
         name = self._run_with([
-            {"source": rej, "kind": "video", "copy": "40.Rush Videos/Rejected/v.mp4", "in_place": True},
+            {"source": rej, "kind": "video", "copy": "40.Rush Videos/No Good/v.mp4", "in_place": True},
             {"source": foot, "kind": "image", "copy": "60.Rush Images/Footage/i.png", "in_place": True},
         ])
         with self.assertRaises(ValueError):          # hors de Rejected : refus
