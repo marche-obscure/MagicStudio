@@ -280,37 +280,32 @@ const HELP_SECTIONS = [
     },
     {
         id: "runwindows", title: "Run windows (04, 40, 60)", icon: FOLDER_ICONS["04.Prompt"], color: FOLDER_COLORS["04.Prompt"],
-        html: "<p>Once runs are recorded, the rows of 04.Prompt, 40.Rush Videos and 60.Rush Images show <b>Last run: " +
-            "dd/MM/yyyy hh:mm:ss | Runs: n</b> (40: runs with a video, 60: runs with an image).</p>" +
-            hList([
-                "<b>04.Prompt</b>: filter <b>All / Video / Image</b>, list of the runs, then the thumbnail of the " +
-                "output (‹ › when there are several).",
-                "<b>40.Rush Videos</b> / <b>60.Rush Images</b>: the videos (copies) or images (originals) named by the " +
-                "runs, scrolling sideways.",
-                "<b>Configuration</b>: date, mode, Steps, CFG, Seed, status, <b>Duration</b> (total time of the " +
-                "run, model loading included; not shown for older runs), size of the video, folder of the " +
-                "<b>Original</b>. Under it, the folded blocks <b>Models</b> and <b>LoRA</b>: what the run really used " +
-                "(chosen branch of a switch, active LoRA), one open at a time.",
-                "<b>Prompt</b>: its text; the copy icon at the top left copies it to the clipboard.",
-                "<b>Retrieve the workflow</b> (under the thumbnail): opens the workflow of the run in a new tab " +
-                "(<b>00.Workflows/Run</b>, or the one kept in its PNG / video for an older run; greyed when there is none).",
-                "A thumbnail opens the <b>Preview</b> window (the same thumbnail closes it); ✕, Escape or a click " +
-                "outside closes the window.",
+        html: "<p>Each recorded run shows in three windows: <b>click the row of the folder</b> to open its window. " +
+            "The row shows <b>Last run: date | Runs: n</b> (40: runs with a video, 60: runs with an image).</p>" +
+            hCard("The three windows", [
+                [folderBadge("04.Prompt"), "<b>04.Prompt</b>: all the runs, filter <b>All / Video / Image</b>; one run " +
+                    "at a time (list), with its thumbnail (‹ › when it has several outputs)."],
+                [folderBadge("40.Rush Videos"), "<b>40.Rush Videos</b>: the videos of the runs (copies), as scrolling thumbnails."],
+                [folderBadge("60.Rush Images"), "<b>60.Rush Images</b>: the images of the runs (originals), as scrolling thumbnails."],
             ]) +
-            hNote("At the end of a recorded run, its models and LoRA go into the registries " +
-                "<b>02.Models/yyyyMMdd_HHmmss_models.json</b> and <b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (a known set " +
-                "keeps its index, a new one gets the next) and the run keeps their indices.") +
-            hNote(textBadge("Purge", PURGE_RED) + " deletes the runs still marked running while no run is in progress " +
-                "and moves the runs in error to <b>98.Error</b>; their files stay in place. A box of its warning " +
-                "(unchecked) also deletes the runs <b>done</b> without any image or video output (a run naming a file " +
-                "that is gone is kept)."),
+            hCard("For the chosen run", [
+                ["Configuration", "date and mode, Steps, CFG, Seed, status, <b>Duration</b> (total time of the run, " +
+                    "model loading included), size of the video, folder of the <b>Original</b>."],
+                ["Models / LoRA", "two folded blocks, one open at a time: what the run really used (chosen branch of " +
+                    "a switch, active LoRA)."],
+                ["Prompt", "the text of the run; the icon at the top left copies it."],
+                ["Retrieve the workflow", "opens the workflow of the run in a new tab (greyed when there is none)."],
+                ["Thumbnail", "a click opens it large (<b>Preview</b>); a new click, ✕, Escape or a click outside closes it."],
+            ]) +
+            hNote("at the end of a run, its models and LoRA are noted in the registries of <b>02.Models</b> and " +
+                "<b>06.LoRA</b>.") +
+            hNote(textBadge("Purge", PURGE_RED) + " deletes the runs left “running” and moves the runs in error to " +
+                "<b>98.Error</b> (their files stay in place)."),
     },
     {
         id: "rushsort", title: "Sorting the rushes", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
-        html: "<p><b>40.Rush Videos</b> and <b>60.Rush Images</b> each have four folders: <b>Picture Lock</b>, " +
-            "<b>Rough Cut</b>, <b>Footage</b> and <b>No Good</b>. The copies of the runs go to <b>Footage</b> (files of " +
-            "older runs left in the root are put there when the window opens). The old folders <b>Rejected</b> and " +
-            "<b>Validated</b> are renamed <b>No Good</b> and <b>Rough Cut</b> when the window opens.</p>" +
+        html: "<p><b>40.Rush Videos</b> and <b>60.Rush Images</b> each have four folders; the new rushes arrive in " +
+            "<b>Footage</b>.</p>" +
             hCard("Dot of each thumbnail", [
                 [helpDot("#f5c518"), "Picture Lock"],
                 [helpDot("#7ee081"), "Rough Cut"],
@@ -318,41 +313,40 @@ const HELP_SECTIONS = [
                 [helpDot("#d32f2f"), "No Good"],
                 [helpDot("#8a8a8a"), "the original is outside the project"],
             ]) +
-            hList([
-                "Under the image (04, 40, 60), <b>Picture Lock</b> / <b>Rough Cut</b> / <b>Footage</b> / <b>No Good</b> " +
-                "move the file into that folder; the button of its current folder is greyed.",
-                "Each button shows the number of files in its folder (<b>Rough Cut · 3</b>), files put there by hand " +
-                "included; its tooltip says how many no run links to. A file put by hand that is identical (SHA256) to " +
-                "the file of a run sorted elsewhere is a duplicate: when 40 / 60 opens, a window asks which one to keep; " +
-                "the other goes to the Recycle Bin and the run follows the one kept (Cancel: asked again next time).",
-                "From outside the project, the four buttons bring the original back after a confirmation: copy, " +
-                "SHA256 check, then the original is deleted. A video replaces its reduced copy; an image takes the " +
-                "name of the run.",
-                "On an error the original is untouched: <b>Retry</b> or <b>Abandon</b> (abandoned after 3 failed attempts).",
-                "In 40 / 60 the thumbnails are grouped by dot (gold, green, orange, red, grey), then by date in each " +
-                "group (Date ↓ / ↑); a file that is sorted stays selected.",
-                "<b>Filter:</b> (top of the 40 / 60 windows): click dots to show only the thumbnails with those dots " +
-                "(several at once; none = all; back to all at each opening). Its tooltip gives the number of files.",
+            hWarn("a click on a folder button <b>moves the selected file into that folder at once, without " +
+                "confirmation</b> (only bringing back an original from outside the project and the Swap of Picture Lock " +
+                "ask first). To go back, click the button of its previous folder.", "Warning:") +
+            "<p><b>Sort a file</b></p>" +
+            hSteps([
+                "Click the thumbnail.",
+                "Click the button of the folder: <b>Picture Lock</b>, <b>Rough Cut</b>, <b>Footage</b> or <b>No Good</b>.",
+            ]) +
+            "<p>The button of the current folder is greyed; each button shows the number of files of its folder " +
+            "(<b>Rough Cut · 3</b>).</p>" +
+            hCard("Several files at once", [
+                ["☑", "Check the boxes under the thumbnails: the buttons move <b>all the checked files</b>, one by one, " +
+                    "with a progress bar."],
+                ['<span style="color:#e53935;font-weight:bold">✕</span>', "A failed file is skipped and the others go " +
+                    "on; it stays checked with a red ✕."],
             ]) +
             hCard("Picture Lock", [
-                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "<b>Simple</b> project: Picture Lock takes any number of files."],
-                [iconBadge(TREE_ICON, MULTI_COLOR), "Project of a <b>MultiProject</b>: Picture Lock holds <b>one file</b>, " +
-                    "the final rush of the film. When it is taken, a confirmation proposes a <b>Swap</b>: the new file goes " +
-                    "in and the old one goes to the folder of the new one (<b>Rough Cut</b> when the new one comes from " +
-                    "outside the project). With several checked files the button is greyed: check only one. If more than " +
-                    "one file is found there (put by hand), the window says so in orange and nothing is moved."],
+                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "<b>Simple</b> project: any number of files."],
+                [iconBadge(TREE_ICON, MULTI_COLOR), "Project of a <b>MultiProject</b>: <b>one file</b>, the final rush; " +
+                    "when it is taken, <b>Swap</b> exchanges them (the old one goes to the folder of the new one)."],
             ]) +
-            hCard("Several files at once (40 / 60)", [
-                ["☑", "Check the box under the thumbnails: the four buttons then move <b>all the checked files</b>, " +
-                    "one by one, with a progress bar and no confirmation."],
-                ["SHA256", "Each move is done in three steps: copy, SHA256 check of the copy against the original, then " +
-                    "the original is deleted. A failed file is skipped and the others go on."],
-                ['<span style="color:#e53935;font-weight:bold">✕</span>', "At the end a message gives the files moved " +
-                    "and the failures; a failed file keeps its box checked and gets a red ✕ next to its dot (tooltip = error)."],
-                [iconBadge(TRASH_ICON, INACTIVE_BG), "Files in <b>No Good</b> have a trash icon at the top right, red " +
-                    "when checked. <b>Delete</b> (under No Good) deletes the checked files of No Good: Move to Recycle Bin " +
-                    "or Delete permanently (type <b>CONFIRMER</b>). The run keeps a <b>deleted</b> mark: 04.Prompt shows " +
-                    "“Deleted”; a file restored from the Recycle Bin comes back."],
+            hCard("Delete (No Good only)", [
+                [iconBadge(TRASH_ICON, INACTIVE_BG), "Check the files, then <b>Delete</b>: Recycle Bin, or delete " +
+                    "permanently (type <b>CONFIRMER</b>)."],
+            ]) +
+            hCard("Safety of the moves", [
+                ["SHA256", "Each move is done in three steps: copy, SHA256 check, then the original is deleted. On an " +
+                    "error the original is untouched: <b>Retry</b> or <b>Abandon</b>."],
+                ["Duplicate", "A file copied by hand that is identical to the file of a run: when the window opens, " +
+                    "a window asks which one to keep; the other goes to the Recycle Bin."],
+            ]) +
+            hCard("Display", [
+                ["Order", "Thumbnails grouped by dot, then by date (Date ↓ / ↑)."],
+                ["Filter", "Click dots to show only those colours."],
             ]),
     },
     {
@@ -650,38 +644,34 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "runwindows", title: "Fenêtres des Runs (04, 40, 60)",
-        html: "<p>Dès qu'un Run est enregistré, les lignes de 04.Prompt, 40.Rush Videos et 60.Rush Images affichent " +
-            "<b>Last run: dd/MM/yyyy hh:mm:ss | Runs: n</b> (40 : Runs avec une vidéo, 60 : Runs avec une image).</p>" +
-            hList([
-                "<b>04.Prompt</b> : filtre <b>All / Video / Image</b>, liste des Runs, puis la vignette de la sortie " +
-                "(‹ › s'il y en a plusieurs).",
-                "<b>40.Rush Videos</b> / <b>60.Rush Images</b> : les vidéos (copies) ou les images (originaux) citées " +
-                "par les Runs, défilement horizontal.",
-                "<b>Configuration</b> : date, mode, Steps, CFG, Seed, status, <b>Duration</b> (temps total du " +
-                "Run, chargement des modèles compris ; absente pour les anciens Runs), taille de la vidéo, dossier de " +
-                "l'<b>Original</b>. En dessous, les blocs repliés <b>Models</b> et <b>LoRA</b> : ce que le Run a " +
-                "vraiment utilisé (branche choisie d'un switch, LoRA actives), un seul ouvert à la fois.",
-                "<b>Prompt</b> : son texte ; l'icône de copie en haut à gauche le copie dans le presse-papiers.",
-                "<b>Retrieve the workflow</b> (sous la vignette) : ouvre le workflow du Run dans un nouvel onglet " +
-                "(<b>00.Workflows/Run</b>, ou celui gardé dans son PNG / sa vidéo pour un ancien Run ; grisé s'il n'y " +
-                "en a pas).",
-                "Une vignette ouvre la fenêtre <b>Preview</b> (la même vignette la referme) ; ✕, Échap ou un clic à " +
-                "côté ferme la fenêtre.",
+        html: "<p>Chaque Run enregistré apparaît dans trois fenêtres : <b>cliquez sur la ligne du dossier</b> pour " +
+            "ouvrir la sienne. La ligne affiche <b>Last run: date | Runs: n</b> (40 : Runs avec une vidéo, 60 : " +
+            "Runs avec une image).</p>" +
+            hCard("Les trois fenêtres", [
+                [folderBadge("04.Prompt"), "<b>04.Prompt</b> : tous les Runs, filtre <b>All / Video / Image</b> ; un " +
+                    "Run à la fois (liste), avec sa vignette (‹ › s'il a plusieurs sorties)."],
+                [folderBadge("40.Rush Videos"), "<b>40.Rush Videos</b> : les vidéos des Runs (copies), en vignettes qui défilent."],
+                [folderBadge("60.Rush Images"), "<b>60.Rush Images</b> : les images des Runs (originaux), en vignettes qui défilent."],
             ]) +
-            hNote("À la fin d'un Run enregistré, ses modèles et LoRA vont dans les registres " +
-                "<b>02.Models/yyyyMMdd_HHmmss_models.json</b> et <b>06.LoRA/yyyyMMdd_HHmmss_LoRA.json</b> (un ensemble " +
-                "connu garde son indice, un nouveau prend le suivant) et le Run garde leurs indices.", "Remarque :") +
-            hNote(textBadge("Purge", PURGE_RED) + " supprime les Runs encore marqués running alors qu'aucun Run ne " +
-                "tourne et déplace les Runs en erreur dans <b>98.Error</b> ; leurs fichiers restent en place. Une case " +
-                "de son avertissement (décochée) supprime aussi les Runs <b>done</b> sans aucune sortie image ou vidéo " +
-                "(un Run qui cite un fichier disparu est gardé).", "Remarque :"),
+            hCard("Pour le Run choisi", [
+                ["Configuration", "date et mode, Steps, CFG, Seed, statut, <b>Duration</b> (temps total du Run, " +
+                    "chargement des modèles compris), taille de la vidéo, dossier de l'<b>Original</b>."],
+                ["Models / LoRA", "deux blocs repliés, un seul ouvert à la fois : ce que le Run a vraiment utilisé " +
+                    "(branche choisie d'un switch, LoRA actives)."],
+                ["Prompt", "le texte du Run ; l'icône en haut à gauche le copie."],
+                ["Retrieve the workflow", "rouvre le workflow du Run dans un nouvel onglet (grisé s'il n'existe pas)."],
+                ["Vignette", "un clic l'ouvre en grand (<b>Preview</b>) ; un nouveau clic, ✕, Échap ou un clic à " +
+                    "côté la ferme."],
+            ]) +
+            hNote("à la fin d'un Run, ses modèles et LoRA sont notés dans les registres de <b>02.Models</b> et " +
+                "<b>06.LoRA</b>.", "Remarque :") +
+            hNote(textBadge("Purge", PURGE_RED) + " supprime les Runs restés « running » et range les Runs en erreur " +
+                "dans <b>98.Error</b> (leurs fichiers restent en place).", "Remarque :"),
     },
     {
         id: "rushsort", title: "Tri des rushs",
-        html: "<p><b>40.Rush Videos</b> et <b>60.Rush Images</b> ont chacun quatre dossiers : <b>Picture Lock</b>, " +
-            "<b>Rough Cut</b>, <b>Footage</b> et <b>No Good</b>. Les copies des Runs vont dans <b>Footage</b> (les " +
-            "fichiers d'anciens Runs restés à la racine y sont rangés à l'ouverture de la fenêtre). Les anciens dossiers " +
-            "<b>Rejected</b> et <b>Validated</b> sont renommés <b>No Good</b> et <b>Rough Cut</b> à l'ouverture de la fenêtre.</p>" +
+        html: "<p><b>40.Rush Videos</b> et <b>60.Rush Images</b> ont chacun quatre dossiers ; les nouveaux rushs " +
+            "arrivent dans <b>Footage</b>.</p>" +
             hCard("Pastille de chaque vignette", [
                 [helpDot("#f5c518"), "Picture Lock"],
                 [helpDot("#7ee081"), "Rough Cut"],
@@ -689,45 +679,41 @@ const HELP_SECTIONS_FR = [
                 [helpDot("#d32f2f"), "No Good"],
                 [helpDot("#8a8a8a"), "l'original est hors du projet"],
             ]) +
-            hList([
-                "Sous l'image (04, 40, 60), <b>Picture Lock</b> / <b>Rough Cut</b> / <b>Footage</b> / <b>No Good</b> " +
-                "déplacent le fichier dans ce dossier ; le bouton de son dossier actuel est grisé.",
-                "Chaque bouton affiche le nombre de fichiers de son dossier (<b>Rough Cut · 3</b>), fichiers déposés " +
-                "à la main compris ; son infobulle dit combien ne sont liés à aucun Run. Un fichier déposé à la main " +
-                "identique (SHA256) au fichier d'un Run rangé ailleurs est un doublon : à l'ouverture de 40 / 60, une " +
-                "fenêtre demande lequel garder ; l'autre va dans la Corbeille et le Run suit celui gardé (Cancel : la " +
-                "question revient à la prochaine ouverture).",
-                "Hors du projet, les quatre boutons rapatrient l'original après confirmation : copie, comparaison " +
-                "SHA256, puis suppression de l'original. Une vidéo remplace sa copie réduite ; une image prend le nom " +
-                "du Run.",
-                "En cas d'erreur l'original n'est pas touché : <b>Retry</b> ou <b>Abandon</b> (abandon après 3 échecs).",
-                "Dans 40 / 60 les vignettes sont groupées par pastille (dorée, verte, orange, rouge, grise), puis par date " +
-                "dans chaque groupe (Date ↓ / ↑) ; un fichier rangé reste sélectionné.",
-                "<b>Filter:</b> (en haut des fenêtres 40 / 60) : cliquez sur des pastilles pour n'afficher que les " +
-                "vignettes de ces couleurs (plusieurs à la fois ; aucune = tout ; remis à tout à chaque ouverture). " +
-                "L'infobulle donne le nombre de fichiers.",
+            hWarn("un clic sur un bouton de dossier <b>déplace aussitôt le fichier sélectionné dans ce dossier, sans " +
+                "confirmation</b> (seuls le rapatriement d'un original hors du projet et le Swap de Picture Lock " +
+                "demandent confirmation). Pour revenir en arrière, cliquez sur le bouton de son ancien dossier.",
+                "Attention :") +
+            "<p><b>Ranger un fichier</b></p>" +
+            hSteps([
+                "Cliquez sur la vignette.",
+                "Cliquez sur le bouton du dossier : <b>Picture Lock</b>, <b>Rough Cut</b>, <b>Footage</b> ou <b>No Good</b>.",
+            ]) +
+            "<p>Le bouton du dossier actuel est grisé ; chaque bouton indique le nombre de fichiers de son dossier " +
+            "(<b>Rough Cut · 3</b>).</p>" +
+            hCard("Plusieurs fichiers à la fois", [
+                ["☑", "Cochez les cases sous les vignettes : les boutons déplacent <b>tous les fichiers cochés</b>, un " +
+                    "par un, avec une barre de progression."],
+                ['<span style="color:#e53935;font-weight:bold">✕</span>', "Un fichier en échec est passé, les autres " +
+                    "continuent ; il reste coché avec un ✕ rouge."],
             ]) +
             hCard("Picture Lock", [
-                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "Projet <b>Simple</b> : Picture Lock accepte autant de fichiers que voulu."],
-                [iconBadge(TREE_ICON, MULTI_COLOR), "Projet d'un <b>MultiProject</b> : Picture Lock contient <b>un seul " +
-                    "fichier</b>, le rush final du film. S'il est occupé, une confirmation propose un <b>Swap</b> : le " +
-                    "nouveau fichier entre et l'ancien part dans le dossier du nouveau (<b>Rough Cut</b> si le nouveau " +
-                    "vient de l'extérieur du projet). Avec plusieurs fichiers cochés, le bouton est grisé : n'en cochez " +
-                    "qu'un. Si plusieurs fichiers s'y trouvent (déposés à la main), la fenêtre l'indique en orange et rien " +
-                    "n'est déplacé."],
+                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "Projet <b>Simple</b> : autant de fichiers que voulu."],
+                [iconBadge(TREE_ICON, MULTI_COLOR), "Projet d'un <b>MultiProject</b> : <b>un seul fichier</b>, le rush " +
+                    "final ; s'il est occupé, <b>Swap</b> échange les deux (l'ancien part dans le dossier du nouveau)."],
             ]) +
-            hCard("Plusieurs fichiers à la fois (40 / 60)", [
-                ["☑", "Cochez la case sous les vignettes : les quatre boutons déplacent alors <b>tous les fichiers " +
-                    "cochés</b>, un par un, avec une barre de progression et sans confirmation."],
-                ["SHA256", "Chaque déplacement se fait en trois temps : copie, contrôle SHA256 de la copie avec " +
-                    "l'original, puis suppression de l'original. Un fichier en échec est passé, les autres continuent."],
-                ['<span style="color:#e53935;font-weight:bold">✕</span>', "À la fin, un message donne les fichiers " +
-                    "déplacés et les échecs ; un fichier en échec reste coché et reçoit un ✕ rouge à côté de sa pastille " +
-                    "(infobulle = erreur)."],
-                [iconBadge(TRASH_ICON, INACTIVE_BG), "Les fichiers de <b>No Good</b> ont une poubelle en haut à droite, " +
-                    "rouge quand ils sont cochés. <b>Delete</b> (sous No Good) supprime les fichiers cochés de No Good : " +
-                    "Move to Recycle Bin ou Delete permanently (tapez <b>CONFIRMER</b>). Le Run garde une marque " +
-                    "<b>deleted</b> : 04.Prompt affiche « Deleted » ; un fichier restauré depuis la Corbeille revient."],
+            hCard("Supprimer (No Good seulement)", [
+                [iconBadge(TRASH_ICON, INACTIVE_BG), "Cochez les fichiers, puis <b>Delete</b> : Corbeille, ou " +
+                    "suppression définitive (taper <b>CONFIRMER</b>)."],
+            ]) +
+            hCard("Sécurité des déplacements", [
+                ["SHA256", "Un déplacement se fait toujours en trois temps : copie, contrôle SHA256, puis suppression " +
+                    "de l'original. En cas d'erreur, l'original n'est pas touché : <b>Retry</b> ou <b>Abandon</b>."],
+                ["Doublon", "Un fichier copié à la main, identique à celui d'un Run : à l'ouverture, une fenêtre " +
+                    "demande lequel garder ; l'autre part dans la Corbeille."],
+            ]) +
+            hCard("Affichage", [
+                ["Ordre", "Vignettes groupées par pastille, puis par date (Date ↓ / ↑)."],
+                ["Filter", "Cliquez sur des pastilles pour n'afficher que ces couleurs."],
             ]),
     },
     {
