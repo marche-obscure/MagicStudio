@@ -234,8 +234,8 @@ app.registerExtension({
             const container = document.createElement("div");
             Object.assign(container.style, {
                 display: "flex", flexDirection: "column", gap: "6px", padding: "6px 8px", boxSizing: "border-box",
-                width: "100%", height: "100%", fontFamily: "sans-serif", fontSize: "12px", color: "#ddd",
-                overflow: "hidden",
+                width: "100%", fontFamily: "sans-serif", fontSize: "12px", color: "#ddd",
+                // Hauteur naturelle (pas de height 100%) : en Nodes 2.0, le noeud suit son contenu.
             });
             const top = document.createElement("div");
             Object.assign(top.style, { display: "flex", alignItems: "center", gap: "6px" });
@@ -422,7 +422,7 @@ app.registerExtension({
                         await doSync(info.path);
                         return;
                     }
-                    say(plan.count ? "" : "Up to date.", true);
+                    say(plan.count ? plan.count + " change(s) in Picture Lock: click Sync." : "Up to date.", !plan.count);
                 } catch (e) {
                     plan = null;
                     say(e.message);
