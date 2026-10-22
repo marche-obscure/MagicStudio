@@ -17,6 +17,11 @@ import re
 import shutil
 import time
 
+try:
+    from . import projects
+except ImportError:  # tests : module charge seul
+    import projects
+
 PROMPT_FOLDER = "04.Prompt"
 # Workflow de chaque Run (choix utilisateur, 18/10/2026) : meme nom que son JSON.
 RUN_WORKFLOW_FOLDER = ("00.Workflows", "Run")
@@ -31,10 +36,16 @@ _RUN_NAME = re.compile(r"^\d{8}_\d{6}_run\.json$")
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # Sous-dossiers de tri de 40.Rush Videos et 60.Rush Images (choix utilisateur,
-# 19/10/2026) : boutons Reject / Validate / Footage des fenetres 04 / 40 / 60 ;
-# les copies des Runs vont dans Footage.
-SORT_FOLDERS = {"rejected": "Rejected", "validated": "Validated", "footage": "Footage"}
+# 19/10/2026) : boutons Picture Lock / Rough Cut / Footage / No Good des fenetres
+# 04 / 40 / 60 (22/10/2026) ; les copies des Runs vont dans Footage.
+SORT_FOLDERS = {"picture_lock": "Picture Lock", "validated": "Rough Cut", "footage": "Footage", "rejected": "No Good"}
 DEFAULT_SORT = "footage"
+# Anciens noms (avant le 22/10/2026) : renommes a l'ouverture des fenetres 40 / 60.
+OLD_SORT_FOLDERS = {"rejected": "Rejected", "validated": "Validated"}
+# Picture Lock d'un sous-projet de MultiProject : un seul fichier ; l'ancien part
+# dans le dossier du fichier entrant, Rough Cut s'il vient d'ailleurs.
+LOCK = "picture_lock"
+LOCK_BACK = "validated"
 
 # Purge (choix utilisateur, 19/10/2026) : JSON des Runs en erreur et leur
 # workflow ranges dans 98.Error (cree a la premiere purge, sans ligne dans le noeud).
@@ -816,12 +827,123 @@ def _rename_into(project, o, kind, path, key, verified=False):
     return dst
 
 
+def migrate_sort_folders(project):
+    """
+    Anciens dossiers Rejected / Validated de 40 / 60 renommes No Good / Rough Cut
+    (choix utilisateur, 22/10/2026) ; nouveau dossier deja la : fichiers deplaces
+    dedans ("_02"... si le nom est pris). Renvoie {ancien chemin (normcase): nouveau}.
+    """
+    moved = {}
+    for kind in ("video", "image"):
+        base = _rush_dir(project, kind)
+        for key, old in OLD_SORT_FOLDERS.items():
+            src_dir = os.path.join(base, old)
+            dst_dir = os.path.join(base, SORT_FOLDERS[key])
+            if not os.path.isdir(src_dir):
+                continue
+            if not os.path.exists(dst_dir):
+                names = os.listdir(src_dir)
+                os.rename(src_dir, dst_dir)
+                for n in names:
+                    moved[_key(os.path.join(src_dir, n))] = os.path.join(dst_dir, n)
+                continue
+            for n in os.listdir(src_dir):
+                s = os.path.join(src_dir, n)
+                if os.path.isfile(s):
+                    d = _free_path(dst_dir, n)
+                    os.replace(s, d)
+                    moved[_key(s)] = d
+            try:
+                os.rmdir(src_dir)
+            except OSError:
+                pass
+    return moved
+
+
+def _key(path):
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _migrated(project, path, moved):
+    """Nouveau chemin d'un fichier des anciens Rejected / Validated, None sinon."""
+    if not path:
+        return None
+    if _key(path) in moved:
+        return moved[_key(path)]
+    if os.path.isfile(path):
+        return None
+    d = os.path.dirname(path)
+    for kind in ("video", "image"):
+        base = _rush_dir(project, kind)
+        for key, old in OLD_SORT_FOLDERS.items():
+            if _same_dir(d, os.path.join(base, old)):
+                cand = os.path.join(base, SORT_FOLDERS[key], os.path.basename(path))
+                return cand if os.path.isfile(cand) else None
+    return None
+
+
+def _migrate_output(project, o, moved):
+    """Chemins source / copy d'une sortie suivis dans No Good / Rough Cut ; True si change."""
+    changed = False
+    new = _migrated(project, o.get("source") or "", moved)
+    if new:
+        o["source"] = new
+        changed = True
+    new = _migrated(project, _abs_copy(project, o), moved)
+    if new:
+        o["copy"] = _rel(project, new)
+        changed = True
+    return changed
+
+
+def single_lock(project):
+    """Picture Lock a un seul fichier : projet d'un MultiProject (dossier parent marque)."""
+    return projects.is_group(os.path.dirname(os.path.abspath(project)))
+
+
+def lock_files(project, kind):
+    """Fichiers du dossier Picture Lock de 40 (video) ou 60 (image)."""
+    folder = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[LOCK])
+    if not os.path.isdir(folder):
+        return []
+    return sorted(os.path.join(folder, n) for n in os.listdir(folder)
+                  if not n.endswith(".part") and os.path.isfile(os.path.join(folder, n)))
+
+
+def _lock_out(project, kind, path, back):
+    """
+    Echange du Picture Lock : son fichier part dans back (copie + SHA256 +
+    suppression) ; le JSON du Run qui le cite suit, sinon le fichier seul.
+    """
+    folder = os.path.join(project, PROMPT_FOLDER)
+    names = sorted(n for n in os.listdir(folder) if _RUN_NAME.match(n)) if os.path.isdir(folder) else []
+    for name in names:
+        run_file = os.path.join(folder, name)
+        try:
+            with open(run_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        for o in (data.get("outputs") or []) if isinstance(data, dict) else []:
+            if isinstance(o, dict) and output_kind(o) == kind and _same_dir(_project_file(project, o, kind), path):
+                dst = _rename_into(project, o, kind, path, back, verified=True)
+                _write(run_file, data)
+                return dst
+    dst_dir = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[back])
+    os.makedirs(dst_dir, exist_ok=True)
+    dst = _free_path(dst_dir, os.path.basename(path))
+    _move_verified(path, dst)
+    return dst
+
+
 def tidy_rush(project):
     """
     Fichiers de Runs restes a la racine de 40 / 60 (avant les sous-dossiers,
     choix utilisateur) : ranges dans Footage, JSON mis a jour. Les fichiers
     que les JSON ne citent pas ne sont pas touches. Renvoie le nombre range.
+    Anciens Rejected / Validated : renommes No Good / Rough Cut, chemins des JSON suivis.
     """
+    moved_dirs = migrate_sort_folders(project)
     folder = os.path.join(project, PROMPT_FOLDER)
     names = [n for n in os.listdir(folder) if _RUN_NAME.match(n)] if os.path.isdir(folder) else []
     moved = 0
@@ -839,6 +961,8 @@ def tidy_rush(project):
             kind = output_kind(o) if isinstance(o, dict) else None
             if not kind:
                 continue
+            if _migrate_output(project, o, moved_dirs):
+                changed = True
             p = _project_file(project, o, kind)
             if p and sort_of(project, kind, p) == "root" and os.path.isfile(p):
                 _rename_into(project, o, kind, p, DEFAULT_SORT)
@@ -905,7 +1029,7 @@ def purge_runs(project, busy=False, dry_run=False, empty_done=False):
     return out
 
 
-def sort_output(project, run_name, index, target):
+def sort_output(project, run_name, index, target, swap=False):
     """
     Range une sortie de Run dans Rejected / Validated / Footage de 40 (video)
     ou 60 (image) (choix utilisateur, 19/10/2026), d'ou qu'elle vienne :
@@ -917,14 +1041,31 @@ def sort_output(project, run_name, index, target):
     - fichier deja dans 40 / 60 (original, ou copie video dont l'original a
       disparu) : simple renommage d'un sous-dossier a l'autre.
     Nom deja pris : "_02"... Le JSON recoit source / copy (et moved_from).
+    Picture Lock d'un projet de MultiProject (choix utilisateur, 22/10/2026) :
+    un seul fichier ; occupe, refus sans swap, sinon son fichier part d'abord
+    dans le dossier du fichier entrant (Rough Cut s'il vient d'ailleurs).
     """
     if target not in SORT_FOLDERS:
         raise ValueError("Unknown folder: %s" % target)
     run_file, data, o, kind = _load_output(project, run_name, index)
+    res = {}
+    if target == LOCK and single_lock(project):
+        mine = _project_file(project, o, kind)
+        held = [p for p in lock_files(project, kind) if not (mine and _same_dir(p, mine))]
+        if len(held) > 1:
+            raise ValueError("Picture Lock holds %d files: only one is allowed in a project of a MultiProject"
+                             % len(held))
+        if held:
+            if not swap:
+                raise ValueError("Picture Lock already holds %s" % os.path.basename(held[0]))
+            place = sort_of(project, kind, mine) if mine else None
+            back = place if place in SORT_FOLDERS and place != LOCK else LOCK_BACK
+            res["swapped"] = {"file": _lock_out(project, kind, held[0], back), "place": back}
+            # Le JSON du fichier sorti peut etre celui-ci : relu.
+            run_file, data, o, kind = _load_output(project, run_name, index)
     src = o.get("source") or ""
     folder = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[target])
     outside = bool(src) and os.path.isfile(src) and sort_of(project, kind, src) is None
-    res = {}
     if outside:
         os.makedirs(folder, exist_ok=True)
         ext = os.path.splitext(src)[1]

@@ -418,9 +418,12 @@ try:
             project = request.rel_url.query.get("project", "").strip()
             runs = await _in_executor(run_record.list_runs, project)
             sets = await _in_executor(run_record.registry_sets, project)
+            # Picture Lock (choix utilisateur, 22/10/2026) : un seul fichier dans un projet de MultiProject.
+            single = run_record.single_lock(project)
+            locked = {k: [os.path.basename(p) for p in run_record.lock_files(project, k)] for k in ("video", "image")}
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"runs": runs, "registries": sets})
+        return web.json_response({"runs": runs, "registries": sets, "single_lock": single, "locked": locked})
 
     @routes.get("/mmproject/run_workflow")
     async def mmproject_run_workflow(request):
@@ -458,18 +461,18 @@ try:
 
     @routes.post("/mmproject/sort_output")
     async def mmproject_sort_output(request):
-        """Range une sortie de Run dans Rejected / Validated / Footage de 40 / 60 (rapatriement : copie, SHA256, suppression)."""
+        """Range une sortie de Run dans Picture Lock / Rough Cut / Footage / No Good de 40 / 60 (rapatriement : copie, SHA256, suppression)."""
         try:
             body = await request.json()
             data = await _in_executor(run_record.sort_output, body.get("project", ""), body.get("run", ""),
-                                      body.get("index"), body.get("target", ""))
+                                      body.get("index"), body.get("target", ""), bool(body.get("swap")))
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
 
     @routes.post("/mmproject/delete_rush")
     async def mmproject_delete_rush(request):
-        """Supprime une sortie rangee dans Rejected (Corbeille si trash, sinon definitif) ; le JSON la marque deleted."""
+        """Supprime une sortie rangee dans No Good (Corbeille si trash, sinon definitif) ; le JSON la marque deleted."""
         try:
             body = await request.json()
             trash = bool(body.get("trash"))

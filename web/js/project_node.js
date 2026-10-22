@@ -305,36 +305,46 @@ const HELP_SECTIONS = [
     },
     {
         id: "rushsort", title: "Sorting the rushes", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
-        html: "<p><b>40.Rush Videos</b> and <b>60.Rush Images</b> each have three folders: <b>Rejected</b>, " +
-            "<b>Validated</b> and <b>Footage</b>. The copies of the runs go to <b>Footage</b> (files of older runs left " +
-            "in the root are put there when the window opens).</p>" +
+        html: "<p><b>40.Rush Videos</b> and <b>60.Rush Images</b> each have four folders: <b>Picture Lock</b>, " +
+            "<b>Rough Cut</b>, <b>Footage</b> and <b>No Good</b>. The copies of the runs go to <b>Footage</b> (files of " +
+            "older runs left in the root are put there when the window opens). The old folders <b>Rejected</b> and " +
+            "<b>Validated</b> are renamed <b>No Good</b> and <b>Rough Cut</b> when the window opens.</p>" +
             hCard("Dot of each thumbnail", [
-                [helpDot("#d32f2f"), "Rejected"],
-                [helpDot("#7ee081"), "Validated"],
+                [helpDot("#f5c518"), "Picture Lock"],
+                [helpDot("#7ee081"), "Rough Cut"],
                 [helpDot("#fb8c00"), "Footage"],
+                [helpDot("#d32f2f"), "No Good"],
                 [helpDot("#8a8a8a"), "the original is outside the project"],
             ]) +
             hList([
-                "Under the image (04, 40, 60), <b>Validate</b> / <b>Footage</b> / <b>Reject</b> move the file into that " +
-                "folder; the button of its current folder is greyed.",
-                "From outside the project, the three buttons bring the original back after a confirmation: copy, " +
+                "Under the image (04, 40, 60), <b>Picture Lock</b> / <b>Rough Cut</b> / <b>Footage</b> / <b>No Good</b> " +
+                "move the file into that folder; the button of its current folder is greyed.",
+                "From outside the project, the four buttons bring the original back after a confirmation: copy, " +
                 "SHA256 check, then the original is deleted. A video replaces its reduced copy; an image takes the " +
                 "name of the run.",
                 "On an error the original is untouched: <b>Retry</b> or <b>Abandon</b> (abandoned after 3 failed attempts).",
-                "In 40 / 60 the thumbnails are grouped by dot (green, orange, red, grey), then by date in each " +
+                "In 40 / 60 the thumbnails are grouped by dot (gold, green, orange, red, grey), then by date in each " +
                 "group (Date ↓ / ↑); a file that is sorted stays selected.",
                 "<b>Filter:</b> (top of the 40 / 60 windows): click dots to show only the thumbnails with those dots " +
                 "(several at once; none = all; back to all at each opening). Its tooltip gives the number of files.",
             ]) +
+            hCard("Picture Lock", [
+                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "<b>Simple</b> project: Picture Lock takes any number of files."],
+                [iconBadge(TREE_ICON, MULTI_COLOR), "Project of a <b>MultiProject</b>: Picture Lock holds <b>one file</b>, " +
+                    "the final rush of the film. When it is taken, a confirmation proposes a <b>Swap</b>: the new file goes " +
+                    "in and the old one goes to the folder of the new one (<b>Rough Cut</b> when the new one comes from " +
+                    "outside the project). With several checked files the button is greyed: check only one. If more than " +
+                    "one file is found there (put by hand), the window says so in orange and nothing is moved."],
+            ]) +
             hCard("Several files at once (40 / 60)", [
-                ["☑", "Check the box under the thumbnails: the three buttons then move <b>all the checked files</b>, " +
+                ["☑", "Check the box under the thumbnails: the four buttons then move <b>all the checked files</b>, " +
                     "one by one, with a progress bar and no confirmation."],
                 ["SHA256", "Each move is done in three steps: copy, SHA256 check of the copy against the original, then " +
                     "the original is deleted. A failed file is skipped and the others go on."],
                 ['<span style="color:#e53935;font-weight:bold">✕</span>', "At the end a message gives the files moved " +
                     "and the failures; a failed file keeps its box checked and gets a red ✕ next to its dot (tooltip = error)."],
-                [iconBadge(TRASH_ICON, INACTIVE_BG), "Files in <b>Rejected</b> have a trash icon at the top right, red " +
-                    "when checked. <b>Delete</b> (under Reject) deletes the checked files of Rejected: Move to Recycle Bin " +
+                [iconBadge(TRASH_ICON, INACTIVE_BG), "Files in <b>No Good</b> have a trash icon at the top right, red " +
+                    "when checked. <b>Delete</b> (under No Good) deletes the checked files of No Good: Move to Recycle Bin " +
                     "or Delete permanently (type <b>CONFIRMER</b>). The run keeps a <b>deleted</b> mark: 04.Prompt shows " +
                     "“Deleted”; a file restored from the Recycle Bin comes back."],
             ]),
@@ -654,38 +664,49 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "rushsort", title: "Tri des rushs",
-        html: "<p><b>40.Rush Videos</b> et <b>60.Rush Images</b> ont chacun trois dossiers : <b>Rejected</b>, " +
-            "<b>Validated</b> et <b>Footage</b>. Les copies des Runs vont dans <b>Footage</b> (les fichiers d'anciens " +
-            "Runs restés à la racine y sont rangés à l'ouverture de la fenêtre).</p>" +
+        html: "<p><b>40.Rush Videos</b> et <b>60.Rush Images</b> ont chacun quatre dossiers : <b>Picture Lock</b>, " +
+            "<b>Rough Cut</b>, <b>Footage</b> et <b>No Good</b>. Les copies des Runs vont dans <b>Footage</b> (les " +
+            "fichiers d'anciens Runs restés à la racine y sont rangés à l'ouverture de la fenêtre). Les anciens dossiers " +
+            "<b>Rejected</b> et <b>Validated</b> sont renommés <b>No Good</b> et <b>Rough Cut</b> à l'ouverture de la fenêtre.</p>" +
             hCard("Pastille de chaque vignette", [
-                [helpDot("#d32f2f"), "Rejected"],
-                [helpDot("#7ee081"), "Validated"],
+                [helpDot("#f5c518"), "Picture Lock"],
+                [helpDot("#7ee081"), "Rough Cut"],
                 [helpDot("#fb8c00"), "Footage"],
+                [helpDot("#d32f2f"), "No Good"],
                 [helpDot("#8a8a8a"), "l'original est hors du projet"],
             ]) +
             hList([
-                "Sous l'image (04, 40, 60), <b>Validate</b> / <b>Footage</b> / <b>Reject</b> déplacent le fichier dans " +
-                "ce dossier ; le bouton de son dossier actuel est grisé.",
-                "Hors du projet, les trois boutons rapatrient l'original après confirmation : copie, comparaison " +
+                "Sous l'image (04, 40, 60), <b>Picture Lock</b> / <b>Rough Cut</b> / <b>Footage</b> / <b>No Good</b> " +
+                "déplacent le fichier dans ce dossier ; le bouton de son dossier actuel est grisé.",
+                "Hors du projet, les quatre boutons rapatrient l'original après confirmation : copie, comparaison " +
                 "SHA256, puis suppression de l'original. Une vidéo remplace sa copie réduite ; une image prend le nom " +
                 "du Run.",
                 "En cas d'erreur l'original n'est pas touché : <b>Retry</b> ou <b>Abandon</b> (abandon après 3 échecs).",
-                "Dans 40 / 60 les vignettes sont groupées par pastille (verte, orange, rouge, grise), puis par date " +
+                "Dans 40 / 60 les vignettes sont groupées par pastille (dorée, verte, orange, rouge, grise), puis par date " +
                 "dans chaque groupe (Date ↓ / ↑) ; un fichier rangé reste sélectionné.",
                 "<b>Filter:</b> (en haut des fenêtres 40 / 60) : cliquez sur des pastilles pour n'afficher que les " +
                 "vignettes de ces couleurs (plusieurs à la fois ; aucune = tout ; remis à tout à chaque ouverture). " +
                 "L'infobulle donne le nombre de fichiers.",
             ]) +
+            hCard("Picture Lock", [
+                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "Projet <b>Simple</b> : Picture Lock accepte autant de fichiers que voulu."],
+                [iconBadge(TREE_ICON, MULTI_COLOR), "Projet d'un <b>MultiProject</b> : Picture Lock contient <b>un seul " +
+                    "fichier</b>, le rush final du film. S'il est occupé, une confirmation propose un <b>Swap</b> : le " +
+                    "nouveau fichier entre et l'ancien part dans le dossier du nouveau (<b>Rough Cut</b> si le nouveau " +
+                    "vient de l'extérieur du projet). Avec plusieurs fichiers cochés, le bouton est grisé : n'en cochez " +
+                    "qu'un. Si plusieurs fichiers s'y trouvent (déposés à la main), la fenêtre l'indique en orange et rien " +
+                    "n'est déplacé."],
+            ]) +
             hCard("Plusieurs fichiers à la fois (40 / 60)", [
-                ["☑", "Cochez la case sous les vignettes : les trois boutons déplacent alors <b>tous les fichiers " +
+                ["☑", "Cochez la case sous les vignettes : les quatre boutons déplacent alors <b>tous les fichiers " +
                     "cochés</b>, un par un, avec une barre de progression et sans confirmation."],
                 ["SHA256", "Chaque déplacement se fait en trois temps : copie, contrôle SHA256 de la copie avec " +
                     "l'original, puis suppression de l'original. Un fichier en échec est passé, les autres continuent."],
                 ['<span style="color:#e53935;font-weight:bold">✕</span>', "À la fin, un message donne les fichiers " +
                     "déplacés et les échecs ; un fichier en échec reste coché et reçoit un ✕ rouge à côté de sa pastille " +
                     "(infobulle = erreur)."],
-                [iconBadge(TRASH_ICON, INACTIVE_BG), "Les fichiers de <b>Rejected</b> ont une poubelle en haut à droite, " +
-                    "rouge quand ils sont cochés. <b>Delete</b> (sous Reject) supprime les fichiers cochés de Rejected : " +
+                [iconBadge(TRASH_ICON, INACTIVE_BG), "Les fichiers de <b>No Good</b> ont une poubelle en haut à droite, " +
+                    "rouge quand ils sont cochés. <b>Delete</b> (sous No Good) supprime les fichiers cochés de No Good : " +
                     "Move to Recycle Bin ou Delete permanently (tapez <b>CONFIRMER</b>). Le Run garde une marque " +
                     "<b>deleted</b> : 04.Prompt affiche « Deleted » ; un fichier restauré depuis la Corbeille revient."],
             ]),
@@ -2683,13 +2704,13 @@ function buildFolderViewer(container) {
 // --------------------------------------------------------------------
 const RUN_FILTERS = [["all", "All"], ["video", "Video"], ["image", "Image"]];
 // Pastille des vignettes (choix utilisateur, 19/10/2026) : sous-dossier de tri de
-// l'original dans 40 / 60 (rouge Rejected, vert clair Validated, orange Footage),
-// gris = original hors du projet.
+// l'original dans 40 / 60 (dore Picture Lock, vert clair Rough Cut, orange Footage,
+// rouge No Good), gris = original hors du projet.
 const DOT_GREEN = "#43a047";
 const DOT_ORANGE = "#d35400";
 const DOT_GREY = "#8a8a8a";
-const SORT_COLORS = { rejected: "#e53935", validated: "#7ee081", footage: "#fb8c00" };
-const SORT_TEXT_COLORS = { rejected: "#fff", validated: "#102010", footage: "#1a1000" };
+const SORT_COLORS = { picture_lock: "#f5c518", rejected: "#e53935", validated: "#7ee081", footage: "#fb8c00" };
+const SORT_TEXT_COLORS = { picture_lock: "#1a1400", rejected: "#fff", validated: "#102010", footage: "#1a1000" };
 // Pastilles (vignettes et filtre) : rouge = celui de la poubelle des vignettes (choix utilisateur, 21/10/2026).
 const DOT_COLORS = { ...SORT_COLORS, rejected: TRASH_RED };
 const RUSH_FOLDER_OF = { video: "40.Rush Videos", image: "60.Rush Images" };
@@ -3017,9 +3038,9 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     }
 
     /**
-     * Boutons Reject / Validate / Footage sous l'image (choix utilisateur, 19/10/2026) :
-     * le fichier va dans ce sous-dossier de 40 / 60 ; bouton du dossier actuel grise ;
-     * original hors du projet : les trois le rapatrient (copie, SHA256, suppression).
+     * Boutons Picture Lock / Rough Cut / Footage / No Good sous l'image (choix utilisateur,
+     * 19/10 et 22/10/2026) : le fichier va dans ce sous-dossier de 40 / 60 ; bouton du
+     * dossier actuel grise ; original hors du projet : tous le rapatrient (copie, SHA256, suppression).
      */
     function sortBar(run, out) {
         const bar = document.createElement("div");
@@ -3027,7 +3048,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         const active = sortTargets(out);
         const where = RUSH_FOLDER_OF[out.kind] + "/";
         for (const [key, label, name] of SORT_FOLDERS) {
-            // Fichier supprime : plus de dossier actuel, les trois boutons grises.
+            // Fichier supprime : plus de dossier actuel, les boutons grises.
             const here = out.in_project && out.place === key && !out.deleted;
             const b = makeTextButton(label, here ? SORT_COLORS[key] : INACTIVE_BG);
             Object.assign(b.style, { flex: "1", border: "2px solid " + SORT_COLORS[key] });
@@ -3211,9 +3232,19 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 (on ? " (click: hide)" : " (click: show only these)");
         }
     }
+    let lockNote = "";
     function renderRush() {
         const all = allRush();
         paintFilter(all);
+        // Picture Lock d'un projet de MultiProject avec plusieurs fichiers (deposes a la main).
+        const warn = rush && rush.lockWarning ? rush.lockWarning(folder === "40.Rush Videos" ? "video" : "image") : "";
+        if (warn && (!note.textContent || note.textContent === lockNote)) {
+            note.textContent = warn;
+            note.style.color = ORANGE;
+        } else if (!warn && lockNote && note.textContent === lockNote) {
+            note.textContent = "";
+        }
+        lockNote = warn;
         const items = filterByDot(all, dotFilter);
         // Cases des vignettes masquees (filtre) ou disparues : decochees.
         const visible = new Set(items.map(rushKey));
@@ -3263,7 +3294,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             }
             let trash = null;
             if (canDeleteRush(it.output)) {
-                // Poubelle des fichiers de Rejected : grise, rouge quand la case est cochee.
+                // Poubelle des fichiers de No Good : grise, rouge quand la case est cochee.
                 trash = document.createElement("div");
                 trash.innerHTML = TRASH_ICON;
                 Object.assign(trash.style, {
@@ -3276,7 +3307,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             const paintTrash = () => {
                 if (!trash) return;
                 trash.style.background = checked.has(key) ? TRASH_RED : INACTIVE_BG;
-                trash.title = checked.has(key) ? "Checked: Delete removes it" : "In Rejected: check it to delete it";
+                trash.title = checked.has(key) ? "Checked: Delete removes it" : "In No Good: check it to delete it";
             };
             paintTrash();
             t.appendChild(pic);
@@ -3331,14 +3362,16 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     }
 
     /**
-     * Boutons du lot (choix utilisateur, 20/10/2026) : Reject / Validate / Footage
-     * deplacent tous les fichiers coches, sans confirmation ; Delete (sous Reject)
-     * apparait si un fichier coche est dans Rejected.
+     * Boutons du lot (choix utilisateur, 20/10/2026) : Picture Lock / Rough Cut / Footage /
+     * No Good deplacent tous les fichiers coches, sans confirmation (sauf l'echange du
+     * Picture Lock d'un projet de MultiProject) ; Delete (sous No Good) apparait si un
+     * fichier coche est dans No Good.
      */
     function batchBar(sel) {
         const bar = document.createElement("div");
-        Object.assign(bar.style, { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "6px", width: "100%" });
-        const active = batchSortTargets(sel.map((x) => x.output));
+        Object.assign(bar.style, { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "6px", width: "100%" });
+        const single = !!(rush && rush.singleLock && rush.singleLock());
+        const active = batchSortTargets(sel.map((x) => x.output), single);
         const where = RUSH_FOLDER_OF[sel[0].output.kind] + "/";
         for (const [key, label, name] of SORT_FOLDERS) {
             const b = makeTextButton(label + " (" + sel.length + ")", INACTIVE_BG);
@@ -3346,7 +3379,9 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             if (!active.includes(key)) {
                 b.disabled = true;
                 Object.assign(b.style, { cursor: "default", opacity: "0.45" });
-                b.title = "All the checked files are already in " + where + name;
+                b.title = key === "picture_lock" && single && sel.length > 1
+                    ? "Picture Lock holds only one file in a project of a MultiProject: check a single file"
+                    : "All the checked files are already in " + where + name;
             } else {
                 b.title = "Move the " + sel.length + " checked file(s) into " + where + name +
                     " (copy, SHA256 check, then the original is deleted)";
@@ -3357,8 +3392,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         const doomed = sel.filter((x) => canDeleteRush(x.output));
         if (doomed.length) {
             const d = makeTextButton("Delete (" + doomed.length + ")", SORT_COLORS.rejected);
-            Object.assign(d.style, { gridColumn: "3", border: "2px solid " + SORT_COLORS.rejected });
-            d.title = "Delete the " + doomed.length + " checked file(s) of " + where + "Rejected";
+            Object.assign(d.style, { gridColumn: "4", border: "2px solid " + SORT_COLORS.rejected });
+            d.title = "Delete the " + doomed.length + " checked file(s) of " + where + SORT_NAME.rejected;
             d.addEventListener("click", () => deleteChecked(doomed, d));
             bar.appendChild(d);
         }
@@ -3414,7 +3449,10 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     async function moveChecked(sel, key, dest) {
         const list = sel.filter((x) => sortTargets(x.output).includes(key));
         const skipped = sel.length - list.length;
-        const { ok, ko } = await runBatch(list, (it) => rush.move(it.run, it.output, key));
+        // Picture Lock d'un projet de MultiProject : un seul fichier, echange confirme.
+        const lock = list.length ? await rush.lockSwap(list[0].output, key) : { swap: false };
+        if (!lock) return;
+        const { ok, ko } = await runBatch(list, (it) => rush.move(it.run, it.output, key, lock.swap));
         renderRush();
         report(ok + " file(s) moved to " + dest + " – " + ko + " failed" +
             (skipped ? " – " + skipped + " already there" : ""), ko);
@@ -4025,6 +4063,10 @@ app.registerExtension({
             const runLock = new Set();
             // Runs enregistres (04.Prompt), le plus recent d'abord : boutons et fenetres 04 / 40 / 60.
             let runList = [];
+            // Picture Lock (choix utilisateur, 22/10/2026) : un seul fichier dans un projet de
+            // MultiProject (lu par /mmproject/runs) ; fichiers de Picture Lock par type.
+            let singleLock = false;
+            let lockedFiles = {};
             // Registres 02.Models / 06.LoRA : {models: [ensembles], lora: [ensembles]}.
             let registries = {};
             // Doublons de <dossier>/Archives : {dossier: [{sha, files}]} ; Corbeille disponible (Windows).
@@ -4163,11 +4205,18 @@ app.registerExtension({
             const duplicatesDialog = buildDuplicatesDialog(container);
             const folderViewer = buildFolderViewer(container);
             // Lots de 40 / 60 (choix utilisateur, 20/10/2026) : deplacement sans confirmation,
-            // suppression de Rejected avec Corbeille ou definitive (mot CONFIRMER a taper).
+            // suppression de No Good avec Corbeille ou definitive (mot CONFIRMER a taper).
             const rushDeleteChoice = buildDeleteChoice();
             const rushOps = {
-                move: (run, out, key) => apiPost("/mmproject/sort_output",
-                    { project: getState().path, run: run.file, index: out.index, target: key }),
+                move: (run, out, key, swap) => apiPost("/mmproject/sort_output",
+                    { project: getState().path, run: run.file, index: out.index, target: key, swap: !!swap }),
+                singleLock: () => singleLock,
+                lockSwap: (out, key) => lockSwap(out, key),
+                lockWarning: (kind) => {
+                    const n = (lockedFiles[kind] || []).length;
+                    return singleLock && n > 1 ? RUSH_FOLDER_OF[kind] + "/Picture Lock holds " + n + " files: only one " +
+                        "is allowed in a project of a MultiProject. Move the others out by hand." : "";
+                },
                 remove: (run, out, trash) => apiPost("/mmproject/delete_rush",
                     { project: getState().path, run: run.file, index: out.index, trash }),
                 async reload() {
@@ -4177,7 +4226,7 @@ app.registerExtension({
                 },
                 askDelete: (names, anchor, below) => rushDeleteChoice.ask(names, /Windows/i.test(navigator.userAgent), anchor, {
                     below,
-                    title: "Delete " + names.length + " file(s) of Rejected?",
+                    title: "Delete " + names.length + " file(s) of No Good?",
                     note: "Files moved to the Recycle Bin can be restored from it; <b>Delete permanently</b> cannot be " +
                         "undone. The runs keep a <b>deleted</b> mark.",
                 }),
@@ -4651,10 +4700,14 @@ app.registerExtension({
                     if (getState().path === s.path) {
                         runList = data.runs || [];
                         registries = data.registries || {};
+                        singleLock = !!data.single_lock;
+                        lockedFiles = data.locked || {};
                     }
                 } catch (e) {
                     runList = [];
                     registries = {};
+                    singleLock = false;
+                    lockedFiles = {};
                 }
             }
 
@@ -4724,8 +4777,42 @@ app.registerExtension({
             }
 
             /**
-             * Tri d'une sortie dans Rejected / Validated / Footage de 40 / 60 (choix
-             * utilisateur, 19/10/2026). Fichier deja dans le projet : renommage direct.
+             * Picture Lock d'un projet de MultiProject (choix utilisateur, 22/10/2026) : un
+             * seul fichier ; occupe -> echange confirme (l'ancien part dans le dossier du
+             * nouveau, Rough Cut s'il vient d'ailleurs). {swap} ou null (annule, plusieurs fichiers).
+             */
+            async function lockSwap(out, key) {
+                if (key !== "picture_lock" || !singleLock) return { swap: false };
+                const held = lockedFiles[out.kind] || [];
+                if (!held.length) return { swap: false };
+                const where = RUSH_FOLDER_OF[out.kind] + "/";
+                if (held.length > 1) {
+                    await confirm.ask({
+                        title: "Picture Lock holds " + held.length + " files",
+                        html: "In a project of a MultiProject, " + where + "Picture Lock keeps only one file. Move the " +
+                            "others out by hand first.",
+                        okLabel: "OK", okColor: INACTIVE_BG, noCancel: true,
+                    });
+                    return null;
+                }
+                const name = baseOf(outputFile(out) || out.source || "");
+                const inside = out.in_project && ["validated", "footage", "rejected"].includes(out.place);
+                const back = inside ? out.place : "validated";
+                const ok = await confirm.ask({
+                    title: "Swap with the Picture Lock file?",
+                    html: "<b>" + escapeHtml(name) + "</b> replaces <b>" + escapeHtml(held[0]) + "</b> in " + where +
+                        "Picture Lock;<br><b>" + escapeHtml(held[0]) + "</b> goes to <b>" + where + SORT_NAME[back] + "</b> " +
+                        '<span style="color:#999">(' + (inside ? "the folder of " + escapeHtml(name)
+                            : "the new file comes from outside the project") + ").</span>" +
+                        '<br><span style="color:#999">A project of a MultiProject keeps one file in Picture Lock.</span>',
+                    okLabel: "Swap", okColor: SORT_COLORS.picture_lock,
+                });
+                return ok ? { swap: true } : null;
+            }
+
+            /**
+             * Tri d'une sortie dans Picture Lock / Rough Cut / Footage / No Good de 40 / 60
+             * (choix utilisateur, 19/10/2026). Fichier deja dans le projet : renommage direct.
              * Original hors du projet : confirmation, puis copie + SHA256 + suppression
              * cote serveur. En cas d'erreur Retry / Abandon, abandon apres 3 echecs.
              */
@@ -4733,6 +4820,8 @@ app.registerExtension({
                 const s = getState();
                 const dest = (out.kind === "video" ? "40.Rush Videos/" : "60.Rush Images/") +
                     SORT_FOLDERS.find((x) => x[0] === key)[2];
+                const lock = await lockSwap(out, key);
+                if (!lock) return null;
                 if (out.source_exists && !out.in_project) {
                     const ok = await confirm.ask({
                         title: "Move the original to " + dest + "?",
@@ -4747,12 +4836,14 @@ app.registerExtension({
                 for (let attempt = 1; ; attempt++) {
                     try {
                         const data = await apiPost("/mmproject/sort_output",
-                            { project: s.path, run: run.file, index: out.index, target: key });
+                            { project: s.path, run: run.file, index: out.index, target: key, swap: lock.swap });
                         await loadRuns(s);
                         paintFolders();
                         const name = baseOf(data.copy || data.source || "");
-                        say("File moved to " + dest + ": " + name, true);
-                        return { runs: runList, text: "File moved to " + dest + ": " + name, ok: true };
+                        const text = "File moved to " + dest + ": " + name + (data.swapped ? " – " +
+                            baseOf(data.swapped.file) + " went to " + SORT_NAME[data.swapped.place] : "");
+                        say(text, true);
+                        return { runs: runList, text, ok: true };
                     } catch (e) {
                         if (attempt >= 3) {
                             await confirm.ask({

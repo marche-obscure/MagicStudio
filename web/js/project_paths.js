@@ -424,9 +424,9 @@ export function outputFile(o) {
 }
 
 // Tri des fichiers de 40 / 60 (choix utilisateur, 19/10/2026) : [cle, bouton, sous-dossier] ;
-// ordre des boutons Validate, Footage, Reject (choix utilisateur, 21/10/2026).
-export const SORT_FOLDERS = [["validated", "Validate", "Validated"], ["footage", "Footage", "Footage"],
-    ["rejected", "Reject", "Rejected"]];
+// Picture Lock, Rough Cut, Footage, No Good (choix utilisateur, 22/10/2026 ; cles d'avant gardees).
+export const SORT_FOLDERS = [["picture_lock", "Picture Lock", "Picture Lock"], ["validated", "Rough Cut", "Rough Cut"],
+    ["footage", "Footage", "Footage"], ["rejected", "No Good", "No Good"]];
 const SORT_KEYS = SORT_FOLDERS.map((x) => x[0]);
 
 /** Pastille d'une sortie : sous-dossier de l'original s'il est dans le projet, sinon "outside". */
@@ -447,14 +447,16 @@ export function sortTargets(o) {
 
 /**
  * Boutons de tri pour les fichiers coches (choix utilisateur, 20/10/2026) : un
- * dossier est actif si au moins un fichier coche peut y aller.
+ * dossier est actif si au moins un fichier coche peut y aller. singleLock (projet
+ * d'un MultiProject, 22/10/2026) : Picture Lock seulement pour un seul fichier coche.
  */
-export function batchSortTargets(outs) {
+export function batchSortTargets(outs, singleLock) {
     const keys = new Set((outs || []).flatMap((o) => sortTargets(o)));
+    if (singleLock && (outs || []).length > 1) keys.delete("picture_lock");
     return SORT_KEYS.filter((k) => keys.has(k));
 }
 
-/** Sortie supprimable par le bouton Delete : fichier present dans Rejected. */
+/** Sortie supprimable par le bouton Delete : fichier present dans No Good. */
 export function canDeleteRush(o) {
     return sortDot(o) === "rejected" && !!outputFile(o);
 }
@@ -584,8 +586,8 @@ export function orderByMtime(items, mtimes, order) {
 }
 
 // Filtre par pastille des fenetres 40 / 60 (choix utilisateur, 19/10/2026), dans
-// l'ordre du filtre : vert, orange, rouge, gris.
-export const DOT_FILTER = ["validated", "footage", "rejected", "outside"];
+// l'ordre du filtre : dore (Picture Lock, 22/10/2026), vert, orange, rouge, gris.
+export const DOT_FILTER = ["picture_lock", "validated", "footage", "rejected", "outside"];
 
 /** Vignettes [{file, run, output}] dont la pastille est active ; aucune active = toutes. */
 export function filterByDot(items, active) {
@@ -593,7 +595,7 @@ export function filterByDot(items, active) {
     return (items || []).filter((it) => active.has(sortDot(it.output)));
 }
 
-/** Nombre de vignettes par pastille : {validated, footage, rejected, outside}. */
+/** Nombre de vignettes par pastille : {picture_lock, validated, footage, rejected, outside}. */
 export function dotCounts(items) {
     const out = Object.fromEntries(DOT_FILTER.map((k) => [k, 0]));
     for (const it of items || []) out[sortDot(it.output)] += 1;
