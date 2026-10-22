@@ -5455,11 +5455,23 @@ app.registerExtension({
             /** Ecrit le workflow actuel ; validated = sauvegarde confirmee par la cloche (vert). */
             async function writeWorkflow(name, archive, validated) {
                 const s = getState();
-                const wf = currentWorkflow();
-                const info = await apiPost("/mmproject/save_workflow", {
-                    project: s.path, name, content: JSON.stringify(wf, null, 2) + "\n", archive: archive || null,
-                });
-                setState({ wfPath: s.path, wfName: info.name, wfValidated: !!validated, wfRed: "" });
+                // Etat final du noeud Projet AVANT d'ecrire le fichier (choix utilisateur, 22/10/2026) :
+                // le workflow sauvegarde porte cet etat ; avant, il gardait l'etat d'avant la sauvegarde
+                // (wfValidated false) et se rechargeait avec la cloche orange.
+                const after = { wfPath: s.path, wfName: String(name || "").replace(/\.json$/i, "").trim() + ".json",
+                    wfValidated: !!validated, wfRed: "" };
+                setState(after);
+                let info;
+                try {
+                    info = await apiPost("/mmproject/save_workflow", {
+                        project: s.path, name, content: JSON.stringify(currentWorkflow(), null, 2) + "\n",
+                        archive: archive || null,
+                    });
+                } catch (e) {
+                    setState({ wfPath: s.wfPath, wfName: s.wfName, wfValidated: s.wfValidated, wfRed: s.wfRed });
+                    throw e;
+                }
+                setState(Object.assign(after, { wfName: info.name }));
                 await loadWorkflowInfo();
                 return info;
             }
