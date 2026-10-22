@@ -8,7 +8,7 @@ import {
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
-    batchSortTargets, canDeleteRush, deletedText, anchoredSubs, projectNameOfPath,
+    batchSortTargets, canDeleteRush, deletedText, anchoredSubs, projectNameOfPath, subfolderLabel,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
 } from "../web/js/project_paths.js";
@@ -485,4 +485,12 @@ test("root folder anchored on the parent folder", () => {
     assert.equal(projectNameOfPath("F:\\P", names, "F:\\P\\Yacht\\Speech"), "Yacht/Speech");
     assert.equal(projectNameOfPath("F:/P/", names, "f:/p/projet de test"), "Projet de test");
     assert.equal(projectNameOfPath("F:\\P", names, "F:\\Q\\Speech"), "");
+});
+
+test("subfolder names relative to the Project / Sub-project choice", () => {
+    assert.equal(subfolderLabel("Yacht/Speech/08.Images", "Yacht/Speech"), "08.Images");
+    assert.equal(subfolderLabel("Yacht/Speech/08.Images", "Yacht"), "Speech/08.Images");
+    assert.equal(subfolderLabel("Yacht/Speech/08.Images", ""), "Yacht/Speech/08.Images");
+    assert.equal(subfolderLabel("Solo\\10.Son", "solo"), "10.Son");
+    assert.equal(subfolderLabel("Solo2/10.Son", "Solo"), "Solo2/10.Son");
 });

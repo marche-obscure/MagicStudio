@@ -3,7 +3,8 @@ import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
 import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
-    relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, anchoredSubs } from "./project_paths.js";
+    relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, anchoredSubs,
+    subfolderLabel } from "./project_paths.js";
 
 const NODE_NAME = "MiniMaxH3RefLoader";
 
@@ -149,6 +150,85 @@ function iconBadge(icon, bg) {
         "background:" + bg + '">' + icon + "</span>";
 }
 
+// Projet Simple / MultiProject (choix utilisateur, 22/10/2026) : dossier ouvert, arborescence ;
+// memes icones dans l'aide et dans les listes (Copy du noeud Project, galerie).
+const FOLDER_OPEN_ICON = svg('<path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 ' +
+    '1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"></path>', 13);
+const SIMPLE_COLOR = PINK;      // rose (bouton +)
+const MULTI_COLOR = "#2e9d8f";  // vert d'eau
+const TREE_ICON = svg('<rect x="13" y="3" width="8" height="6" rx="1"></rect><rect x="13" y="15" width="8" height="6" rx="1"></rect>' +
+    '<path d="M3 3v13a2 2 0 0 0 2 2h8"></path><path d="M3 6h10"></path>', 13);
+/** Icone, couleur et infobulle d'un projet Simple ou d'un MultiProject. */
+const projectKind = (multi) => ({
+    icon: multi ? TREE_ICON : FOLDER_OPEN_ICON, color: multi ? MULTI_COLOR : SIMPLE_COLOR,
+    title: multi ? "MultiProject (folder of projects)" : "Simple project",
+});
+
+/**
+ * Liste a icones (choix utilisateur, 22/10/2026) : une liste deroulante native n'affiche
+ * que du texte ; select (cache) garde la valeur et son evenement change, un bouton et une
+ * liste en ligne montrent l'icone de chaque option. iconOf(option) -> {icon, color, title} | null.
+ * Un clic ailleurs dans card ferme la liste.
+ */
+function buildIconPicker(select, card, iconOf, style) {
+    const el = document.createElement("div");
+    Object.assign(el.style, { position: "relative", flex: "1", minWidth: "0" });
+    const btn = document.createElement("button");
+    Object.assign(btn.style, {
+        width: "100%", display: "flex", alignItems: "center", gap: "8px", background: "#111", color: "#ddd",
+        border: "1px solid #0c3833", borderRadius: "6px", padding: "3px 8px", fontSize: "12px", cursor: "pointer",
+        textAlign: "left", boxSizing: "border-box",
+    }, style || {});
+    const list = document.createElement("div");
+    Object.assign(list.style, {
+        display: "none", position: "absolute", left: "0", right: "0", top: "calc(100% + 2px)", zIndex: "5",
+        background: "#111", border: "1px solid #0c3833", borderRadius: "6px", padding: "3px 0",
+        maxHeight: "240px", overflowY: "auto", boxShadow: "0 6px 18px rgba(0,0,0,0.5)",
+    });
+    el.append(btn, list);
+    const rowHtml = (o) => {
+        const k = iconOf(o);
+        return '<span style="display:inline-flex;flex:0 0 24px">' + (k ? iconBadge(k.icon, k.color) : "") +
+            '</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+            escapeHtml(o.textContent) + "</span>";
+    };
+    const tip = (o) => (iconOf(o) || {}).title || "";
+    const close = () => (list.style.display = "none");
+    const paint = () => {
+        const o = select.options[select.selectedIndex];
+        btn.innerHTML = o ? rowHtml(o) + '<span style="color:#888">▾</span>' : "";
+        btn.title = o ? tip(o) : "";
+    };
+    btn.addEventListener("click", () => {
+        if (list.style.display !== "none") return close();
+        list.innerHTML = "";
+        for (const o of select.options) {
+            const item = document.createElement("div");
+            item.innerHTML = rowHtml(o);
+            item.title = tip(o);
+            const bg = () => (o.value === select.value ? "#1d3a36" : "transparent");
+            Object.assign(item.style, {
+                display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", cursor: "pointer",
+                background: bg(),
+            });
+            item.addEventListener("mouseenter", () => (item.style.background = "#24433f"));
+            item.addEventListener("mouseleave", () => (item.style.background = bg()));
+            item.addEventListener("click", () => {
+                close();
+                if (select.value === o.value) return;
+                select.value = o.value;
+                select.dispatchEvent(new Event("change"));
+            });
+            list.appendChild(item);
+        }
+        list.style.display = "block";
+    });
+    card.addEventListener("mousedown", (e) => {
+        if (!el.contains(e.target)) close();
+    });
+    return { el, paint, close };
+}
+
 // ------ Aide : petits blocs de mise en page ------
 const START_ICON = svg('<polygon points="6 4 20 12 6 20 6 4"></polygon>', 13);
 const MODE_ICON = svg('<rect x="2" y="7" width="20" height="10" rx="5"></rect><circle cx="16" cy="12" r="3"></circle>', 13);
@@ -234,10 +314,15 @@ const HELP_SECTIONS = [
             "<b>Subfolder</b> is a drop-down list of all its subfolders, with the number of files of that " +
             "type after each name; <b>(root folder)</b> shows the root folder itself. The choice is kept per type.",
             "<b>Project</b> (when the node is wired to a MiniMax H3 Project node and the root folder is its " +
-            "projects folder): <b>All</b> lists the subfolders of every project; a project lists only its own. " +
+            "projects folder), as in Copy of the Project node: <b>All</b>, each " +
+            iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) + " Simple project and each " + iconBadge(TREE_ICON, MULTI_COLOR) +
+            " MultiProject. A MultiProject adds a <b>Sub-project</b> line: <b>All</b> or one of its projects. " +
             "It opens on the project picked in the Project node. There, <b>Subfolder</b> lists only the media " +
-            "folders of the projects (08.Images to 14.Video-Audio; only 08.Images in F2VA / FL2VA); their " +
-            "Archives open with <b>View archives</b>.",
+            "folders (08.Images to 14.Video-Audio; only 08.Images in F2VA / FL2VA), named from the choice above: " +
+            "<b>08.Images</b> for a project, <b>Speech/08.Images</b> for a MultiProject in All, the whole path for " +
+            "All. Their Archives open with <b>View archives</b>.",
+            "<b>Root folder</b> stays free: type another folder (Enter) or Browse to look elsewhere; the Project " +
+            "lines then disappear and <b>Reload</b> comes back.",
             iconBadge(SEARCH_ICON, VIOLET) + " of <b>Root folder</b> finds the subfolders again and shows the " +
             "root folder; the one of <b>Subfolder</b> shows the chosen subfolder. Greyed out without a root folder.",
             "A mixed folder shows a section per kind. Only the files of the button that opened the gallery " +
@@ -469,10 +554,15 @@ const HELP_SECTIONS_FR = [
             "du type après chaque nom ; <b>(root folder)</b> affiche le dossier racine lui-même. Le choix est " +
             "gardé par type.",
             "<b>Project</b> (quand le nœud est relié à un nœud MiniMax H3 Project et que le dossier racine est son " +
-            "dossier des projets) : <b>All</b> liste les sous-dossiers de tous les projets ; un projet ne liste que " +
-            "les siens. Il s'ouvre sur le projet choisi dans le nœud Project. Là, <b>Subfolder</b> ne liste que " +
-            "les dossiers de médias des projets (08.Images à 14.Video-Audio ; seulement 08.Images en F2VA / " +
-            "FL2VA) ; leurs Archives s'ouvrent avec <b>View archives</b>.",
+            "dossier des projets), comme Copy du nœud Project : <b>All</b>, chaque projet " +
+            iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) + " Simple et chaque " + iconBadge(TREE_ICON, MULTI_COLOR) +
+            " MultiProject. Un MultiProject ajoute une ligne <b>Sub-project</b> : <b>All</b> ou un de ses projets. " +
+            "Il s'ouvre sur le projet choisi dans le nœud Project. Là, <b>Subfolder</b> ne liste que les dossiers " +
+            "de médias (08.Images à 14.Video-Audio ; seulement 08.Images en F2VA / FL2VA), nommés d'après le choix " +
+            "du dessus : <b>08.Images</b> pour un projet, <b>Speech/08.Images</b> pour un MultiProject en All, le " +
+            "chemin entier pour All. Leurs Archives s'ouvrent avec <b>View archives</b>.",
+            "<b>Root folder</b> reste libre : tapez un autre dossier (Entrée) ou Browse pour chercher ailleurs ; " +
+            "les lignes Project disparaissent alors et <b>Reload</b> revient.",
             "La " + iconBadge(SEARCH_ICON, VIOLET) + " de <b>Root folder</b> retrouve les sous-dossiers et " +
             "affiche le dossier racine ; celle de <b>Subfolder</b> affiche le sous-dossier choisi. Grisées " +
             "sans dossier racine.",
@@ -2241,13 +2331,27 @@ function buildGallery(container, ctx) {
         borderRadius: "10px", padding: "4px 8px", fontSize: "12px", outline: "none", boxSizing: "border-box",
         cursor: "pointer",
     });
-    projSelect.title = "Show only the subfolders of this project in Subfolder";
+    // Liste a icones comme Copy du noeud Project (choix utilisateur, 22/10/2026) :
+    // All, puis les projets Simple et les MultiProject de la racine.
+    const projPicker = buildIconPicker(projSelect, card,
+        (o) => (o.value ? projectKind(o.dataset.multi === "1") : null), { borderRadius: "10px", padding: "4px 8px" });
+    projSelect.style.display = "none";
     const projSpacer = document.createElement("div");
     projSpacer.style.flex = "0 0 86px";
-    projRow.append(projSelect, projSpacer);
+    projRow.append(projPicker.el, projSelect, projSpacer);
     projRow.style.display = "none";
-    let projFilter = "";     // "" = All
-    let projList = null;     // {root, names, current} du noeud H3 Project relie
+    // MultiProject choisi : All ou un de ses sous-projets (comme Copy).
+    const grpRow = makeRow("Sub-project");
+    const grpSelect = document.createElement("select");
+    grpSelect.style.cssText = projSelect.style.cssText;
+    grpSelect.style.display = "";
+    grpSelect.title = "All the projects of this folder, or one of them";
+    const grpSpacer = document.createElement("div");
+    grpSpacer.style.flex = "0 0 86px";
+    grpRow.append(grpSelect, grpSpacer);
+    grpRow.style.display = "none";
+    let projFilter = "";     // "" = All ; "P", "G" (MultiProject, All) ou "G/P"
+    let projList = null;     // {root, names, tree, current} du noeud H3 Project relie
 
     const subRow = makeRow("Subfolder");
     const subSelect = document.createElement("select");
@@ -2285,7 +2389,7 @@ function buildGallery(container, ctx) {
     const doneBtn = makeTextButton("Done", PINK);
     footer.append(clearBtn, footerInfo, doneBtn);
 
-    card.append(header, baseRow, projRow, subRow, status, grid, footer);
+    card.append(header, baseRow, projRow, grpRow, subRow, status, grid, footer);
 
     // Apercu d'une image / video cliquee (lecteur seul, pas de vignettes).
     const sidePreview = buildSidePreview(card, overlay);
@@ -2343,7 +2447,8 @@ function buildGallery(container, ctx) {
         // 08 en F2VA / FL2VA) ; le nombre est celui des fichiers du type de la galerie.
         const list = subfolders.filter((e) => e.path && allowedSub(e.path));
         if (sub && allowedSub(sub) && !list.some((e) => e.path === sub)) list.unshift({ path: sub, count: null });
-        list.forEach((e) => add(e.path, e.path + (e.count != null ? "  ·  " + e.count : "")));
+        // Nom relatif au choix Project / Sub-project (choix utilisateur, 22/10/2026).
+        list.forEach((e) => add(e.path, subfolderLabel(e.path, projFilter) + (e.count != null ? "  ·  " + e.count : "")));
         subSelect.value = sub;
         const usable = !!base && subSelect.options.length > 1;
         subSelect.disabled = !usable;
@@ -2360,24 +2465,46 @@ function buildGallery(container, ctx) {
         return projRow.style.display === "none" || isMediaSubfolder(path, ctx.getState().mode);
     }
 
-    /** Ligne Project : seulement quand le Root folder affiche est le dossier des projets. */
+    const addOption = (select, value, text, multi) => {
+        const o = document.createElement("option");
+        o.value = value;
+        o.textContent = text;
+        o.dataset.multi = multi ? "1" : "";
+        o.style.background = "#111";
+        select.appendChild(o);
+    };
+
+    /**
+     * Lignes Project et Sub-project : seulement quand le Root folder affiche est le
+     * dossier des projets. Project : All, projets Simple, MultiProject ; Sub-project
+     * (MultiProject choisi) : All ou un de ses projets.
+     */
     function paintProjRow() {
         const on = !!(projList && projList.names.length && base && samePath(base, projList.root));
+        // Retour sur le dossier des projets (Reload...) : le projet choisi dans H3 Project.
+        if (on && projRow.style.display === "none") projFilter = projList.current;
         projRow.style.display = on ? "flex" : "none";
+        grpRow.style.display = "none";
         if (!on) {
             projFilter = "";
             return;
         }
+        const tree = projList.tree || projList.names.map((name) => ({ name, projects: null }));
+        const top = projFilter.split("/")[0];
+        const entry = tree.find((e) => e.name === top);
+        const inner = projFilter.slice(top.length + 1);
+        if (!entry || (inner && !(entry.projects || []).includes(inner))) projFilter = entry ? top : "";
         projSelect.innerHTML = "";
-        for (const [value, text] of [["", "All"]].concat(projList.names.map((n) => [n, n]))) {
-            const o = document.createElement("option");
-            o.value = value;
-            o.textContent = text;
-            o.style.background = "#111";
-            projSelect.appendChild(o);
-        }
-        if (projFilter && !projList.names.includes(projFilter)) projFilter = "";
-        projSelect.value = projFilter;
+        addOption(projSelect, "", "All");
+        for (const e of tree) addOption(projSelect, e.name, e.name, !!e.projects);
+        projSelect.value = entry ? top : "";
+        projPicker.paint();
+        if (!entry || !entry.projects) return;
+        grpRow.style.display = "flex";
+        grpSelect.innerHTML = "";
+        addOption(grpSelect, "", "All");
+        for (const p of entry.projects) addOption(grpSelect, p, p);
+        grpSelect.value = projFilter.slice(top.length + 1);
     }
 
     function updateNav() {
@@ -3083,7 +3210,7 @@ function buildGallery(container, ctx) {
             finish();
             return;
         }
-        if (e.target === baseInput || e.target === subSelect) {
+        if (e.target === baseInput || e.target === subSelect || e.target === grpSelect) {
             e.stopImmediatePropagation();
             if (e.key === "Enter" && e.target === baseInput) {
                 e.preventDefault();
@@ -3277,16 +3404,20 @@ function buildGallery(container, ctx) {
         }
         loadFolder();
     });
-    // Filtre Project : sous-dossier hors du projet choisi -> retour au Root folder.
-    projSelect.addEventListener("change", () => {
-        projFilter = projSelect.value;
+    // Filtre Project / Sub-project : sous-dossier hors du choix -> retour au Root folder.
+    function changeProjFilter(value) {
+        projFilter = value;
         if (sub && !allowedSub(sub)) {
             sub = "";
             saveNav();
             loadFolder();
         }
+        paintProjRow();
         fillSelect();
-    });
+    }
+    projSelect.addEventListener("change", () => changeProjFilter(projSelect.value));
+    grpSelect.addEventListener("change", () =>
+        changeProjFilter(grpSelect.value ? projSelect.value + "/" + grpSelect.value : projSelect.value));
     // Choix dans la liste : memorise et affiche ce sous-dossier ("" = Root folder).
     subSelect.addEventListener("change", () => {
         sub = subSelect.value;
@@ -3314,6 +3445,8 @@ function buildGallery(container, ctx) {
             // Filtre Project : le projet choisi dans H3 Project, sinon All.
             projList = ctx.getProjects ? ctx.getProjects() : null;
             projFilter = projList ? projList.current : "";
+            projRow.style.display = "none"; // paintProjRow reprend le projet choisi
+            projPicker.close();
             if (projList && projList.names.length && base && samePath(base, projList.root) && sub &&
                 !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, st.mode))) {
                 sub = "";
@@ -4761,4 +4894,5 @@ export {
     START_ICON, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, TRASH_ICON, EYE_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode, PROJECT_TYPE,
+    FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker,
 };

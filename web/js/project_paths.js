@@ -676,6 +676,18 @@ export function inProjectFilter(path, project) {
     return p === n || p.startsWith(n + "/");
 }
 
+/**
+ * Nom d'un sous-dossier dans la liste Subfolder (choix utilisateur, 22/10/2026) :
+ * relatif au choix Project / Sub-project ("G/P/08.Images" -> "08.Images" pour "G/P",
+ * "P/08.Images" pour "G") ; chemin entier pour All ou hors du choix.
+ */
+export function subfolderLabel(path, project) {
+    const p = String(path || "").replace(/\\/g, "/");
+    if (!project) return p;
+    const n = String(project).replace(/\\/g, "/");
+    return p.toLowerCase().startsWith(n.toLowerCase() + "/") ? p.slice(n.length + 1) : p;
+}
+
 export function filterSubfolders(entries, project) {
     return (entries || []).filter((e) => inProjectFilter(e.path, project));
 }
