@@ -421,9 +421,13 @@ try:
             # Picture Lock (choix utilisateur, 22/10/2026) : un seul fichier dans un projet de MultiProject.
             single = run_record.single_lock(project)
             locked = {k: [os.path.basename(p) for p in run_record.lock_files(project, k)] for k in ("video", "image")}
+            # Fichiers sur le disque par dossier de tri et fichiers deposes a la main (22/10/2026).
+            counts = await _in_executor(run_record.sort_counts, project)
+            orphans = await _in_executor(run_record.rush_orphans, project)
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"runs": runs, "registries": sets, "single_lock": single, "locked": locked})
+        return web.json_response({"runs": runs, "registries": sets, "single_lock": single, "locked": locked,
+                                  "counts": counts, "orphans": orphans})
 
     @routes.get("/mmproject/run_workflow")
     async def mmproject_run_workflow(request):
@@ -466,6 +470,20 @@ try:
             body = await request.json()
             data = await _in_executor(run_record.sort_output, body.get("project", ""), body.get("run", ""),
                                       body.get("index"), body.get("target", ""), bool(body.get("swap")))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.post("/mmproject/resolve_duplicate")
+    async def mmproject_resolve_duplicate(request):
+        """Doublon depose a la main dans 40 / 60 : garde un exemplaire, l'autre va dans la Corbeille."""
+        try:
+            body = await request.json()
+            if not projects.TRASH_AVAILABLE:
+                raise ValueError("The Recycle Bin is only available on Windows")
+            data = await _in_executor(run_record.resolve_duplicate, body.get("project", ""), body.get("run", ""),
+                                      body.get("index"), body.get("orphan", ""), body.get("keep", ""),
+                                      projects._to_recycle_bin)
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
