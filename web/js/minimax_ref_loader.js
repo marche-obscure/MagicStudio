@@ -287,53 +287,56 @@ const HELP_SECTIONS = [
     },
     {
         id: "modes", title: "Modes", icon: MODE_ICON, color: ORANGE,
-        html: hList([
-            "<b>Ref2VA</b>: four rows for MiniMax H3 Reference to Video, up to 9 images, 3 videos, " +
-            "3 video soundtracks and 3 audio files.",
-            "<b>F2VA / FL2VA</b>: a <b>First frame</b> and an optional <b>Last frame</b> (images) on the " +
-            "outputs <b>first_frame</b> and <b>last_frame</b>, for MiniMax H3 Image to Video.",
-            "Without a last frame MiniMax does F2VA; with both, FL2VA.",
-            "Each mode keeps its own selection and outputs. Switching back restores them and reconnects " +
-            "the wires of that mode when their target is still there and free.",
-        ]) +
-        hTip("In the gallery of a frame, clicking an image replaces the current one."),
+        html: "<p>The switch at the top of the node picks the kind of MiniMax video to feed.</p>" +
+            hCard("The two modes", [
+                ["Ref2VA", "four rows for MiniMax H3 Reference to Video: up to 9 images, 3 videos, 3 video " +
+                    "soundtracks and 3 audio files."],
+                ["F2VA / FL2VA", "a <b>First frame</b> and an optional <b>Last frame</b> (images) on <b>first_frame</b> " +
+                    "and <b>last_frame</b>, for MiniMax H3 Image to Video. Without a last frame MiniMax does F2VA; with " +
+                    "both, FL2VA."],
+            ]) +
+            hCard("Good to know", [
+                ["Memory", "each mode keeps its own selection and outputs; switching back restores them and reconnects " +
+                    "the wires of that mode when their target is still there and free."],
+            ]) +
+            hTip("In the gallery of a frame, clicking an image replaces the current one."),
     },
     {
         id: "pick", title: "Picking files", icon: IMAGE_ICON, color: VIOLET,
-        html: hCard("The four rows", [
-            [iconBadge(IMAGE_ICON, VIOLET), "<b>Images</b>: up to 9, on <b>ref_image_N</b>"],
-            [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b>: the video frames, on <b>ref_video_N</b>"],
-            [iconBadge(VIDEO_AUDIO_ICON, GREEN), "<b>Video/Audio</b>: videos too, but only their " +
-                "<b>soundtrack</b> is extracted: an audio track on <b>ref_video_audio_N</b>"],
-            [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b>: up to 3, on <b>ref_audio_N</b>: audio files, " +
-                "or videos used for their sound only (🔊 sound only)"],
-        ]) +
-        hList([
-            "<b>Root folder</b> is prefilled with the folder of " + iconBadge(GEAR_ICON, VIOLET) +
-            " and its content is shown.",
-            "<b>Subfolder</b> is a drop-down list of all its subfolders, with the number of files of that " +
-            "type after each name; <b>(root folder)</b> shows the root folder itself. The choice is kept per type.",
-            "<b>Project</b> (when the node is wired to a MiniMax H3 Project node and the root folder is its " +
-            "projects folder), as in Copy of the Project node: <b>All</b>, each " +
-            iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) + " Simple project and each " + iconBadge(TREE_ICON, MULTI_COLOR) +
-            " MultiProject. A MultiProject adds a <b>Sub-project</b> line: <b>All</b> or one of its projects. " +
-            "It opens on the project picked in the Project node. There, <b>Subfolder</b> lists only the media " +
-            "folders (08.Images to 14.Video-Audio; only 08.Images in F2VA / FL2VA), named from the choice above: " +
-            "<b>08.Images</b> for a project, <b>Speech/08.Images</b> for a MultiProject in All, the whole path for " +
-            "All. Their Archives open with <b>View archives</b>.",
-            "<b>Root folder</b> stays free: type another folder (Enter) or Browse to look elsewhere; the Project " +
-            "lines then disappear and <b>Reload</b> comes back.",
-            iconBadge(SEARCH_ICON, VIOLET) + " of <b>Root folder</b> finds the subfolders again and shows the " +
-            "root folder; the one of <b>Subfolder</b> shows the chosen subfolder. Greyed out without a root folder.",
-            "A mixed folder shows a section per kind. Only the files of the button that opened the gallery " +
-            "can be picked; the others are shown for information.",
-            "Clicking an image or a video also shows it larger in a preview window on the right.",
-            "<b>Browse</b> opens the Windows folder dialog; <b>Reload</b> goes back to the root folder.",
-        ]) +
-        hTip("Pick the same video in <b>Video</b> and <b>Video/Audio</b> to have its frames and its sound.") +
-        hNote("in the <b>Audio</b> gallery, videos can be picked too: only their soundtrack goes out on " +
-            "<b>ref_audio_N</b>, as an independent audio track (not tied to <b>ref_video_N</b>). They show a " +
-            "<b>🔊 sound only</b> badge and can be trimmed like any audio file. A video without soundtrack is refused."),
+        html: "<p>Each row of the node opens a gallery of files.</p>" +
+            hCard("The four rows", [
+                [iconBadge(IMAGE_ICON, VIOLET), "<b>Images</b>: up to 9, on <b>ref_image_N</b>"],
+                [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b>: the video frames, on <b>ref_video_N</b>"],
+                [iconBadge(VIDEO_AUDIO_ICON, GREEN), "<b>Video/Audio</b>: videos too, but only their " +
+                    "<b>soundtrack</b> is extracted: an audio track on <b>ref_video_audio_N</b>"],
+                [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b>: up to 3, on <b>ref_audio_N</b>: audio files, " +
+                    "or videos used for their sound only (🔊 sound only)"],
+            ]) +
+            "<p><b>Pick files</b></p>" +
+            hSteps([
+                "Click the button of a row: the gallery opens on the <b>Root folder</b>.",
+                "Pick a <b>Subfolder</b> if needed.",
+                "Click the files: the click order sets their number.",
+            ]) +
+            hCard("Top of the gallery", [
+                ["Root folder", "prefilled with " + iconBadge(GEAR_ICON, VIOLET) + "; type another folder (Enter) to " +
+                    "look elsewhere."],
+                [iconBadge(SEARCH_ICON, VIOLET), "finds the subfolders again (greyed out without a root folder)."],
+                ["Browse / Reload", "Windows folder dialog / back to the root folder."],
+                ["Subfolder", "the subfolders, with the number of files of the type after each name; the choice is " +
+                    "kept per type."],
+                ["Project", "wired to a MiniMax H3 Project node: <b>All</b>, each " + iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) +
+                    " Simple project and each " + iconBadge(TREE_ICON, MULTI_COLOR) + " MultiProject (then a " +
+                    "<b>Sub-project</b> line). Subfolder then lists only the media folders 08 to 14."],
+            ]) +
+            hCard("Good to know", [
+                ["Mixed folder", "a section per kind; only the files of the button that opened the gallery can be picked."],
+                ["Preview", "clicking an image or a video also shows it larger on the right."],
+            ]) +
+            hTip("Pick the same video in <b>Video</b> and <b>Video/Audio</b> to have its frames and its sound.") +
+            hNote("in the <b>Audio</b> gallery, videos can be picked too: only their soundtrack goes out on " +
+                "<b>ref_audio_N</b>, as an independent audio track (not tied to <b>ref_video_N</b>). They show a " +
+                "<b>🔊 sound only</b> badge and can be trimmed like any audio file. A video without soundtrack is refused."),
     },
     {
         id: "project", title: "Gallery with a project", icon: FOLDER_ICON, color: ORANGE,
@@ -349,16 +352,13 @@ const HELP_SECTIONS = [
                 ["Video/Audio", "<b>14.Video-Audio</b>"],
                 ["Audio", "<b>10.Son</b>"],
             ]) +
-            "<p><b>Good to know</b></p>" +
-            hList([
-                "The orange badge always gives the selection number; clicking a file of the project that is not " +
-                "selected selects it.",
-                "<b>View archives</b> (shown when the <b>Archives</b> of the project folder has files) turns green " +
-                "and shows them above instead of the selected folder; click it again to go back.",
-                "<b>Clear</b> is greyed out: the order of the files of the project cannot be emptied at once; " +
-                "check the files to replace instead (see <b>Replace a file of the project</b>).",
-                "The selection is full: a message above the line asks you to check below the file to replace, " +
-                "then to pick the new one above.",
+            hCard("Good to know", [
+                ["Number", "the orange badge gives the selection number; clicking a file of the project that is not " +
+                    "selected selects it."],
+                ["View archives", "shown when the <b>Archives</b> of the project folder has files: shows them above " +
+                    "instead of the selected folder; click again to go back."],
+                ["Clear", "greyed out: check the files to replace instead (see <b>Replace a file of the project</b>)."],
+                ["Full", "a message above the line asks to check below the file to replace, then to pick the new one above."],
             ]),
     },
     {
@@ -372,52 +372,46 @@ const HELP_SECTIONS = [
             "Or all at once: <b>Validate changes</b> applies them all (each new file takes its number, the " +
             "replaced files go to <b>Archives</b>); <b>Cancel changes</b> (confirmed) puts everything back.",
         ]) +
-        hList([
-            "<b>One at a time</b>: while a checked file has no replacement, the other boxes are greyed out; pick " +
-            "its replacement above or uncheck it.",
-            "<b>Duplicates</b>: a small coloured bar under the name marks files with the same content (SHA256) " +
-            "among the pending replacements and the project folder, one colour per group.",
-            "<b>On validation</b> the new file enters the project folder: <b>copied</b> from the selected folder " +
-            "(the original stays), <b>moved</b> when it comes from Archives; <b>_02</b>, <b>_03</b>… if its name " +
-            "is taken, except when it replaces a file with the same name (it keeps its name).",
+        hCard("Good to know", [
+            ["One at a time", "while a checked file has no replacement, the other boxes are greyed out."],
+            ["Duplicates", "a small coloured bar under the name marks files with the same content (SHA256), one " +
+                "colour per group."],
+            ["On validation", "the new file is <b>copied</b> from the selected folder (the original stays) or " +
+                "<b>moved</b> from Archives; <b>_02</b>, <b>_03</b>… if its name is taken, except when it replaces a " +
+                "file with the same name."],
         ]),
     },
     {
         id: "closing", title: "Closing the gallery of a project", icon: CLOSE_ICON, color: ORANGE,
-        html: "<p>On closing (Done, ✕, Escape), depending on the case:</p>" +
-            hList([
-                "<b>Pending replacements</b>: <b>Validate</b> or <b>Discard</b>.",
-                "<b>A checked file without replacement</b>: <b>Cancel</b> (back to the gallery) or <b>Continue</b> " +
-                "(that file stays as it was, the pending replacements are applied and the window closes, without " +
-                "the Add or Replace question).",
-                "<b>New files added to an existing selection</b>: <b>Add</b> (keep the current files), " +
-                "<b>Replace</b> (only the new ones stay) or <b>Cancel</b> (every change made in the window is " +
-                "undone, replacements already validated stay, and the window closes).",
-                "Then <b>every file of the list goes to its folder of the project</b>: copied from elsewhere (the " +
-                "original stays), moved from <b>Archives</b>, <b>_02</b> added if the name is taken; the trims follow.",
+        html: "<p>On closing (Done, ✕, Escape), a question may show depending on the case.</p>" +
+            hCard("Depending on the case", [
+                ["Pending replacements", "<b>Validate</b> or <b>Discard</b>."],
+                ["Checked file without replacement", "<b>Cancel</b> (back to the gallery) or <b>Continue</b> (that " +
+                    "file stays as it was, the pending replacements are applied)."],
+                ["Files added", "<b>Add</b> (keep the current files), <b>Replace</b> (only the new ones stay) or " +
+                    "<b>Cancel</b> (the changes of the window are undone)."],
             ]) +
-            hNote("no unused file stays in the project: the files of its folder that no list of the node uses " +
-                "anymore go to <b>Archives</b> inside that folder (e.g. 08.Images/Archives), after a confirmation. " +
-                "Cancel in that window goes back to the gallery. Nothing is ever deleted."),
+            "<p>Then every file of the list goes to its folder of the project (copied from elsewhere, moved from " +
+            "Archives, <b>_02</b> if the name is taken; the trims follow), and the files no list uses anymore go to " +
+            "the <b>Archives</b> of their folder, after a confirmation.</p>" +
+            hNote("nothing is ever deleted."),
     },
     {
         id: "selection", title: "Selection", icon: EYE_ICON, color: VIOLET,
-        html: hList([
-            iconBadge(EYE_ICON, VIOLET) + " shows the files of a row in their order, with their number and output.",
-            "Click a thumbnail to see its details (folder, size, duration) and to open it larger on the right.",
-            iconBadge(LEFT_ICON, INACTIVE_BG) + " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " move a file one " +
-            "place: number 1 always goes out on <b>ref_image_1</b> (the wires stay on the outputs).",
-            iconBadge(TRASH_ICON, INACTIVE_BG) + " on a thumbnail marks it (it turns " +
-            iconBadge(TRASH_ICON, MARK_RED) + "); <b>Delete</b> removes the marked files after a confirmation.",
-            "The following files move up (ref 4 becomes ref 3...) and the last output, now empty, is removed.",
-        ]) +
-        hTip("In <b>Ref2VA</b>, a file that changes number also changes in the prompt (<b>&lt;Picture N&gt;</b>, " +
-            "<b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>): when a window closes (gallery, selection), after " +
-            "Load or the trash, the window <b>Order of the references changed</b> lists the old and new numbers, " +
-            "the files removed and the files replaced at their place (old → new file); update your prompt. Adding " +
-            "at the end or removing the last file does not show it.") +
-        hNote("the " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
-            " on the node deletes <b>all</b> the files of its row, after a confirmation."),
+        html: "<p>" + iconBadge(EYE_ICON, VIOLET) + " of a row shows its files in their order, with their number " +
+            "and output.</p>" +
+            hCard("In the window", [
+                ["Thumbnail", "details (folder, size, duration) and the larger view on the right."],
+                [iconBadge(LEFT_ICON, INACTIVE_BG) + " " + iconBadge(RIGHT_ICON, INACTIVE_BG), "move a file one place; " +
+                    "the wires stay on the outputs (number 1 always goes out on <b>ref_image_1</b>)."],
+                [iconBadge(TRASH_ICON, INACTIVE_BG), "marks a file (" + iconBadge(TRASH_ICON, MARK_RED) + "); " +
+                    "<b>Delete</b> removes the marked files after a confirmation; the following files move up."],
+            ]) +
+            hTip("In <b>Ref2VA</b>, a file that changes number also changes in the prompt (<b>&lt;Picture N&gt;</b>, " +
+                "<b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>): the window <b>Order of the references changed</b> " +
+                "lists the old and new numbers; update your prompt.") +
+            hNote("the " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
+                " on the node deletes <b>all</b> the files of its row, after a confirmation."),
     },
     {
         id: "trim", title: "Trim", icon: SCISSORS_ICON, color: ORANGE,
@@ -428,24 +422,22 @@ const HELP_SECTIONS = [
             "<b>Set end</b> at the current playback position.",
             "Check with <b>Play trim</b>, or <b>Reset</b> to keep the whole file.",
         ]) +
-        hList([
-            "The file itself is never changed: only that part goes to the output (frames and sound).",
-            "A trimmed file shows a <b>✂</b> badge; the trim is saved in the configuration " +
-            "(<code>\"trim\": [2.5, 8]</code>).",
-            "A warning shows when a video part is shorter than 2 s or a part is longer than 15 s.",
+        hCard("Good to know", [
+            ["File", "never changed: only that part goes to the output (frames and sound)."],
+            ["✂", "a trimmed file shows a ✂ badge; the trim is saved in the configuration " +
+                "(<code>\"trim\": [2.5, 8]</code>)."],
+            ["Warning", "when a video part is shorter than 2 s or a part is longer than 15 s."],
         ]),
     },
     {
         id: "overview", title: "Overview", icon: OVERVIEW_ICON, color: VIOLET,
-        html: hList([
-            iconBadge(OVERVIEW_ICON, VIOLET) + " shows the whole selection of the mode shown in one window, " +
-            "a section per row.",
-            "Each file shows its number, its output and its <b>✂</b> badge.",
-            "Click a thumbnail to open it on the right (image, video or audio with its player).",
-            "The trim is shown and can be played with <b>Play trim</b>, but not changed there.",
-            "Greyed out while the mode shown has no reference.",
-        ]) +
-        hTip("Reorder, delete and trim with the " + iconBadge(EYE_ICON, VIOLET) + " of each row."),
+        html: "<p>" + iconBadge(OVERVIEW_ICON, VIOLET) + " shows the whole selection of the mode shown in one window, " +
+            "a section per row (greyed out while the mode has no reference).</p>" +
+            hCard("In the window", [
+                ["Thumbnail", "number, output and ✂ badge; a click opens it on the right (image, video or audio)."],
+                ["Trim", "shown and playable with <b>Play trim</b>, but not changed here."],
+            ]) +
+            hTip("Reorder, delete and trim with the " + iconBadge(EYE_ICON, VIOLET) + " of each row."),
     },
     {
         id: "config", title: "Save and load", icon: DOWNLOAD_ICON, color: PINK,
@@ -457,13 +449,12 @@ const HELP_SECTIONS = [
                 "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " when the mode already has references, " +
                 "and then asks a confirmation."],
         ]) +
-        hList([
-            "A file of the other mode is refused with a warning; nothing is changed.",
-            "The other mode and the mode switch are never changed; the root folder is taken from the file.",
-            "The date and time in the name keep a new save from overwriting an older one.",
-            "Files missing on disk are still loaded and reported under the buttons.",
-            "Paths under the root folder are written relative to it; an empty group is <code>[]</code> " +
-            "or <code>null</code>.",
+        hCard("Good to know", [
+            ["Other mode", "a file of the other mode is refused with a warning; nothing is changed."],
+            ["Unchanged", "the other mode and the switch never change; the root folder is taken from the file."],
+            ["Name", "the date and time in the name keep a new save from overwriting an older one."],
+            ["Missing files", "still loaded and reported under the buttons."],
+            ["Paths", "relative to the root folder; an empty group is <code>[]</code> or <code>null</code>."],
         ]) +
         hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 1,\n  "mode": "REF2VA",\n' +
             '  "root": "F:\\\\Rushs\\\\Project",\n  "images": ["images\\\\a.png"],\n' +
@@ -472,29 +463,28 @@ const HELP_SECTIONS = [
     },
     {
         id: "outputs", title: "Outputs", icon: OUTPUT_ICON, color: GREEN,
-        html: hList([
-            "An output appears for each selected file (at least one per type).",
-            "Double-click an output name to rename it (empty = default name), or use the right-click menu.",
-            "MiniMax numbers its inputs from 0: <b>ref_image_1</b> goes to <b>ref_image_0</b>.",
-            "MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks first, then the audio files: " +
-            "with 2 video soundtracks, <b>ref_audio_1</b> is <b>&lt;Audio 3&gt;</b>.",
-            "When <b>ref_video_N</b> and <b>ref_video_audio_N</b> both have a file, their output dots share " +
-            "a colour (1 orange, 2 pink, 3 green).",
-        ]) +
-        hNote("MiniMax uses the audio track wired to <b>ref_video_audio_N</b> together with the reference " +
-            "video wired to <b>ref_video_N</b>."),
+        html: "<p>An output appears for each selected file (at least one per type).</p>" +
+            hCard("Outputs", [
+                ["Rename", "double-click an output name (empty = default name), or use the right-click menu."],
+                ["Numbers", "MiniMax numbers its inputs from 0: <b>ref_image_1</b> goes to <b>ref_image_0</b>."],
+                ["Audio", "MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks first, then the audio " +
+                    "files: with 2 soundtracks, <b>ref_audio_1</b> is <b>&lt;Audio 3&gt;</b>."],
+                ["Colours", "<b>ref_video_N</b> and <b>ref_video_audio_N</b> of a pair share a colour (1 orange, " +
+                    "2 pink, 3 green)."],
+            ]) +
+            hNote("MiniMax uses the audio track wired to <b>ref_video_audio_N</b> together with the reference " +
+                "video wired to <b>ref_video_N</b>."),
     },
     {
         id: "limits", title: "Limits", icon: INFO_ICON, color: TITLE_COLOR,
-        html: hList([
-            "Videos are read at 24 fps, cut to 15 s and reduced to 768×1344 pixels at most " +
-            "(MiniMax would reduce them anyway).",
-            "Audio files are cut to 15 s.",
-            "<b>Browse</b> uses the Windows folder dialog; on other systems type or paste the folder path.",
-            "Works with the classic node design and with <b>Modern Node Design (Nodes 2.0)</b>: renaming the " +
-            "outputs and the pair colours work in both.",
-            "Every window opens next to the node; drag it by its <b>title bar</b> (✥ cursor) to move it. It stays " +
-            "on the screen, the preview next to it follows, and it opens next to the node again the next time.",
+        html: hCard("Limits", [
+            ["Videos", "read at 24 fps, cut to 15 s, reduced to 768×1344 pixels at most (MiniMax would reduce them " +
+                "anyway)."],
+            ["Audio", "cut to 15 s."],
+            ["Browse", "Windows folder dialog; on other systems type or paste the folder path."],
+            ["Nodes 2.0", "works with the classic node design and with <b>Modern Node Design (Nodes 2.0)</b>."],
+            ["Windows", "drag them by their <b>title bar</b> (✥); they stay on the screen and open next to the node " +
+                "again the next time."],
         ]),
     },
 ];
@@ -526,57 +516,60 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "modes", title: "Modes",
-        html: hList([
-            "<b>Ref2VA</b> : quatre lignes pour MiniMax H3 Reference to Video, jusqu'à 9 images, 3 vidéos, " +
-            "3 bandes-son de vidéo et 3 fichiers audio.",
-            "<b>F2VA / FL2VA</b> : une <b>First frame</b> et une <b>Last frame</b> facultative (images) sur " +
-            "les sorties <b>first_frame</b> et <b>last_frame</b>, pour MiniMax H3 Image to Video.",
-            "Sans last frame, MiniMax fait du F2VA ; avec les deux, du FL2VA.",
-            "Chaque mode garde sa sélection et ses sorties. En y revenant, elles sont restaurées et les " +
-            "câbles de ce mode sont rebranchés si leur cible existe encore et est libre.",
-        ]) +
-        hTip("Dans la galerie d'une frame, cliquer sur une image remplace l'image actuelle.", TIP_FR),
+        html: "<p>L'interrupteur en haut du nœud choisit le type de vidéo MiniMax à alimenter.</p>" +
+            hCard("Les deux modes", [
+                ["Ref2VA", "quatre lignes pour MiniMax H3 Reference to Video : jusqu'à 9 images, 3 vidéos, 3 " +
+                    "bandes-son de vidéo et 3 fichiers audio."],
+                ["F2VA / FL2VA", "une <b>First frame</b> et une <b>Last frame</b> facultative (images) sur " +
+                    "<b>first_frame</b> et <b>last_frame</b>, pour MiniMax H3 Image to Video. Sans last frame, MiniMax " +
+                    "fait du F2VA ; avec les deux, du FL2VA."],
+            ]) +
+            hCard("Bon à savoir", [
+                ["Mémoire", "chaque mode garde sa sélection et ses sorties ; en y revenant, elles sont restaurées et " +
+                    "les câbles de ce mode sont rebranchés si leur cible existe encore et est libre."],
+            ]) +
+            hTip("Dans la galerie d'une frame, cliquer sur une image remplace l'image actuelle.", TIP_FR),
     },
     {
         id: "pick", title: "Choisir les fichiers",
-        html: hCard("Les quatre lignes", [
-            [iconBadge(IMAGE_ICON, VIOLET), "<b>Images</b> : jusqu'à 9, sur <b>ref_image_N</b>"],
-            [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b> : les images de la vidéo, sur <b>ref_video_N</b>"],
-            [iconBadge(VIDEO_AUDIO_ICON, GREEN), "<b>Video/Audio</b> : des vidéos aussi, mais seule leur " +
-                "<b>bande-son</b> est extraite : une piste audio sur <b>ref_video_audio_N</b>"],
-            [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b> : jusqu'à 3, sur <b>ref_audio_N</b> : des " +
-                "fichiers audio, ou des vidéos utilisées pour leur son seul (🔊 sound only)"],
-        ]) +
-        hList([
-            "<b>Root folder</b> est prérempli avec le dossier de " + iconBadge(GEAR_ICON, VIOLET) +
-            " et son contenu est affiché.",
-            "<b>Subfolder</b> est une liste déroulante de tous ses sous-dossiers, avec le nombre de fichiers " +
-            "du type après chaque nom ; <b>(root folder)</b> affiche le dossier racine lui-même. Le choix est " +
-            "gardé par type.",
-            "<b>Project</b> (quand le nœud est relié à un nœud MiniMax H3 Project et que le dossier racine est son " +
-            "dossier des projets), comme Copy du nœud Project : <b>All</b>, chaque projet " +
-            iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) + " Simple et chaque " + iconBadge(TREE_ICON, MULTI_COLOR) +
-            " MultiProject. Un MultiProject ajoute une ligne <b>Sub-project</b> : <b>All</b> ou un de ses projets. " +
-            "Il s'ouvre sur le projet choisi dans le nœud Project. Là, <b>Subfolder</b> ne liste que les dossiers " +
-            "de médias (08.Images à 14.Video-Audio ; seulement 08.Images en F2VA / FL2VA), nommés d'après le choix " +
-            "du dessus : <b>08.Images</b> pour un projet, <b>Speech/08.Images</b> pour un MultiProject en All, le " +
-            "chemin entier pour All. Leurs Archives s'ouvrent avec <b>View archives</b>.",
-            "<b>Root folder</b> reste libre : tapez un autre dossier (Entrée) ou Browse pour chercher ailleurs ; " +
-            "les lignes Project disparaissent alors et <b>Reload</b> revient.",
-            "La " + iconBadge(SEARCH_ICON, VIOLET) + " de <b>Root folder</b> retrouve les sous-dossiers et " +
-            "affiche le dossier racine ; celle de <b>Subfolder</b> affiche le sous-dossier choisi. Grisées " +
-            "sans dossier racine.",
-            "Un dossier mixte affiche une section par type. Seuls les fichiers du bouton qui a ouvert la " +
-            "galerie peuvent être choisis ; les autres sont affichés pour information.",
-            "Cliquer sur une image ou une vidéo l'affiche aussi en grand dans une fenêtre à droite.",
-            "<b>Browse</b> ouvre la fenêtre de dossiers de Windows ; <b>Reload</b> revient au dossier racine.",
-        ]) +
-        hTip("Choisissez la même vidéo dans <b>Video</b> et <b>Video/Audio</b> pour avoir ses images et son son.",
-            TIP_FR) +
-        hNote("dans la galerie <b>Audio</b>, les vidéos sont aussi sélectionnables : seule leur bande-son sort " +
-            "sur <b>ref_audio_N</b>, comme une piste audio indépendante (sans lien avec <b>ref_video_N</b>). " +
-            "Elles portent un badge <b>🔊 sound only</b> et se rognent comme un fichier audio. Une vidéo sans " +
-            "bande-son est refusée.", NOTE_FR),
+        html: "<p>Chaque ligne du nœud ouvre une galerie de fichiers.</p>" +
+            hCard("Les quatre lignes", [
+                [iconBadge(IMAGE_ICON, VIOLET), "<b>Images</b> : jusqu'à 9, sur <b>ref_image_N</b>"],
+                [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b> : les images de la vidéo, sur <b>ref_video_N</b>"],
+                [iconBadge(VIDEO_AUDIO_ICON, GREEN), "<b>Video/Audio</b> : des vidéos aussi, mais seule leur " +
+                    "<b>bande-son</b> est extraite : une piste audio sur <b>ref_video_audio_N</b>"],
+                [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b> : jusqu'à 3, sur <b>ref_audio_N</b> : des " +
+                    "fichiers audio, ou des vidéos utilisées pour leur son seul (🔊 sound only)"],
+            ]) +
+            "<p><b>Choisir des fichiers</b></p>" +
+            hSteps([
+                "Cliquez sur le bouton d'une ligne : la galerie s'ouvre sur le <b>Root folder</b>.",
+                "Choisissez un <b>Subfolder</b> si besoin.",
+                "Cliquez sur les fichiers : l'ordre des clics donne leur numéro.",
+            ]) +
+            hCard("En haut de la galerie", [
+                ["Root folder", "prérempli avec " + iconBadge(GEAR_ICON, VIOLET) + " ; tapez un autre dossier " +
+                    "(Entrée) pour chercher ailleurs."],
+                [iconBadge(SEARCH_ICON, VIOLET), "retrouve les sous-dossiers (grisée sans dossier racine)."],
+                ["Browse / Reload", "fenêtre de dossiers de Windows / retour au dossier racine."],
+                ["Subfolder", "les sous-dossiers, avec le nombre de fichiers du type après chaque nom ; le choix est " +
+                    "gardé par type."],
+                ["Project", "relié à un nœud MiniMax H3 Project : <b>All</b>, chaque projet " +
+                    iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) + " Simple et chaque " + iconBadge(TREE_ICON, MULTI_COLOR) +
+                    " MultiProject (puis une ligne <b>Sub-project</b>). Subfolder ne liste alors que les dossiers de " +
+                    "médias 08 à 14."],
+            ]) +
+            hCard("Bon à savoir", [
+                ["Dossier mixte", "une section par type ; seuls les fichiers du bouton qui a ouvert la galerie se " +
+                    "choisissent."],
+                ["Aperçu", "cliquer sur une image ou une vidéo l'affiche aussi en grand à droite."],
+            ]) +
+            hTip("Choisissez la même vidéo dans <b>Video</b> et <b>Video/Audio</b> pour avoir ses images et son son.",
+                TIP_FR) +
+            hNote("dans la galerie <b>Audio</b>, les vidéos sont aussi sélectionnables : seule leur bande-son sort " +
+                "sur <b>ref_audio_N</b>, comme une piste audio indépendante (sans lien avec <b>ref_video_N</b>). " +
+                "Elles portent un badge <b>🔊 sound only</b> et se rognent comme un fichier audio. Une vidéo sans " +
+                "bande-son est refusée.", NOTE_FR),
     },
     {
         id: "project", title: "Galerie avec un projet",
@@ -592,16 +585,14 @@ const HELP_SECTIONS_FR = [
                 ["Video/Audio", "<b>14.Video-Audio</b>"],
                 ["Audio", "<b>10.Son</b>"],
             ]) +
-            "<p><b>Bon à savoir</b></p>" +
-            hList([
-                "La pastille orange donne toujours le numéro dans la sélection ; cliquer sur un fichier du projet " +
-                "non sélectionné le sélectionne.",
-                "<b>View archives</b> (affiché quand l'<b>Archives</b> du dossier du projet contient des fichiers) " +
-                "passe au vert et les affiche en haut à la place du dossier choisi ; un nouveau clic y revient.",
-                "<b>Clear</b> est grisé : l'ordre des fichiers du projet ne peut pas être vidé d'un coup ; cochez " +
-                "plutôt les fichiers à remplacer (voir <b>Remplacer un fichier du projet</b>).",
-                "Sélection pleine : un message au-dessus du trait invite à cocher en bas le fichier à remplacer, " +
-                "puis à choisir le nouveau en haut.",
+            hCard("Bon à savoir", [
+                ["Numéro", "la pastille orange donne le numéro dans la sélection ; cliquer sur un fichier du projet " +
+                    "non sélectionné le sélectionne."],
+                ["View archives", "affiché quand l'<b>Archives</b> du dossier du projet contient des fichiers : les " +
+                    "montre en haut à la place du dossier choisi ; un nouveau clic y revient."],
+                ["Clear", "grisé : cochez plutôt les fichiers à remplacer (voir <b>Remplacer un fichier du projet</b>)."],
+                ["Sélection pleine", "un message au-dessus du trait invite à cocher en bas le fichier à remplacer, " +
+                    "puis à choisir le nouveau en haut."],
             ]),
     },
     {
@@ -617,56 +608,46 @@ const HELP_SECTIONS_FR = [
             "Ou tout d'un coup : <b>Validate changes</b> les applique tous (chaque nouveau fichier prend son numéro, " +
             "les remplacés partent dans <b>Archives</b>) ; <b>Cancel changes</b> (avec confirmation) remet tout en place.",
         ]) +
-        hList([
-            "<b>Un à la fois</b> : tant qu'un fichier coché n'a pas de remplaçant, les autres cases sont grisées ; " +
-            "choisissez son remplaçant en haut ou décochez-le.",
-            "<b>Doublons</b> : une petite barre de couleur sous le nom signale les fichiers de même contenu (SHA256) " +
-            "entre le pool et le dossier du projet, une couleur par groupe.",
-            "<b>À la validation</b>, le nouveau fichier entre dans le dossier du projet : <b>copié</b> depuis le " +
-            "dossier choisi (l'original reste), <b>déplacé</b> s'il vient d'Archives ; <b>_02</b>, <b>_03</b>… si " +
-            "son nom est pris, sauf s'il remplace un fichier du même nom (il garde son nom).",
+        hCard("Bon à savoir", [
+            ["Un à la fois", "tant qu'un fichier coché n'a pas de remplaçant, les autres cases sont grisées."],
+            ["Doublons", "une petite barre de couleur sous le nom signale les fichiers de même contenu (SHA256), une " +
+                "couleur par groupe."],
+            ["À la validation", "le nouveau fichier est <b>copié</b> depuis le dossier choisi (l'original reste) ou " +
+                "<b>déplacé</b> depuis Archives ; <b>_02</b>, <b>_03</b>… si son nom est pris, sauf s'il remplace un " +
+                "fichier du même nom."],
         ]),
     },
     {
         id: "closing", title: "Fermer la galerie d'un projet",
-        html: "<p>À la fermeture (Done, ✕, Échap), selon le cas :</p>" +
-            hList([
-                "<b>Pool de remplacements non vide</b> : <b>Validate</b> ou <b>Discard</b>.",
-                "<b>Un fichier coché sans remplaçant</b> : <b>Cancel</b> (retour à la galerie) ou <b>Continue</b> " +
-                "(ce fichier reste tel quel, les remplacements en attente sont appliqués et la fenêtre se ferme, " +
-                "sans question Add ou Replace).",
-                "<b>Nouveaux fichiers ajoutés à une sélection existante</b> : <b>Add</b> (garder les fichiers " +
-                "actuels), <b>Replace</b> (seuls les nouveaux restent) ou <b>Cancel</b> (toutes les modifications " +
-                "faites dans la fenêtre sont annulées, les remplacements déjà validés restent, et la fenêtre se ferme).",
-                "Ensuite <b>tous les fichiers de la liste vont dans leur dossier du projet</b> : copiés d'ailleurs " +
-                "(l'original reste), déplacés depuis <b>Archives</b>, <b>_02</b> ajouté si le nom est pris ; les " +
-                "rognages suivent.",
+        html: "<p>À la fermeture (Done, ✕, Échap), une question peut s'afficher selon le cas.</p>" +
+            hCard("Selon le cas", [
+                ["Remplacements en attente", "<b>Validate</b> ou <b>Discard</b>."],
+                ["Fichier coché sans remplaçant", "<b>Cancel</b> (retour à la galerie) ou <b>Continue</b> (ce fichier " +
+                    "reste tel quel, les remplacements en attente sont appliqués)."],
+                ["Fichiers ajoutés", "<b>Add</b> (garder les fichiers actuels), <b>Replace</b> (seuls les nouveaux " +
+                    "restent) ou <b>Cancel</b> (les modifications de la fenêtre sont annulées)."],
             ]) +
-            hNote("aucun fichier inutilisé ne reste dans le projet : les fichiers de son dossier qu'aucune liste " +
-                "du nœud n'utilise plus partent dans <b>Archives</b> de ce dossier (ex. 08.Images/Archives), après " +
-                "confirmation. Cancel dans cette fenêtre revient à la galerie. Rien n'est jamais effacé.", NOTE_FR),
+            "<p>Ensuite chaque fichier de la liste va dans son dossier du projet (copié d'ailleurs, déplacé depuis " +
+            "Archives, <b>_02</b> si le nom est pris ; les rognages suivent), et les fichiers qu'aucune liste " +
+            "n'utilise plus partent dans l'<b>Archives</b> de leur dossier, après confirmation.</p>" +
+            hNote("rien n'est jamais effacé.", NOTE_FR),
     },
     {
         id: "selection", title: "Sélection",
-        html: hList([
-            iconBadge(EYE_ICON, VIOLET) + " affiche les fichiers d'une ligne dans leur ordre, avec leur numéro " +
-            "et leur sortie.",
-            "Cliquez sur une vignette pour voir ses détails (dossier, taille, durée) et l'ouvrir en grand à droite.",
-            iconBadge(LEFT_ICON, INACTIVE_BG) + " " + iconBadge(RIGHT_ICON, INACTIVE_BG) + " déplacent un " +
-            "fichier d'une place : le numéro 1 sort toujours sur <b>ref_image_1</b> (les câbles restent sur les sorties).",
-            iconBadge(TRASH_ICON, INACTIVE_BG) + " sur une vignette la marque (elle devient " +
-            iconBadge(TRASH_ICON, MARK_RED) + ") ; <b>Delete</b> retire les fichiers marqués après confirmation.",
-            "Les fichiers suivants remontent (la réf 4 devient la réf 3...) et la dernière sortie, devenue " +
-            "vide, est retirée.",
-        ]) +
-        hTip("En <b>Ref2VA</b>, un fichier qui change de numéro change aussi dans le prompt (<b>&lt;Picture " +
-            "N&gt;</b>, <b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>) : à la fermeture d'une fenêtre (galerie, " +
-            "sélection), après Load ou la poubelle, la fenêtre <b>Order of the references changed</b> liste les " +
-            "anciens et nouveaux numéros, les fichiers retirés et les fichiers remplacés à leur place (ancien → " +
-            "nouveau fichier) ; mettez votre prompt à jour. Un ajout à la fin ou la suppression du dernier fichier " +
-            "ne l'affiche pas.", TIP_FR) +
-        hNote("la " + iconBadge(TRASH_ICON, MARK_RED) + " à côté de " + iconBadge(EYE_ICON, VIOLET) +
-            " sur le nœud supprime <b>tous</b> les fichiers de sa ligne, après confirmation.", NOTE_FR),
+        html: "<p>L'" + iconBadge(EYE_ICON, VIOLET) + " d'une ligne affiche ses fichiers dans leur ordre, avec leur " +
+            "numéro et leur sortie.</p>" +
+            hCard("Dans la fenêtre", [
+                ["Vignette", "détails (dossier, taille, durée) et aperçu en grand à droite."],
+                [iconBadge(LEFT_ICON, INACTIVE_BG) + " " + iconBadge(RIGHT_ICON, INACTIVE_BG), "déplacent un fichier " +
+                    "d'une place ; les câbles restent sur les sorties (le numéro 1 sort toujours sur <b>ref_image_1</b>)."],
+                [iconBadge(TRASH_ICON, INACTIVE_BG), "marque un fichier (" + iconBadge(TRASH_ICON, MARK_RED) + ") ; " +
+                    "<b>Delete</b> retire les fichiers marqués après confirmation ; les suivants remontent."],
+            ]) +
+            hTip("En <b>Ref2VA</b>, un fichier qui change de numéro change aussi dans le prompt (<b>&lt;Picture " +
+                "N&gt;</b>, <b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>) : la fenêtre <b>Order of the references " +
+                "changed</b> liste les anciens et nouveaux numéros ; mettez votre prompt à jour.", TIP_FR) +
+            hNote("la " + iconBadge(TRASH_ICON, MARK_RED) + " à côté de " + iconBadge(EYE_ICON, VIOLET) +
+                " sur le nœud supprime <b>tous</b> les fichiers de sa ligne, après confirmation.", NOTE_FR),
     },
     {
         id: "trim", title: "Rognage",
@@ -677,24 +658,22 @@ const HELP_SECTIONS_FR = [
             "<b>Set start</b> / <b>Set end</b> à la position de lecture.",
             "Vérifiez avec <b>Play trim</b>, ou <b>Reset</b> pour garder tout le fichier.",
         ]) +
-        hList([
-            "Le fichier lui-même n'est jamais modifié : seule cette partie va à la sortie (images et son).",
-            "Un fichier rogné porte un badge <b>✂</b> ; le rognage est enregistré dans la configuration " +
-            "(<code>\"trim\": [2.5, 8]</code>).",
-            "Un avertissement s'affiche si une partie de vidéo dure moins de 2 s, ou si une partie dépasse 15 s.",
+        hCard("Bon à savoir", [
+            ["Fichier", "jamais modifié : seule cette partie va à la sortie (images et son)."],
+            ["✂", "un fichier rogné porte un badge ✂ ; le rognage est enregistré dans la configuration " +
+                "(<code>\"trim\": [2.5, 8]</code>)."],
+            ["Avertissement", "si une partie de vidéo dure moins de 2 s, ou si une partie dépasse 15 s."],
         ]),
     },
     {
         id: "overview", title: "Vue d'ensemble",
-        html: hList([
-            iconBadge(OVERVIEW_ICON, VIOLET) + " affiche toute la sélection du mode affiché dans une seule " +
-            "fenêtre, une section par ligne.",
-            "Chaque fichier montre son numéro, sa sortie et son badge <b>✂</b>.",
-            "Cliquez sur une vignette pour l'ouvrir à droite (image, vidéo ou audio avec son lecteur).",
-            "Le rognage est affiché et peut être écouté avec <b>Play trim</b>, mais pas modifié ici.",
-            "Grisé tant que le mode affiché n'a aucune référence.",
-        ]) +
-        hTip("Réordonnez, supprimez et rognez avec l'" + iconBadge(EYE_ICON, VIOLET) + " de chaque ligne.", TIP_FR),
+        html: "<p>" + iconBadge(OVERVIEW_ICON, VIOLET) + " affiche toute la sélection du mode affiché dans une seule " +
+            "fenêtre, une section par ligne (grisé tant que le mode n'a aucune référence).</p>" +
+            hCard("Dans la fenêtre", [
+                ["Vignette", "numéro, sortie et badge ✂ ; un clic l'ouvre à droite (image, vidéo ou audio)."],
+                ["Rognage", "affiché et écoutable avec <b>Play trim</b>, mais pas modifiable ici."],
+            ]) +
+            hTip("Réordonnez, supprimez et rognez avec l'" + iconBadge(EYE_ICON, VIOLET) + " de chaque ligne.", TIP_FR),
     },
     {
         id: "config", title: "Sauvegarder et charger",
@@ -706,13 +685,12 @@ const HELP_SECTIONS_FR = [
                 "Il devient " + iconBadge(UPLOAD_ICON, ORANGE) + " quand le mode a déjà des références, " +
                 "et demande alors une confirmation."],
         ]) +
-        hList([
-            "Un fichier de l'autre mode est refusé avec un avertissement ; rien n'est modifié.",
-            "L'autre mode et l'interrupteur ne changent jamais ; le dossier racine est repris du fichier.",
-            "La date et l'heure dans le nom évitent d'écraser une sauvegarde précédente.",
-            "Les fichiers absents du disque sont quand même chargés et signalés sous les boutons.",
-            "Les chemins sous le dossier racine sont écrits en relatif ; un groupe vide vaut <code>[]</code> " +
-            "ou <code>null</code>.",
+        hCard("Bon à savoir", [
+            ["Autre mode", "un fichier de l'autre mode est refusé avec un avertissement ; rien n'est modifié."],
+            ["Inchangé", "l'autre mode et l'interrupteur ne changent jamais ; le dossier racine est repris du fichier."],
+            ["Nom", "la date et l'heure dans le nom évitent d'écraser une sauvegarde précédente."],
+            ["Fichiers absents", "quand même chargés et signalés sous les boutons."],
+            ["Chemins", "relatifs au dossier racine ; un groupe vide vaut <code>[]</code> ou <code>null</code>."],
         ]) +
         hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 1,\n  "mode": "REF2VA",\n' +
             '  "root": "F:\\\\Rushs\\\\Project",\n  "images": ["images\\\\a.png"],\n' +
@@ -721,32 +699,29 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "outputs", title: "Sorties",
-        html: hList([
-            "Une sortie apparaît pour chaque fichier choisi (au moins une par type).",
-            "Double-cliquez sur le nom d'une sortie pour la renommer (vide = nom par défaut), ou utilisez le " +
-            "menu du clic droit.",
-            "MiniMax numérote ses entrées à partir de 0 : <b>ref_image_1</b> va sur <b>ref_image_0</b>.",
-            "MiniMax numérote <b>&lt;Audio j&gt;</b> avec d'abord les bandes-son de vidéo, puis les fichiers " +
-            "audio : avec 2 bandes-son, <b>ref_audio_1</b> est <b>&lt;Audio 3&gt;</b>.",
-            "Quand <b>ref_video_N</b> et <b>ref_video_audio_N</b> ont tous deux un fichier, leurs points de " +
-            "sortie ont la même couleur (1 orange, 2 rose, 3 vert).",
-        ]) +
-        hNote("MiniMax utilise la piste audio branchée sur <b>ref_video_audio_N</b> avec la vidéo de " +
-            "référence branchée sur <b>ref_video_N</b>.", NOTE_FR),
+        html: "<p>Une sortie apparaît pour chaque fichier choisi (au moins une par type).</p>" +
+            hCard("Sorties", [
+                ["Renommer", "double-cliquez sur le nom d'une sortie (vide = nom par défaut), ou utilisez le menu du " +
+                    "clic droit."],
+                ["Numéros", "MiniMax numérote ses entrées à partir de 0 : <b>ref_image_1</b> va sur <b>ref_image_0</b>."],
+                ["Audio", "MiniMax numérote <b>&lt;Audio j&gt;</b> avec d'abord les bandes-son de vidéo, puis les " +
+                    "fichiers audio : avec 2 bandes-son, <b>ref_audio_1</b> est <b>&lt;Audio 3&gt;</b>."],
+                ["Couleurs", "<b>ref_video_N</b> et <b>ref_video_audio_N</b> d'une même paire ont la même couleur " +
+                    "(1 orange, 2 rose, 3 vert)."],
+            ]) +
+            hNote("MiniMax utilise la piste audio branchée sur <b>ref_video_audio_N</b> avec la vidéo de " +
+                "référence branchée sur <b>ref_video_N</b>.", NOTE_FR),
     },
     {
         id: "limits", title: "Limites",
-        html: hList([
-            "Les vidéos sont lues à 24 i/s, coupées à 15 s et réduites à 768×1344 pixels au plus " +
-            "(MiniMax les réduirait de toute façon).",
-            "Les fichiers audio sont coupés à 15 s.",
-            "<b>Browse</b> utilise la fenêtre de dossiers de Windows ; sur un autre système, tapez ou collez " +
-            "le chemin du dossier.",
-            "Fonctionne avec le design classique des nœuds et avec <b>Modern Node Design (Nodes 2.0)</b> : le " +
-            "renommage des sorties et les couleurs des paires marchent dans les deux.",
-            "Chaque fenêtre s'ouvre à côté du nœud ; tirez-la par sa <b>barre de titre</b> (curseur ✥) pour la " +
-            "déplacer. Elle reste dans l'écran, l'aperçu à côté la suit, et elle se rouvre à côté du nœud la fois " +
-            "suivante.",
+        html: hCard("Limites", [
+            ["Vidéos", "lues à 24 i/s, coupées à 15 s, réduites à 768×1344 pixels au plus (MiniMax les réduirait " +
+                "de toute façon)."],
+            ["Audio", "coupé à 15 s."],
+            ["Browse", "fenêtre de dossiers de Windows ; sur un autre système, tapez ou collez le chemin du dossier."],
+            ["Nodes 2.0", "fonctionne avec le design classique et avec <b>Modern Node Design (Nodes 2.0)</b>."],
+            ["Fenêtres", "déplaçables par leur <b>barre de titre</b> (✥) ; elles restent dans l'écran et se " +
+                "rouvrent à côté du nœud la fois suivante."],
         ]),
     },
 ];
