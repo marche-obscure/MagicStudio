@@ -390,53 +390,49 @@ const HELP_SECTIONS = [
     },
     {
         id: "save", title: "Load and Save", icon: SAVE_ICON, color: PINK,
-        html: "<p>" + textBadge("Save") + " needs a project and the Reference Loader wired. It shows " +
-            "what it will do and asks for a confirmation, then:</p>" +
-            hList([
-                "copies the files of the Reference Loader (both modes) into the project: Images, First and Last " +
-                "frame in <b>08.Images</b>, Video in <b>12.Video</b>, Video/Audio in <b>14.Video-Audio</b>, " +
-                "Audio in <b>10.Son</b>;",
-                "makes the Reference Loader use the copies of the project;",
-                "saves the workflow (directly the first time, through the bell window when it has changed);",
-                "then saves the configuration of the project in <b>" + CONFIG_PATH + "</b> (02.Models and 06.LoRA: " +
-                "current index of their registry): every folder (even " +
-                "empty) with its files, their index (number in the Reference Loader, rank by name elsewhere) and " +
-                "the SHA256 of the files of 00.Workflows, 04.Prompt, 08.Images, 10.Son, 12.Video and 14.Video-Audio. " +
-                "The previous one goes to <b>99.Project-Config/Archives</b> as " +
-                "<b>yyyyMMdd-HHmmss_config_projets_&lt;project&gt;.json</b>, never overwritten.",
+        html: "<p>" + textBadge("Save") + " records the state of the project, " + textBadge("Load") + " puts it back. " +
+            "Both need a project picked and the Reference Loader wired.</p>" +
+            "<p><b>Save: record the project</b> (it first shows what it will do and asks for a confirmation)</p>" +
+            hSteps([
+                "<b>Copies the files of the Reference Loader into the project</b>; the Reference Loader then uses " +
+                "these copies.",
+                "<b>Saves the workflow</b> (through the window of the bell when it has changed).",
+                "<b>Records the configuration</b> in <b>" + CONFIG_PATH + "</b>: the files of each folder, their number " +
+                "and their SHA256. The previous configuration goes to Archives, never overwritten.",
             ]) +
-            hNote("Every file of 08.Images, 10.Son, 12.Video and 14.Video-Audio must be used by the Reference " +
-                "Loader (its number is its index): otherwise the configuration is not saved and the files are listed.") +
-            "<p>" + textBadge("Load") + " first compares every file with the configuration, without changing " +
-            "anything. A file that is missing or different is looked for in the <b>Archives</b> of its folder " +
-            "(same SHA256). The window <b>Load the project</b> then shows each folder:</p>" +
-            hList([
-                "<b style=\"color:" + GREEN + "\">✓</b> same file, <b style=\"color:#d32f2f\">✗</b> missing or " +
-                "different; under it, <b>→ found in Archives</b> with " + iconBadge(EYE_ICON, VIOLET) + " to view it in " +
-                "a <b>Preview</b> window next to it (images, videos, sounds; ✕, Escape or a click outside closes " +
-                "only the preview);",
-                "a check box (checked) for 00.Workflows, 08.Images, 10.Son, 12.Video and 14.Video-Audio: " +
-                "uncheck what must not be loaded;",
-                "04.Prompt is only checked: loading the workflow may lose the changes of the prompt in progress; " +
-                "02.Models, 06.LoRA, 40.Rush Videos and 60.Rush Images are information only.",
+            hCard("List of the Reference Loader → folder", [
+                [folderBadge("08.Images"), "Images, First / Last frame → <b>08.Images</b>"],
+                [folderBadge("10.Son"), "Audio → <b>10.Son</b>"],
+                [folderBadge("12.Video"), "Video → <b>12.Video</b>"],
+                [folderBadge("14.Video-Audio"), "Video/Audio → <b>14.Video-Audio</b>"],
             ]) +
-            "<p><b>Load</b> puts back the files found in Archives (a file already there under that name goes " +
-            "to Archives first) and fills the Reference Loader for the checked folders. The workflow:</p>" +
-            hList([
-                "same structure (nodes and links) as the current one: the current workflow is replaced;",
-                "another structure: Load of the project of this tab replaces the current workflow too; " +
-                "another project picked in the list opens in a new tab named after its workflow, this tab keeps " +
-                "its project, then <b>OK</b> stays here and <b>Open the project</b> goes to the new tab " +
-                "(the window lists the nodes and links in more or missing);",
-                "another project <b>of the same MultiProject</b>: a <b>Whole workflow | Data only</b> switch at the " +
-                "top. <b>Whole workflow</b>: the rules above. <b>Data only</b>: this tab keeps its workflow; the files " +
-                "and the values of the common nodes (same number and type: prompt, seed, steps, models…) come from " +
-                "the project. Same structure: the bell turns orange. Other structure: the bell turns red; saving " +
-                "with <b>Overwrite</b> replaces the saved workflow of the project (to find it again, use the Archives);",
-                "replacing the current workflow asks first: the changes since the last save are lost;",
-                "picking another project in the list (from a project) opens this Load window by itself;",
-                "unchecked: nothing opens, the folders checked go to the Reference Loader of this tab.",
-            ]),
+            hNote("each file of 08, 10, 12 and 14 must be used by the Reference Loader; otherwise the configuration " +
+                "is not recorded and those files are listed.") +
+            "<p><b>Load: put the project back</b></p>" +
+            hSteps([
+                "<b>Checks each file</b> against the configuration, without changing anything; a missing or different " +
+                "file is looked for in the Archives of its folder.",
+                "The <b>Load the project</b> window shows each folder: <b style=\"color:" + GREEN + "\">✓</b> identical, " +
+                "<b style=\"color:#d32f2f\">✗</b> missing or different, <b>→ found in Archives</b> (" +
+                iconBadge(EYE_ICON, VIOLET) + " to see it). Uncheck what must not be loaded (00.Workflows, 08 to 14).",
+                "<b>Load</b> puts back the files found, fills the Reference Loader and loads the workflow.",
+            ]) +
+            hCard("The workflow when loading", [
+                ["Same structure", "replaces the workflow of this tab"],
+                ["Other structure, same project", "replaces the workflow of this tab"],
+                ["Other structure, other project", "new tab, then <b>OK</b> (stay here) or <b>Open the project</b>"],
+                ["Project of the same MultiProject", "<b>Whole workflow | Data only</b> switch"],
+                ["00.Workflows unchecked", "no workflow: only the checked folders go to the Reference Loader"],
+            ]) +
+            "<p>Replacing the workflow of the tab always asks first: the changes not saved are lost.</p>" +
+            hCard("Data only", [
+                [iconBadge(TREE_ICON, MULTI_COLOR), "This tab keeps its workflow; only the files and the values of the " +
+                    "common nodes (same number, same type) come from the project. Same structure: bell " +
+                    "<b style=\"color:" + BELL_ORANGE + "\">orange</b>. Other structure: bell <b style=\"color:" + BELL_RED +
+                    "\">red</b>, and <b>Overwrite</b> will replace the saved workflow of the project."],
+            ]) +
+            hNote("picking another project in the list opens the Load window by itself. 04.Prompt is only checked; " +
+                "02.Models, 06.LoRA, 40 and 60 are for information."),
     },
     {
         id: "workflow", title: "Workflow", icon: BELL_ICON, color: ORANGE,
@@ -472,41 +468,39 @@ const HELP_SECTIONS = [
     },
     {
         id: "runs", title: "Run record", icon: START_ICON, color: GREEN,
-        html: "<p>Wire the final prompt text to the <b>text_prompt</b> input (the same text as the prompt of the " +
-            "MiniMax node). Then each <b>Run</b> is recorded in the project:</p>" +
-            hList([
-                "at the start, the workflow as it is when Run is clicked goes into <b>00.Workflows/Run</b>, under " +
-                "the same name as the JSON of the run (named in its <b>workflow</b> field; never listed with the " +
-                "workflows of the project, removed with the JSON of a run that is not kept);",
-                "at the start, <b>04.Prompt/yyyyMMdd_HHmmss_run.json</b> with the date, the project, the mode, the " +
-                "prompt, and the <b>CFG</b>, <b>Steps</b> and <b>Seed</b> read in the run itself (KSampler first, " +
-                "then CFGGuider, RandomNoise...). A value typed in the node is read directly; a linked one is " +
-                "followed (Get / Set and Reroute included): value node, switch (its boolean picks the branch), " +
-                "node keeping one value per output (Pixaroma Sliders). A node that computes its value during the " +
-                "run gives <b>null</b> with <b>cfg_from</b> / <b>steps_from</b> / <b>seed_from</b> = its name;",
-                "at the end, the videos generated by this run are copied to <b>40.Rush Videos</b>, from the real " +
-                "path given by the save node (its own folder for Pixaroma Save Video or Video Helper Suite, otherwise " +
-                "the output folder of ComfyUI), with the name of the JSON (<b>_02</b>... for the next ones). A video " +
-                "larger than <b>960x544</b> is reduced to fit in it (same proportions, .mp4, same frame rate, same " +
-                "sound); a smaller one is copied as it is; a video saved in 40.Rush Videos itself is left alone. The " +
-                "original is never changed. Images are not copied: they stay in the folder chosen by the save node. " +
-                "The JSON lists them all (with <b>size</b> and <b>copy_size</b> for the videos) and gets " +
-                "<b>status</b> done (or error when the run stops or fails).",
-                "only the new files of the run count: a file already recorded by a previous run (sent back by the " +
-                "cache of ComfyUI, older than the run) is ignored, but a file written during the run counts even if it " +
-                "takes the name of an old one; a run without any new file, or that stops without any file, is not " +
-                "recorded: its JSON is removed and nothing is copied.",
-                "optional <b>models_link</b> input: wire the <b>model_link</b> output of <b>MultiFiles Select</b> " +
-                "(directly, or through Set / Get or Reroute nodes, or a Switch MultiIN-OUT: the input of its active group). " +
-                "Its fields give the models of the run for 02.Models (diffusion_models, text_encoders, vae), with " +
-                "<b>position</b> = number of the field; not wired: the models are read in the graph (position 0). " +
-                "The LoRA are always read in the graph. When MultiFiles Select has no save folder, it gets " +
-                "<b>&lt;project&gt;/02.Models</b>, which follows the project; a folder chosen by hand is never " +
-                "replaced, and nothing changes when the link is removed;",
-                "while a run of this node is in progress, <b>Load</b> and <b>Save</b> are locked.",
+        html: "<p>To record the runs: a <b>project picked</b> and the <b>text_prompt</b> input wired to the final " +
+            "prompt text.</p>" +
+            hCard("When the run starts", [
+                [folderBadge("04.Prompt"), "<b>yyyyMMdd_HHmmss_run.json</b>: date, project, mode, prompt, and the CFG, " +
+                    "Steps and Seed read in the run."],
+                [folderBadge("00.Workflows"), "<b>00.Workflows/Run</b>: the workflow as it was when Run was clicked."],
             ]) +
-            hNote("No project picked, or text_prompt not wired: nothing is recorded. The window of ComfyUI must " +
-                "stay open until the end of the run for the files to be copied."),
+            hCard("At the end of the run", [
+                [folderBadge("40.Rush Videos"), "<b>Videos</b> copied to <b>40.Rush Videos/Footage</b> under the name of " +
+                    "the run; a video larger than 960x544 is reduced. The original is never changed."],
+                [folderBadge("60.Rush Images"), "<b>Images</b> stay where the save node puts them; the run names them " +
+                    "and 60.Rush Images shows them."],
+                [folderBadge("04.Prompt"), "The <b>JSON</b> gets the status (done / error), the duration and the sizes."],
+                [folderBadge("02.Models"), "<b>Models and LoRA</b> are noted in the registries of 02.Models and 06.LoRA."],
+            ]) +
+            hCard("Not recorded", [
+                ["Cache", "A run without any <b>new file</b> (a result sent back by the cache of ComfyUI, for example): " +
+                    "its JSON is removed and nothing is copied."],
+            ]) +
+            hCard("How CFG, Steps and Seed are read", [
+                ["Typed", "a value typed in the node is read directly."],
+                ["Linked", "a linked value is followed (Get / Set, Reroute, switch, Pixaroma Sliders)."],
+                ["Computed", "a value computed during the run gives <b>null</b>, with the name of the node in " +
+                    "<b>cfg_from</b> / <b>steps_from</b> / <b>seed_from</b>."],
+            ]) +
+            hCard("Optional input models_link", [
+                [iconBadge(LINK_ICON, ORANGE), "Wire the <b>model_link</b> output of <b>MultiFiles Select</b> (directly, " +
+                    "or through Set / Get, Reroute or a Switch MultiIN-OUT): its fields give the models of the run. " +
+                    "Not wired: the models are read in the graph. The LoRA are always read in the graph. An empty save " +
+                    "folder of MultiFiles Select gets <b>&lt;project&gt;/02.Models</b>."],
+            ]) +
+            hNote("during a run, <b>Load</b> and <b>Save</b> are locked. The end of the run is recorded by the server: " +
+                "changing tab or closing the page no longer loses it."),
     },
     {
         id: "rename", title: "Rename or move", icon: PENCIL_ICON, color: VIOLET,
@@ -759,56 +753,51 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "save", title: "Load et Save",
-        html: "<p>" + textBadge("Save") + " demande un projet et le Reference Loader relié. Il montre " +
-            "ce qu'il va faire et demande une confirmation, puis :</p>" +
-            hList([
-                "copie les fichiers du Reference Loader (les deux modes) dans le projet : Images, First et Last " +
-                "frame dans <b>08.Images</b>, Video dans <b>12.Video</b>, Video/Audio dans <b>14.Video-Audio</b>, " +
-                "Audio dans <b>10.Son</b> ;",
-                "fait utiliser au Reference Loader les copies du projet ;",
-                "sauvegarde le workflow (directement la première fois, par la fenêtre de la cloche s'il a changé) ;",
-                "puis enregistre la configuration du projet dans <b>" + CONFIG_PATH + "</b> (02.Models et 06.LoRA : " +
-                "indice en cours de leur registre) : tous les dossiers " +
-                "(même vides) avec leurs fichiers, leur indice (numéro dans le Reference Loader, rang par nom " +
-                "ailleurs) et le SHA256 des fichiers de 00.Workflows, 04.Prompt, 08.Images, 10.Son, 12.Video et " +
-                "14.Video-Audio. L'ancienne part dans <b>99.Project-Config/Archives</b> sous " +
-                "<b>yyyyMMdd-HHmmss_config_projets_&lt;projet&gt;.json</b>, jamais écrasée.",
+        html: "<p>" + textBadge("Save") + " enregistre l'état du projet, " + textBadge("Load") + " le remet en place. " +
+            "Les deux demandent un projet choisi et le Reference Loader relié.</p>" +
+            "<p><b>Save : enregistrer le projet</b> (il montre d'abord ce qu'il va faire et demande confirmation)</p>" +
+            hSteps([
+                "<b>Copie les fichiers du Reference Loader dans le projet</b> ; le Reference Loader utilise ensuite " +
+                "ces copies.",
+                "<b>Sauvegarde le workflow</b> (par la fenêtre de la cloche s'il a changé).",
+                "<b>Enregistre la configuration</b> dans <b>" + CONFIG_PATH + "</b> : les fichiers de chaque dossier, " +
+                "leur numéro et leur SHA256. L'ancienne part dans Archives, jamais écrasée.",
             ]) +
-            hNote("Chaque fichier de 08.Images, 10.Son, 12.Video et 14.Video-Audio doit être utilisé par le " +
-                "Reference Loader (son numéro est son indice) : sinon la configuration n'est pas enregistrée et " +
-                "les fichiers sont listés.", "Remarque :") +
-            "<p>" + textBadge("Load") + " compare d'abord chaque fichier à la configuration, sans rien modifier. " +
-            "Un fichier manquant ou différent est cherché dans le dossier <b>Archives</b> de son dossier (même " +
-            "SHA256). La fenêtre <b>Load the project</b> montre ensuite chaque dossier :</p>" +
-            hList([
-                "<b style=\"color:" + GREEN + "\">✓</b> fichier identique, <b style=\"color:#d32f2f\">✗</b> manquant " +
-                "ou différent ; dessous, <b>→ found in Archives</b> avec " + iconBadge(EYE_ICON, VIOLET) + " pour le " +
-                "voir dans une fenêtre <b>Preview</b> à côté (images, vidéos, sons ; ✕, Échap ou un clic à côté " +
-                "ferment seulement l'aperçu) ;",
-                "une case (cochée) pour 00.Workflows, 08.Images, 10.Son, 12.Video et 14.Video-Audio : décochez " +
-                "ce qui ne doit pas être chargé ;",
-                "04.Prompt est seulement vérifié : charger le workflow peut perdre les modifications du prompt en " +
-                "cours ; 02.Models, 06.LoRA, 40.Rush Videos et 60.Rush Images sont pour information.",
+            hCard("Liste du Reference Loader → dossier", [
+                [folderBadge("08.Images"), "Images, First / Last frame → <b>08.Images</b>"],
+                [folderBadge("10.Son"), "Audio → <b>10.Son</b>"],
+                [folderBadge("12.Video"), "Video → <b>12.Video</b>"],
+                [folderBadge("14.Video-Audio"), "Video/Audio → <b>14.Video-Audio</b>"],
             ]) +
-            "<p><b>Load</b> remet en place les fichiers retrouvés dans Archives (un fichier déjà présent sous ce " +
-            "nom part d'abord dans Archives) et remplit le Reference Loader pour les dossiers cochés. Le workflow :</p>" +
-            hList([
-                "même structure (nœuds et liaisons) que l'actuel : le workflow en cours est remplacé ;",
-                "autre structure : le Load du projet de cet onglet remplace aussi le workflow en cours ; " +
-                "un autre projet choisi dans la liste s'ouvre dans un nouvel onglet au nom de son workflow, cet " +
-                "onglet garde son projet, puis <b>OK</b> reste ici et <b>Open the project</b> va au nouvel onglet " +
-                "(la fenêtre liste les nœuds et liaisons en plus ou manquants) ;",
-                "un autre projet <b>du même MultiProject</b> : un interrupteur <b>Whole workflow | Data only</b> en " +
-                "haut. <b>Whole workflow</b> : les règles ci-dessus. <b>Data only</b> : cet onglet garde son " +
-                "workflow ; les fichiers et les valeurs des nœuds communs (même numéro et même type : prompt, seed, " +
-                "steps, modèles…) viennent du projet. Même structure : la cloche passe à l'orange. Autre structure : " +
-                "la cloche passe au rouge ; sauvegarder avec <b>Overwrite</b> remplace le workflow sauvegardé du " +
-                "projet (pour le retrouver, passez par les Archives) ;",
-                "remplacer le workflow en cours demande d'abord confirmation : les modifications depuis la " +
-                "dernière sauvegarde sont perdues ;",
-                "choisir un autre projet dans la liste (depuis un projet) ouvre cette fenêtre Load d'elle-même ;",
-                "décoché : rien ne s'ouvre, les dossiers cochés vont dans le Reference Loader de cet onglet.",
-            ]),
+            hNote("chaque fichier de 08, 10, 12 et 14 doit être utilisé par le Reference Loader ; sinon la " +
+                "configuration n'est pas enregistrée et les fichiers en cause sont listés.", "Remarque :") +
+            "<p><b>Load : remettre le projet en place</b></p>" +
+            hSteps([
+                "<b>Vérifie chaque fichier</b> par rapport à la configuration, sans rien modifier ; un fichier manquant " +
+                "ou différent est cherché dans les Archives de son dossier.",
+                "La fenêtre <b>Load the project</b> montre chaque dossier : <b style=\"color:" + GREEN + "\">✓</b> " +
+                "identique, <b style=\"color:#d32f2f\">✗</b> manquant ou différent, <b>→ found in Archives</b> (" +
+                iconBadge(EYE_ICON, VIOLET) + " pour le voir). Décochez ce qui ne doit pas être chargé (00.Workflows, " +
+                "08 à 14).",
+                "<b>Load</b> remet les fichiers retrouvés, remplit le Reference Loader et charge le workflow.",
+            ]) +
+            hCard("Le workflow au chargement", [
+                ["Même structure", "remplace le workflow de cet onglet"],
+                ["Autre structure, même projet", "remplace le workflow de cet onglet"],
+                ["Autre structure, autre projet", "nouvel onglet, puis <b>OK</b> (rester ici) ou <b>Open the project</b>"],
+                ["Projet du même MultiProject", "interrupteur <b>Whole workflow | Data only</b>"],
+                ["00.Workflows décoché", "pas de workflow : seuls les dossiers cochés vont dans le Reference Loader"],
+            ]) +
+            "<p>Remplacer le workflow de l'onglet demande toujours confirmation : les modifications non " +
+            "sauvegardées sont perdues.</p>" +
+            hCard("Data only", [
+                [iconBadge(TREE_ICON, MULTI_COLOR), "L'onglet garde son workflow ; seuls les fichiers et les valeurs des " +
+                    "nœuds communs (même numéro, même type) viennent du projet. Même structure : cloche " +
+                    "<b style=\"color:" + BELL_ORANGE + "\">orange</b>. Autre structure : cloche <b style=\"color:" +
+                    BELL_RED + "\">rouge</b>, et <b>Overwrite</b> remplacera le workflow sauvegardé du projet."],
+            ]) +
+            hNote("choisir un autre projet dans la liste ouvre la fenêtre Load d'elle-même. 04.Prompt est seulement " +
+                "vérifié ; 02.Models, 06.LoRA, 40 et 60 sont pour information.", "Remarque :"),
     },
     {
         id: "workflow", title: "Workflow",
@@ -846,41 +835,39 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "runs", title: "Enregistrement des Runs",
-        html: "<p>Branchez le texte final du prompt sur l'entrée <b>text_prompt</b> (le même texte que le prompt du " +
-            "nœud MiniMax). Ensuite chaque <b>Run</b> est enregistré dans le projet :</p>" +
-            hList([
-                "au lancement, le workflow tel qu'au clic sur Run va dans <b>00.Workflows/Run</b>, sous le même " +
-                "nom que le JSON du Run (cité par son champ <b>workflow</b> ; jamais listé avec les workflows du " +
-                "projet, retiré avec le JSON d'un Run qui n'est pas gardé) ;",
-                "au lancement, <b>04.Prompt/yyyyMMdd_HHmmss_run.json</b> avec la date, le projet, le mode, le " +
-                "prompt, et les <b>CFG</b>, <b>Steps</b> et <b>Seed</b> lus dans le Run lui-même (KSampler d'abord, " +
-                "puis CFGGuider, RandomNoise...). Une valeur tapée dans le nœud est lue directement ; une valeur " +
-                "reliée est suivie (Get / Set et Reroute compris) : nœud valeur, switch (son booléen choisit la " +
-                "branche), nœud qui garde une valeur par sortie (Pixaroma Sliders). Un nœud qui calcule sa valeur " +
-                "pendant le Run donne <b>null</b> avec <b>cfg_from</b> / <b>steps_from</b> / <b>seed_from</b> = son nom ;",
-                "à la fin, les vidéos générées par ce Run sont copiées dans <b>40.Rush Videos</b>, depuis le vrai " +
-                "chemin donné par le nœud de sauvegarde (son propre dossier pour Pixaroma Save Video ou Video Helper " +
-                "Suite, sinon le dossier output de ComfyUI), avec le nom du JSON (<b>_02</b>... pour les suivantes). " +
-                "Une vidéo plus grande que <b>960x544</b> est réduite pour y tenir (mêmes proportions, .mp4, même " +
-                "cadence, même son) ; une plus petite est copiée telle quelle ; une vidéo sauvegardée dans 40.Rush " +
-                "Videos lui-même n'est pas touchée. L'original n'est jamais modifié. Les images ne sont pas copiées : " +
-                "elles restent dans le dossier choisi par le nœud de sauvegarde. Le JSON les liste toutes (avec " +
-                "<b>size</b> et <b>copy_size</b> pour les vidéos) et reçoit <b>status</b> done (ou error si le Run " +
-                "s'arrête ou échoue) ;",
-                "seuls les fichiers nouveaux du Run comptent : un fichier déjà enregistré par un Run précédent " +
-                "(renvoyé par le cache de ComfyUI, plus ancien que le Run) est ignoré, mais un fichier écrit pendant " +
-                "le Run compte même s'il reprend le nom d'un ancien ; un Run sans fichier nouveau, ou qui s'arrête sans " +
-                "fichier, n'est pas enregistré : son JSON est retiré et rien n'est copié.",
-                "entrée optionnelle <b>models_link</b> : branchez la sortie <b>model_link</b> de <b>MultiFiles " +
-                "Select</b> (directement, ou via des nœuds Set / Get ou Reroute, ou un Switch MultiIN-OUT : l'entrée de son groupe actif). Ses champs donnent les modèles du Run pour 02.Models (diffusion_models, text_encoders, " +
-                "vae), avec <b>position</b> = numéro du champ ; non branchée : modèles lus dans le graphe (position " +
-                "0). Les LoRA sont toujours lues dans le graphe. Sans dossier de sauvegarde, MultiFiles Select " +
-                "reçoit <b>&lt;projet&gt;/02.Models</b>, qui suit le projet ; un dossier choisi à la main n'est " +
-                "jamais remplacé, et rien ne change au débranchement ;",
-                "pendant un Run de ce nœud, <b>Load</b> et <b>Save</b> sont verrouillés.",
+        html: "<p>Pour que les Runs soient enregistrés : <b>un projet choisi</b> et l'entrée <b>text_prompt</b> " +
+            "branchée sur le texte final du prompt.</p>" +
+            hCard("Au lancement du Run", [
+                [folderBadge("04.Prompt"), "<b>yyyyMMdd_HHmmss_run.json</b> : date, projet, mode, prompt, et les CFG, " +
+                    "Steps et Seed lus dans le Run."],
+                [folderBadge("00.Workflows"), "<b>00.Workflows/Run</b> : le workflow tel qu'au clic sur Run."],
             ]) +
-            hNote("Aucun projet choisi, ou text_prompt non branchée : rien n'est enregistré. La fenêtre de ComfyUI " +
-                "doit rester ouverte jusqu'à la fin du Run pour que les fichiers soient copiés.", "Remarque :"),
+            hCard("À la fin du Run", [
+                [folderBadge("40.Rush Videos"), "<b>Vidéos</b> copiées dans <b>40.Rush Videos/Footage</b>, au nom du " +
+                    "Run ; une vidéo plus grande que 960x544 est réduite. L'original n'est jamais modifié."],
+                [folderBadge("60.Rush Images"), "<b>Images</b> : elles restent où le nœud de sauvegarde les met ; le Run " +
+                    "les cite et 60.Rush Images les montre."],
+                [folderBadge("04.Prompt"), "Le <b>JSON</b> reçoit le statut (done / error), la durée et les tailles."],
+                [folderBadge("02.Models"), "<b>Modèles et LoRA</b> : notés dans les registres de 02.Models et 06.LoRA."],
+            ]) +
+            hCard("Ce qui n'est pas enregistré", [
+                ["Cache", "Un Run sans <b>fichier nouveau</b> (par exemple un résultat renvoyé par le cache de " +
+                    "ComfyUI) : son JSON est retiré et rien n'est copié."],
+            ]) +
+            hCard("Comment CFG, Steps et Seed sont lus", [
+                ["Tapée", "une valeur tapée dans le nœud est lue directement."],
+                ["Reliée", "une valeur reliée est suivie (Get / Set, Reroute, switch, Pixaroma Sliders)."],
+                ["Calculée", "une valeur calculée pendant le Run donne <b>null</b>, avec le nom du nœud dans " +
+                    "<b>cfg_from</b> / <b>steps_from</b> / <b>seed_from</b>."],
+            ]) +
+            hCard("Entrée models_link (optionnelle)", [
+                [iconBadge(LINK_ICON, ORANGE), "Branchez la sortie <b>model_link</b> de <b>MultiFiles Select</b> " +
+                    "(directement, ou par Set / Get, Reroute ou un Switch MultiIN-OUT) : ses champs donnent les modèles " +
+                    "du Run. Non branchée : les modèles sont lus dans le graphe. Les LoRA sont toujours lues dans le " +
+                    "graphe. Un dossier de sauvegarde vide de MultiFiles Select reçoit <b>&lt;projet&gt;/02.Models</b>."],
+            ]) +
+            hNote("pendant un Run, <b>Load</b> et <b>Save</b> sont verrouillés. La fin du Run est enregistrée par le " +
+                "serveur : changer d'onglet ou fermer la page ne la perd plus.", "Remarque :"),
     },
     {
         id: "rename", title: "Renommer ou déplacer",
