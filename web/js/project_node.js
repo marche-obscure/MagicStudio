@@ -9,7 +9,7 @@ import {
 } from "./minimax_ref_loader.js";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
-    mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges,
+    mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
     unusedProjectFiles, orderedFolderFiles, folderUse,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
@@ -4061,6 +4061,7 @@ app.registerExtension({
             let folder = { root: "", exists: true, linked: false, custom: false };
             let fallbackRoot = ""; // dossier de repli <input de ComfyUI>/Projets
             let projects = [];
+            let anchorNotice = ""; // message de l'ancrage du Root folder, montre apres la relecture
             // Projets de la racine et dossiers de projets ([{name, projects: null | [noms]}], /mmproject/list).
             let tree = [];
             // Entree project obligatoire (choix utilisateur, 19/10/2026) : sans Reference Loader
@@ -4450,7 +4451,21 @@ app.registerExtension({
                     fallbackRoot = data.default_root || fallbackRoot;
                     projects = data.projects || [];
                     tree = data.tree || projects.map((name) => ({ name, projects: null }));
-                    message = "";
+                    message = anchorNotice;
+                    anchorNotice = "";
+                    // Root folder sur un projet ou un dossier de projets : ancre sur le dossier mere
+                    // (choix utilisateur, 22/10/2026) ; le projet ouvert garde son dossier, son nom
+                    // suit, et le Reference Loader recoit le nouveau Root folder (liste relue).
+                    const loader = linkedLoader(node);
+                    if (data.anchored && req.linked && loader && typeof loader.mmAnchorRoot === "function") {
+                        const s = getState();
+                        const name = s.path ? projectNameOfPath(data.root, projects, s.path) : "";
+                        if (name) setState({ root: data.root, name, path: s.path });
+                        anchorNotice = "Root folder set to " + data.root + ", the parent folder of " +
+                            data.anchored.split("/").pop() + " (a project or a folder of projects is never the Root folder).";
+                        loader.mmAnchorRoot(data.root, data.anchored);
+                        return;
+                    }
                 } catch (e) {
                     if (id !== loadId) return;
                     folder = { root: req.root, exists: false, linked: req.linked, custom: req.custom };

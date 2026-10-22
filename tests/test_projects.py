@@ -82,6 +82,24 @@ class ProjectFoldersTest(unittest.TestCase):
             projects.create_project(r, "X", group="Film/Shot1")
         self.assertFalse(os.path.exists(os.path.join(r, "G")))
 
+    def test_anchor_root_on_the_parent_folder(self):
+        r = self.root
+        sub = projects.create_project(r, "Speech", group="Yacht", new_group=True)
+        solo = projects.create_project(r, "Solo")
+        group = os.path.join(r, "Yacht")
+        self.assertTrue(projects.is_group(group))                    # marque posee a la creation
+        self.assertEqual(projects.anchor_root(r), (r, ""))            # racine normale : inchangee
+        self.assertEqual(projects.anchor_root(group), (r, "Yacht"))
+        self.assertEqual(projects.anchor_root(sub), (r, "Yacht/Speech"))
+        self.assertEqual(projects.anchor_root(solo), (r, "Solo"))
+        # Groupe cree a la main : marque quand la racine le liste.
+        other = os.path.join(r, "Old")
+        projects.create_project(other, "Shot", create_root=True)
+        self.assertEqual(projects.anchor_root(other), (other, ""))
+        projects.project_tree(r)
+        self.assertEqual(projects.anchor_root(other), (r, "Old"))
+        self.assertEqual(projects.list_projects(r), ["Old/Shot", "Solo", "Yacht/Speech"])
+
     def test_folder_of_projects_with_stray_parts_stays_a_group(self):
         r = self.root
         projects.create_project(r, "Shot1", group="Film", new_group=True)
