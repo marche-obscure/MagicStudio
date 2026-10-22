@@ -9,6 +9,7 @@ import {
     MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     batchSortTargets, canDeleteRush, deletedText, anchoredSubs, projectNameOfPath, subfolderLabel,
+    moreComplete, sameGroup,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
 } from "../web/js/project_paths.js";
@@ -498,4 +499,21 @@ test("subfolder names relative to the Project / Sub-project choice", () => {
     assert.equal(subfolderLabel("Yacht/Speech/08.Images", ""), "Yacht/Speech/08.Images");
     assert.equal(subfolderLabel("Solo\\10.Son", "solo"), "10.Son");
     assert.equal(subfolderLabel("Solo2/10.Son", "Solo"), "Solo2/10.Son");
+});
+
+test("more complete structure of a project of the same MultiProject", () => {
+    const d = (added, missing, ladded = [], lmissing = []) =>
+        ({ nodes_added: added, nodes_missing: missing, links_added: ladded, links_missing: lmissing,
+            same: !added.length && !missing.length && !ladded.length && !lmissing.length });
+    assert.equal(moreComplete(d(["#9 KSampler"], [])), true);
+    assert.equal(moreComplete(d([], [], ["#1:a -> #2:b"])), true);
+    assert.equal(moreComplete(d(["#9 KSampler"], ["#3 VAE"])), false);
+    assert.equal(moreComplete(d(["#9 KSampler"], [], [], ["#1:a -> #2:b"])), false);
+    assert.equal(moreComplete(d([], [])), false);
+    assert.equal(moreComplete(null), false);
+    assert.equal(sameGroup("Yatch/Speech-01", "Yatch/Speech-02"), "Yatch");
+    assert.equal(sameGroup("Yatch/Speech-01", "yatch/Walk"), "Yatch");
+    assert.equal(sameGroup("Yatch/Speech-01", "Other/Speech-01"), "");
+    assert.equal(sameGroup("Solo", "Yatch/Speech-01"), "");
+    assert.equal(sameGroup("Yatch/Speech-01", "Yatch/Speech-01"), "");
 });
