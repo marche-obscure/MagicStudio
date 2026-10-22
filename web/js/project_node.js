@@ -3533,8 +3533,11 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     }
 
     return {
-        /** open(folder "04.Prompt" | "40.Rush Videos" | "60.Rush Images", projectName, runs) */
-        open(name, projectName, list) {
+        /**
+         * open(folder "04.Prompt" | "40.Rush Videos" | "60.Rush Images", projectName, runs, message)
+         * message = {text, ok} affiche en bas (resultat des doublons resolus a l'ouverture).
+         */
+        open(name, projectName, list, message) {
             const same = folder === name && overlay.style.display !== "none";
             folder = name;
             runs = list || [];
@@ -3562,6 +3565,10 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             grid.style.gridTemplateColumns = promptMode ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)";
             if (promptMode) renderPrompt();
             else renderRush();
+            if (message && message.text) {
+                note.textContent = message.text;
+                note.style.color = message.ok ? "#9fd6cf" : ORANGE;
+            }
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 760);
@@ -5011,21 +5018,25 @@ app.registerExtension({
                 const s = getState();
                 if (!inProject(s.name)) return;
                 await loadRuns(s);
-                if (f === "40.Rush Videos" || f === "60.Rush Images") await resolveDuplicates(s, f);
+                const message = f === "40.Rush Videos" || f === "60.Rush Images" ? await resolveDuplicates(s, f) : null;
                 paintFolders();
-                runViewer.open(f, shortName(s.name), runList);
+                runViewer.open(f, shortName(s.name), runList, message);
             }
 
             /**
              * Fichier depose a la main dans un dossier de tri de 40 / 60, identique (SHA256)
              * au fichier d'un Run range ailleurs (choix utilisateur, 22/10/2026) : garder l'un
              * des deux, l'autre va dans la Corbeille (le Run suit celui qu'on garde) ; Cancel :
-             * rien ne change, la question revient a la prochaine ouverture.
+             * rien ne change, la question revient a la prochaine ouverture. Erreur (fichier en
+             * cours d'utilisation...) : fenetre visible avec Retry (avant : ligne d'etat cachee
+             * par la fenetre 40 / 60). Renvoie {text, ok} pour la fenetre des Runs, ou null.
              */
             async function resolveDuplicates(s, f) {
                 const kind = f === "40.Rush Videos" ? "video" : "image";
                 const dups = orphanList.filter((o) => o.kind === kind && o.dup);
-                if (!dups.length) return;
+                if (!dups.length) return null;
+                const done = [];
+                let failedCount = 0;
                 for (const o of dups) {
                     const mine = SORT_NAME[o.place];
                     const other = SORT_NAME[o.dup.place] || "the root of " + f;
@@ -5040,14 +5051,50 @@ app.registerExtension({
                         altLabel: "Keep " + other, altColor: SORT_COLORS[o.dup.place] || INACTIVE_BG,
                     });
                     if (!answer) continue;
-                    try {
-                        await apiPost("/mmproject/resolve_duplicate", { project: s.path, run: o.dup.run,
-                            index: o.dup.index, orphan: o.path, keep: answer === "alt" ? "run" : "orphan" });
-                    } catch (e) {
-                        say(e.message);
+                    const keptPlace = answer === "alt" ? o.dup.place : o.place;
+                    let args = { project: s.path, run: o.dup.run, index: o.dup.index, orphan: o.path,
+                        keep: answer === "alt" ? "run" : "orphan" };
+                    for (;;) {
+                        let res = null;
+                        let error = "";
+                        try {
+                            res = await apiPost("/mmproject/resolve_duplicate", args);
+                            error = res.trash_error || "";
+                        } catch (e) {
+                            error = e.message;
+                        }
+                        if (!error) {
+                            done.push(baseOf(o.path) + ": kept in " + (SORT_NAME[keptPlace] || keptPlace));
+                            break;
+                        }
+                        // Le Run suit deja l'exemplaire garde : Retry ne met plus que l'autre a la Corbeille.
+                        if (res && res.trash_error) args = Object.assign({}, args, { orphan: res.other, keep: "run" });
+                        const retry = await confirm.ask({
+                            title: "The Recycle Bin refused " + baseOf((res && res.other) || args.orphan),
+                            html: (res && res.trash_error
+                                ? "The run now follows the copy in <b>" + escapeHtml(SORT_NAME[keptPlace] || "") +
+                                    "</b>, but the other copy could not go to the Recycle Bin."
+                                : "Nothing was changed.") +
+                                '<br><span style="color:#999">' + escapeHtml(error) + "</span>" +
+                                "<br>The file is probably in use (a video preview, the Explorer...). Close the " +
+                                "previews or reload the page, then <b>Retry</b>. <b>Later</b>: asked again at the " +
+                                "next opening.",
+                            okLabel: "Retry", okColor: DOT_ORANGE, cancelLabel: "Later",
+                        });
+                        if (!retry) {
+                            failedCount++;
+                            break;
+                        }
                     }
                 }
                 await loadRuns(s);
+                if (!done.length && !failedCount) return null;
+                return {
+                    text: (done.length ? "Duplicates resolved (other copy in the Recycle Bin): " + done.join(", ") : "") +
+                        (failedCount ? (done.length ? " – " : "") + failedCount + " duplicate(s) left: asked again " +
+                            "at the next opening." : ""),
+                    ok: !failedCount,
+                };
             }
 
             /** Bouton des doublons a droite de la cloche : visible quand <dossier>/Archives en a. */

@@ -809,6 +809,55 @@ class RunFileTest(unittest.TestCase):
         self.assertEqual(rr.resolve_duplicate(self.p, name, 0, foot, "run", trash), {"kept": lock, "trashed": foot})
         self.assertFalse(os.path.exists(foot))
 
+    def test_runs_of_a_renamed_project_are_relinked(self):
+        # Dossier de projets renomme a la main : les JSON gardent l'ancien chemin.
+        vids = os.path.join(self.p, "40.Rush Videos")
+        old = os.path.join(self.root, "Porjet", "Clip", "40.Rush Videos")
+        lock = os.path.join(vids, "Picture Lock", "a.mp4")
+        good = os.path.join(vids, "No Good", "b.mp4")
+        foot = os.path.join(vids, "Footage", "c.mp4")
+        for f in (lock, good, foot):
+            write(f, b"v")
+        name = self._run_with([
+            # copie deplacee par les boutons, source restee sur l'ancien chemin
+            {"source": os.path.join(old, "Validated", "a.mp4"), "kind": "video",
+             "copy": "40.Rush Videos/Picture Lock/a.mp4", "in_place": True},
+            # meme fin de chemin, ancien nom de dossier Rejected
+            {"source": os.path.join(old, "Rejected", "b.mp4"), "kind": "video", "copy": None},
+            # fin de chemin introuvable, copie du projet (rapatriee)
+            {"source": os.path.join(old, "Elsewhere", "c.mp4"), "kind": "video",
+             "copy": "40.Rush Videos/Footage/c.mp4", "in_place": True},
+            # original hors du projet disparu, sans copie : laisse tel quel
+            {"source": os.path.join(self.root, "output", "gone.mp4"), "kind": "video", "copy": None},
+        ])
+        outs = rr.list_runs(self.p)[0]["outputs"]
+        self.assertEqual([(o["source"], o["in_project"], o["place"]) for o in outs[:3]],
+                         [(lock, True, "picture_lock"), (good, True, "rejected"), (foot, True, "footage")])
+        self.assertEqual((outs[3]["in_project"], outs[3]["source_exists"]), (False, False))
+        o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"]
+        self.assertEqual([x["source"] for x in o[:3]], [lock, good, foot])
+
+    def test_duplicate_kept_even_if_the_recycle_bin_refuses(self):
+        foot = os.path.join(self.p, "40.Rush Videos", "Footage", "v.mp4")
+        lock = os.path.join(self.p, "40.Rush Videos", "Picture Lock", "v.mp4")
+        write(foot, b"video")
+        write(lock, b"video")
+        name = self._run_with([{"source": foot, "kind": "video", "copy": "40.Rush Videos/Footage/v.mp4", "in_place": True}])
+
+        def busy(paths):
+            raise OSError("Could not move the files to the Recycle Bin (code 32).")
+        res = rr.resolve_duplicate(self.p, name, 0, lock, "orphan", busy)
+        self.assertEqual(res, {"kept": lock, "trashed": None, "other": foot,
+                               "trash_error": "Could not move the files to the Recycle Bin (code 32)."})
+        o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]
+        self.assertEqual((o["source"], o["copy"]), (lock, "40.Rush Videos/Picture Lock/v.mp4"))
+        # L'autre exemplaire est maintenant un orphelin identique au fichier du Run : Retry.
+        orph = rr.rush_orphans(self.p)
+        self.assertEqual([(x["path"], x["dup"]["path"]) for x in orph], [(foot, lock)])
+        trashed = []
+        res = rr.resolve_duplicate(self.p, name, 0, foot, "run", lambda ps: [trashed.extend(ps), os.remove(ps[0])])
+        self.assertEqual((res, trashed), ({"kept": lock, "trashed": foot}, [foot]))
+
     def test_delete_rush(self):
         rej = os.path.join(self.p, "40.Rush Videos", "No Good", "v.mp4")
         foot = os.path.join(self.p, "60.Rush Images", "Footage", "i.png")

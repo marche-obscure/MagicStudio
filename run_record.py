@@ -896,6 +896,42 @@ def _migrate_output(project, o, moved):
     return changed
 
 
+def _relocate(project, path):
+    """
+    Fichier de 40 / 60 cite avec un ancien chemin (projet ou dossier de projets
+    renomme / deplace, choix utilisateur 22/10/2026) : meme fin de chemin a partir
+    de 40.Rush Videos / 60.Rush Images dans le projet actuel (Rejected -> No Good,
+    Validated -> Rough Cut) ; None s'il n'y est pas.
+    """
+    parts = [p for p in re.split(r"[\\/]+", path or "") if p]
+    renamed = {old: SORT_FOLDERS[key] for key, old in OLD_SORT_FOLDERS.items()}
+    for i, part in enumerate(parts):
+        if part in (RUSH_VIDEOS, RUSH_IMAGES) and i + 1 < len(parts):
+            rest = parts[i + 1:]
+            rest[0] = renamed.get(rest[0], rest[0])
+            cand = os.path.join(project, part, *rest)
+            return cand if os.path.isfile(cand) else None
+    return None
+
+
+def _relink_output(project, o):
+    """
+    source qui n'existe plus : retrouvee dans le projet actuel (_relocate), sinon la
+    copie du projet quand l'original y a ete rapatrie (in_place). True si change.
+    """
+    src = o.get("source") or ""
+    if not src or os.path.isfile(src) or o.get("deleted"):
+        return False
+    new = _relocate(project, src)
+    if not new and o.get("in_place"):
+        copy = _abs_copy(project, o)
+        new = copy if copy and os.path.isfile(copy) else None
+    if not new or _same_dir(new, src):
+        return False
+    o["source"] = new
+    return True
+
+
 def single_lock(project):
     """Picture Lock a un seul fichier : projet d'un MultiProject (dossier parent marque)."""
     return projects.is_group(os.path.dirname(os.path.abspath(project)))
@@ -973,6 +1009,8 @@ def resolve_duplicate(project, run_name, index, orphan, keep, trash_fn):
     utilisateur, 22/10/2026) : keep "orphan" = le Run suit le fichier depose, son
     ancien fichier part dans la Corbeille ; keep "run" = le fichier depose part dans
     la Corbeille. Refus si les deux fichiers different (SHA256).
+    Le JSON est ecrit avant la Corbeille : un fichier en cours d'utilisation (refus de
+    Windows) laisse le Run sur l'exemplaire garde ; renvoie alors trash_error et other.
     """
     if keep not in ("orphan", "run"):
         raise ValueError("Unknown choice: %s" % keep)
@@ -989,12 +1027,15 @@ def resolve_duplicate(project, run_name, index, orphan, keep, trash_fn):
     if keep == "run":
         trash_fn([orphan])
         return {"kept": cur, "trashed": orphan}
-    trash_fn([cur])
     if o.get("source") and _same_dir(o["source"], cur):
         o["source"] = orphan
     if o.get("copy") is not None and (_same_dir(_abs_copy(project, o), cur) or o.get("in_place")):
         o["copy"] = _rel(project, orphan)
     _write(run_file, data)
+    try:
+        trash_fn([cur])
+    except OSError as e:
+        return {"kept": orphan, "trashed": None, "other": cur, "trash_error": str(e)}
     return {"kept": orphan, "trashed": cur}
 
 
@@ -1030,6 +1071,7 @@ def tidy_rush(project):
     choix utilisateur) : ranges dans Footage, JSON mis a jour. Les fichiers
     que les JSON ne citent pas ne sont pas touches. Renvoie le nombre range.
     Anciens Rejected / Validated : renommes No Good / Rough Cut, chemins des JSON suivis.
+    Chemin d'un projet renomme / deplace : recable dans le projet actuel (_relink_output).
     """
     moved_dirs = migrate_sort_folders(project)
     folder = os.path.join(project, PROMPT_FOLDER)
@@ -1050,6 +1092,8 @@ def tidy_rush(project):
             if not kind:
                 continue
             if _migrate_output(project, o, moved_dirs):
+                changed = True
+            if _relink_output(project, o):
                 changed = True
             p = _project_file(project, o, kind)
             if p and sort_of(project, kind, p) == "root" and os.path.isfile(p):
