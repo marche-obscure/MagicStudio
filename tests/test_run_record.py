@@ -777,6 +777,38 @@ class RunFileTest(unittest.TestCase):
         # Les videos ont leur propre Picture Lock.
         self.assertEqual(rr.lock_files(self.p, "video"), [])
 
+    def test_counts_and_orphans(self):
+        # Copie deposee a la main dans Picture Lock, identique au fichier du Run (dans Footage).
+        foot = os.path.join(self.p, "40.Rush Videos", "Footage", "v.mp4")
+        lock = os.path.join(self.p, "40.Rush Videos", "Picture Lock", "v.mp4")
+        lone = os.path.join(self.p, "40.Rush Videos", "No Good", "other.mp4")
+        write(foot, b"video")
+        write(lock, b"video")
+        write(lone, b"vidoe")                        # meme taille, contenu different
+        name = self._run_with([{"source": foot, "kind": "video", "copy": "40.Rush Videos/Footage/v.mp4", "in_place": True}])
+        self.assertEqual(rr.sort_counts(self.p)["video"],
+                         {"picture_lock": 1, "validated": 0, "footage": 1, "rejected": 1})
+        orphans = {o["path"]: o for o in rr.rush_orphans(self.p)}
+        self.assertEqual(set(orphans), {lock, lone})
+        self.assertEqual(orphans[lock]["dup"], {"run": name, "index": 0, "path": foot, "place": "footage"})
+        self.assertEqual((orphans[lock]["place"], orphans[lone]["dup"]), ("picture_lock", None))
+        trashed = []
+        trash = lambda ps: [trashed.extend(ps), os.remove(ps[0])]
+        with self.assertRaises(ValueError):          # fichiers differents : refus
+            rr.resolve_duplicate(self.p, name, 0, lone, "orphan", trash)
+        # Garder celui de Picture Lock : le Run le suit, l'autre part dans la Corbeille.
+        res = rr.resolve_duplicate(self.p, name, 0, lock, "orphan", trash)
+        self.assertEqual((res, trashed), ({"kept": lock, "trashed": foot}, [foot]))
+        o = read_json(os.path.join(self.p, "04.Prompt", name))["outputs"][0]
+        self.assertEqual((o["source"], o["copy"]), (lock, "40.Rush Videos/Picture Lock/v.mp4"))
+        self.assertEqual(rr.list_runs(self.p)[0]["outputs"][0]["place"], "picture_lock")
+        self.assertEqual([x["path"] for x in rr.rush_orphans(self.p)], [lone])
+        # Garder celui du Run : le fichier depose part dans la Corbeille.
+        write(foot, b"video")
+        trashed.clear()
+        self.assertEqual(rr.resolve_duplicate(self.p, name, 0, foot, "run", trash), {"kept": lock, "trashed": foot})
+        self.assertFalse(os.path.exists(foot))
+
     def test_delete_rush(self):
         rej = os.path.join(self.p, "40.Rush Videos", "No Good", "v.mp4")
         foot = os.path.join(self.p, "60.Rush Images", "Footage", "i.png")

@@ -901,13 +901,101 @@ def single_lock(project):
     return projects.is_group(os.path.dirname(os.path.abspath(project)))
 
 
-def lock_files(project, kind):
-    """Fichiers du dossier Picture Lock de 40 (video) ou 60 (image)."""
-    folder = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[LOCK])
+def _folder_files(folder):
+    """Fichiers d'un dossier (sans les .part d'une copie en cours), chemins complets."""
     if not os.path.isdir(folder):
         return []
     return sorted(os.path.join(folder, n) for n in os.listdir(folder)
                   if not n.endswith(".part") and os.path.isfile(os.path.join(folder, n)))
+
+
+def lock_files(project, kind):
+    """Fichiers du dossier Picture Lock de 40 (video) ou 60 (image)."""
+    return _folder_files(os.path.join(_rush_dir(project, kind), SORT_FOLDERS[LOCK]))
+
+
+def sort_counts(project):
+    """
+    Fichiers presents sur le disque dans chaque dossier de tri de 40 / 60 (boutons,
+    choix utilisateur 22/10/2026), Runs ou pas : {video: {cle: n}, image: {cle: n}}.
+    """
+    return {kind: {key: len(_folder_files(os.path.join(_rush_dir(project, kind), name)))
+                   for key, name in SORT_FOLDERS.items()} for kind in ("video", "image")}
+
+
+def rush_orphans(project):
+    """
+    Fichiers des dossiers de tri de 40 / 60 qu'aucun Run ne cite (deposes a la main,
+    choix utilisateur 22/10/2026), avec le fichier d'un Run identique (meme taille,
+    puis meme SHA256) : [{kind, path, place, dup: {run, index, path, place} | None}].
+    """
+    folder = os.path.join(project, PROMPT_FOLDER)
+    names = sorted(n for n in os.listdir(folder) if _RUN_NAME.match(n)) if os.path.isdir(folder) else []
+    cited = set()
+    run_files = []
+    for name in names:
+        try:
+            with open(os.path.join(folder, name), "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        for index, o in enumerate((data.get("outputs") or []) if isinstance(data, dict) else []):
+            kind = output_kind(o) if isinstance(o, dict) else None
+            if not kind:
+                continue
+            for p in (o.get("source") or "", _abs_copy(project, o)):
+                if p:
+                    cited.add(_key(p))
+            p = _project_file(project, o, kind)
+            if p and os.path.isfile(p):
+                run_files.append((kind, name, index, p))
+    out = []
+    for kind in ("video", "image"):
+        for key, sub in SORT_FOLDERS.items():
+            for p in _folder_files(os.path.join(_rush_dir(project, kind), sub)):
+                if _key(p) in cited:
+                    continue
+                dup, sha, size = None, None, os.path.getsize(p)
+                for k, run, index, rp in run_files:
+                    if k != kind or _same_dir(rp, p) or os.path.getsize(rp) != size:
+                        continue
+                    sha = sha or file_sha256(p)
+                    if file_sha256(rp) == sha:
+                        dup = {"run": run, "index": index, "path": rp, "place": sort_of(project, kind, rp)}
+                        break
+                out.append({"kind": kind, "path": p, "place": key, "dup": dup})
+    return out
+
+
+def resolve_duplicate(project, run_name, index, orphan, keep, trash_fn):
+    """
+    Doublon d'un fichier de Run depose a la main dans un dossier de tri (choix
+    utilisateur, 22/10/2026) : keep "orphan" = le Run suit le fichier depose, son
+    ancien fichier part dans la Corbeille ; keep "run" = le fichier depose part dans
+    la Corbeille. Refus si les deux fichiers different (SHA256).
+    """
+    if keep not in ("orphan", "run"):
+        raise ValueError("Unknown choice: %s" % keep)
+    run_file, data, o, kind = _load_output(project, run_name, index)
+    cur = _project_file(project, o, kind)
+    if not cur or not os.path.isfile(cur):
+        raise FileNotFoundError("File not found: %s" % (o.get("source") or o.get("copy") or "?"))
+    if not orphan or not os.path.isfile(orphan):
+        raise FileNotFoundError("File not found: %s" % orphan)
+    if sort_of(project, kind, orphan) not in SORT_FOLDERS or _same_dir(cur, orphan):
+        raise ValueError("Not a duplicate in a folder of %s: %s" % (os.path.basename(_rush_dir(project, kind)), orphan))
+    if file_sha256(cur) != file_sha256(orphan):
+        raise ValueError("The two files differ (SHA256): nothing is changed")
+    if keep == "run":
+        trash_fn([orphan])
+        return {"kept": cur, "trashed": orphan}
+    trash_fn([cur])
+    if o.get("source") and _same_dir(o["source"], cur):
+        o["source"] = orphan
+    if o.get("copy") is not None and (_same_dir(_abs_copy(project, o), cur) or o.get("in_place")):
+        o["copy"] = _rel(project, orphan)
+    _write(run_file, data)
+    return {"kept": orphan, "trashed": cur}
 
 
 def _lock_out(project, kind, path, back):

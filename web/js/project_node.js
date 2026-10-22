@@ -319,6 +319,10 @@ const HELP_SECTIONS = [
             hList([
                 "Under the image (04, 40, 60), <b>Picture Lock</b> / <b>Rough Cut</b> / <b>Footage</b> / <b>No Good</b> " +
                 "move the file into that folder; the button of its current folder is greyed.",
+                "Each button shows the number of files in its folder (<b>Rough Cut · 3</b>), files put there by hand " +
+                "included; its tooltip says how many no run links to. A file put by hand that is identical (SHA256) to " +
+                "the file of a run sorted elsewhere is a duplicate: when 40 / 60 opens, a window asks which one to keep; " +
+                "the other goes to the Recycle Bin and the run follows the one kept (Cancel: asked again next time).",
                 "From outside the project, the four buttons bring the original back after a confirmation: copy, " +
                 "SHA256 check, then the original is deleted. A video replaces its reduced copy; an image takes the " +
                 "name of the run.",
@@ -678,6 +682,11 @@ const HELP_SECTIONS_FR = [
             hList([
                 "Sous l'image (04, 40, 60), <b>Picture Lock</b> / <b>Rough Cut</b> / <b>Footage</b> / <b>No Good</b> " +
                 "déplacent le fichier dans ce dossier ; le bouton de son dossier actuel est grisé.",
+                "Chaque bouton affiche le nombre de fichiers de son dossier (<b>Rough Cut · 3</b>), fichiers déposés " +
+                "à la main compris ; son infobulle dit combien ne sont liés à aucun Run. Un fichier déposé à la main " +
+                "identique (SHA256) au fichier d'un Run rangé ailleurs est un doublon : à l'ouverture de 40 / 60, une " +
+                "fenêtre demande lequel garder ; l'autre va dans la Corbeille et le Run suit celui gardé (Cancel : la " +
+                "question revient à la prochaine ouverture).",
                 "Hors du projet, les quatre boutons rapatrient l'original après confirmation : copie, comparaison " +
                 "SHA256, puis suppression de l'original. Une vidéo remplace sa copie réduite ; une image prend le nom " +
                 "du Run.",
@@ -1475,8 +1484,10 @@ function buildConfirm(container) {
     const footer = document.createElement("div");
     Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" });
     const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    // Troisieme bouton (altLabel) : la reponse est "alt".
+    const altBtn = makeTextButton("", INACTIVE_BG);
     const okBtn = makeTextButton("OK", GREEN);
-    footer.append(cancelBtn, okBtn);
+    footer.append(cancelBtn, altBtn, okBtn);
     card.append(title, text, footer);
 
     let resolve = null;
@@ -1500,6 +1511,7 @@ function buildConfirm(container) {
         if (r) r(answer);
     }
     cancelBtn.addEventListener("click", () => finish(false));
+    altBtn.addEventListener("click", () => finish("alt"));
     okBtn.addEventListener("click", () => finish(true));
     overlay.addEventListener("mousedown", () => finish(false));
 
@@ -1512,6 +1524,9 @@ function buildConfirm(container) {
             okBtn.style.background = opts.okColor || GREEN;
             cancelBtn.textContent = opts.cancelLabel || "Cancel";
             cancelBtn.style.display = opts.noCancel ? "none" : "";
+            altBtn.textContent = opts.altLabel || "";
+            altBtn.style.background = opts.altColor || INACTIVE_BG;
+            altBtn.style.display = opts.altLabel ? "" : "none";
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 420);
@@ -3038,6 +3053,21 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     }
 
     /**
+     * Nombre de fichiers sur le disque du dossier de tri (choix utilisateur, 22/10/2026),
+     * fichiers deposes a la main compris : " · n" apres le nom du bouton, detail en infobulle.
+     */
+    function countText(kind, key) {
+        const n = rush && rush.counts ? rush.counts(kind, key) : null;
+        return n == null ? "" : " · " + n;
+    }
+    function countTip(kind, key) {
+        const n = rush && rush.counts ? rush.counts(kind, key) : null;
+        if (n == null) return "";
+        const lone = rush.orphanCount ? rush.orphanCount(kind, key) : 0;
+        return "\n" + n + " file(s) in the folder" + (lone ? ", " + lone + " not linked to a run" : "");
+    }
+
+    /**
      * Boutons Picture Lock / Rough Cut / Footage / No Good sous l'image (choix utilisateur,
      * 19/10 et 22/10/2026) : le fichier va dans ce sous-dossier de 40 / 60 ; bouton du
      * dossier actuel grise ; original hors du projet : tous le rapatrient (copie, SHA256, suppression).
@@ -3050,19 +3080,19 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         for (const [key, label, name] of SORT_FOLDERS) {
             // Fichier supprime : plus de dossier actuel, les boutons grises.
             const here = out.in_project && out.place === key && !out.deleted;
-            const b = makeTextButton(label, here ? SORT_COLORS[key] : INACTIVE_BG);
+            const b = makeTextButton(label + countText(out.kind, key), here ? SORT_COLORS[key] : INACTIVE_BG);
             Object.assign(b.style, { flex: "1", border: "2px solid " + SORT_COLORS[key] });
             if (here) Object.assign(b.style, { color: SORT_TEXT_COLORS[key], fontWeight: "bold" });
             if (!onSort || !active.includes(key)) {
                 b.disabled = true;
                 Object.assign(b.style, { cursor: "default", opacity: here ? "1" : "0.45" });
-                b.title = here ? "Already in " + where + name : out.deleted ? "File deleted" : "File not found";
+                b.title = (here ? "Already in " + where + name : out.deleted ? "File deleted" : "File not found") + countTip(out.kind, key);
                 bar.appendChild(b);
                 continue;
             }
-            b.title = !out.in_project && out.source_exists
+            b.title = (!out.in_project && out.source_exists
                 ? "Move the original into " + where + name + " (copy, SHA256 check, then the original is deleted)"
-                : "Move the file into " + where + name;
+                : "Move the file into " + where + name) + countTip(out.kind, key);
             b.addEventListener("click", async () => {
                 moving = true;
                 preview.close();
@@ -3374,17 +3404,18 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         const active = batchSortTargets(sel.map((x) => x.output), single);
         const where = RUSH_FOLDER_OF[sel[0].output.kind] + "/";
         for (const [key, label, name] of SORT_FOLDERS) {
-            const b = makeTextButton(label + " (" + sel.length + ")", INACTIVE_BG);
+            const kind = sel[0].output.kind;
+            const b = makeTextButton(label + " (" + sel.length + ")" + countText(kind, key), INACTIVE_BG);
             Object.assign(b.style, { border: "2px solid " + SORT_COLORS[key] });
             if (!active.includes(key)) {
                 b.disabled = true;
                 Object.assign(b.style, { cursor: "default", opacity: "0.45" });
-                b.title = key === "picture_lock" && single && sel.length > 1
+                b.title = (key === "picture_lock" && single && sel.length > 1
                     ? "Picture Lock holds only one file in a project of a MultiProject: check a single file"
-                    : "All the checked files are already in " + where + name;
+                    : "All the checked files are already in " + where + name) + countTip(kind, key);
             } else {
                 b.title = "Move the " + sel.length + " checked file(s) into " + where + name +
-                    " (copy, SHA256 check, then the original is deleted)";
+                    " (copy, SHA256 check, then the original is deleted)" + countTip(kind, key);
                 b.addEventListener("click", () => moveChecked(sel, key, where + name));
             }
             bar.appendChild(b);
@@ -4067,6 +4098,9 @@ app.registerExtension({
             // MultiProject (lu par /mmproject/runs) ; fichiers de Picture Lock par type.
             let singleLock = false;
             let lockedFiles = {};
+            // Fichiers sur le disque par dossier de tri, fichiers deposes a la main (22/10/2026).
+            let sortCounts = {};
+            let orphanList = [];
             // Registres 02.Models / 06.LoRA : {models: [ensembles], lora: [ensembles]}.
             let registries = {};
             // Doublons de <dossier>/Archives : {dossier: [{sha, files}]} ; Corbeille disponible (Windows).
@@ -4211,6 +4245,8 @@ app.registerExtension({
                 move: (run, out, key, swap) => apiPost("/mmproject/sort_output",
                     { project: getState().path, run: run.file, index: out.index, target: key, swap: !!swap }),
                 singleLock: () => singleLock,
+                counts: (kind, key) => (sortCounts[kind] ? sortCounts[kind][key] : null),
+                orphanCount: (kind, key) => orphanList.filter((o) => o.kind === kind && o.place === key).length,
                 lockSwap: (out, key) => lockSwap(out, key),
                 lockWarning: (kind) => {
                     const n = (lockedFiles[kind] || []).length;
@@ -4702,12 +4738,16 @@ app.registerExtension({
                         registries = data.registries || {};
                         singleLock = !!data.single_lock;
                         lockedFiles = data.locked || {};
+                        sortCounts = data.counts || {};
+                        orphanList = data.orphans || [];
                     }
                 } catch (e) {
                     runList = [];
                     registries = {};
                     singleLock = false;
                     lockedFiles = {};
+                    sortCounts = {};
+                    orphanList = [];
                 }
             }
 
@@ -4868,8 +4908,43 @@ app.registerExtension({
                 const s = getState();
                 if (!inProject(s.name)) return;
                 await loadRuns(s);
+                if (f === "40.Rush Videos" || f === "60.Rush Images") await resolveDuplicates(s, f);
                 paintFolders();
                 runViewer.open(f, shortName(s.name), runList);
+            }
+
+            /**
+             * Fichier depose a la main dans un dossier de tri de 40 / 60, identique (SHA256)
+             * au fichier d'un Run range ailleurs (choix utilisateur, 22/10/2026) : garder l'un
+             * des deux, l'autre va dans la Corbeille (le Run suit celui qu'on garde) ; Cancel :
+             * rien ne change, la question revient a la prochaine ouverture.
+             */
+            async function resolveDuplicates(s, f) {
+                const kind = f === "40.Rush Videos" ? "video" : "image";
+                const dups = orphanList.filter((o) => o.kind === kind && o.dup);
+                if (!dups.length) return;
+                for (const o of dups) {
+                    const mine = SORT_NAME[o.place];
+                    const other = SORT_NAME[o.dup.place] || "the root of " + f;
+                    const answer = await confirm.ask({
+                        title: "Duplicate in " + f,
+                        html: "<b>" + escapeHtml(baseOf(o.path)) + "</b> is in <b>" + mine + "</b> and <b>" +
+                            escapeHtml(baseOf(o.dup.path)) + "</b> in <b>" + other + "</b>: the same file (SHA256)." +
+                            '<br><span style="color:#999">The one in ' + mine + " was put there by hand: no run " +
+                            "links to it. Keep one; the other goes to the Recycle Bin and the run follows the one " +
+                            "kept.</span>",
+                        okLabel: "Keep " + mine, okColor: SORT_COLORS[o.place],
+                        altLabel: "Keep " + other, altColor: SORT_COLORS[o.dup.place] || INACTIVE_BG,
+                    });
+                    if (!answer) continue;
+                    try {
+                        await apiPost("/mmproject/resolve_duplicate", { project: s.path, run: o.dup.run,
+                            index: o.dup.index, orphan: o.path, keep: answer === "alt" ? "run" : "orphan" });
+                    } catch (e) {
+                        say(e.message);
+                    }
+                }
+                await loadRuns(s);
             }
 
             /** Bouton des doublons a droite de la cloche : visible quand <dossier>/Archives en a. */
