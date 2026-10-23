@@ -4487,7 +4487,13 @@ app.registerExtension({
                         continue;
                     }
                     const type = String(src.type || "");
-                    if (/get/i.test(type) && src.widgets && src.widgets[0]) {
+                    if (/get/i.test(type) && typeof src.getInputLink === "function") {
+                        // Get Pixaroma / KJNodes : le Get donne lui-meme le lien de la source
+                        // (Pixaroma lit la premiere entree branchee du Set, pas toujours la 0).
+                        const from = src;
+                        link = from.getInputLink(0) || null;
+                        src = link ? from.graph.getNodeById(link.origin_id) : null;
+                    } else if (/get/i.test(type) && src.widgets && src.widgets[0]) {
                         const name = src.widgets[0].value;
                         let setter = typeof src.findSetter === "function" ? src.findSetter(src.graph) : null;
                         if (setter && setter.node) setter = setter.node;
@@ -4814,15 +4820,12 @@ app.registerExtension({
             }
 
             /** Runs enregistres du projet (boutons 04 / 40 / 60). */
-            /** Noeuds MiniMax H3 Final Cut relies a la sortie final_cut : ils relisent leur plan. */
+            /**
+             * Noeuds MiniMax H3 Final Cut du graphe : ils relisent leur plan (chacun remonte
+             * lui-meme jusqu'a son noeud Project, directement ou par Get / Set et Reroute).
+             */
             function notifyFinalCut() {
-                const i = (node.outputs || []).findIndex((o) => o.name === "final_cut");
-                if (i < 0 || !node.graph || !node.graph.links) return;
-                const links = typeof node.graph.links.values === "function" ? [...node.graph.links.values()]
-                    : Object.values(node.graph.links);
-                for (const l of links) {
-                    if (!l || l.origin_id !== node.id || l.origin_slot !== i) continue;
-                    const t = node.graph.getNodeById(l.target_id);
+                for (const t of (node.graph && node.graph._nodes) || []) {
                     if (t && typeof t.mmFinalCutRefresh === "function") t.mmFinalCutRefresh();
                 }
             }
