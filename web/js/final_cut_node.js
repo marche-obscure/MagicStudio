@@ -44,6 +44,13 @@ async function apiPost(url, body) {
 }
 
 const joinDir = (dir, name) => String(dir).replace(/[\\/]+$/, "") + (String(dir).includes("/") && !String(dir).includes("\\") ? "/" : "\\") + name;
+/** Lien qui arrive sur l'entree slot d'un noeud (LinkMap ou objet), sinon null. */
+function linkInto(target, slot) {
+    const input = target && target.inputs && target.inputs[slot];
+    if (!input || input.link == null || !target.graph) return null;
+    const links = target.graph.links;
+    return (links instanceof Map ? links.get(input.link) : links[input.link]) || null;
+}
 const mimeOf = (name) => MIME[String(name).split(".").pop().toLowerCase()] || "application/octet-stream";
 const hWarn = (t, label) =>
     '<div style="border-left:3px solid ' + ORANGE + ';background:#241b15;color:#efcfb6;padding:6px 10px;' +
@@ -667,15 +674,46 @@ app.registerExtension({
                 status.style.color = ok ? "#9fd6cf" : ORANGE;
             };
 
-            /** Projet du noeud MiniMax H3 Project relie a l'entree final_cut ({name, path}), sinon null. */
+            /**
+             * Projet du noeud MiniMax H3 Project relie a l'entree final_cut ({name, path}), sinon null.
+             * Traverse Get / Set (le Set du meme nom : findSetter de KJNodes / Easy-Use, sinon un
+             * noeud "Set" de meme nom dans le graphe) et les Reroute, comme models_link du noeud Project.
+             */
             function linkedProject() {
-                const input = (node.inputs || []).find((i) => i.name === "final_cut");
-                if (!input || input.link == null || !node.graph) return { wired: false, info: null };
-                const link = node.graph.links instanceof Map ? node.graph.links.get(input.link) : node.graph.links[input.link];
-                const origin = link && node.graph.getNodeById(link.origin_id);
-                if (!origin || origin.type !== PROJECT_NODE) return { wired: false, info: null };
-                const info = typeof origin.mmProjectInfo === "function" ? origin.mmProjectInfo() : null;
-                return { wired: true, info };
+                const slot = (node.inputs || []).findIndex((i) => i.name === "final_cut");
+                let link = slot >= 0 ? linkInto(node, slot) : null;
+                let src = link ? node.graph.getNodeById(link.origin_id) : null;
+                for (let hop = 0; src && hop < 10; hop++) {
+                    if (src.type === PROJECT_NODE) {
+                        const info = typeof src.mmProjectInfo === "function" ? src.mmProjectInfo() : null;
+                        return { wired: true, info };
+                    }
+                    const type = String(src.type || "");
+                    if (/get/i.test(type) && typeof src.getInputLink === "function") {
+                        // Get Pixaroma / KJNodes : le Get donne lui-meme le lien de la source
+                        // (Pixaroma lit la premiere entree branchee du Set, pas toujours la 0).
+                        const from = src;
+                        link = from.getInputLink(0) || null;
+                        src = link ? from.graph.getNodeById(link.origin_id) : null;
+                    } else if (/get/i.test(type) && src.widgets && src.widgets[0]) {
+                        const name = src.widgets[0].value;
+                        let setter = typeof src.findSetter === "function" ? src.findSetter(src.graph) : null;
+                        if (setter && setter.node) setter = setter.node;
+                        if (!setter && src.graph) {
+                            setter = (src.graph._nodes || []).find((n) => /set/i.test(String(n.type || "")) &&
+                                n.widgets && n.widgets[0] && n.widgets[0].value === name) || null;
+                        }
+                        link = setter ? linkInto(setter, 0) : null;
+                        src = link ? setter.graph.getNodeById(link.origin_id) : null;
+                    } else if (src.isVirtualNode || /reroute/i.test(type)) {
+                        const from = src;
+                        link = linkInto(from, 0);
+                        src = link ? from.graph.getNodeById(link.origin_id) : null;
+                    } else {
+                        break;
+                    }
+                }
+                return { wired: false, info: null };
             }
 
             // Vrai fichier joint au glisser : prepare au survol (dragstart ne peut pas attendre).
