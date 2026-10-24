@@ -174,6 +174,14 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 
 </details>
 
+### Built-in help
+
+<p align="center">
+  <img src="assets/ref-help.webp" alt="Help of the Reference Loader" width="49%">
+  <img src="assets/project-help.webp" alt="Help of the Project node" width="49%"><br>
+  <sub>Reference Loader help (English or French, with search) · Project node help</sub>
+</p>
+
 ## MiniMax H3 Final Cut node
 
 - **Wire the `final_cut` output** of the Project node to the `final_cut` input of this node.
@@ -203,14 +211,6 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 - **Safety:** only files inside the input folder of ComfyUI (or its subfolders) are accepted; any other path is refused before the run, with a message on the node.
 - A file dragged from the Windows Explorer gives no path to the browser: drag it from Final Cut, or type its path.
 - The **?** button opens its help (Quick start, Outputs, Accepted files), in English or French.
-
-### Built-in help
-
-<p align="center">
-  <img src="assets/ref-help.webp" alt="Help of the Reference Loader" width="49%">
-  <img src="assets/project-help.webp" alt="Help of the Project node" width="49%"><br>
-  <sub>Reference Loader help (English or French, with search) · Project node help</sub>
-</p>
 
 ## Compatibility
 
