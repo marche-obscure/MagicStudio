@@ -200,13 +200,13 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 - **Drop a file from the Final Cut window** onto the node (on its preview area or anywhere on the node): its full path goes into the `file` field, and the node shows the picture, a video player or an audio player. You can also type or paste the path in `file`.
 - **Outputs:**
 
-  | File | `video` | `image` | `audio` |
-  |---|---|---|---|
-  | Video | the video (`VIDEO`, same type as the native **Load Video**) | empty | its soundtrack, if it has one |
-  | Image | empty | the image (`IMAGE`) | empty |
-  | Audio | empty | empty | the whole file (`AUDIO`, not cut) |
+  | File | `video` | `video_frames` | `audio_video` | `image` | `audio` |
+  |---|---|---|---|---|---|
+  | Video | the video (`VIDEO`, same type as the native **Load Video**) | all its frames (`IMAGE`, original size) | its soundtrack (`AUDIO`), if it has one | empty | empty |
+  | Image | empty | empty | empty | the image (`IMAGE`) | empty |
+  | Audio | empty | empty | empty | empty | the whole file (`AUDIO`, not cut) |
 
-  An empty output is ignored by the optional inputs of the native nodes.
+  An empty output is ignored by the optional inputs of the native nodes. `video_frames` holds every frame in memory: for a long or large video, prefer `video`.
 - **No copy:** the file is read where it is. It is loaded again only when the path changes or when the file is modified.
 - **Safety:** only files inside the input folder of ComfyUI (or its subfolders) are accepted; any other path is refused before the run, with a message on the node.
 - A file dragged from the Windows Explorer gives no path to the browser: drag it from Final Cut, or type its path.

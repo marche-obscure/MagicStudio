@@ -24,6 +24,46 @@ const KINDS = {
     audio: ["Audio", AUDIO_ICON, TITLE_COLOR],
 };
 const mediaUrl = (path) => "/mmrefloader/media?file=" + encodeURIComponent(path);
+// Ordre des sorties, identique a RETURN_NAMES de nodes.py (choix utilisateur 24/10/2026 :
+// video_frames puis audio_video sous video ; audio = fichiers son seulement).
+const OUTPUTS = [
+    ["video", "VIDEO"], ["video_frames", "IMAGE"], ["audio_video", "AUDIO"], ["image", "IMAGE"], ["audio", "AUDIO"],
+];
+
+/** Liens qui partent de la sortie slot du noeud (graph.links : LinkMap ou objet). */
+function outputLinksOf(node, slot) {
+    const links = node.graph && node.graph.links;
+    if (!links) return [];
+    const all = typeof links.values === "function" ? [...links.values()] : Object.values(links);
+    return all.filter((l) => l && l.origin_id === node.id && l.origin_slot === slot);
+}
+
+/**
+ * Workflow enregistre avec un ancien ordre (video, image, audio[, video_frames] ou
+ * video, video_frames, image, audio) :
+ * chaque lien reprend la sortie de meme nom. Comme dans le Reference Loader, les
+ * objets sortie restent a leur place : on corrige origin_slot des liens, puis on
+ * reecrit nom / type / etiquette position par position (ne jamais assigner output.links).
+ */
+function migrateOutputs(node) {
+    const names = (node.outputs || []).map((o) => o.name);
+    if (names.length === OUTPUTS.length && OUTPUTS.every(([n], i) => names[i] === n)) return;
+    const saved = {};
+    names.forEach((name, i) => {
+        saved[name] = { label: node.outputs[i].label, links: outputLinksOf(node, i) };
+    });
+    OUTPUTS.forEach(([name], i) => (saved[name] ? saved[name].links : []).forEach((l) => (l.origin_slot = i)));
+    while (node.outputs.length < OUTPUTS.length) node.addOutput("tmp", "*");
+    OUTPUTS.forEach(([name, type], i) => {
+        const o = node.outputs[i];
+        o.name = name;
+        o.localized_name = name;
+        o.type = type;
+        o.label = saved[name] ? saved[name].label : undefined;
+        (saved[name] ? saved[name].links : []).forEach((l) => (l.type = type));
+    });
+    node.setDirtyCanvas(true, true);
+}
 
 // ---- Aide ----
 const HELP_SECTIONS = [
@@ -32,7 +72,8 @@ const HELP_SECTIONS = [
         html: hSteps([
             "Open the window of <b>MiniMax H3 Final Cut</b> (<b>Images</b>, <b>Video</b> or <b>Audio</b>).",
             "Drag a file onto this node.",
-            "Wire the output that matches the file: <b>video</b>, <b>image</b> or <b>audio</b>.",
+            "Wire the outputs that match the file: <b>video</b>, <b>video_frames</b> or <b>audio_video</b> " +
+            "for a video, <b>image</b> for an image, <b>audio</b> for an audio file.",
         ]) +
         hCard("Parts of the node", [
             ["<b>file</b>", "full path of the file; filled by the drop, or typed by hand"],
@@ -43,13 +84,15 @@ const HELP_SECTIONS = [
     {
         id: "outputs", title: "Outputs", icon: VIDEO_ICON, color: ORANGE,
         html: hCard("File dropped → outputs", [
-            [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b>: <b>video</b> (same type as <b>Load Video</b>) and " +
-                "<b>audio</b> (its soundtrack, if it has one)"],
+            [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b>: <b>video</b> (same type as <b>Load Video</b>), " +
+                "<b>video_frames</b> (all its frames as images, original size) and <b>audio_video</b> (its " +
+                "soundtrack, if it has one)"],
             [iconBadge(IMAGE_ICON, VIOLET), "<b>Image</b>: <b>image</b>"],
             [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b>: <b>audio</b>, whole length"],
         ]) +
         hNote("an output that does not match the file is empty: the optional inputs of the native nodes " +
             "ignore it.") +
+        hTip("<b>video_frames</b> holds every frame in memory: for a long or large video, prefer <b>video</b>.") +
         hTip("the file is loaded again only when the path changes or when the file is modified."),
     },
     {
@@ -69,7 +112,8 @@ const HELP_SECTIONS_FR = [
         html: hSteps([
             "Ouvrez la fenêtre de <b>MiniMax H3 Final Cut</b> (<b>Images</b>, <b>Video</b> ou <b>Audio</b>).",
             "Glissez un fichier sur ce nœud.",
-            "Branchez la sortie qui correspond au fichier : <b>video</b>, <b>image</b> ou <b>audio</b>.",
+            "Branchez les sorties qui correspondent au fichier : <b>video</b>, <b>video_frames</b> ou " +
+            "<b>audio_video</b> pour une vidéo, <b>image</b> pour une image, <b>audio</b> pour un son.",
         ]) +
         hCard("Parties du nœud", [
             ["<b>file</b>", "chemin complet du fichier ; rempli par le dépôt, ou tapé à la main"],
@@ -80,13 +124,16 @@ const HELP_SECTIONS_FR = [
     {
         id: "outputs", title: "Sorties",
         html: hCard("Fichier déposé → sorties", [
-            [iconBadge(VIDEO_ICON, ORANGE), "<b>Vidéo</b> : <b>video</b> (même type que <b>Load Video</b>) et " +
-                "<b>audio</b> (sa bande-son, s'il en a une)"],
+            [iconBadge(VIDEO_ICON, ORANGE), "<b>Vidéo</b> : <b>video</b> (même type que <b>Load Video</b>), " +
+                "<b>video_frames</b> (toutes ses images, taille d'origine) et <b>audio_video</b> (sa bande-son, " +
+                "s'il en a une)"],
             [iconBadge(IMAGE_ICON, VIOLET), "<b>Image</b> : <b>image</b>"],
             [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Son</b> : <b>audio</b>, en entier"],
         ]) +
         hNote("une sortie qui ne correspond pas au fichier est vide : les entrées optionnelles des nœuds " +
             "natifs l'ignorent.", "Remarque :") +
+        hTip("<b>video_frames</b> garde toutes les images en mémoire : pour une vidéo longue ou grande, " +
+            "préférez <b>video</b>.", "Astuce :") +
         hTip("le fichier n'est rechargé que si le chemin change ou si le fichier est modifié.", "Astuce :"),
     },
     {
@@ -296,6 +343,7 @@ app.registerExtension({
         const onConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function () {
             const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
+            migrateOutputs(this);
             if (this.mmLoadMediaRender) setTimeout(() => this.mmLoadMediaRender(), 0);
             return r;
         };

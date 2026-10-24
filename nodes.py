@@ -193,14 +193,18 @@ class MiniMaxH3LoadMedia:
             },
         }
 
-    RETURN_TYPES = ("VIDEO", "IMAGE", "AUDIO")
-    RETURN_NAMES = ("video", "image", "audio")
+    # Choix utilisateur (24/10/2026) : video_frames puis audio_video (bande-son de la video)
+    # sous video ; audio = fichiers son seulement. Ordre a garder identique a OUTPUTS de
+    # web/js/load_media_node.js : le JS y remet les liens des workflows enregistres avec
+    # un ancien ordre (sortie de meme nom).
+    RETURN_TYPES = ("VIDEO", "IMAGE", "AUDIO", "IMAGE", "AUDIO")
+    RETURN_NAMES = ("video", "video_frames", "audio_video", "image", "audio")
     FUNCTION = "run"
     CATEGORY = "loaders/minimax"
     DESCRIPTION = (
         "Load an image, a video or an audio file dropped from MiniMax H3 Final Cut, where it is (no copy). "
-        "video: a video (same type as Load Video); image: an image; audio: an audio file, or the soundtrack "
-        "of a video."
+        "video: a video (same type as Load Video); video_frames: all the frames of a video, as images; "
+        "audio_video: the soundtrack of a video; image: an image; audio: an audio file."
     )
 
     @classmethod
@@ -222,7 +226,10 @@ class MiniMaxH3LoadMedia:
         path, kind = load_media.check_path(file, folder_paths.get_input_directory())
         if kind == "video":
             from comfy_api.latest import InputImpl
-            # Meme objet que le Load Video natif ; la bande-son sort aussi sur "audio".
-            return (InputImpl.VideoFromFile(path), None, load_media.soundtrack(path))
+            # Meme objet que le Load Video natif ; toutes les images (taille et cadence
+            # d'origine) sur "video_frames", comme le noeud natif Get Video Components,
+            # et la bande-son sur "audio_video".
+            video = InputImpl.VideoFromFile(path)
+            return (video, video.get_components().images, load_media.soundtrack(path), None, None)
         image, audio = load_media.load_still(path, kind)
-        return (None, image, audio)
+        return (None, None, None, image, audio)
