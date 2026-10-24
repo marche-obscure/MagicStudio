@@ -454,19 +454,22 @@ function buildFilesWindow(container, ctx) {
         el.addEventListener("pointerup", up);
         el.addEventListener("dragend", up);
         el.addEventListener("dragstart", (e) => {
-            const file = ctx.cached(path, c.mtime);
-            if (!file) {
-                e.preventDefault();
-                say("Preparing " + c.name + "… drag again in a moment.", false);
-                return;
-            }
-            e.dataTransfer.items.add(file);
             // Pendant un vrai glisser, Chromium perd le fichier joint (verifie le 24/10/2026) :
             // le lien vers le fichier, lui, arrive ; le noeud MiniMax H3 Load Media le lit.
+            // Il part donc toujours, tout de suite (choix utilisateur, 24/10/2026).
             const link = location.origin + "/mmrefloader/media?file=" + encodeURIComponent(path) +
                 "&filename=" + encodeURIComponent(c.name);
             e.dataTransfer.setData("text/uri-list", link);
             e.dataTransfer.effectAllowed = "copy";
+            // Le vrai fichier (pour H3 Director) seulement s'il est deja prepare.
+            const file = ctx.cached(path, c.mtime);
+            if (file) {
+                e.dataTransfer.items.add(file);
+            } else {
+                ready();
+                say("Preparing " + c.name + " for MiniMax H3 Director… (MiniMax H3 Load Media can take it now)",
+                    false);
+            }
         });
         el.addEventListener("click", () => {
             selected = c.name;
