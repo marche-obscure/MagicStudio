@@ -181,6 +181,36 @@ class FinalCutTest(unittest.TestCase):
         status = fc.link_status(folder, self.input)
         self.assertEqual((status["linked"], status["conflict"]), (False, True))
 
+    def test_plan_does_not_rehash_unchanged_files(self):
+        # Points mineurs du 24/10/2026 : le plan est relu a chaque Run ; sans changement
+        # (taille et date de la source et de la copie), aucune empreinte SHA256 n'est recalculee.
+        p = projects.create_project(self.root, "Solo")
+        src = os.path.join(p, "40.Rush Videos", "Picture Lock", "v.mp4")
+        write(src, b"video-1")
+        fc.sync(p, self.trash, self.input)
+        calls = []
+        old_sha = fc.file_sha256
+
+        def counting_sha(path):
+            calls.append(path)
+            return old_sha(path)
+
+        fc.file_sha256 = counting_sha
+        try:
+            self.assertEqual(fc.plan(p)["count"], 0)
+            self.assertEqual(calls, [])
+            # Meme taille, autre contenu, date changee : remplacement detecte (empreintes recalculees).
+            write(src, b"video-2")
+            os.utime(src, (time.time() + 5, time.time() + 5))
+            self.assertEqual(fc.plan(p)["kinds"]["Video"]["replace"], ["_00_v.mp4"])
+            self.assertTrue(calls)
+            # Meme contenu, seule la date change : pas de remplacement.
+            fc.sync(p, self.trash, self.input)
+            os.utime(src, (time.time() + 60, time.time() + 60))
+            self.assertEqual(fc.plan(p)["count"], 0)
+        finally:
+            fc.file_sha256 = old_sha
+
     def test_sync_refused_while_another_runs(self):
         # Deux noeuds Final Cut (ou deux onglets) sur le meme projet : une seule synchronisation a la fois.
         p = projects.create_project(self.root, "Solo")

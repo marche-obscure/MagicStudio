@@ -2,6 +2,7 @@ import { app } from "../../scripts/app.js";
 import {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, INACTIVE_BG,
     svg, iconBadge, hList, hSteps, hTip, hNote, hCard, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, CLOSE_ICON, EYE_ICON,
+    START_ICON, REFRESH_ICON, FOLDER_ICON, FOLDER_OPEN_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, escapeHtml, buildHelpOverlay,
 } from "./minimax_ref_loader.js";
 import { makeFileCache } from "./final_cut_cache.js";
@@ -65,7 +66,7 @@ const hWarn = (t, label) =>
 // ---- Aide ----
 const HELP_SECTIONS = [
     {
-        id: "start", title: "Quick start", icon: VIDEO_ICON, color: TITLE_COLOR,
+        id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
             "Wire the <b>final_cut</b> output of the <b>MiniMax H3 Project</b> node to the <b>final_cut</b> input " +
             "of this node.",
@@ -73,7 +74,7 @@ const HELP_SECTIONS = [
             "Click <b>Images</b>, <b>Video</b> or <b>Audio</b>: the window shows the copies; drag a file onto " +
             "<b>MiniMax H3 Director</b>.",
         ]) +
-        hCard("The node", [
+        hCard("Buttons of the node", [
             [iconBadge(IMAGE_ICON, VIOLET), "<b>Images · n</b> (and Video, Audio): opens the window of the copies; " +
                 "shows the date of the last sync"],
             [textChip("Sync · n", SYNC_COLOR), "grey <b>Up to date</b>, or orange <b>Sync · n</b> when the Picture " +
@@ -93,7 +94,7 @@ const HELP_SECTIONS = [
             hNote("the window does not block the canvas: move it by its title to see MiniMax H3 Director, then drag."),
     },
     {
-        id: "copies", title: "The copies", icon: IMAGE_ICON, color: VIOLET,
+        id: "copies", title: "The copies", icon: FOLDER_ICON, color: VIOLET,
         html: "<p>The copies of the final rushes are kept in a folder of their own; the originals are never touched.</p>" +
             hCard("Folder of the copies", [
                 ["Simple project", "<b>&lt;Project&gt;\\Final-Cut_&lt;Project&gt;</b>"],
@@ -111,7 +112,7 @@ const HELP_SECTIONS = [
             ]),
     },
     {
-        id: "sync", title: "Sync", icon: VIDEO_ICON, color: SYNC_COLOR,
+        id: "sync", title: "Sync", icon: REFRESH_ICON, color: SYNC_COLOR,
         html: "<p>The copies follow the Picture Lock folders exactly (mirror).</p>" +
             hCard("In a Picture Lock → in the copies", [
                 ["Added", "copied"],
@@ -120,12 +121,14 @@ const HELP_SECTIONS = [
             ]) +
             hWarn("a file put by hand in <b>Final-Cut_&lt;Name&gt;</b> is not a copy of a Picture Lock: the next " +
                 "<b>Sync</b> sends it to the Recycle Bin.", "Warning:") +
+            hTip("nothing goes to the Recycle Bin without your click: if the link in the input folder is " +
+                "missing and old copies would be removed, the node waits for <b>Sync</b>.") +
             hNote("the first sync is done when the node is wired; then <b>Sync · n</b> shows when something changed " +
                 "(its tooltip lists the changes). While it works, the node shows <b>Initializing… / Synchronizing… " +
                 "n / total</b> with a progress bar."),
     },
     {
-        id: "director", title: "Into H3 Director", icon: VIDEO_ICON, color: GREEN,
+        id: "director", title: "Into H3 Director", icon: FOLDER_OPEN_ICON, color: GREEN,
         html: "<p>The folder of the copies is linked in the input folder of ComfyUI as <b>Final-Cut_&lt;Name&gt;</b>.</p>" +
             hCard("Two ways", [
                 ["Drag", "a thumbnail onto a slot of MiniMax H3 Director: Director uploads it (it gets a new name)."],
@@ -144,7 +147,7 @@ const HELP_SECTIONS_FR = [
             "Cliquez sur <b>Images</b>, <b>Video</b> ou <b>Audio</b> : la fenêtre montre les copies ; glissez un " +
             "fichier sur <b>MiniMax H3 Director</b>.",
         ]) +
-        hCard("Le nœud", [
+        hCard("Boutons du nœud", [
             [iconBadge(IMAGE_ICON, VIOLET), "<b>Images · n</b> (et Video, Audio) : ouvre la fenêtre des copies ; " +
                 "montre la date de la dernière synchro"],
             [textChip("Sync · n", SYNC_COLOR), "gris <b>Up to date</b>, ou orange <b>Sync · n</b> quand les Picture " +
@@ -193,6 +196,8 @@ const HELP_SECTIONS_FR = [
             ]) +
             hWarn("un fichier déposé à la main dans <b>Final-Cut_&lt;Nom&gt;</b> n'est pas une copie d'un Picture " +
                 "Lock : le prochain <b>Sync</b> l'envoie dans la Corbeille.", "Attention :") +
+            hTip("rien ne part dans la Corbeille sans votre clic : si le lien du dossier input manque et que " +
+                "d'anciennes copies seraient retirées, le nœud attend <b>Sync</b>.", "Astuce :") +
             hNote("la première synchronisation se fait au branchement du nœud ; ensuite <b>Sync · n</b> apparaît " +
                 "quand quelque chose a changé (son infobulle liste les changements). Pendant le travail, le nœud " +
                 "affiche <b>Initializing… / Synchronizing… n / total</b> avec une barre de progression.", "Remarque :"),
@@ -822,12 +827,19 @@ app.registerExtension({
                     plan = await apiGet("/mmproject/final_cut/plan?project=" + encodeURIComponent(info.path));
                     // Lien absent ou vers un autre projet du meme nom : synchronisation (le lien est
                     // refait). Vrai dossier du meme nom dans input : jamais touche, signale seulement.
-                    if (!plan.synced || (!plan.linked && !plan.conflict)) {
+                    // Points mineurs du 24/10/2026 : jamais de Corbeille sans clic, donc pas de
+                    // synchronisation automatique si des copies seraient retirees ou remplacees.
+                    const trashes = KINDS.some(([kind]) => plan.kinds[kind].remove.length ||
+                        plan.kinds[kind].replace.length);
+                    const relink = !plan.linked && !plan.conflict;
+                    if (!plan.synced || (relink && !trashes)) {
                         await doSync(info.path);
                         return;
                     }
                     if (plan.conflict) say("A real folder " + plan.link.split(/[\\/]/).pop() + " is in the input " +
                         "folder of ComfyUI: rename it, then click Sync.");
+                    else if (relink && !busy) say("The link in the input folder of ComfyUI is missing: click Sync (" +
+                        plan.count + " change(s), old copies to the Recycle Bin).");
                     else if (!busy) say(plan.count ? plan.count + " change(s) in Picture Lock: click Sync." : "Up to date.",
                         !plan.count);
                 } catch (e) {

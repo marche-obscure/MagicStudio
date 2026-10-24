@@ -152,6 +152,15 @@ def _files(folder):
                   if not n.endswith(".part") and os.path.isfile(os.path.join(folder, n)))
 
 
+def _sig(src, dst):
+    """Signature d'une paire source / copie : tailles et dates (ns) ; None si l'une manque."""
+    try:
+        a, b = os.stat(src), os.stat(dst)
+    except OSError:
+        return None
+    return [a.st_size, a.st_mtime_ns, b.st_size, b.st_mtime_ns]
+
+
 def _same(a, b):
     try:
         if os.path.getsize(a) != os.path.getsize(b):
@@ -163,11 +172,17 @@ def _same(a, b):
 
 def plan(project):
     """
-    Ce que la synchronisation ferait, sans rien modifier :
+    Ce que la synchronisation ferait, sans toucher aux copies :
     {folder, name, kinds: {Images|Video|Audio: {add, replace, remove, files}}, count}.
     files = copies attendues (nom de la copie, source).
+    Le plan est relu a chaque Run (points mineurs du 24/10/2026) : une paire source /
+    copie dont la signature (_sig) n'a pas change depuis la derniere verification
+    n'est pas relue (SHA256) ; les signatures sont gardees dans STAMP.
     """
     folder, name, sources = target(project)
+    stamp = _read_stamp(folder)
+    known = stamp.get("files") if isinstance(stamp.get("files"), dict) else {}
+    checked = {}  # signatures confirmees par ce plan
     out = {"folder": folder, "name": name, "kinds": {}, "count": 0, "last_sync": last_sync(folder),
            # Titres des groupes de la fenetre : numero -> nom du projet.
            "projects": {num: os.path.basename(src) for num, src in sources}}
@@ -180,7 +195,15 @@ def plan(project):
         dest = os.path.join(folder, kind)
         present = set(_files(dest))
         add = sorted(n for n in expected if n not in present)
-        replace = sorted(n for n in expected if n in present and not _same(expected[n], os.path.join(dest, n)))
+        replace = []
+        for n in sorted(n for n in expected if n in present):
+            key, sig = kind + "/" + n, _sig(expected[n], os.path.join(dest, n))
+            if sig is not None and known.get(key) == sig:
+                checked[key] = sig  # rien n'a bouge depuis la derniere verification
+            elif _same(expected[n], os.path.join(dest, n)):
+                checked[key] = sig
+            else:
+                replace.append(n)
         remove = sorted(n for n in present if n not in expected)
         out["kinds"][kind] = {"add": add, "replace": replace, "remove": remove, "dir": dest,
                               "files": [{"name": n, "source": expected[n]} for n in sorted(expected)],
@@ -189,6 +212,12 @@ def plan(project):
                                           "size": os.path.getsize(os.path.join(dest, n))}
                                          for n in sorted(present)]}
         out["count"] += len(add) + len(replace) + len(remove)
+    # Signatures nouvellement confirmees : gardees pour le prochain plan (fichier cache,
+    # seulement si le dossier des copies existe deja).
+    checked = {k: v for k, v in checked.items() if v is not None}
+    if checked != known and os.path.isdir(folder):
+        stamp["files"] = checked
+        _write_stamp(folder, stamp)
     return out
 
 
@@ -203,13 +232,31 @@ def _copy_new(src, dst):
             os.remove(part)
 
 
+def _read_stamp(folder):
+    """Contenu de STAMP ({note, last_sync, files}), {} s'il manque ou est illisible."""
+    try:
+        with open(os.path.join(folder, STAMP), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_stamp(folder, data):
+    data["note"] = "Last sync of the MiniMax H3 Final Cut node."
+    try:
+        with open(os.path.join(folder, STAMP), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except OSError:
+        pass  # simple cache : le prochain plan relira les empreintes
+
+
 def last_sync(folder):
     """Date (secondes) de la derniere synchronisation de ce dossier de copies, sinon None."""
     try:
-        with open(os.path.join(folder, STAMP), "r", encoding="utf-8") as f:
-            value = json.load(f).get("last_sync")
+        value = _read_stamp(folder).get("last_sync")
         return float(value) if value is not None else None
-    except (OSError, ValueError, TypeError, AttributeError):
+    except (ValueError, TypeError):
         return None
 
 
@@ -264,8 +311,16 @@ def sync(project, trash_fn, input_dir=None):
                     state["done"] += 1
         p["link"] = ensure_link(p["folder"], input_dir) if input_dir else ""
         p["last_sync"] = time.time()
+        # Copies a jour : leurs signatures evitent de les relire au prochain plan.
+        files = {}
+        for kind, _rush in KINDS:
+            for f in p["kinds"][kind]["files"]:
+                sig = _sig(f["source"], os.path.join(p["folder"], kind, f["name"]))
+                if sig is not None:
+                    files[kind + "/" + f["name"]] = sig
         with open(os.path.join(p["folder"], STAMP), "w", encoding="utf-8") as f:
-            json.dump({"note": "Last sync of the MiniMax H3 Final Cut node.", "last_sync": p["last_sync"]}, f)
+            json.dump({"note": "Last sync of the MiniMax H3 Final Cut node.", "last_sync": p["last_sync"],
+                       "files": files}, f)
         p["first"] = first
         return p
     finally:
