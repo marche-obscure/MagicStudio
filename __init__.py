@@ -19,18 +19,22 @@ from . import project_config
 from . import run_record
 from . import run_tracker
 from . import final_cut
-from .nodes import MiniMaxH3RefLoader, MiniMaxH3Project, MiniMaxH3FinalCut, default_projects_root
+from . import load_media
+from .nodes import (MiniMaxH3RefLoader, MiniMaxH3Project, MiniMaxH3FinalCut, MiniMaxH3LoadMedia,
+                    default_projects_root)
 
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3RefLoader": MiniMaxH3RefLoader,
     "MiniMaxH3Project": MiniMaxH3Project,
     "MiniMaxH3FinalCut": MiniMaxH3FinalCut,
+    "MiniMaxH3LoadMedia": MiniMaxH3LoadMedia,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3RefLoader": "MiniMax H3 Reference Loader",
     "MiniMaxH3Project": "MiniMax H3 Project",
     "MiniMaxH3FinalCut": "MiniMax H3 Final Cut",
+    "MiniMaxH3LoadMedia": "MiniMax H3 Load Media",
 }
 
 WEB_DIRECTORY = "./web/js"
@@ -112,6 +116,26 @@ try:
         if media.kind_of(full) is None or not os.path.isfile(full):
             return web.json_response({"error": "File not found."}, status=404)
         return web.FileResponse(full)
+
+    @routes.get("/mmrefloader/load_media/check")
+    async def mmrefloader_load_media_check(request):
+        """
+        Noeud Load Media : chemin accepte ? -> {path, kind}, sinon {error} (memes regles que le Run).
+        "drop" = texte depose (lien text/uri-list de Final Cut), lu par load_media.path_from_drop.
+        """
+        import folder_paths
+        q = request.rel_url.query
+        try:
+            if "drop" in q:
+                text = load_media.path_from_drop(q.get("drop", ""))
+                if not text:
+                    raise ValueError("Not a file of MiniMax H3 Final Cut.")
+            else:
+                text = q.get("file", "")
+            path, kind = load_media.check_path(text, folder_paths.get_input_directory())
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        return web.json_response({"path": path, "kind": kind})
 
     @routes.get("/mmrefloader/browse_dir")
     async def mmrefloader_browse_dir(request):

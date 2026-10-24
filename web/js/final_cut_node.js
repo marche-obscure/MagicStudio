@@ -461,6 +461,11 @@ function buildFilesWindow(container, ctx) {
                 return;
             }
             e.dataTransfer.items.add(file);
+            // Pendant un vrai glisser, Chromium perd le fichier joint (verifie le 24/10/2026) :
+            // le lien vers le fichier, lui, arrive ; le noeud MiniMax H3 Load Media le lit.
+            const link = location.origin + "/mmrefloader/media?file=" + encodeURIComponent(path) +
+                "&filename=" + encodeURIComponent(c.name);
+            e.dataTransfer.setData("text/uri-list", link);
             e.dataTransfer.effectAllowed = "copy";
         });
         el.addEventListener("click", () => {

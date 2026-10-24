@@ -12,6 +12,7 @@ servent, dans l'ordre de media.layout_keys(), et leur donne leur vrai type
 import json
 import os
 
+from . import load_media
 from . import media
 from . import projects
 from . import run_record
@@ -169,3 +170,59 @@ class MiniMaxH3FinalCut:
 
     def run(self, final_cut=None):
         return {}
+
+
+class MiniMaxH3LoadMedia:
+    """
+    Charge, sans copie, une image, une video ou un son glisse depuis le noeud
+    MiniMax H3 Final Cut (choix utilisateur, 24/10/2026). Le JS
+    (web/js/load_media_node.js) lit le chemin dans le lien depose et le met
+    dans le champ "file" ; seuls les fichiers du dossier input sont acceptes
+    (voir load_media.py).
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "file": ("STRING", {
+                    "default": "", "multiline": False,
+                    "tooltip": "Full path of the file, in the input folder of ComfyUI. Drop a file from "
+                               "MiniMax H3 Final Cut on the node to fill it.",
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("VIDEO", "IMAGE", "AUDIO")
+    RETURN_NAMES = ("video", "image", "audio")
+    FUNCTION = "run"
+    CATEGORY = "loaders/minimax"
+    DESCRIPTION = (
+        "Load an image, a video or an audio file dropped from MiniMax H3 Final Cut, where it is (no copy). "
+        "video: a video (same type as Load Video); image: an image; audio: an audio file, or the soundtrack "
+        "of a video."
+    )
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, file):
+        import folder_paths
+        try:
+            load_media.check_path(file, folder_paths.get_input_directory())
+        except ValueError as e:
+            return str(e)
+        return True
+
+    @classmethod
+    def IS_CHANGED(cls, file):
+        # Recharge si le chemin change ou si le fichier est modifie (date, taille).
+        return load_media.signature(file)
+
+    def run(self, file):
+        import folder_paths
+        path, kind = load_media.check_path(file, folder_paths.get_input_directory())
+        if kind == "video":
+            from comfy_api.latest import InputImpl
+            # Meme objet que le Load Video natif ; la bande-son sort aussi sur "audio".
+            return (InputImpl.VideoFromFile(path), None, load_media.soundtrack(path))
+        image, audio = load_media.load_still(path, kind)
+        return (None, image, audio)
