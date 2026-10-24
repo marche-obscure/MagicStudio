@@ -193,10 +193,11 @@ class MiniMaxH3LoadMedia:
             },
         }
 
-    # video_frames ajoutee a la fin (24/10/2026) : les liens des workflows deja faits
-    # restent sur les memes sorties (image et video_frames sont toutes deux IMAGE).
-    RETURN_TYPES = ("VIDEO", "IMAGE", "AUDIO", "IMAGE")
-    RETURN_NAMES = ("video", "image", "audio", "video_frames")
+    # video_frames sous video (choix utilisateur, 24/10/2026). Ordre a garder identique a
+    # OUTPUTS de web/js/load_media_node.js : le JS y remet les liens des workflows
+    # enregistres avec l'ancien ordre (video, image, audio[, video_frames]).
+    RETURN_TYPES = ("VIDEO", "IMAGE", "IMAGE", "AUDIO")
+    RETURN_NAMES = ("video", "video_frames", "image", "audio")
     FUNCTION = "run"
     CATEGORY = "loaders/minimax"
     DESCRIPTION = (
@@ -228,6 +229,6 @@ class MiniMaxH3LoadMedia:
             # toutes les images (taille et cadence d'origine) sur "video_frames", comme
             # le noeud natif Get Video Components.
             video = InputImpl.VideoFromFile(path)
-            return (video, None, load_media.soundtrack(path), video.get_components().images)
+            return (video, video.get_components().images, None, load_media.soundtrack(path))
         image, audio = load_media.load_still(path, kind)
-        return (None, image, audio, None)
+        return (None, None, image, audio)

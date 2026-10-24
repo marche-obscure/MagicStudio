@@ -24,6 +24,43 @@ const KINDS = {
     audio: ["Audio", AUDIO_ICON, TITLE_COLOR],
 };
 const mediaUrl = (path) => "/mmrefloader/media?file=" + encodeURIComponent(path);
+// Ordre des sorties, identique a RETURN_NAMES de nodes.py (video_frames sous video,
+// choix utilisateur 24/10/2026).
+const OUTPUTS = [["video", "VIDEO"], ["video_frames", "IMAGE"], ["image", "IMAGE"], ["audio", "AUDIO"]];
+
+/** Liens qui partent de la sortie slot du noeud (graph.links : LinkMap ou objet). */
+function outputLinksOf(node, slot) {
+    const links = node.graph && node.graph.links;
+    if (!links) return [];
+    const all = typeof links.values === "function" ? [...links.values()] : Object.values(links);
+    return all.filter((l) => l && l.origin_id === node.id && l.origin_slot === slot);
+}
+
+/**
+ * Workflow enregistre avec un ancien ordre (video, image, audio[, video_frames]) :
+ * chaque lien reprend la sortie de meme nom. Comme dans le Reference Loader, les
+ * objets sortie restent a leur place : on corrige origin_slot des liens, puis on
+ * reecrit nom / type / etiquette position par position (ne jamais assigner output.links).
+ */
+function migrateOutputs(node) {
+    const names = (node.outputs || []).map((o) => o.name);
+    if (names.length === OUTPUTS.length && OUTPUTS.every(([n], i) => names[i] === n)) return;
+    const saved = {};
+    names.forEach((name, i) => {
+        saved[name] = { label: node.outputs[i].label, links: outputLinksOf(node, i) };
+    });
+    OUTPUTS.forEach(([name], i) => (saved[name] ? saved[name].links : []).forEach((l) => (l.origin_slot = i)));
+    while (node.outputs.length < OUTPUTS.length) node.addOutput("tmp", "*");
+    OUTPUTS.forEach(([name, type], i) => {
+        const o = node.outputs[i];
+        o.name = name;
+        o.localized_name = name;
+        o.type = type;
+        o.label = saved[name] ? saved[name].label : undefined;
+        (saved[name] ? saved[name].links : []).forEach((l) => (l.type = type));
+    });
+    node.setDirtyCanvas(true, true);
+}
 
 // ---- Aide ----
 const HELP_SECTIONS = [
@@ -303,6 +340,7 @@ app.registerExtension({
         const onConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function () {
             const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
+            migrateOutputs(this);
             if (this.mmLoadMediaRender) setTimeout(() => this.mmLoadMediaRender(), 0);
             return r;
         };

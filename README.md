@@ -200,11 +200,11 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 - **Drop a file from the Final Cut window** onto the node (on its preview area or anywhere on the node): its full path goes into the `file` field, and the node shows the picture, a video player or an audio player. You can also type or paste the path in `file`.
 - **Outputs:**
 
-  | File | `video` | `image` | `audio` | `video_frames` |
+  | File | `video` | `video_frames` | `image` | `audio` |
   |---|---|---|---|---|
-  | Video | the video (`VIDEO`, same type as the native **Load Video**) | empty | its soundtrack, if it has one | all its frames (`IMAGE`, original size) |
-  | Image | empty | the image (`IMAGE`) | empty | empty |
-  | Audio | empty | empty | the whole file (`AUDIO`, not cut) | empty |
+  | Video | the video (`VIDEO`, same type as the native **Load Video**) | all its frames (`IMAGE`, original size) | empty | its soundtrack, if it has one |
+  | Image | empty | empty | the image (`IMAGE`) | empty |
+  | Audio | empty | empty | empty | the whole file (`AUDIO`, not cut) |
 
   An empty output is ignored by the optional inputs of the native nodes. `video_frames` holds every frame in memory: for a long or large video, prefer `video`.
 - **No copy:** the file is read where it is. It is loaded again only when the path changes or when the file is modified.
