@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/license-MIT-007ec6)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows%20%28tested%29-5c6b8a)](#compatibility)
 
-**Two ComfyUI custom nodes for the native MiniMax H3 models:** pick your references in thumbnail galleries, then keep every project, run and rush organised.
+**Four ComfyUI custom nodes for the native MiniMax H3 models:** pick your references in thumbnail galleries, keep every project, run and rush organised, then gather the final rushes and load them back where they are.
 
 https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 
@@ -24,6 +24,8 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 | 📁 **Projects** | Fixed folders per project, Save / Load with SHA256 checks and archives |
 | 🎬 **Run record** | Each run keeps its prompt, CFG, steps, seed, models, LoRA and workflow |
 | 🗂️ **Rush sorting** | Reject / Validate / Footage, coloured dots, filter and date order |
+| 🎞️ **Final Cut** | Copies of the Picture Lock rushes, kept in sync and linked in the input folder, ready to drag |
+| 📥 **Load Media** | Drop a file from Final Cut: image, video or audio, loaded where it is (no copy) |
 | 🌍 **Help & compatibility** | Built-in help in English and French; classic nodes and Nodes 2.0 |
 
 ## Quick start
@@ -31,6 +33,7 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 1. Copy this folder into `ComfyUI/custom_nodes/` and restart ComfyUI.
 2. Add **MiniMax H3 Reference Loader**, click a row (Images, Video…) and pick files in the gallery. Wire its outputs in order to **MiniMax H3 Reference to Video** (`ref_image_1` → `ref_image_0`, and so on).
 3. Optional: add **MiniMax H3 Project**, wire the `project` output of the Reference Loader to its `project` input, then click **+** to create a project. Wire your final prompt to `text_prompt` to record every run.
+4. Optional: add **MiniMax H3 Final Cut** and wire the `final_cut` output of the Project node to it. Open its window and drag a file onto **MiniMax H3 Load Media** to use it in a workflow.
 
 ## MiniMax H3 Reference Loader
 
@@ -171,6 +174,36 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 
 </details>
 
+## MiniMax H3 Final Cut node
+
+- **Wire the `final_cut` output** of the Project node to the `final_cut` input of this node.
+- **It copies the final rushes:** the `Picture Lock` folders of `60.Rush Images`, `40.Rush Videos` and `70.Rush Audio` go to `Final-Cut_<Name>\Images`, `Video` and `Audio`. The originals are never touched.
+- **Simple project or MultiProject:** the copies of a Simple project stay in its folder; a MultiProject gathers the copies of all its projects in its own folder.
+- **Name of a copy:** `_NN_<file>`, where NN is the number of the project (00 for a Simple project; 01, 02… for the projects of a MultiProject, given once and never reused). The copy takes the date of the copy, so new copies come first in MiniMax H3 Director.
+- **Linked in the input folder** of ComfyUI as `Final-Cut_<Name>`, so other nodes can pick the copies there.
+- **Sync:** the first sync runs when the node is wired. After that, the orange **Sync · n** button shows that a Picture Lock changed (its tooltip lists the changes); grey **Up to date** means nothing to do. A copy whose original was replaced or removed goes to the Recycle Bin, only after a click on Sync. A progress bar shows the work.
+- **Images / Video / Audio buttons:** each opens the copies of that type in a window that does not block the canvas: files grouped by project (newest first), **List | Thumbnails** (remembered), and on the right the clicked file with its player, **File**, **Path** and **Source**.
+- **Drag a thumbnail** onto MiniMax H3 Director, or onto **MiniMax H3 Load Media**.
+- The node does nothing during a Run: everything happens in its interface.
+- The **?** button opens its help (Quick start, The window, The copies, Sync, Into H3 Director), in English or French.
+
+## MiniMax H3 Load Media node
+
+- **Drop a file from the Final Cut window** onto the node (on its preview area or anywhere on the node): its full path goes into the `file` field, and the node shows the picture, a video player or an audio player. You can also type or paste the path in `file`.
+- **Outputs:**
+
+  | File | `video` | `image` | `audio` |
+  |---|---|---|---|
+  | Video | the video (`VIDEO`, same type as the native **Load Video**) | empty | its soundtrack, if it has one |
+  | Image | empty | the image (`IMAGE`) | empty |
+  | Audio | empty | empty | the whole file (`AUDIO`, not cut) |
+
+  An empty output is ignored by the optional inputs of the native nodes.
+- **No copy:** the file is read where it is. It is loaded again only when the path changes or when the file is modified.
+- **Safety:** only files inside the input folder of ComfyUI (or its subfolders) are accepted; any other path is refused before the run, with a message on the node.
+- A file dragged from the Windows Explorer gives no path to the browser: drag it from Final Cut, or type its path.
+- The **?** button opens its help (Quick start, Outputs, Accepted files), in English or French.
+
 ### Built-in help
 
 <p align="center">
@@ -194,7 +227,7 @@ Copy this folder into `ComfyUI/custom_nodes/` and restart ComfyUI. No extra depe
 
 ```
 python -m unittest discover -s tests -v
-node --test tests/test_config_format.mjs tests/test_config_json.mjs tests/test_help_search.mjs tests/test_project_paths.mjs tests/test_ref_order.mjs tests/test_workflow_diff.mjs
+node --test tests/*.mjs
 ```
 
 </details>
