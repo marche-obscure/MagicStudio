@@ -251,6 +251,7 @@ try:
         """Copie les fichiers dans le projet et ecrit les configurations JSON dans 00.Workflows."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             project = body.get("project", "")
             dsts = await _in_executor(projects.execute_save, project, body.get("items") or [])
             configs = []
@@ -266,6 +267,7 @@ try:
         """Renomme le dossier du projet 'path' en 'name'."""
         try:
             body = await request.json()
+            projects.require_project(body.get("path", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             path = await _in_executor(projects.rename_project, body.get("path", ""), body.get("name", ""))
         except Exception as e:
             return _project_error(e)
@@ -276,6 +278,7 @@ try:
         """Deplace le dossier du projet 'path' dans le dossier 'dest'."""
         try:
             body = await request.json()
+            projects.require_project(body.get("path", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             path = await _in_executor(projects.move_project, body.get("path", ""), body.get("dest", ""))
         except Exception as e:
             return _project_error(e)
@@ -308,6 +311,7 @@ try:
         """Ecrit le workflow ; 'archive' = workflow precedent renomme yyyyMMdd-HHmmss_nom.json d'abord."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             info = await _in_executor(projects.save_workflow, body.get("project", ""), body.get("name", ""),
                                       body.get("content", ""), body.get("archive") or None)
         except Exception as e:
@@ -319,6 +323,7 @@ try:
         """Deplace des fichiers d'un dossier du projet dans son sous-dossier Archives (deja confirme)."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             moved = await _in_executor(projects.archive_files, body.get("project", ""), body.get("folder", ""),
                                        list(body.get("names") or []))
         except Exception as e:
@@ -330,6 +335,7 @@ try:
         """Remplacants valides : copies (ou deplaces depuis Archives) dans le dossier du projet."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             dsts = await _in_executor(projects.import_files, body.get("project", ""), body.get("folder", ""),
                                       list(body.get("paths") or []))
         except Exception as e:
@@ -374,6 +380,7 @@ try:
         """Supprime les copies des groupes coches (deja confirme) : Corbeille ou definitif."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             names = await _in_executor(projects.delete_duplicates, body.get("project", ""), body.get("folder", ""),
                                        list(body.get("shas") or []), bool(body.get("trash")))
         except Exception as e:
@@ -385,6 +392,7 @@ try:
         """Reset du projet (bouton Reset) : dry_run = bilan ; sinon tous ses fichiers vers la Corbeille."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             data = await _in_executor(projects.reset_project, body.get("project", ""), bool(body.get("dry_run")))
         except Exception as e:
             return _project_error(e)
@@ -395,6 +403,8 @@ try:
         """Copy (bouton Copy) : 08 a 14 (et leurs Archives) d'un autre projet ; dry_run = bilan."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
+            projects.require_project(body.get("source", ""))
             data = await _in_executor(project_config.copy_media, body.get("project", ""), body.get("source", ""),
                                       bool(body.get("dry_run")), str(body.get("sub") or ""))
         except Exception as e:
@@ -460,6 +470,7 @@ try:
         """
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             data = await _in_executor(run_record.purge_runs, body.get("project", ""), _comfy_busy(),
                                       bool(body.get("dry_run")), bool(body.get("empty_done")))
         except Exception as e:
@@ -471,6 +482,7 @@ try:
         """Range une sortie de Run dans Picture Lock / Rough Cut / Footage / No Good de 40 / 60 (rapatriement : copie, SHA256, suppression)."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             data = await _in_executor(run_record.sort_output, body.get("project", ""), body.get("run", ""),
                                       body.get("index"), body.get("target", ""), bool(body.get("swap")))
         except Exception as e:
@@ -511,6 +523,7 @@ try:
         try:
             import folder_paths
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             project = (body.get("project") or "").strip()
             if not project or not os.path.isdir(project):
                 raise FileNotFoundError("Project folder not found: %s" % project)
@@ -527,6 +540,7 @@ try:
         """Doublon depose a la main dans 40 / 60 : garde un exemplaire, l'autre va dans la Corbeille."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             if not projects.TRASH_AVAILABLE:
                 raise ValueError("The Recycle Bin is only available on Windows")
             data = await _in_executor(run_record.resolve_duplicate, body.get("project", ""), body.get("run", ""),
@@ -541,6 +555,7 @@ try:
         """Supprime une sortie rangee dans No Good (Corbeille si trash, sinon definitif) ; le JSON la marque deleted."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             trash = bool(body.get("trash"))
             if trash and not projects.TRASH_AVAILABLE:
                 raise ValueError("The Recycle Bin is only available on Windows")
@@ -567,6 +582,7 @@ try:
         """Ecrit config_projets_<projet>.json (l'ancien dans Archives) ; errors = fichiers sans indice."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             info = await _in_executor(project_config.save_config, body.get("project", ""), body.get("refs") or {},
                                       body.get("trims") or {}, body.get("mode", ""), body.get("workflow", ""))
         except project_config.ConfigError as e:
@@ -590,6 +606,7 @@ try:
         """Load confirme : fichiers retrouves remis en place depuis Archives."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             done = await _in_executor(project_config.restore_files, body.get("project", ""),
                                       list(body.get("items") or []))
         except Exception as e:
@@ -601,6 +618,7 @@ try:
         """Supprime une archive de workflow (deja confirme dans l'UI)."""
         try:
             body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             await _in_executor(projects.delete_archive, body.get("project", ""), body.get("name", ""))
         except Exception as e:
             return _project_error(e)

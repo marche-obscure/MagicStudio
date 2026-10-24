@@ -38,6 +38,45 @@ class ValidateNameTest(unittest.TestCase):
                 projects.validate_name(name)
 
 
+class RequireProjectTest(unittest.TestCase):
+    """Revue securite du 24/10/2026 : le serveur n'agit que sur un vrai dossier de projet."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_project_passes(self):
+        path = projects.create_project(self.root, "Clip")
+        self.assertEqual(projects.require_project(path), path)
+
+    def test_sub_project_of_a_group_passes(self):
+        path = projects.create_project(self.root, "Yacht", group="Shiz", new_group=True)
+        self.assertEqual(projects.require_project(path), path)
+
+    def test_plain_folder_is_refused(self):
+        plain = os.path.join(self.root, "Documents")
+        os.makedirs(os.path.join(plain, "Photos"))
+        with self.assertRaises(ValueError):
+            projects.require_project(plain)
+
+    def test_folder_of_projects_is_refused(self):
+        projects.create_project(self.root, "Clip")
+        with self.assertRaises(ValueError):
+            projects.require_project(self.root)
+
+    def test_group_is_refused(self):
+        path = projects.create_project(self.root, "Yacht", group="Shiz", new_group=True)
+        with self.assertRaises(ValueError):
+            projects.require_project(os.path.dirname(path))
+
+    def test_missing_or_empty_path_is_refused(self):
+        for bad in ("", "   ", None, os.path.join(self.root, "absent")):
+            with self.assertRaises(FileNotFoundError, msg=repr(bad)):
+                projects.require_project(bad)
+
+
 class ProjectFoldersTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()

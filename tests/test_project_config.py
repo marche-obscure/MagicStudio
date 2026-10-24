@@ -277,6 +277,25 @@ class ResetCopyTest(unittest.TestCase):
             self.assertTrue(os.path.isdir(os.path.join(self.p, sub)))
         self.assertTrue(os.path.isdir(os.path.join(self.p, "40.Rush Videos", "Footage")))
 
+    def test_reset_refuses_a_folder_that_is_not_a_project(self):
+        # Revue securite du 24/10/2026 : un dossier ordinaire n'est jamais vide par Reset.
+        plain = os.path.join(self.root, "Documents")
+        write(os.path.join(plain, "lettre.txt"), b"L")
+        sent = []
+        old_bin, old_ok = projects._to_recycle_bin, projects.TRASH_AVAILABLE
+        projects._to_recycle_bin = lambda paths: sent.extend(paths)
+        projects.TRASH_AVAILABLE = True
+        try:
+            for dry in (True, False):
+                with self.assertRaises(ValueError):
+                    projects.reset_project(plain, dry_run=dry)
+            with self.assertRaises(ValueError):
+                projects.reset_project(self.root)  # dossier de projets
+        finally:
+            projects._to_recycle_bin, projects.TRASH_AVAILABLE = old_bin, old_ok
+        self.assertEqual(sent, [])
+        self.assertTrue(os.path.isfile(os.path.join(plain, "lettre.txt")))
+
     def test_reset_without_recycle_bin_deletes(self):
         write(os.path.join(self.p, "10.Son", "s.wav"), b"S")
         old_ok = projects.TRASH_AVAILABLE
