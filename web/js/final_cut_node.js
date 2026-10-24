@@ -4,6 +4,7 @@ import {
     svg, iconBadge, hList, hSteps, hTip, hNote, hCard, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, CLOSE_ICON, EYE_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, escapeHtml, buildHelpOverlay,
 } from "./minimax_ref_loader.js";
+import { makeFileCache } from "./final_cut_cache.js";
 
 // --------------------------------------------------------------------
 // Noeud MiniMax H3 Final Cut (choix utilisateur, 22/10/2026) : copies des
@@ -17,6 +18,11 @@ const PROJECT_NODE = "MiniMaxH3Project";
 const MIN_WIDTH = 420;
 const UI_HEIGHT = 172;
 const SYNC_COLOR = "#e0793c";
+// Glisser (relecture 24/10/2026) : fichier prepare apres un court survol (pas en passant
+// la souris sur toute la grille), au plus 512 Mo / 24 fichiers gardes, vide a la fermeture.
+const HOVER_PREPARE_MS = 350;
+const CACHE_MAX_BYTES = 512 * 1024 * 1024;
+const CACHE_MAX_ITEMS = 24;
 const KINDS = [
     ["Images", IMAGE_ICON, VIOLET],
     ["Video", VIDEO_ICON, ORANGE],
@@ -373,6 +379,7 @@ function buildFilesWindow(container, ctx) {
     function close() {
         overlay.style.display = "none";
         stage.innerHTML = "";
+        ctx.release(); // fichiers prepares pour le glisser : memoire rendue
     }
     cancel.addEventListener("click", close);
     window.addEventListener("keydown", (e) => {
@@ -403,17 +410,46 @@ function buildFilesWindow(container, ctx) {
             (source ? line("Source:", source) : "");
     }
 
-    /** Fichier glissable : vrai fichier joint au glisser (prepare au survol, comme H3 Director l'attend). */
+    /**
+     * Fichier glissable : vrai fichier joint au glisser (comme H3 Director l'attend), prepare
+     * apres un court survol ou des l'appui ; survol quitte avant la fin : telechargement annule.
+     * Le fichier n'est garde que par le cache (borne), jamais par la vignette.
+     */
     function draggable(el, c, dir) {
         el.draggable = true;
         const path = joinDir(dir, c.name);
-        let file = null;
-        const ready = () => ctx.prepare(path, c.name, c.mtime).then((f) => (file = f)).catch((e) => say(e.message, false));
-        el.addEventListener("mouseenter", ready);
-        el.addEventListener("pointerdown", () => {
-            if (!file) ready();
+        let timer = null;
+        let ctrl = null;
+        let down = false;
+        const ready = () => {
+            if (ctrl || ctx.cached(path, c.mtime)) return;
+            const mine = (ctrl = new AbortController());
+            ctx.prepare(path, c.name, c.mtime, mine.signal)
+                .catch((e) => {
+                    if (e.name !== "AbortError") say(e.message, false);
+                })
+                .finally(() => {
+                    if (ctrl === mine) ctrl = null;
+                });
+        };
+        el.addEventListener("mouseenter", () => {
+            clearTimeout(timer);
+            timer = setTimeout(ready, HOVER_PREPARE_MS);
         });
+        el.addEventListener("mouseleave", () => {
+            clearTimeout(timer);
+            if (ctrl && !down) ctrl.abort();
+        });
+        el.addEventListener("pointerdown", () => {
+            down = true;
+            clearTimeout(timer);
+            ready();
+        });
+        const up = () => (down = false);
+        el.addEventListener("pointerup", up);
+        el.addEventListener("dragend", up);
         el.addEventListener("dragstart", (e) => {
+            const file = ctx.cached(path, c.mtime);
             if (!file) {
                 e.preventDefault();
                 say("Preparing " + c.name + "… drag again in a moment.", false);
@@ -716,12 +752,16 @@ app.registerExtension({
                 return { wired: false, info: null };
             }
 
-            // Vrai fichier joint au glisser : prepare au survol (dragstart ne peut pas attendre).
-            const fileCache = new Map(); // chemin|mtime -> File
-            async function prepare(path, name, mtime) {
-                const key = path + "|" + mtime;
-                if (fileCache.has(key)) return fileCache.get(key);
-                const res = await fetch("/mmrefloader/media?file=" + encodeURIComponent(path), { cache: "no-store" });
+            // Vrai fichier joint au glisser : prepare avant (dragstart ne peut pas attendre),
+            // dans un cache borne (relecture 24/10/2026, voir final_cut_cache.js).
+            const fileCache = makeFileCache({ maxBytes: CACHE_MAX_BYTES, maxItems: CACHE_MAX_ITEMS });
+            const cacheKey = (path, mtime) => path + "|" + mtime;
+            async function prepare(path, name, mtime, signal) {
+                const key = cacheKey(path, mtime);
+                const known = fileCache.get(key);
+                if (known) return known;
+                const res = await fetch("/mmrefloader/media?file=" + encodeURIComponent(path),
+                    { cache: "no-store", signal });
                 if (!res.ok) throw new Error("File not found: " + name);
                 const blob = await res.blob();
                 const file = new File([blob], name, { type: blob.type || mimeOf(name), lastModified: Date.now() });
@@ -733,6 +773,8 @@ app.registerExtension({
                 getPlan: () => plan,
                 isBusy: () => busy,
                 prepare,
+                cached: (path, mtime) => fileCache.get(cacheKey(path, mtime)),
+                release: () => fileCache.clear(),
                 sync: () => {
                     const { info } = linkedProject();
                     if (info) doSync(info.path);
@@ -778,11 +820,15 @@ app.registerExtension({
                 }
                 try {
                     plan = await apiGet("/mmproject/final_cut/plan?project=" + encodeURIComponent(info.path));
-                    if (!plan.synced || !plan.linked) {
+                    // Lien absent ou vers un autre projet du meme nom : synchronisation (le lien est
+                    // refait). Vrai dossier du meme nom dans input : jamais touche, signale seulement.
+                    if (!plan.synced || (!plan.linked && !plan.conflict)) {
                         await doSync(info.path);
                         return;
                     }
-                    if (!busy) say(plan.count ? plan.count + " change(s) in Picture Lock: click Sync." : "Up to date.",
+                    if (plan.conflict) say("A real folder " + plan.link.split(/[\\/]/).pop() + " is in the input " +
+                        "folder of ComfyUI: rename it, then click Sync.");
+                    else if (!busy) say(plan.count ? plan.count + " change(s) in Picture Lock: click Sync." : "Up to date.",
                         !plan.count);
                 } catch (e) {
                     plan = null;

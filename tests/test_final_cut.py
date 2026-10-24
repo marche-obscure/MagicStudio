@@ -160,6 +160,50 @@ class FinalCutTest(unittest.TestCase):
         self.assertEqual(seen[-1]["total"], 1)
         self.assertEqual(seen[-1]["done"], 0)
 
+    def test_link_status_checks_the_target(self):
+        # Relecture du 24/10/2026 : un Final-Cut_<Nom> d'un autre projet du meme nom n'est pas "lie".
+        for sub in ("A", "B"):
+            os.makedirs(os.path.join(self.root, sub))
+        p = projects.create_project(os.path.join(self.root, "A"), "Same")
+        other = projects.create_project(os.path.join(self.root, "B"), "Same")
+        folder = fc.target(p)[0]
+        self.assertEqual(fc.link_status(folder, self.input)["linked"], False)
+        fc.sync(other, self.trash, self.input)  # jonction vers l'autre projet "Same"
+        status = fc.link_status(folder, self.input)
+        self.assertEqual((status["linked"], status["conflict"]), (False, False))
+        fc.sync(p, self.trash, self.input)  # le lien est remplace par celui du bon projet
+        status = fc.link_status(folder, self.input)
+        self.assertEqual((status["linked"], status["conflict"]), (True, False))
+        self.assertEqual(status["link"], os.path.join(self.input, "Final-Cut_Same"))
+        # Vrai dossier du meme nom : jamais lie, signale (pas de synchronisation automatique en boucle).
+        fc.remove_link(status["link"])
+        os.makedirs(status["link"])
+        status = fc.link_status(folder, self.input)
+        self.assertEqual((status["linked"], status["conflict"]), (False, True))
+
+    def test_sync_refused_while_another_runs(self):
+        # Deux noeuds Final Cut (ou deux onglets) sur le meme projet : une seule synchronisation a la fois.
+        p = projects.create_project(self.root, "Solo")
+        write(os.path.join(p, "60.Rush Images", "Picture Lock", "a.png"))
+        inner = []
+        old_copy = fc._copy_new
+
+        def copy_new(src, dst):
+            # Pendant la copie, une deuxieme synchronisation du meme projet est refusee.
+            with self.assertRaises(fc.SyncRunning):
+                fc.sync(p, self.trash, self.input)
+            inner.append(True)
+            old_copy(src, dst)
+
+        fc._copy_new = copy_new
+        try:
+            fc.sync(p, self.trash, self.input)
+        finally:
+            fc._copy_new = old_copy
+        self.assertEqual(inner, [True])
+        # Fini : une nouvelle synchronisation est de nouveau possible.
+        self.assertEqual(fc.sync(p, self.trash, self.input)["count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
