@@ -32,7 +32,8 @@ const HELP_SECTIONS = [
         html: hSteps([
             "Open the window of <b>MiniMax H3 Final Cut</b> (<b>Images</b>, <b>Video</b> or <b>Audio</b>).",
             "Drag a file onto this node.",
-            "Wire the output that matches the file: <b>video</b>, <b>image</b> or <b>audio</b>.",
+            "Wire the output that matches the file: <b>video</b> or <b>video_frames</b>, <b>image</b>, or " +
+            "<b>audio</b>.",
         ]) +
         hCard("Parts of the node", [
             ["<b>file</b>", "full path of the file; filled by the drop, or typed by hand"],
@@ -43,13 +44,15 @@ const HELP_SECTIONS = [
     {
         id: "outputs", title: "Outputs", icon: VIDEO_ICON, color: ORANGE,
         html: hCard("File dropped → outputs", [
-            [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b>: <b>video</b> (same type as <b>Load Video</b>) and " +
-                "<b>audio</b> (its soundtrack, if it has one)"],
+            [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b>: <b>video</b> (same type as <b>Load Video</b>), " +
+                "<b>video_frames</b> (all its frames as images, original size) and <b>audio</b> (its soundtrack, " +
+                "if it has one)"],
             [iconBadge(IMAGE_ICON, VIOLET), "<b>Image</b>: <b>image</b>"],
             [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b>: <b>audio</b>, whole length"],
         ]) +
         hNote("an output that does not match the file is empty: the optional inputs of the native nodes " +
             "ignore it.") +
+        hTip("<b>video_frames</b> holds every frame in memory: for a long or large video, prefer <b>video</b>.") +
         hTip("the file is loaded again only when the path changes or when the file is modified."),
     },
     {
@@ -69,7 +72,8 @@ const HELP_SECTIONS_FR = [
         html: hSteps([
             "Ouvrez la fenêtre de <b>MiniMax H3 Final Cut</b> (<b>Images</b>, <b>Video</b> ou <b>Audio</b>).",
             "Glissez un fichier sur ce nœud.",
-            "Branchez la sortie qui correspond au fichier : <b>video</b>, <b>image</b> ou <b>audio</b>.",
+            "Branchez la sortie qui correspond au fichier : <b>video</b> ou <b>video_frames</b>, <b>image</b>, " +
+            "ou <b>audio</b>.",
         ]) +
         hCard("Parties du nœud", [
             ["<b>file</b>", "chemin complet du fichier ; rempli par le dépôt, ou tapé à la main"],
@@ -80,13 +84,16 @@ const HELP_SECTIONS_FR = [
     {
         id: "outputs", title: "Sorties",
         html: hCard("Fichier déposé → sorties", [
-            [iconBadge(VIDEO_ICON, ORANGE), "<b>Vidéo</b> : <b>video</b> (même type que <b>Load Video</b>) et " +
-                "<b>audio</b> (sa bande-son, s'il en a une)"],
+            [iconBadge(VIDEO_ICON, ORANGE), "<b>Vidéo</b> : <b>video</b> (même type que <b>Load Video</b>), " +
+                "<b>video_frames</b> (toutes ses images, taille d'origine) et <b>audio</b> (sa bande-son, s'il en " +
+                "a une)"],
             [iconBadge(IMAGE_ICON, VIOLET), "<b>Image</b> : <b>image</b>"],
             [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Son</b> : <b>audio</b>, en entier"],
         ]) +
         hNote("une sortie qui ne correspond pas au fichier est vide : les entrées optionnelles des nœuds " +
             "natifs l'ignorent.", "Remarque :") +
+        hTip("<b>video_frames</b> garde toutes les images en mémoire : pour une vidéo longue ou grande, " +
+            "préférez <b>video</b>.", "Astuce :") +
         hTip("le fichier n'est rechargé que si le chemin change ou si le fichier est modifié.", "Astuce :"),
     },
     {

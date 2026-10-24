@@ -193,14 +193,16 @@ class MiniMaxH3LoadMedia:
             },
         }
 
-    RETURN_TYPES = ("VIDEO", "IMAGE", "AUDIO")
-    RETURN_NAMES = ("video", "image", "audio")
+    # video_frames ajoutee a la fin (24/10/2026) : les liens des workflows deja faits
+    # restent sur les memes sorties (image et video_frames sont toutes deux IMAGE).
+    RETURN_TYPES = ("VIDEO", "IMAGE", "AUDIO", "IMAGE")
+    RETURN_NAMES = ("video", "image", "audio", "video_frames")
     FUNCTION = "run"
     CATEGORY = "loaders/minimax"
     DESCRIPTION = (
         "Load an image, a video or an audio file dropped from MiniMax H3 Final Cut, where it is (no copy). "
         "video: a video (same type as Load Video); image: an image; audio: an audio file, or the soundtrack "
-        "of a video."
+        "of a video; video_frames: all the frames of a video, as images."
     )
 
     @classmethod
@@ -222,7 +224,10 @@ class MiniMaxH3LoadMedia:
         path, kind = load_media.check_path(file, folder_paths.get_input_directory())
         if kind == "video":
             from comfy_api.latest import InputImpl
-            # Meme objet que le Load Video natif ; la bande-son sort aussi sur "audio".
-            return (InputImpl.VideoFromFile(path), None, load_media.soundtrack(path))
+            # Meme objet que le Load Video natif ; la bande-son sort aussi sur "audio", et
+            # toutes les images (taille et cadence d'origine) sur "video_frames", comme
+            # le noeud natif Get Video Components.
+            video = InputImpl.VideoFromFile(path)
+            return (video, None, load_media.soundtrack(path), video.get_components().images)
         image, audio = load_media.load_still(path, kind)
-        return (None, image, audio)
+        return (None, image, audio, None)
