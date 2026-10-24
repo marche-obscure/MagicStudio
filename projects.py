@@ -87,6 +87,19 @@ def is_project(path):
     return _has_parts(path) and not project_children(path)
 
 
+def require_project(path):
+    """
+    Revue securite du 24/10/2026 : les routes qui modifient ou suppriment
+    n'agissent que sur un vrai dossier de projet, jamais sur un dossier
+    ordinaire, un dossier de projets ou la racine. Renvoie path tel quel.
+    """
+    if not path or not str(path).strip() or not os.path.isdir(path):
+        raise FileNotFoundError("Project folder not found: %s" % path)
+    if not is_project(path):
+        raise ValueError("Not a project folder: %s" % path)
+    return path
+
+
 # Marque d'un dossier de projets (choix utilisateur 22/10/2026) : un dossier qui ne
 # contient que des projets ressemble a une racine ; la marque dit que c'est un groupe
 # declare sous son dossier mere (posee a sa creation et quand la racine le liste).
@@ -882,8 +895,7 @@ def reset_project(project, dry_run=False):
     qui manquent sont recrees. dry_run : bilan seulement, rien n'est touche.
     Renvoie {folders: [{folder, files, size}], total, size, trash}.
     """
-    if not project or not os.path.isdir(project):
-        raise FileNotFoundError("Project folder not found: %s" % project)
+    require_project(project)  # jamais un dossier ordinaire (revue securite du 24/10/2026)
     files = _project_files(project)
     per = {}
     for top, _p, size in files:
