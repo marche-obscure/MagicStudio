@@ -45,6 +45,10 @@ _progress = {}
 _progress_lock = threading.Lock()
 
 
+class SyncRunning(ValueError):
+    """Une synchronisation du meme dossier de copies tourne deja (autre noeud ou autre onglet)."""
+
+
 # ----------------------------------------------------------------------
 # Numeros des projets (stockes sans affichage dans la marque du projet mere)
 # ----------------------------------------------------------------------
@@ -222,16 +226,23 @@ def sync(project, trash_fn, input_dir=None):
     Applique le miroir : retraits et anciennes versions a la Corbeille (trash_fn),
     puis copies. Cree les dossiers et la jonction dans input_dir. Renvoie le plan
     applique avec link (chemin de la jonction, "" sans input_dir) et last_sync.
-    Progression lisible par progress(project) pendant le travail.
+    Progression lisible par progress(project) pendant le travail. Une seule
+    synchronisation a la fois par dossier de copies (relecture 24/10/2026) : sinon
+    SyncRunning.
     """
-    p = plan(project)
-    key = os.path.normcase(p["folder"])
-    first = not os.path.isdir(p["folder"])
-    total = p["count"]
-    state = {"done": 0, "total": total, "name": "", "first": first}
+    folder = target(project)[0]
+    key = os.path.normcase(folder)
+    first = not os.path.isdir(folder)
+    state = {"done": 0, "total": 0, "name": "", "first": first}
     with _progress_lock:
+        if key in _progress:
+            raise SyncRunning("A sync of %s is already running: wait for it to end." % os.path.basename(folder))
         _progress[key] = state
     try:
+        # Plan calcule une fois la place prise : personne ne copie ni ne retire en meme temps.
+        p = plan(project)
+        with _progress_lock:
+            state["total"] = p["count"]
         for kind, _rush in KINDS:
             os.makedirs(os.path.join(p["folder"], kind), exist_ok=True)
         for kind, _rush in KINDS:
@@ -269,6 +280,20 @@ def sync(project, trash_fn, input_dir=None):
 def _is_link(path):
     isjunction = getattr(os.path, "isjunction", lambda p: False)
     return os.path.islink(path) or isjunction(path)
+
+
+def link_status(folder, input_dir):
+    """
+    Jonction attendue dans input_dir : {link, linked, conflict}. linked = lien qui
+    mene bien a folder (un Final-Cut_<Nom> d'un autre projet du meme nom ne compte
+    pas, relecture 24/10/2026) ; conflict = vrai dossier du meme nom (jamais touche).
+    """
+    link = os.path.join(input_dir, os.path.basename(folder))
+    if _is_link(link):
+        linked = os.path.isdir(link) and \
+            os.path.normcase(os.path.realpath(link)) == os.path.normcase(os.path.realpath(folder))
+        return {"link": link, "linked": linked, "conflict": False}
+    return {"link": link, "linked": False, "conflict": os.path.exists(link)}
 
 
 def ensure_link(folder, input_dir):

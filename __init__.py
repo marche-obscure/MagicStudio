@@ -486,9 +486,8 @@ try:
             if not project or not os.path.isdir(project):
                 raise FileNotFoundError("Project folder not found: %s" % project)
             data = await _in_executor(final_cut.plan, project)
-            link = os.path.join(folder_paths.get_input_directory(), os.path.basename(data["folder"]))
-            data["link"] = link
-            data["linked"] = os.path.isdir(link)
+            # linked : la jonction mene bien a ces copies ; conflict : vrai dossier du meme nom dans input.
+            data.update(final_cut.link_status(data["folder"], folder_paths.get_input_directory()))
             data["synced"] = os.path.isdir(data["folder"])
         except Exception as e:
             return _project_error(e)
