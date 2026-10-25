@@ -89,13 +89,16 @@ try:
         full = os.path.join(folder, name)
         if not os.path.isfile(full):
             return web.json_response({"error": "File not found."}, status=404)
+        # Cache : un jour seulement si l'URL porte la date du fichier ; sinon le navigateur
+        # redemande et recoit 304 si le fichier n'a pas change (voir media.thumb_cache).
+        cache = media.thumb_cache(full, request.rel_url.query, request.headers.get("If-None-Match"))
+        if cache["not_modified"]:
+            return web.Response(status=304, headers=cache["headers"])
         try:
             data = await _in_executor(media.make_thumbnail, full, 192)
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
-        # L'URL contient la date de modification : la miniature peut etre gardee en cache.
-        return web.Response(body=data, content_type="image/jpeg",
-                            headers={"Cache-Control": "max-age=86400"})
+        return web.Response(body=data, content_type="image/jpeg", headers=cache["headers"])
 
     @routes.get("/mmrefloader/info")
     async def mmrefloader_info(request):

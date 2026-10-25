@@ -6,7 +6,7 @@ import {
     IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, EYE_ICON, CLOSE_ICON, TRASH_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode,
-    FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker,
+    FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker, THUMB_REVALIDATE,
 } from "./minimax_ref_loader.js";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
@@ -2310,7 +2310,8 @@ function dupThumb(archDir, name, kind, size) {
         return box;
     }
     const img = document.createElement("img");
-    img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(archDir) + "&file=" + encodeURIComponent(name);
+    img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(archDir) + "&file=" + encodeURIComponent(name) +
+        THUMB_REVALIDATE;
     Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
     box.appendChild(img);
     return box;
