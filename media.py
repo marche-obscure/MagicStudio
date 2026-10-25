@@ -352,6 +352,24 @@ def _jpeg_bytes(img, size):
     return buf.getvalue()
 
 
+def thumb_cache(path, query, if_none_match=None):
+    """
+    Cache navigateur d'une miniature (bug du 25/10/2026 : fichier remplace par un autre
+    du meme nom, ancienne vignette affichee). L'etiquette (ETag) suit la date et la taille
+    du fichier. Avec la date dans l'URL (mt= ou t=), la miniature est gardee un jour ;
+    sans elle, le navigateur redemande toujours, et "not_modified" dit si l'on peut
+    repondre 304 sans refaire la miniature.
+    """
+    st = os.stat(path)
+    etag = '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+    versioned = bool(query.get("mt") or query.get("t"))
+    return {
+        "etag": etag,
+        "not_modified": if_none_match == etag,
+        "headers": {"Cache-Control": "max-age=86400" if versioned else "no-cache", "ETag": etag},
+    }
+
+
 def make_thumbnail(path, size=192):
     """Miniature JPEG : l'image elle-meme, ou la premiere image d'une video."""
     ext = os.path.splitext(path)[1].lower()

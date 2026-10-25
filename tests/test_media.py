@@ -319,6 +319,33 @@ class ThumbTests(TmpDirTest):
             data = media.make_thumbnail(self.p(name), 192)
             self.assertTrue(data.startswith(b"\xff\xd8"))
 
+    def test_thumb_cache_changes_when_file_is_replaced_under_same_name(self):
+        # Bug du 25/10/2026 : image remplacee par une autre du meme nom, vignette ancienne
+        # gardee par le navigateur (URL sans date, max-age d'un jour).
+        path = self.p("same.png")
+        Image.new("RGB", (80, 40), (255, 0, 0)).save(path)
+        os.utime(path, (1000, 1000))
+        before = media.thumb_cache(path, {})
+        Image.new("RGB", (80, 40), (0, 0, 255)).save(path)
+        after = media.thumb_cache(path, {})
+        self.assertNotEqual(before["etag"], after["etag"])
+        # Sans date dans l'URL : le navigateur doit redemander a chaque fois.
+        self.assertEqual(after["headers"]["Cache-Control"], "no-cache")
+        self.assertEqual(after["headers"]["ETag"], after["etag"])
+
+    def test_thumb_cache_not_modified_for_same_file(self):
+        path = self.p("a.png")
+        Image.new("RGB", (80, 40)).save(path)
+        etag = media.thumb_cache(path, {})["etag"]
+        self.assertTrue(media.thumb_cache(path, {}, if_none_match=etag)["not_modified"])
+        self.assertFalse(media.thumb_cache(path, {}, if_none_match='"other"')["not_modified"])
+
+    def test_thumb_cache_long_only_with_date_in_url(self):
+        path = self.p("a.png")
+        Image.new("RGB", (80, 40)).save(path)
+        for key in ("mt", "t"):
+            self.assertEqual(media.thumb_cache(path, {key: "123"})["headers"]["Cache-Control"], "max-age=86400")
+
 
 class MediaInfoTests(TmpDirTest):
     def test_image_info(self):

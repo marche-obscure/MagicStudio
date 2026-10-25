@@ -144,6 +144,11 @@ const KIND_TITLES = {
     first_frame: "First frame (F2VA / FL2VA)", last_frame: "Last frame (FL2VA, optional)",
 };
 
+// Vignette sans date dans l'URL : le serveur la fait revalider a chaque affichage (ETag, 304).
+// Ce marqueur change aussi l'URL, pour ignorer les vignettes gardees un jour par le navigateur
+// avant la correction (bug du 25/10/2026 : fichier remplace par un autre du meme nom).
+const THUMB_REVALIDATE = "&rv=1";
+
 function iconBadge(icon, bg) {
     return '<span style="display:inline-flex;align-items:center;justify-content:center;' +
         "min-width:18px;height:18px;padding:0 3px;border-radius:4px;vertical-align:middle;" +
@@ -2172,7 +2177,7 @@ function buildOrderWarning(container) {
         } else {
             const img = document.createElement("img");
             img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(dirName(c.path)) + "&file=" +
-                encodeURIComponent(baseName(c.path));
+                encodeURIComponent(baseName(c.path)) + THUMB_REVALIDATE;
             Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover" });
             pic.appendChild(img);
         }
@@ -3888,7 +3893,7 @@ function buildSelectionViewer(container, ctx) {
                 const img = document.createElement("img");
                 img.loading = "lazy";
                 img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(dirName(path)) +
-                    "&file=" + encodeURIComponent(baseName(path));
+                    "&file=" + encodeURIComponent(baseName(path)) + THUMB_REVALIDATE;
                 Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
                 thumb.appendChild(img);
             }
@@ -4010,7 +4015,7 @@ function buildSelectionViewer(container, ctx) {
         } else {
             el = document.createElement("img");
             el.src = "/mmrefloader/thumb?path=" + encodeURIComponent(dirName(path)) +
-                "&file=" + encodeURIComponent(baseName(path));
+                "&file=" + encodeURIComponent(baseName(path)) + THUMB_REVALIDATE;
             Object.assign(el.style, { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
             showSide(path, list().findIndex((it) => samePath(pathOf(it), path)));
         }
@@ -4152,7 +4157,7 @@ function buildOverview(container, ctx) {
             const img = document.createElement("img");
             img.loading = "lazy";
             img.src = "/mmrefloader/thumb?path=" + encodeURIComponent(dirName(path)) +
-                "&file=" + encodeURIComponent(baseName(path));
+                "&file=" + encodeURIComponent(baseName(path)) + THUMB_REVALIDATE;
             Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
             thumb.appendChild(img);
         }
@@ -4869,5 +4874,5 @@ export {
     START_ICON, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, TRASH_ICON, EYE_ICON,
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode, PROJECT_TYPE,
-    FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker,
+    FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker, THUMB_REVALIDATE,
 };
