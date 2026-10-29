@@ -421,9 +421,9 @@ def move_project(path, dest_parent):
 # ----------------------------------------------------------------------
 # Archive : 00.Workflows/Archives/yyyyMMdd-HHmmss_<nom du workflow>.json ;
 # configuration du Ref Loader : yyyyMMdd-HHmmss_REF2VA|FL2VA_minimax_config.json
-# a la racine de 00.Workflows (pas un workflow).
+# (LTX 2.x : yyyyMMdd-HHmmss_LTX2_magicstudio_config.json) a la racine de 00.Workflows (pas un workflow).
 _STAMPED = re.compile(r"^(\d{8}-\d{6})_(.+)$")
-_CONFIG = re.compile(r"^\d{8}-\d{6}_(REF2VA|FL2VA)_minimax_config\.json$", re.IGNORECASE)
+_CONFIG = re.compile(r"^\d{8}-\d{6}_((REF2VA|FL2VA)_minimax|LTX2_magicstudio)_config\.json$", re.IGNORECASE)
 # Archives de workflow gardees par projet (choix utilisateur : 5 au plus).
 MAX_ARCHIVES = 5
 

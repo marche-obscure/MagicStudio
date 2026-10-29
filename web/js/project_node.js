@@ -7,7 +7,9 @@ import {
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode,
     FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker, THUMB_REVALIDATE,
+    profileLimitDefaults,
 } from "./minimax_ref_loader.js";
+import { profileOf, LABELS as PROFILE_LABELS } from "./profiles.js";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath, sameGroup, mergeData,
@@ -3013,7 +3015,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 return row(label + pos, name);
             };
             return [].concat((m.diffusion_model || []).map(item("Model")),
-                (m.text_encoder || []).map(item("Text encoder")), (m.vae || []).map(item("VAE")));
+                (m.text_encoder || []).map(item("Text encoder")), (m.vae || []).map(item("VAE")),
+                (m.audio_vae || []).map(item("Audio VAE")));
         }
         const num = (v) => (typeof v === "number" ? String(Math.round(v * 1000) / 1000) : "?");
         return (m.loras || []).map((l) => row("LoRA", String(l.name), " — " + num(l.strength_model) +
@@ -3575,7 +3578,8 @@ function setLines(kind, set) {
             name: typeof n === "string" ? n : String((n && n.name) || ""), extra: "",
         });
         return [].concat((set.diffusion_model || []).map(item("Model")),
-            (set.text_encoder || []).map(item("Text encoder")), (set.vae || []).map(item("VAE")));
+            (set.text_encoder || []).map(item("Text encoder")), (set.vae || []).map(item("VAE")),
+            (set.audio_vae || []).map(item("Audio VAE")));
     }
     return (set.loras || []).map((l) => ({
         label: "LoRA", name: String(l.name),
@@ -4023,7 +4027,8 @@ function buildLoadDialog(container) {
             lastReport = report;
             modePill.style.display = dataGroup ? "flex" : "none";
             paintMode();
-            sub.textContent = "Saved on " + (report.datemodifi || "?") + " · mode " + (report.mode || "?");
+            sub.textContent = "Saved on " + (report.datemodifi || "?") + (report.profile === "ltx2"
+                ? " · " + PROFILE_LABELS.ltx2 : " · mode " + (report.mode || "?"));
             body.innerHTML = "";
             boxes = [];
             let promptWarn = null;
@@ -4689,7 +4694,7 @@ app.registerExtension({
                     // Le Reference Loader a pu changer pendant la confirmation : on repart de son etat.
                     const latest = loader.mmGetState();
                     const same = JSON.stringify(saveItems(latest)) === JSON.stringify(items);
-                    if (same) loader.mmSetState(remapState(latest, mapBySequence(data.dsts)));
+                    if (same) loader.mmSetState(remapState(latest, mapBySequence(data.dsts, latest)));
                     setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: getState().path });
                     paintFolders();
                     say("Saved: " + count("copy") + " file(s) copied.", true);
@@ -5196,8 +5201,11 @@ app.registerExtension({
                     const loader = linkedLoader(node);
                     if (loader) {
                         const st = loader.mmGetState();
-                        for (const k of ["images", "videos", "video_audios", "audios", "first_frame", "last_frame"]) st[k] = [];
-                        st.trims = { video: {}, video_audio: {}, audio: {} };
+                        // Les deux profils : tous leurs fichiers etaient dans le projet.
+                        for (const k of ["images", "videos", "video_audios", "audios", "first_frame", "last_frame",
+                            "guide_images", "guide_video", "soundtrack", "voice"]) st[k] = [];
+                        st.trims = { video: {}, video_audio: {}, audio: {}, guide_video: {}, soundtrack: {}, voice: {} };
+                        st.moments = { guide_images: {}, guide_video: {} };
                         loader.mmSetState(st);
                         setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: s.path });
                     }
@@ -5352,14 +5360,17 @@ app.registerExtension({
                         continue;
                     }
                     const inArch = (archiveFiles[f.name] || []).length;
-                    // "Use: x/y" (choix utilisateur) : x utilises, y = maximum du dossier pour le mode.
-                    const use = refState ? folderUse(files, refState, f.name) : null;
-                    const parts = use ? ["Use: " + use.used + "/" + use.max] : ["Files: " + files.length];
+                    // "Use: x/y" (choix utilisateur) : x utilises, y = maximum du dossier pour le profil et le mode
+                    // (max 0 = dossier non utilise par le profil : "Not used", 14.Video-Audio en LTX 2.x).
+                    const use = refState ? folderUse(files, refState, f.name, profileLimitDefaults()) : null;
+                    const parts = !use ? ["Files: " + files.length] : use.max ? ["Use: " + use.used + "/" + use.max]
+                        : ["Not used"];
                     if (unused.length) parts.push("Orphelins: " + unused.length);
                     parts.push("In Archives: " + inArch);
                     f.last.textContent = parts.join(" | ");
                     f.last.style.color = unused.length ? BELL_ORANGE : "#9fd6cf";
-                    f.last.title = (use ? use.used + " used of " + use.max + " max (" + use.mode + "); " + files.length +
+                    f.last.title = (use && !use.max ? "Not used in " + use.mode + "; " + files.length +
+                        " file(s) in " + f.name : use ? use.used + " used of " + use.max + " max (" + use.mode + "); " + files.length +
                         " file(s) in " + f.name : files.length + " file(s) in " + f.name) +
                         (unused.length ? "; " + unused.length + " orphan file(s) (no number, not archived yet): " +
                             unused.map(baseOf).join(", ") : "") + "; " + inArch + " file(s) in " + f.name + "/Archives";
@@ -5443,7 +5454,7 @@ app.registerExtension({
                         // Le Reference Loader a pu changer pendant la confirmation : on repart de son etat.
                         const latest = loader.mmGetState();
                         const same = JSON.stringify(saveItems(latest).filter((i) => i.folder === f)) === JSON.stringify(items);
-                        if (same) loader.mmSetState(remapState(latest, mapFolderBySequence(f, data.dsts)));
+                        if (same) loader.mmSetState(remapState(latest, mapFolderBySequence(f, data.dsts, latest)));
                     }
                     const now = getState();
                     const snap = Object.assign({}, now.snapPath === now.path ? now.snap : {});
@@ -5839,6 +5850,7 @@ app.registerExtension({
                         method: "POST", headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             project: s.path, refs: configRefs(st), trims: st.trims || {}, mode: st.mode || "ref2va",
+                            profile: profileOf(st), moments: st.moments || {},
                             workflow: wfInfo.current ? wfInfo.current.name : "",
                         }),
                     });

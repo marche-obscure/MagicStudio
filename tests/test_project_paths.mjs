@@ -12,6 +12,7 @@ import {
     sameGroup, mergeData,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
+    folderMax, activeLists,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -379,8 +380,10 @@ test("duplicateColors: one colour per group, in order, pool and project together
 
 test("configuration : listes envoyees a Save", () => {
     const st = { images: ["a"], videos: ["v"], first_frame: [], other: 1 };
+    // Listes des deux profils (build_config indexe celles du profil actif, les autres gardent leurs fichiers).
     assert.deepEqual(configRefs(st), {
         images: ["a"], videos: ["v"], video_audios: [], audios: [], first_frame: [], last_frame: [],
+        guide_images: [], guide_video: [], soundtrack: [], voice: [],
     });
 });
 
@@ -552,7 +555,159 @@ test("Save : listes LTX 2.x dans leurs dossiers, etat MiniMax inchange", () => {
     assert.equal(LIST_FOLDERS.voice, "10.Son");
     assert.deepEqual(saveItems({ profile: "ltx2", guide_images: ["g"], voice: ["v"] }),
         [{ path: "g", folder: "08.Images" }, { path: "v", folder: "10.Son" }]);
-    // configRefs : seulement les listes MiniMax (MEDIA_FOLDERS), comme avant
-    assert.deepEqual(Object.keys(configRefs({ guide_images: ["g"] })).sort(),
-        ["audios", "first_frame", "images", "last_frame", "video_audios", "videos"]);
+    // configRefs : listes des dossiers de medias des deux profils (Task 7)
+    assert.deepEqual(configRefs({ guide_images: ["g"] }).guide_images, ["g"]);
+});
+
+// ---- Task 7 : noeud Project selon le profil du RefLoader ----
+const LTX_STATE = {
+    profile: "ltx2", mode: "ref2va",
+    // Listes MiniMax gardees dans l'etat (profil cache)
+    images: ["P/08.Images/m.png"], videos: ["P/12.Video/mv.mp4"], video_audios: ["P/14.Video-Audio/va.mp4"],
+    audios: ["P/10.Son/ma.wav"], first_frame: [], last_frame: [],
+    guide_images: ["P/08.Images/g1.png", "P/08.Images/g2.png"], guide_video: ["P/12.Video/gv.mp4"],
+    soundtrack: ["P/10.Son/st.wav"], voice: ["P/10.Son/vo.wav"],
+    moments: { guide_images: { "p/08.images/g1.png": 0 }, guide_video: {} },
+    trims: {},
+};
+
+test("activeLists : listes du profil actif, dans l'ordre des listes", () => {
+    assert.deepEqual(activeLists({}), ["images", "videos", "video_audios", "audios", "first_frame", "last_frame"]);
+    assert.deepEqual(activeLists(LTX_STATE), ["guide_images", "guide_video", "soundtrack", "voice"]);
+});
+
+test("folderUse in ltx2", () => {
+    const imgs = ["P/08.Images/g1.png", "P/08.Images/g2.png", "P/08.Images/m.png", "P/08.Images/x.png"];
+    assert.deepEqual(folderUse(imgs, LTX_STATE, "08.Images"), { used: 2, max: 9, mode: "LTX 2.x" });
+    const son = ["P/10.Son/st.wav", "P/10.Son/vo.wav", "P/10.Son/ma.wav"];
+    assert.deepEqual(folderUse(son, LTX_STATE, "10.Son"), { used: 2, max: 2, mode: "LTX 2.x" });
+    assert.deepEqual(folderUse(["P/12.Video/gv.mp4", "P/12.Video/mv.mp4"], LTX_STATE, "12.Video"),
+        { used: 1, max: 1, mode: "LTX 2.x" });
+    assert.deepEqual(folderUse(["P/14.Video-Audio/va.mp4"], LTX_STATE, "14.Video-Audio"),
+        { used: 0, max: 0, mode: "LTX 2.x" });
+    // Limites reglees dans le RefLoader (state.limits) et defauts de la route
+    const lim = Object.assign({}, LTX_STATE, { limits: { ltx2: { guide_image: 4 } } });
+    assert.equal(folderUse(imgs, lim, "08.Images").max, 4);
+    const defaults = { ltx2: { guide_image: 5, guide_video: 1, soundtrack: 1, voice: 1, seconds: 20,
+        max_size: [768, 1344], fps: 24, multiple: 32 } };
+    assert.equal(folderUse(imgs, LTX_STATE, "08.Images", defaults).max, 5);
+});
+
+test("folderUse keeps minimax counts", () => {
+    const st = { mode: "ref2va", images: ["P/08.Images/a.png"], first_frame: [], last_frame: [], audios: [],
+        videos: [], video_audios: [], guide_images: ["P/08.Images/g.png"] };
+    const imgs = ["P/08.Images/a.png", "P/08.Images/g.png"];
+    assert.deepEqual(folderUse(imgs, st, "08.Images"), { used: 1, max: 9, mode: "Ref2VA" });
+    assert.deepEqual(folderMax(st), { "08.Images": 9, "10.Son": 3, "12.Video": 3, "14.Video-Audio": 3 });
+    assert.deepEqual(folderMax({ mode: "fl2va" }), { "08.Images": 2, "10.Son": 3, "12.Video": 3, "14.Video-Audio": 3 });
+    assert.deepEqual(folderMax(LTX_STATE), { "08.Images": 9, "10.Son": 2, "12.Video": 1, "14.Video-Audio": 0 });
+    // Limites MiniMax reglees : lues dans limitsOf
+    assert.equal(folderUse(imgs, Object.assign({}, st, { limits: { minimax_h3: { image: 4 } } }), "08.Images").max, 4);
+});
+
+test("Save : seulement les listes du profil actif ; destinations par position", () => {
+    assert.deepEqual(saveItems(LTX_STATE).map((i) => [i.path, i.folder]), [
+        ["P/08.Images/g1.png", "08.Images"], ["P/08.Images/g2.png", "08.Images"], ["P/12.Video/gv.mp4", "12.Video"],
+        ["P/10.Son/st.wav", "10.Son"], ["P/10.Son/vo.wav", "10.Son"]]);
+    const mm = Object.assign({}, LTX_STATE, { profile: "minimax_h3" });
+    assert.deepEqual(saveItems(mm).map((i) => i.path),
+        ["P/08.Images/m.png", "P/12.Video/mv.mp4", "P/14.Video-Audio/va.mp4", "P/10.Son/ma.wav"]);
+    // Les destinations ne vont qu'aux listes du profil actif (les listes cachees ne bougent pas)
+    const out = remapState(LTX_STATE, mapBySequence(["A", "B", "C", "D", "E"], LTX_STATE));
+    assert.deepEqual([out.guide_images, out.guide_video, out.soundtrack, out.voice], [["A", "B"], ["C"], ["D"], ["E"]]);
+    assert.deepEqual(out.images, ["P/08.Images/m.png"]);
+    assert.deepEqual(out.moments.guide_images, { "a": 0 });
+    const f = remapState(LTX_STATE, mapFolderBySequence("08.Images", ["X", ""], LTX_STATE));
+    assert.deepEqual(f.guide_images, ["X", "P/08.Images/g2.png"]);
+    assert.deepEqual(f.images, ["P/08.Images/m.png"]);
+});
+
+test("cloches : listes du profil actif ; une reference du profil cache n'est pas retiree", () => {
+    assert.deepEqual(folderPaths(LTX_STATE, "10.Son"), ["P/10.Son/st.wav", "P/10.Son/vo.wav"]);
+    assert.deepEqual(folderPaths(LTX_STATE, "14.Video-Audio"), []);
+    const mm = Object.assign({}, LTX_STATE, { profile: "minimax_h3" });
+    assert.deepEqual(folderPaths(mm, "10.Son"), ["P/10.Son/ma.wav"]);
+    // Instantane pris en MiniMax, puis passage en LTX : ma.wav reste utilise par le profil cache
+    const snap = ["P/10.Son/ma.wav", "P/10.Son/gone.wav"];
+    assert.deepEqual(folderChanges(LTX_STATE, "10.Son", "P", snap), { added: [], removed: ["P/10.Son/gone.wav"] });
+    assert.deepEqual(folderChanges(LTX_STATE, "10.Son", "Q", []).added, ["P/10.Son/st.wav", "P/10.Son/vo.wav"]);
+});
+
+test("archives : les fichiers des deux profils sont utilises", () => {
+    const files = ["P/08.Images/m.png", "P/08.Images/g1.png", "P/08.Images/x.png"];
+    assert.deepEqual(unusedProjectFiles(files, LTX_STATE), ["P/08.Images/x.png"]);
+    assert.deepEqual(unusedProjectFiles(files, Object.assign({}, LTX_STATE, { profile: "minimax_h3" })),
+        ["P/08.Images/x.png"]);
+});
+
+test("withoutMedia : moments retires, profil et limites gardes", () => {
+    const s = withoutMedia(Object.assign({}, LTX_STATE, { limits: { ltx2: { fps: 25 } } }));
+    assert.equal(s.moments, undefined);
+    assert.equal(s.trims, undefined);
+    assert.equal(s.guide_images, undefined);
+    assert.equal(s.profile, "ltx2");
+    assert.deepEqual(s.limits, { ltx2: { fps: 25 } });
+});
+
+test("galerie reliee a un projet : dossiers LTX 2.x", () => {
+    for (const f of ["08.Images", "10.Son", "12.Video"]) assert.ok(isMediaSubfolder("P/" + f, "ltx2"));
+    assert.ok(!isMediaSubfolder("P/14.Video-Audio", "ltx2"));
+    assert.ok(isMediaSubfolder("G/P/12.Video", "ltx2"));
+});
+
+test("MEDIA_FOLDERS : listes LTX 2.x dans leurs dossiers", () => {
+    assert.deepEqual(MEDIA_FOLDERS, {
+        "08.Images": ["images", "first_frame", "last_frame", "guide_images"],
+        "10.Son": ["audios", "soundtrack", "voice"],
+        "12.Video": ["videos", "guide_video"],
+        "14.Video-Audio": ["video_audios"],
+    });
+});
+
+test("Load d'une configuration LTX 2.x : listes LTX remplacees, listes MiniMax gardees, moments repris", () => {
+    const report = { mode: null, profile: "ltx2", folders: [
+        { folder: "08.Images", kind: "media", files: [
+            { nom: "b.png", Liste: "guide_images", Indice: 2, status: "ok", moment: -1 },
+            { nom: "a.png", Liste: "guide_images", Indice: 1, status: "ok", moment: 2.5 },
+        ] },
+        { folder: "10.Son", kind: "media", files: [{ nom: "v.wav", Liste: "voice", Indice: 1, status: "ok", trim: [1, 4] }] },
+    ] };
+    const base = { profile: "minimax_h3", mode: "fl2va", images: ["keep.png"], first_frame: ["f.png"], audios: ["a.wav"],
+        guide_images: ["old.png"], voice: [], soundtrack: ["old.wav"], moments: { guide_images: { "old.png": 1 } }, trims: {} };
+    const s = loadedState(base, report, "C:\\P", ["08.Images", "10.Son"]);
+    assert.equal(s.profile, "ltx2");
+    assert.equal(s.mode, "fl2va");   // mode MiniMax inchange
+    assert.deepEqual(s.images, ["keep.png"]);
+    assert.deepEqual(s.first_frame, ["f.png"]);
+    assert.deepEqual(s.audios, ["a.wav"]);
+    assert.deepEqual(s.guide_images, ["C:\\P\\08.Images\\a.png", "C:\\P\\08.Images\\b.png"]);
+    assert.deepEqual(s.moments.guide_images, { "c:/p/08.images/a.png": 2.5, "c:/p/08.images/b.png": -1 });
+    assert.deepEqual(s.voice, ["C:\\P\\10.Son\\v.wav"]);
+    assert.deepEqual(s.soundtrack, []);
+    assert.deepEqual(s.trims.voice, { "c:/p/10.son/v.wav": [1, 4] });
+    // Configuration MiniMax (sans profile) : listes LTX gardees, profil MiniMax
+    const mm = loadedState(Object.assign({}, base, { profile: "ltx2" }), { mode: "REF2VA", folders: [
+        { folder: "08.Images", kind: "media", files: [{ nom: "i.png", Liste: "images", Indice: 1, status: "ok" }] }] },
+    "C:\\P", ["08.Images"]);
+    assert.equal(mm.profile, "minimax_h3");
+    assert.equal(mm.mode, "ref2va");
+    assert.deepEqual(mm.guide_images, ["old.png"]);
+    assert.deepEqual(mm.images, ["C:\\P\\08.Images\\i.png"]);
+});
+
+test("visualisation d'un dossier en LTX 2.x : numeros des guides, S / V pour le son", () => {
+    const D = "C:\\P\\10.Son\\";
+    const st = { profile: "ltx2", audios: [D + "m.wav"], soundtrack: [D + "s.wav"], voice: [D + "v.wav"] };
+    assert.deepEqual(orderedFolderFiles([D + "m.wav", D + "v.wav", D + "s.wav"], st, "10.Son"), [
+        { path: D + "s.wav", badge: "S" }, { path: D + "v.wav", badge: "V" }, { path: D + "m.wav", badge: "" }]);
+    const I = "C:\\P\\08.Images\\";
+    assert.deepEqual(orderedFolderFiles([I + "g.png"], { profile: "ltx2", guide_images: [I + "g.png"] }, "08.Images"),
+        [{ path: I + "g.png", badge: "1" }]);
+});
+
+test("configFileName et modeHasRefs en LTX 2.x", () => {
+    const d = new Date(2026, 9, 6, 9, 5, 3);
+    assert.equal(configFileName(d, "ltx2"), "20261006-090503_LTX2_magicstudio_config.json");
+    assert.equal(modeHasRefs({ voice: ["v"] }, "ltx2"), true);
+    assert.equal(modeHasRefs({ images: ["i"] }, "ltx2"), false);
 });

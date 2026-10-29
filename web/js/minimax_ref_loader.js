@@ -27,6 +27,8 @@ const INACTIVE_FG = "#888";
 // Limites par profil : defauts lus une fois sur la route /mmrefloader/profiles
 // (setup de l'extension) ; null tant qu'elle n'a pas repondu = FALLBACK_LIMITS.
 let profileDefaults = null;
+/** Defauts des profils pour le noeud Project (compteurs "Use: n/x") ; null = FALLBACK_LIMITS. */
+const profileLimitDefaults = () => profileDefaults;
 /** Plafond d'une liste (kind) pour l'etat s : defauts du profil + reglages du noeud. */
 const limitOf = (s, kind) => limitsOf(s, profileDefaults)[kind];
 /** Sorties visibles (identique a media.state_layout). */
@@ -812,7 +814,9 @@ async function missingPaths(paths) {
     return uniq.filter((p, i) => !ok[i]);
 }
 
-const SELECTION_LISTS = ["images", "videos", "video_audios", "audios", "first_frame", "last_frame"];
+// Listes re-liees au nouveau Root folder : les deux profils (MiniMax H3 et LTX 2.x).
+const SELECTION_LISTS = ["images", "videos", "video_audios", "audios", "first_frame", "last_frame",
+    "guide_images", "guide_video", "soundtrack", "voice"];
 
 /**
  * Nouveau Root folder (choix utilisateur, 19/10/2026) : chaque reference
@@ -5272,4 +5276,5 @@ export {
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode, PROJECT_TYPE,
     FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker, THUMB_REVALIDATE,
+    profileLimitDefaults,
 };

@@ -152,6 +152,27 @@ class RunParamsTest(unittest.TestCase):
         prompt["270"]["inputs"]["value"] = False
         self.assertEqual([x["name"] for x in rr.run_models(prompt)["loras"]], ["bounce", "p1.safetensors"])
         self.assertEqual(rr.run_models(None), {"diffusion_model": [], "text_encoder": [], "vae": [], "loras": []})
+        self.assertNotIn("audio_vae", rr.run_models(prompt))   # cle absente sans VAE audio LTX
+
+    def test_run_models_ltx_loaders(self):
+        # Chargeurs LTX 2.x : ckpt_name n'est pas toujours un modele de diffusion.
+        prompt = {
+            "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "ltx-2.3-distilled-1.1-fp8.safetensors"}},
+            "2": {"class_type": "LTXAVTextEncoderLoader", "inputs": {
+                "text_encoder": "gemma_3_12B_fp8.safetensors", "ckpt_name": "ltx-2.3-distilled-1.1-fp8.safetensors",
+                "device": "default"}},
+            "3": {"class_type": "LTXVAudioVAELoader", "inputs": {"ckpt_name": "ltx-2.3-audio-vae.safetensors"}},
+            "4": {"class_type": "TextEncode", "inputs": {"clip": ["2", 0], "text": "x"}},
+            "5": {"class_type": "KSampler", "inputs": {"model": ["1", 0], "positive": ["4", 0], "seed": 1,
+                                                       "steps": 8, "cfg": 1}},
+            "6": {"class_type": "VAEDecodeAudio", "inputs": {"samples": ["5", 0], "vae": ["3", 0]}},
+        }
+        m = rr.run_models(prompt)
+        self.assertEqual(m["text_encoder"], [P0("gemma_3_12B_fp8.safetensors"),
+                                             P0("ltx-2.3-distilled-1.1-fp8.safetensors")])
+        self.assertEqual(m["audio_vae"], [P0("ltx-2.3-audio-vae.safetensors")])
+        self.assertEqual(m["diffusion_model"], [P0("ltx-2.3-distilled-1.1-fp8.safetensors")])
+        self.assertNotIn(P0("ltx-2.3-audio-vae.safetensors"), m["diffusion_model"])
 
     def test_file_names_given_by_links(self):
         # Workflow reel : noms donnes par "MODELS/CLIP/VAE/LoRA : File Select" (MultiFileSelect, sortie N -> field_N).
@@ -958,6 +979,23 @@ class RunFileTest(unittest.TestCase):
         self.assertEqual(rr.run_sets({"models": changed}, regs), {"models": [1], "lora": [2]})
         self.assertEqual(rr.run_sets({"models": dict(models, vae=["other"])}, regs), {"models": [], "lora": [1]})
         self.assertEqual(rr.registry_sets(os.path.join(self.root, "none")), {"models": [], "lora": []})
+
+    def test_registry_audio_vae_group(self):
+        # VAE audio LTX 2.x : garde dans l'ensemble ; un ensemble MiniMax n'a pas la cle.
+        base = {"diffusion_model": ["u"], "text_encoder": [], "vae": []}
+        i1 = rr.register_config(self.p, "models", base, None)
+        i2 = rr.register_config(self.p, "models", dict(base, audio_vae=["a.safetensors"]), None)
+        self.assertEqual((i1, i2), (1, 2))
+        self.assertEqual(rr.register_config(self.p, "models", dict(base, audio_vae=[]), None), 1)
+        entries = rr.read_registry(self.p, "models")["MODELS"]
+        self.assertNotIn("audio_vae", entries[0])
+        self.assertEqual(entries[1]["audio_vae"], [P0("a.safetensors")])
+        sets = rr.registry_sets(self.p)["models"]
+        self.assertNotIn("audio_vae", sets[0])
+        self.assertEqual(sets[1]["audio_vae"], [P0("a.safetensors")])
+        regs = {k: rr.read_registry(self.p, k) for k in rr.REGISTRIES}
+        detail = rr.run_models_of(self.p, {"models": [{"indiceMODELS": 2}]}, regs)
+        self.assertEqual(detail["audio_vae"], [P0("a.safetensors")])
 
     def test_error_status_and_bad_files(self):
         path = rr.start_run(self.p, "p", PROMPT, self.when)

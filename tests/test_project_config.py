@@ -129,6 +129,76 @@ class ProjectConfigTest(unittest.TestCase):
         self.assertEqual(len(ctx.exception.errors), 1)
         self.assertIn("10.Son/lost.wav", ctx.exception.errors[0])
 
+    # ---- profil LTX 2.x (Task 7) ----
+    def ltx_refs(self):
+        g1 = write(self.f("08.Images", "g1.png"), b"G1")
+        g2 = write(self.f("08.Images", "g2.png"), b"G2")
+        gv = write(self.f("12.Video", "gv.mp4"), b"GV")
+        st = write(self.f("10.Son", "st.wav"), b"ST")
+        vo = write(self.f("10.Son", "vo.wav"), b"VO")
+        refs = {"guide_images": [g1, g2], "guide_video": [gv], "soundtrack": [st], "voice": [vo]}
+        trims = {"guide_video": {pc.trim_key(gv): [1, 3]}, "voice": {pc.trim_key(vo): [0, 2]}}
+        moments = {"guide_images": {pc.trim_key(g1): 0, pc.trim_key(g2): -1}, "guide_video": {pc.trim_key(gv): 1.5}}
+        return refs, trims, moments
+
+    def test_build_config_ltx_profile(self):
+        refs, trims, moments = self.ltx_refs()
+        cfg = pc.build_config(self.p, refs, trims, "ref2va", now="2026-10-25 10:00:00", profile="ltx2", moments=moments)
+        self.assertEqual(cfg["profile"], "ltx2")
+        self.assertIsNone(cfg["mode"])
+        self.assertEqual(list(cfg)[list(cfg).index("mode") + 1], "profile")   # profile a cote de mode
+        img = cfg["08.Images"][0]
+        self.assertEqual(img["NbImage"], 2)
+        self.assertEqual([(img["image %d" % k][0]["Liste"], img["image %d" % k][0]["Indice"], img["image %d" % k][0]["nom"])
+                          for k in (1, 2)], [("guide_images", 1, "g1.png"), ("guide_images", 2, "g2.png")])
+        self.assertEqual([img["image 1"][0]["moment"], img["image 2"][0]["moment"]], [0, -1])
+        son = cfg["10.Son"][0]
+        self.assertEqual(son["NbSon"], 2)
+        self.assertEqual([son["son 1"][0]["Liste"], son["son 2"][0]["Liste"]], ["soundtrack", "voice"])
+        self.assertEqual(son["son 2"][0]["trim"], [0, 2])
+        vid = cfg["12.Video"][0]["video 1"][0]
+        self.assertEqual((vid["Liste"], vid["trim"], vid["moment"]), ("guide_video", [1, 3], 1.5))
+        self.assertEqual(cfg["14.Video-Audio"], [{"Valide": False, "NbVideo": 0}])
+        # Enregistree puis relue
+        pc.save_config(self.p, refs, trims, "ref2va", profile="ltx2", moments=moments)
+        rep = pc.check_config(self.p)
+        self.assertEqual((rep["profile"], rep["mode"]), ("ltx2", None))
+        by = {f["folder"]: f for f in rep["folders"]}
+        self.assertEqual([(x["Liste"], x["moment"]) for x in by["08.Images"]["files"]],
+                         [("guide_images", 0), ("guide_images", -1)])
+
+    def test_hidden_profile_files_are_kept_without_index(self):
+        # Fichiers du profil cache : pas d'indice, mais pas une erreur (jamais archives)
+        refs, trims = self.refs()
+        lrefs, ltrims, moments = self.ltx_refs()
+        both = dict(refs, **lrefs)
+        cfg = pc.build_config(self.p, both, dict(trims, **ltrims), "ref2va", profile="ltx2", moments=moments)
+        self.assertEqual([e[0]["nom"] for k, e in cfg["08.Images"][0].items() if k.startswith("image ")], ["g1.png", "g2.png"])
+        cfg = pc.build_config(self.p, both, dict(trims, **ltrims), "ref2va")
+        self.assertEqual(cfg["profile"], "minimax_h3")
+        self.assertEqual(cfg["mode"], "REF2VA")
+        self.assertEqual(cfg["08.Images"][0]["NbImage"], 3)
+        self.assertEqual(cfg["10.Son"], [{"Valide": False, "NbSon": 0}])
+        self.assertNotIn("moment", cfg["08.Images"][0]["image 1"][0])
+
+    def test_unused_file_message_names_the_refloader(self):
+        write(self.f("10.Son", "lost.wav"), b"L")
+        with self.assertRaises(pc.ConfigError) as ctx:
+            pc.build_config(self.p, {})
+        self.assertIn("not used by the MagicStudio RefLoader", ctx.exception.errors[0])
+
+    def test_old_config_without_profile(self):
+        refs, trims = self.refs()
+        pc.save_config(self.p, refs, trims)
+        path = os.path.join(self.p, "99.Project-Config", "config_projets_Proj.json")
+        cfg = json.loads(read(path))
+        del cfg["profile"]
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f)
+        self.assertEqual(pc.read_config(self.p)["profile"], "minimax_h3")
+        rep = pc.check_config(self.p)
+        self.assertEqual((rep["profile"], rep["mode"]), ("minimax_h3", "REF2VA"))
+
     # ---- sauvegarde et archives ----
     def test_save_archives_previous_never_overwrites(self):
         refs, trims = self.refs()

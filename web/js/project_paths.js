@@ -1,6 +1,7 @@
 // Regles des dossiers de projet, sans dependance a ComfyUI (testees par
 // node --test tests/test_project_paths.mjs).
 import { trimKey } from "./config_format.js";
+import { profileOf, limitsOf, LABELS } from "./profiles.js";
 
 // Sous-dossiers de chaque projet (meme liste que projects.SUBFOLDERS en Python).
 export const PROJECT_SUBFOLDERS = [
@@ -39,11 +40,24 @@ const TRIM_OF_LIST = {
 };
 // Liste -> moments des guides LTX 2.x (cle de state.moments).
 const MOMENT_LISTS = ["guide_images", "guide_video"];
+// Listes de chaque profil (l'etat garde les deux jeux ; seul le profil actif sert).
+const PROFILE_LISTS = {
+    minimax_h3: ["images", "videos", "video_audios", "audios", "first_frame", "last_frame"],
+    ltx2: ["guide_images", "guide_video", "soundtrack", "voice"],
+};
 
-/** Fichiers a copier par Save : [{path, folder}] dans l'ordre des listes. */
+/**
+ * Listes du profil actif, dans l'ordre des listes : Save, cloches, compteurs et
+ * configuration du projet. L'archivage (unusedProjectFiles) regarde les deux profils.
+ */
+export function activeLists(state) {
+    return PROFILE_LISTS[profileOf(state)];
+}
+
+/** Fichiers a copier par Save : [{path, folder}] dans l'ordre des listes du profil actif. */
 export function saveItems(state) {
     const items = [];
-    for (const list of LISTS) {
+    for (const list of activeLists(state)) {
         for (const path of state[list] || []) items.push({ path, folder: LIST_FOLDERS[list] });
     }
     return items;
@@ -81,10 +95,13 @@ export function remapState(state, fn) {
  * fn pour remapState apres Save : destinations dans l'ordre de saveItems()
  * ("" = fichier manquant, chemin garde). Par position et non par chemin :
  * une meme video peut aller dans 12.Video et dans 14.Video-Audio.
+ * state : seules les listes de son profil actif recoivent une destination.
  */
-export function mapBySequence(dsts) {
+export function mapBySequence(dsts, state) {
+    const lists = state ? activeLists(state) : null;
     let i = 0;
-    return (p) => {
+    return (p, list) => {
+        if (lists && !lists.includes(list)) return p;
         const d = dsts[i++];
         return d || p;
     };
@@ -108,14 +125,18 @@ export const UPDATE_FOLDERS = ["08.Images", "10.Son", "12.Video", "14.Video-Audi
 const normPath = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 const dirOf = (p) => normPath(p).replace(/\/[^/]*$/, "");
 
-/** References du Ref Loader qui vont dans ce dossier (ordre des listes, sans doublon). */
-export function folderPaths(state, folder) {
+function pathsOf(state, folder, lists) {
     const out = [];
-    for (const list of LISTS) {
+    for (const list of lists) {
         if (LIST_FOLDERS[list] !== folder) continue;
         for (const p of state[list] || []) if (!out.includes(p)) out.push(p);
     }
     return out;
+}
+
+/** References du profil actif du Ref Loader qui vont dans ce dossier (ordre des listes, sans doublon). */
+export function folderPaths(state, folder) {
+    return pathsOf(state, folder, activeLists(state));
 }
 
 /** Instantane des dossiers suivis : {dossier: [chemins]} (Save, mise a jour). */
@@ -134,29 +155,33 @@ export function folderChanges(state, folder, projectPath, snapshot) {
     const current = folderPaths(state, folder);
     const dir = normPath(projectPath + "/" + folder);
     const added = current.filter((p) => dirOf(p) !== dir);
-    const now = new Set(current.map(normPath));
+    // Retiree = plus dans aucune liste (un fichier du profil cache n'est pas retire).
+    const now = new Set(pathsOf(state, folder, LISTS).map(normPath));
     const removed = Array.isArray(snapshot) ? snapshot.filter((p) => !now.has(normPath(p))) : [];
     return { added, removed };
 }
 
-/** fn pour remapState apres la mise a jour d'un dossier : seules ses listes changent. */
-export function mapFolderBySequence(folder, dsts) {
+/** fn pour remapState apres la mise a jour d'un dossier : seules ses listes (du profil actif de state) changent. */
+export function mapFolderBySequence(folder, dsts, state) {
+    const lists = state ? activeLists(state) : null;
     let i = 0;
     return (p, list) => {
-        if (LIST_FOLDERS[list] !== folder) return p;
+        if (LIST_FOLDERS[list] !== folder || (lists && !lists.includes(list))) return p;
         const d = dsts[i++];
         return d || p;
     };
 }
 
 /**
- * Etat du Ref Loader sans ses listes ni rognages : le contenu des dossiers
- * est suivi par leurs cloches, ce n'est pas une modification du workflow.
+ * Etat du Ref Loader sans ses listes, rognages ni moments : le contenu des dossiers
+ * est suivi par leurs cloches, ce n'est pas une modification du workflow
+ * (profil et limites restent : ils changent les sorties).
  */
 export function withoutMedia(state) {
     const s = Object.assign({}, state);
     for (const list of LISTS) delete s[list];
     delete s.trims;
+    delete s.moments;
     return s;
 }
 
@@ -181,8 +206,8 @@ export function replaceSelection(initial, final) {
 
 /**
  * Fichiers du dossier du projet que plus aucune liste du Ref Loader
- * n'utilise (toutes les listes : une video peut servir de son seul) :
- * ils partent dans Archives, aucun ne reste.
+ * n'utilise (toutes les listes des deux profils : une video peut servir de
+ * son seul, un fichier du profil cache reste) : ils partent dans Archives.
  */
 export function unusedProjectFiles(paths, state) {
     const used = new Set();
@@ -190,26 +215,48 @@ export function unusedProjectFiles(paths, state) {
     return paths.filter((p) => !used.has(normPath(p)));
 }
 
-// Maximum du Reference Loader par dossier (plafonds du noeud MiniMax H3) ; 08.Images suit le mode.
-export const FOLDER_MAX = {
-    "08.Images": { ref2va: 9, fl2va: 2 }, "10.Son": 3, "12.Video": 3, "14.Video-Audio": 3,
+/**
+ * Maximum du Reference Loader par dossier, lu dans ses limites (limitsOf : defauts
+ * du profil + reglages du noeud). MiniMax : 08 = Images (Ref2VA) ou premiere +
+ * derniere image (FL2VA), 10 / 12 / 14 = sons / videos / videos avec son.
+ * LTX 2.x : 08 = images guides, 10 = bande-son + voix, 12 = video guide, 14 = 0.
+ */
+export function folderMax(state, defaults) {
+    const lim = limitsOf(state, defaults);
+    if (profileOf(state) === "ltx2") {
+        return { "08.Images": lim.guide_image, "10.Son": lim.soundtrack + lim.voice, "12.Video": lim.guide_video,
+            "14.Video-Audio": 0 };
+    }
+    const fl = !!state && state.mode === "fl2va";
+    return { "08.Images": fl ? lim.first_frame + lim.last_frame : lim.image, "10.Son": lim.audio,
+        "12.Video": lim.video, "14.Video-Audio": lim.video_audio };
+}
+
+// Listes comptees par "Use: x/y" : [mode ou profil][dossier].
+const USE_LISTS = {
+    ref2va: { "08.Images": ["images"], "10.Son": ["audios"], "12.Video": ["videos"], "14.Video-Audio": ["video_audios"] },
+    fl2va: { "08.Images": ["first_frame", "last_frame"], "10.Son": ["audios"], "12.Video": ["videos"],
+        "14.Video-Audio": ["video_audios"] },
+    ltx2: { "08.Images": ["guide_images"], "10.Son": ["soundtrack", "voice"], "12.Video": ["guide_video"],
+        "14.Video-Audio": [] },
 };
 
 /**
  * "Use: x/y" d'un dossier (choix utilisateur) : x = fichiers du dossier
- * utilises par les listes du mode actuel (08.Images : Images en Ref2VA,
- * premiere + derniere image en FL2VA), y = maximum du dossier pour ce mode.
+ * utilises par les listes du profil et du mode actuels, y = maximum du dossier
+ * (folderMax ; 0 = dossier non utilise : 14.Video-Audio en LTX 2.x).
+ * mode = "Ref2VA", "FL2VA" ou "LTX 2.x".
  */
-export function folderUse(paths, state, folder) {
+export function folderUse(paths, state, folder, defaults) {
+    const ltx = profileOf(state) === "ltx2";
     const fl = !!state && state.mode === "fl2va";
-    const lists = folder === "08.Images" ? (fl ? ["first_frame", "last_frame"] : ["images"]) : MEDIA_FOLDERS[folder] || [];
+    const key = ltx ? "ltx2" : fl ? "fl2va" : "ref2va";
     const refs = new Set();
-    for (const list of lists) for (const p of (state && state[list]) || []) refs.add(normPath(p));
-    const max = FOLDER_MAX[folder];
+    for (const list of USE_LISTS[key][folder] || []) for (const p of (state && state[list]) || []) refs.add(normPath(p));
     return {
         used: (paths || []).filter((p) => refs.has(normPath(p))).length,
-        max: typeof max === "object" && max ? max[fl ? "fl2va" : "ref2va"] : max || 0,
-        mode: fl ? "FL2VA" : "Ref2VA",
+        max: folderMax(state, defaults)[folder] || 0,
+        mode: ltx ? LABELS.ltx2 : fl ? "FL2VA" : "Ref2VA",
     };
 }
 
@@ -243,18 +290,23 @@ export function duplicateColors(paths, hashes) {
     return out;
 }
 
-/** Le mode a-t-il au moins une reference (une configuration a sauvegarder) ? */
+/** Le mode (ou "ltx2") a-t-il au moins une reference (une configuration a sauvegarder) ? */
 export function modeHasRefs(state, mode) {
     const n = (k) => (state[k] || []).length;
+    if (mode === "ltx2") return PROFILE_LISTS.ltx2.some((k) => n(k) > 0);
     return mode === "fl2va" ? n("first_frame") + n("last_frame") > 0
         : n("images") + n("videos") + n("video_audios") + n("audios") > 0;
 }
 
-/** Nom d'une configuration enregistree par Save : yyyyMMdd-HHmmss_MODE_minimax_config.json. */
+/**
+ * Nom d'une configuration enregistree par Save : yyyyMMdd-HHmmss_MODE_minimax_config.json
+ * (mode "ltx2" : yyyyMMdd-HHmmss_LTX2_magicstudio_config.json).
+ */
 export function configFileName(date, mode) {
     const p = (n) => String(n).padStart(2, "0");
     const stamp = date.getFullYear() + p(date.getMonth() + 1) + p(date.getDate()) + "-" +
         p(date.getHours()) + p(date.getMinutes()) + p(date.getSeconds());
+    if (mode === "ltx2") return stamp + "_LTX2_magicstudio_config.json";
     return stamp + "_" + (mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config.json";
 }
 
@@ -318,20 +370,23 @@ export function parseProjectState(raw) {
 
 // ---- Configuration du projet (99.Project-Config) : Load / Save ----
 
-// Dossiers des listes du Ref Loader (meme table que project_config.MEDIA en Python).
+// Dossiers des listes du Ref Loader, deux profils (meme table que project_config.MEDIA en Python).
 export const MEDIA_FOLDERS = {
-    "08.Images": ["images", "first_frame", "last_frame"],
-    "10.Son": ["audios"],
-    "12.Video": ["videos"],
+    "08.Images": ["images", "first_frame", "last_frame", "guide_images"],
+    "10.Son": ["audios", "soundtrack", "voice"],
+    "12.Video": ["videos", "guide_video"],
     "14.Video-Audio": ["video_audios"],
 };
 // Dossiers chargeables (une case chacun dans la fenetre Load).
 export const LOADABLE_FOLDERS = ["00.Workflows", "08.Images", "10.Son", "12.Video", "14.Video-Audio"];
 
-/** Listes du Ref Loader envoyees a Save (chemins des fichiers du projet). */
+/**
+ * Listes du Ref Loader envoyees a Save (chemins des fichiers du projet), des deux
+ * profils : build_config indexe celles du profil actif, les fichiers de l'autre
+ * profil restent sans indice (pas une erreur).
+ */
 export function configRefs(state) {
     const out = {};
-    // Listes des dossiers de medias seulement (les listes LTX 2.x y entreront avec MEDIA_FOLDERS).
     for (const lists of Object.values(MEDIA_FOLDERS)) for (const list of lists) out[list] = (state[list] || []).slice();
     return out;
 }
@@ -343,33 +398,43 @@ function joinPath(dir, ...parts) {
 
 /**
  * Load : etat du Ref Loader avec les listes des dossiers coches remplacees
- * par la configuration (ordre des indices, rognages repris). Un fichier
- * manquant et introuvable dans Archives est saute. Le mode suit la
- * configuration des qu'un dossier de medias est coche.
+ * par la configuration (ordre des indices, rognages et moments repris). Un
+ * fichier manquant et introuvable dans Archives est saute. Seules les listes
+ * du profil de la configuration changent (sans profile : MiniMax H3) ; le
+ * profil et le mode suivent la configuration des qu'un dossier de medias est coche.
  */
 export function loadedState(base, report, projectPath, checked) {
     const s = JSON.parse(JSON.stringify(base || {}));
     s.trims = s.trims || {};
+    const prof = report.profile === "ltx2" ? "ltx2" : "minimax_h3";
     let any = false;
     for (const f of report.folders || []) {
         const lists = MEDIA_FOLDERS[f.folder];
         if (!lists || !checked.includes(f.folder)) continue;
         any = true;
-        for (const list of lists) {
+        for (const list of lists.filter((l) => PROFILE_LISTS[prof].includes(l))) {
             const kind = TRIM_OF_LIST[list];
             if (kind && s.trims[kind]) for (const p of s[list] || []) delete s.trims[kind][trimKey(p)];
+            const moments = MOMENT_LISTS.includes(list);
+            if (moments && s.moments && s.moments[list]) for (const p of s[list] || []) delete s.moments[list][trimKey(p)];
             const items = (f.files || []).filter((x) => x.Liste === list && (x.status !== "missing" || x.archive))
                 .sort((a, b) => a.Indice - b.Indice);
             s[list] = items.map((x) => joinPath(projectPath, f.folder, x.nom));
-            if (!kind) continue;
             items.forEach((x, i) => {
-                if (!Array.isArray(x.trim) || x.trim.length !== 2) return;
-                s.trims[kind] = s.trims[kind] || {};
-                s.trims[kind][trimKey(s[list][i])] = [x.trim[0], x.trim[1]];
+                if (kind && Array.isArray(x.trim) && x.trim.length === 2) {
+                    s.trims[kind] = s.trims[kind] || {};
+                    s.trims[kind][trimKey(s[list][i])] = [x.trim[0], x.trim[1]];
+                }
+                if (moments && typeof x.moment === "number") {
+                    s.moments = s.moments || {};
+                    s.moments[list] = s.moments[list] || {};
+                    s.moments[list][trimKey(s[list][i])] = x.moment;
+                }
             });
         }
     }
-    if (any && report.mode) s.mode = report.mode === "FL2VA" ? "fl2va" : "ref2va";
+    if (any) s.profile = prof;
+    if (any && prof === "minimax_h3" && report.mode) s.mode = report.mode === "FL2VA" ? "fl2va" : "ref2va";
     return s;
 }
 
@@ -396,12 +461,15 @@ export function restoreItems(report, checked) {
  * sans numero (badge "") par nom.
  */
 export function orderedFolderFiles(paths, refState, folder) {
-    const lists = MEDIA_FOLDERS[folder] || [];
+    // Listes du profil actif ; LTX 2.x : S / V = bande-son / voix.
+    const active = activeLists(refState);
+    const lists = (MEDIA_FOLDERS[folder] || []).filter((l) => active.includes(l));
+    const LETTERS = { first_frame: "F", last_frame: "L", soundtrack: "S", voice: "V" };
     const rank = new Map();
     lists.forEach((list, li) => {
         ((refState && refState[list]) || []).forEach((p, i) => {
             const key = normPath(p);
-            const badge = list === "first_frame" ? "F" : list === "last_frame" ? "L" : String(i + 1);
+            const badge = LETTERS[list] || String(i + 1);
             if (!rank.has(key)) rank.set(key, { order: li * 1000 + i, badge });
             else rank.get(key).badge += " · " + badge;
         });
@@ -741,12 +809,12 @@ export function filterSubfolders(entries, project) {
 /**
  * Sous-dossier de la galerie quand elle montre le dossier des projets (choix
  * utilisateur, 19/10/2026) : seulement <projet>/08.Images ... 14.Video-Audio
- * en Ref2VA, seulement <projet>/08.Images en F2VA / FL2VA (pas d'Archives :
- * bouton View archives).
+ * en Ref2VA, seulement <projet>/08.Images en F2VA / FL2VA, 08.Images, 10.Son et
+ * 12.Video en LTX 2.x (mode "ltx2") ; pas d'Archives : bouton View archives.
  */
 export function isMediaSubfolder(path, mode) {
     const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
-    const allowed = mode === "fl2va" ? ["08.Images"] : UPDATE_FOLDERS;
+    const allowed = mode === "fl2va" ? ["08.Images"] : mode === "ltx2" ? ["08.Images", "10.Son", "12.Video"] : UPDATE_FOLDERS;
     // Projet de la racine (P/08.Images) ou d'un dossier de projets (G/P/08.Images, 22/10/2026).
     return (parts.length === 2 || parts.length === 3) && allowed.includes(parts[parts.length - 1]);
 }

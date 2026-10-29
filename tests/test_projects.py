@@ -368,6 +368,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(info["name"], "Clip.json")
         self.assertEqual(projects.read_workflow(self.project, "Clip.json"), '{"a": 1}')
         write(os.path.join(self.wf, "20261016-153000_REF2VA_minimax_config.json"), b"{}")
+        write(os.path.join(self.wf, "20261016-153000_LTX2_magicstudio_config.json"), b"{}")
         listing = projects.list_workflows(self.project)
         self.assertEqual([w["name"] for w in listing["workflows"]], ["Clip.json"])
         self.assertEqual(listing["archives"], [])

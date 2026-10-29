@@ -626,7 +626,8 @@ try:
             body = await request.json()
             projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             info = await _in_executor(project_config.save_config, body.get("project", ""), body.get("refs") or {},
-                                      body.get("trims") or {}, body.get("mode", ""), body.get("workflow", ""))
+                                      body.get("trims") or {}, body.get("mode", ""), body.get("workflow", ""),
+                                      body.get("profile") or "minimax_h3", body.get("moments") or {})
         except project_config.ConfigError as e:
             return web.json_response({"error": str(e), "errors": e.errors}, status=400)
         except Exception as e:

@@ -165,6 +165,12 @@ def run_params(prompt):
 
 
 _MODEL_KEYS = (("unet_name", "diffusion_model"), ("ckpt_name", "diffusion_model"), ("vae_name", "vae"))
+# Noeuds dont les entrees ne suivent pas _MODEL_KEYS (consultes avant) : chargeurs LTX 2.x,
+# ou ckpt_name designe l'encodeur de texte ou le VAE audio, pas un modele de diffusion.
+_CLASS_KEYS = {
+    "LTXVAudioVAELoader": (("ckpt_name", "audio_vae"),),
+    "LTXAVTextEncoderLoader": (("text_encoder", "text_encoder"), ("ckpt_name", "text_encoder")),
+}
 
 
 def _number(prompt, value):
@@ -336,10 +342,13 @@ def run_models(prompt):
     des switchs ; unet_name / ckpt_name -> diffusion_model, clip_name* ->
     text_encoder, vae_name -> vae, lora_name -> loras (forces), liste loras de
     LoraManager -> seulement les LoRA actives, lora_N de Power Lora Loader
-    ({on, lora, strength}) -> seulement celles allumees.
+    ({on, lora, strength}) -> seulement celles allumees. Chargeurs LTX 2.x
+    (_CLASS_KEYS) : encodeur de texte et VAE audio (audio_vae, cle presente
+    seulement si non vide : bloc des Runs MiniMax inchange).
     """
-    out = {"diffusion_model": [], "text_encoder": [], "vae": [], "loras": []}
+    out = {"diffusion_model": [], "text_encoder": [], "vae": [], "audio_vae": [], "loras": []}
     if not isinstance(prompt, dict):
+        del out["audio_vae"]
         return out
     ids = sorted(prompt, key=_sort_key)
     node = lambda i: prompt.get(i) or {}
@@ -356,7 +365,9 @@ def run_models(prompt):
         stack.extend(str(v[0]) for k, v in inputs.items() if k != skip and _is_link(v))
     for i in [x for x in ids if x in seen]:
         inputs = node(i).get("inputs") or {}
-        for key, group in _MODEL_KEYS:
+        own = _CLASS_KEYS.get(str(node(i).get("class_type") or ""), ())
+        done = {key for key, _g in own}
+        for key, group in tuple(own) + tuple(k for k in _MODEL_KEYS if k[0] not in done):
             name = resolve_file(prompt, inputs[key]) if key in inputs else None
             if name and name not in out[group]:
                 out[group].append(name)
@@ -383,9 +394,14 @@ def run_models(prompt):
     fs = linked_file_select(prompt)
     if fs and fs.get("class_type") == MULTI_FILE_SELECT:
         out.update(file_select_models(fs))
+        groups = _EXTRA_GROUPS  # pas de type audio_vae dans MultiFiles Select : lu dans le graphe
     else:
-        for g in _MODEL_GROUPS:
-            out[g] = [model_item(n) for n in out[g]]
+        groups = _ALL_GROUPS
+    for g in groups:
+        out[g] = [model_item(n) for n in out[g]]
+    for g in _EXTRA_GROUPS:
+        if not out[g]:
+            del out[g]
     return out
 
 
@@ -1282,6 +1298,10 @@ MODELS_FOLDER = "02.Models"
 LORA_FOLDER = "06.LoRA"
 REGISTRY_FORMAT = "MiniMax H3 Reference Loader"
 _MODEL_GROUPS = ("diffusion_model", "text_encoder", "vae")
+# Groupe LTX 2.x : ecrit dans une entree seulement s'il n'est pas vide (entrees MiniMax inchangees ;
+# absent = vide pour comparer les ensembles).
+_EXTRA_GROUPS = ("audio_vae",)
+_ALL_GROUPS = _MODEL_GROUPS + _EXTRA_GROUPS
 # kind -> (dossier, suffixe du fichier, liste, indice d'entree, dernier indice, indice en cours)
 REGISTRIES = {
     "models": (MODELS_FOLDER, "models", "MODELS", "IndiceMODELS", "DernierIndiceMODELS", "IndiceEnCoursMODELS"),
@@ -1321,7 +1341,7 @@ def lora_list(entry):
 def _config_key(kind, config):
     if kind == "models":
         return tuple(tuple((model_item(x)["position"], model_item(x)["name"]) for x in config.get(g) or [])
-                     for g in _MODEL_GROUPS)
+                     for g in _ALL_GROUPS)
     return tuple(sorted((repr((l.get("name"), l.get("strength_model"), l.get("strength_clip"))) for l in config)))
 
 
@@ -1339,7 +1359,7 @@ def register_config(project, kind, config, mode=None, now=None, when=None):
     """
     folder, suffix, list_key, idx_key, last_key, cur_key = REGISTRIES[kind]
     now = now or time.strftime(DATE_FORMAT)
-    empty = not any(config.get(g) for g in _MODEL_GROUPS) if kind == "models" else not config
+    empty = not any(config.get(g) for g in _ALL_GROUPS) if kind == "models" else not config
     path = registry_file(project, kind)
     if empty and not path:
         return 0
@@ -1359,6 +1379,7 @@ def register_config(project, kind, config, mode=None, now=None, when=None):
             entry = {idx_key: index, "datecreat": now, "datemodifi": now}
             if kind == "models":
                 entry.update({g: [model_item(x) for x in config.get(g) or []] for g in _MODEL_GROUPS})
+                entry.update({g: [model_item(x) for x in config[g]] for g in _EXTRA_GROUPS if config.get(g)})
             else:
                 entry["ListeName"] = {"LoRA%02d" % (i + 1): {"name": l.get("name"), "strength_model": l.get("strength_model"),
                                                             "strength_clip": l.get("strength_clip")}
@@ -1387,7 +1408,7 @@ def _register_run(project, data, now=None):
     if not isinstance(captured, dict):
         return data
     when = _run_start(data)
-    mi = register_config(project, "models", {g: captured.get(g) or [] for g in _MODEL_GROUPS},
+    mi = register_config(project, "models", {g: captured.get(g) or [] for g in _ALL_GROUPS},
                          data.get("mode"), now, when)
     li = register_config(project, "lora", list(captured.get("loras") or []), data.get("mode"), now, when)
     out = {}
@@ -1416,7 +1437,7 @@ def run_sets(data, registries):
         return out
     if not isinstance(m, dict):
         return out
-    configs = {"models": {g: m.get(g) or [] for g in _MODEL_GROUPS}, "lora": list(m.get("loras") or [])}
+    configs = {"models": {g: m.get(g) or [] for g in _ALL_GROUPS}, "lora": list(m.get("loras") or [])}
     for kind, config in configs.items():
         if (not any(config.values())) if kind == "models" else not config:
             continue
@@ -1445,6 +1466,7 @@ def registry_sets(project):
             item = {"index": e[idx_key], "datecreat": e.get("datecreat"), "datemodifi": e.get("datemodifi")}
             if kind == "models":
                 item.update({g: [model_item(x) for x in e.get(g) or []] for g in _MODEL_GROUPS})
+                item.update({g: [model_item(x) for x in e[g]] for g in _EXTRA_GROUPS if e.get(g)})
             else:
                 item["loras"] = lora_list(e)
             items.append(item)
@@ -1528,6 +1550,9 @@ def run_models_of(project, data, registries=None):
         e = entry("models", (ref or {}).get("indiceMODELS")) if isinstance(ref, dict) else None
         for g in _MODEL_GROUPS:
             out[g].extend((e or {}).get(g) or [])
+        for g in _EXTRA_GROUPS:
+            if (e or {}).get(g):
+                out.setdefault(g, []).extend(e[g])
     for ref in data.get("loras") or []:
         e = entry("lora", ref.get("indiceLoRA")) if isinstance(ref, dict) else None
         out["loras"].extend(lora_list(e))
