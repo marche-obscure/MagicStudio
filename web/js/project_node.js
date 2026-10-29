@@ -14,7 +14,7 @@ import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath, sameGroup, mergeData,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
-    unusedProjectFiles, orderedFolderFiles, folderUse, hiddenFolderItems,
+    unusedProjectFiles, runSourcePaths, orderedFolderFiles, folderUse, hiddenFolderItems,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     batchSortTargets, canDeleteRush, deletedText,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
@@ -6075,9 +6075,13 @@ app.registerExtension({
                 }
             }
 
-            /** Fichiers du dossier que plus aucune liste du Reference Loader n'utilise (a archiver). */
+            /**
+             * Fichiers du dossier que plus aucune liste du Reference Loader n'utilise (a archiver) ;
+             * jamais ceux d'un Run (26/10/2026) : la lecture des Runs les range dans 40 / 60.
+             */
             function unusedOf(f, refState) {
-                return refState && Array.isArray(folderFiles[f]) ? unusedProjectFiles(folderFiles[f], refState) : [];
+                return refState && Array.isArray(folderFiles[f])
+                    ? unusedProjectFiles(folderFiles[f], refState, runSourcePaths(runList)) : [];
             }
 
             /**
@@ -6220,10 +6224,13 @@ app.registerExtension({
                         "of the project.</div>" : "");
                 const ok = await confirm.ask({ title: "Update " + f + "?", html, okLabel: "Update", okColor: BELL_ORANGE });
                 if (!ok) return;
+                let kept = [];
                 try {
                     // Archives d'abord : un fichier copie peut reprendre le nom d'un fichier archive.
                     if (unused.length) {
-                        await apiPost("/mmproject/archive_files", { project: s.path, folder: f, names: unused.map(baseName) });
+                        const res = await apiPost("/mmproject/archive_files", { project: s.path, folder: f, names: unused.map(baseName) });
+                        // Fichiers d'un Run (en cours ou cite) : le serveur les laisse en place.
+                        kept = res.kept || [];
                     }
                     if (copies.length) {
                         const data = await apiPost("/mmproject/save", { project: s.path, items, configs: [] });
@@ -6236,8 +6243,10 @@ app.registerExtension({
                     const snap = Object.assign({}, now.snapPath === now.path ? now.snap : {});
                     snap[f] = folderPaths(loader.mmGetState(), f);
                     setState({ snap, snapPath: now.path });
+                    const archived = unused.length - kept.length;
                     say(f + " updated: " + copies.length + " file(s) copied" +
-                        (unused.length ? ", " + unused.length + " archived" : "") + ".", true);
+                        (archived ? ", " + archived + " archived" : "") +
+                        (kept.length ? ", " + kept.length + " kept (file(s) of a run)" : "") + ".", true);
                 } catch (e) {
                     say(e.message);
                 }
@@ -6503,8 +6512,14 @@ app.registerExtension({
                         return;
                     }
                     const copied = (data.outputs || []).filter((o) => o.copy && !o.in_place).length;
+                    // Run enregistre dans 08 a 14 (26/10/2026) : fichier deplace dans 40 / 60, Footage.
+                    const moved = (data.outputs || []).filter((o) => o.from_media);
+                    const movedText = moved.length ? ", " + moved.length + " file(s) saved in " +
+                        [...new Set(moved.map((o) => o.from_media))].join(" / ") + " moved to " +
+                        [...new Set(moved.map((o) => (o.kind === "video" ? "40.Rush Videos" : "60.Rush Images")))].join(" / ") +
+                        " (Footage)" : "";
                     say("Run recorded: " + baseOf(run.file) + (copied ? ", " + copied + " video(s) copied to 40.Rush Videos"
-                        : "") + (status === "done" ? "." : " (run stopped or failed)."), status === "done");
+                        : "") + movedText + (status === "done" ? "." : " (run stopped or failed)."), status === "done");
                     loadFolderFiles();
                 } catch (err) {
                     say(err.message);

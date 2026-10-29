@@ -225,11 +225,19 @@ export function replaceSelection(initial, final) {
  * Fichiers du dossier du projet que plus aucune liste du Ref Loader
  * n'utilise (toutes les listes des deux profils : une video peut servir de
  * son seul, un fichier du profil cache reste) : ils partent dans Archives.
+ * cited = runSourcePaths(...) : les fichiers d'un Run ne sont jamais orphelins (26/10/2026).
  */
-export function unusedProjectFiles(paths, state) {
+export function unusedProjectFiles(paths, state, cited = new Set()) {
     const used = new Set();
     for (const list of LISTS) for (const p of state[list] || []) used.add(normPath(p));
-    return paths.filter((p) => !used.has(normPath(p)));
+    return paths.filter((p) => !used.has(normPath(p)) && !cited.has(normPath(p)));
+}
+
+/** Chemins (normPath) des fichiers source de toutes les sorties des Runs (/mmproject/runs). */
+export function runSourcePaths(runs) {
+    const out = new Set();
+    for (const r of runs || []) for (const o of (r && r.outputs) || []) if (o && o.source) out.add(normPath(o.source));
+    return out;
 }
 
 /**
