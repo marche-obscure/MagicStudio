@@ -56,7 +56,10 @@ class RoutesGuardTest(unittest.TestCase):
     def test_no_new_writing_route_forgotten(self):
         # Une nouvelle route POST doit etre classee ici : controlee, ou volontairement libre.
         free = {"/mmproject/create", "/mmproject/open", "/mmproject/save_plan", "/mmproject/run_done",
-                "/mmproject/hashes", "/mmproject/config/check"}
+                "/mmproject/hashes", "/mmproject/config/check",
+                # Export de SelectMod : seulement un .json nomme par le noeud, dans le dossier de
+                # sauvegarde choisi, jamais par-dessus un fichier existant (select_mod.write_export).
+                "/mmselectmod/save_export"}
         with open(INIT, encoding="utf-8") as f:
             posts = set(re.findall(r'@routes\.post\("([^"]+)"\)', f.read()))
         self.assertEqual(posts - free, set(GUARDED))
@@ -99,6 +102,15 @@ class ExtractRoutesTest(unittest.TestCase):
         self.assertRegex(text, r"projects\._to_recycle_bin if projects\.TRASH_AVAILABLE else None")
 
 
+    def test_selectmod_reads_only_server_roots(self):
+        # SelectMod (29/10/2026) : racines lues par le serveur, chaque lecture controlee par select_mod.
+        bodies = route_bodies()
+        for route in ("/mmselectmod/tree", "/mmselectmod/files", "/mmselectmod/search"):
+            self.assertIn(route, bodies, route)
+            self.assertIn("_selectmod_roots()", bodies[route], route)
+            self.assertNotIn('get("roots"', bodies[route], route)
+            self.assertIn("PermissionError", bodies[route], route)
+
 class DisplayNamesTest(unittest.TestCase):
     def test_display_names_and_category(self):
         root = os.path.dirname(HERE)
@@ -107,10 +119,10 @@ class DisplayNamesTest(unittest.TestCase):
         with open(os.path.join(root, "nodes.py"), encoding="utf-8") as f:
             nodes = f.read()
         for name in ("MagicStudio RefLoader", "MagicStudio Project",
-                     "MagicStudio Final Cut", "MagicStudio MedLoad"):
+                     "MagicStudio Final Cut", "MagicStudio MedLoad", "MagicStudio SelectMod"):
             self.assertIn('"%s"' % name, init)
         self.assertNotIn("loaders/minimax", nodes)
-        self.assertEqual(nodes.count('CATEGORY = "MagicStudio"'), 4)
+        self.assertEqual(nodes.count('CATEGORY = "MagicStudio"'), 5)
         # Plus de prefixe de message console a l'ancien nom.
         for folder, _dirs, files in os.walk(root):
             if any(x in folder for x in (".git", ".superpowers", "node_modules", "tests")):

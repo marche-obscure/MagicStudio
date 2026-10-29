@@ -16,6 +16,7 @@ from . import load_media
 from . import media
 from . import projects
 from . import run_record
+from . import select_mod
 
 
 class AnyType(str):
@@ -231,3 +232,50 @@ class MiniMaxH3LoadMedia:
             return (video, video.get_components().images, load_media.soundtrack(path), None, None, name)
         image, audio = load_media.load_still(path, kind)
         return (None, None, None, image, audio, name)
+
+def selectmod_roots():
+    """Racines permises de SelectMod, lues par le serveur (models, Models (Linker))."""
+    import folder_paths
+    return select_mod.roots(getattr(folder_paths, "models_dir", ""), getattr(folder_paths, "base_path", ""))
+
+
+class MagicStudioSelectMod:
+    """
+    Noeud MagicStudio SelectMod (choix utilisateur 28/10/2026) : comme MultiFiles
+    Select (copie adaptee, aucun import de ce paquet), mais ne lit que les dossiers
+    de modeles (select_mod.py). Les champs sont remplis par l'interface
+    (web/js/select_mod_node.js) ; run() les renvoie tels quels apres controle :
+    un chemin hors de models / Models (Linker) est refuse.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        req = {
+            "origin_dir": ("STRING", {"default": "", "multiline": False}),
+            "selected_dir": ("STRING", {"default": "", "multiline": False}),
+            "output_mode": ("STRING", {"default": "Absolute"}),
+        }
+        for n in range(1, 8):
+            req["model_type_%d" % n] = ("STRING", {"default": "", "multiline": False})
+            req["field_%d" % n] = ("STRING", {"default": "", "multiline": False})
+        req["save_folder"] = ("STRING", {"default": "", "multiline": False})
+        return {"required": req}
+
+    # Meme ordre que MultiFiles Select : 5 champs, model_link (dossier de sauvegarde), Option 1 / 2.
+    RETURN_TYPES = (ANY_TYPE,) * 8
+    RETURN_NAMES = tuple("unused %d" % i for i in range(1, 6)) + ("model_link", "Option 1", "Option 2")
+    FUNCTION = "run"
+    CATEGORY = "MagicStudio"
+    DESCRIPTION = (
+        "Pick up to 7 model files (diffusion model, text encoder, VAE, LoRA...) in the models folders only "
+        "(models and Models (Linker)). Outputs: the 5 fields, model_link (the save folder, for the "
+        "MagicStudio Project node), Option 1 and Option 2."
+    )
+
+    def run(self, origin_dir, selected_dir, output_mode, model_type_1, field_1, model_type_2, field_2,
+            model_type_3, field_3, model_type_4, field_4, model_type_5, field_5, model_type_6="", field_6="",
+            model_type_7="", field_7="", save_folder=""):
+        fields = [field_1, field_2, field_3, field_4, field_5, field_6, field_7]
+        select_mod.check_fields(fields, origin_dir, selectmod_roots())
+        f = [(x or "").strip() for x in fields]
+        return (f[0], f[1], f[2], f[3], f[4], (save_folder or "").strip(), f[5], f[6])

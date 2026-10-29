@@ -185,3 +185,46 @@ def check_fields(fields, origin_dir, roots_):
             candidates = [os.path.join(b, text) for b in bases]
         if not any(allowed(c, roots_) for c in candidates):
             raise ValueError(REFUSED + text)
+
+
+def join_path(origin, subdir, file_name, mode):
+    """Chemin d'un champ : origine + sous-dossier + fichier (Absolute), sinon sous-dossier + fichier (Relative)."""
+    parts = [p for p in ((origin, subdir, file_name) if mode == "Absolute" else (subdir, file_name)) if p]
+    if not parts:
+        return ""
+    path = os.path.normpath(os.path.join(*parts))
+    return "" if path == "." else path
+
+
+# Nom produit par le JS : date en prefixe, ex. "20261029-143000_selectmod_fields.json".
+EXPORT_NAME_RE = re.compile(r"^\d{8}-\d{6}_selectmod_fields\.json$")
+
+
+def _free_path(folder, name):
+    path = os.path.join(folder, name)
+    base, ext = os.path.splitext(name)
+    n = 2
+    while os.path.exists(path):
+        path = os.path.join(folder, "%s (%d)%s" % (base, n, ext))
+        n += 1
+    return path
+
+
+def write_export(folder, name, content):
+    """Export des champs (.json) dans le dossier de sauvegarde ; jamais par-dessus un fichier existant."""
+    import json
+    folder = (folder or "").strip()
+    if not folder:
+        raise ValueError("No save folder.")
+    if not EXPORT_NAME_RE.match(name or ""):
+        raise ValueError("Invalid export file name.")
+    try:
+        json.loads(content)
+    except (TypeError, ValueError):
+        raise ValueError("The export is not valid JSON.")
+    if not os.path.isdir(folder):
+        raise FileNotFoundError("Folder not found: %s" % folder)
+    path = _free_path(folder, name)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(content)
+    return path

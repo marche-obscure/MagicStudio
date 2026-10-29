@@ -22,14 +22,16 @@ from . import extract_frame
 from . import run_tracker
 from . import final_cut
 from . import load_media
+from . import select_mod
 from .nodes import (MiniMaxH3RefLoader, MiniMaxH3Project, MiniMaxH3FinalCut, MiniMaxH3LoadMedia,
-                    default_projects_root)
+                    MagicStudioSelectMod, default_projects_root, selectmod_roots)
 
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3RefLoader": MiniMaxH3RefLoader,
     "MiniMaxH3Project": MiniMaxH3Project,
     "MiniMaxH3FinalCut": MiniMaxH3FinalCut,
     "MiniMaxH3LoadMedia": MiniMaxH3LoadMedia,
+    "MagicStudioSelectMod": MagicStudioSelectMod,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -37,6 +39,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3Project": "MagicStudio Project",
     "MiniMaxH3FinalCut": "MagicStudio Final Cut",
     "MiniMaxH3LoadMedia": "MagicStudio MedLoad",
+    "MagicStudioSelectMod": "MagicStudio SelectMod",
 }
 
 WEB_DIRECTORY = "./web/js"
@@ -53,6 +56,75 @@ try:
 
     async def _in_executor(fn, *args):
         return await asyncio.get_event_loop().run_in_executor(None, fn, *args)
+
+    # ---- MagicStudio SelectMod (29/10/2026) : lecture des dossiers de modeles seulement ----
+    def _selectmod_roots():
+        return selectmod_roots()
+
+    def _selectmod_refused(e):
+        return web.json_response({"error": str(e)}, status=403)
+
+    @routes.get("/mmselectmod/roots")
+    async def mmselectmod_roots(request):
+        """Racines permises (models, Models (Linker)), lues par le serveur."""
+        try:
+            return web.json_response({"roots": await _in_executor(_selectmod_roots)})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    @routes.get("/mmselectmod/tree")
+    async def mmselectmod_tree(request):
+        """Sous-dossiers d'un dossier permis (nombre de fichiers de modeles)."""
+        path = request.rel_url.query.get("path", "")
+        try:
+            return web.json_response({"dirs": await _in_executor(select_mod.tree, path, _selectmod_roots())})
+        except PermissionError as e:
+            return _selectmod_refused(e)
+        except OSError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    @routes.get("/mmselectmod/files")
+    async def mmselectmod_files(request):
+        """Fichiers de modeles d'un dossier permis (nom, taille, date)."""
+        path = request.rel_url.query.get("path", "")
+        try:
+            return web.json_response({"files": await _in_executor(select_mod.files, path, _selectmod_roots())})
+        except PermissionError as e:
+            return _selectmod_refused(e)
+        except OSError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    @routes.get("/mmselectmod/search")
+    async def mmselectmod_search(request):
+        """Recherche par nom dans un dossier permis et ses sous-dossiers."""
+        q = request.rel_url.query
+        try:
+            return web.json_response(await _in_executor(select_mod.search, q.get("path", ""), _selectmod_roots(),
+                                                        q.get("q", "")))
+        except PermissionError as e:
+            return _selectmod_refused(e)
+        except OSError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    @routes.get("/mmselectmod/join_path")
+    async def mmselectmod_join_path(request):
+        """Chemin d'un champ (Absolute : origine + sous-dossier + fichier ; Relative : sans l'origine)."""
+        q = request.rel_url.query
+        return web.json_response({"path": select_mod.join_path(q.get("origin", "").strip(), q.get("dir", "").strip(),
+                                                               q.get("file", "").strip(), q.get("mode", "Absolute"))})
+
+    @routes.post("/mmselectmod/save_export")
+    async def mmselectmod_save_export(request):
+        """Export des champs (.json) dans le dossier de sauvegarde ; jamais par-dessus un fichier existant."""
+        try:
+            data = await request.json()
+            path = await _in_executor(select_mod.write_export, data.get("folder", ""), data.get("name", ""),
+                                      data.get("content", ""))
+        except (ValueError, FileNotFoundError) as e:
+            return web.json_response({"error": str(e)}, status=400)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"path": path})
 
     @routes.get("/mmrefloader/list")
     async def mmrefloader_list(request):
