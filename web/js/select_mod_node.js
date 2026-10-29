@@ -1850,6 +1850,7 @@ function buildModelPicker(container, ctx) {
     });
 
     return {
+        close,
         async open() {
             title.textContent = "Field " + ctx.activeField();
             search.value = "";
@@ -2923,6 +2924,8 @@ app.registerExtension({
             // --------------------------------------------------------
             // Bouton dossier (SelectMod) : fenetre de choix MagicStudio (arbre + fichiers).
             let modelPicker = null;
+            // Noeud retire (supprime, ou onglet de workflow change) : sa fenetre de choix se ferme.
+            node.mmCloseModelPicker = () => modelPicker && modelPicker.close();
             originBrowseBtn.title = "Choose a model file...";
             originBrowseBtn.addEventListener("click", () => {
                 if (!modelPicker) {
@@ -3138,6 +3141,7 @@ app.registerExtension({
                 activeOutputEditor.close(false);
             }
             vueNodes.delete(this);
+            if (this.mmCloseModelPicker) this.mmCloseModelPicker();
             return onRemoved ? onRemoved.apply(this, arguments) : undefined;
         };
 
