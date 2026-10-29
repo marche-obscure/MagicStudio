@@ -12,13 +12,36 @@ import tempfile
 import unittest
 import wave
 
+import re
+from urllib.parse import quote
+
 import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(HERE))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, ROOT)
 
 import load_media as lm  # noqa: E402
+
+
+class FileNameTest(unittest.TestCase):
+    """Sortie name du noeud MagicStudio MedLoad (28/10/2026) : nom du fichier avec extension."""
+
+    def test_file_name(self):
+        self.assertEqual(lm.file_name(r"G:\in\a\LAST_FRAME_P.png"), "LAST_FRAME_P.png")
+
+    def test_file_name_keeps_unicode(self):
+        self.assertEqual(lm.file_name(os.path.join("G:\\", "in", "Plan 02 – été.mp4")), "Plan 02 – été.mp4")
+
+    def test_return_names_match_js_outputs(self):
+        py = open(os.path.join(ROOT, "nodes.py"), encoding="utf-8").read()
+        cls = py[py.index("class MiniMaxH3LoadMedia"):]
+        names = re.findall(r'"(\w+)"', re.search(r"RETURN_NAMES = \(([^)]*)\)", cls).group(1))
+        js = open(os.path.join(ROOT, "web", "js", "load_media_node.js"), encoding="utf-8").read()
+        block = re.search(r"const OUTPUTS = \[(.*?)\];", js, re.S).group(1)
+        self.assertEqual(names, re.findall(r'\["(\w+)", "\w+"\]', block))
+        self.assertEqual(names[-1], "name")
 
 
 class PathFromDropTest(unittest.TestCase):
@@ -91,6 +114,13 @@ class CheckPathTest(unittest.TestCase):
         open(other, "w").close()
         with self.assertRaisesRegex(ValueError, "Unsupported"):
             lm.check_path(other, self.input)
+
+    def test_file_name_from_checked_path(self):
+        # Sortie name : nom du fichier reellement charge (apres check_path), pas le texte brut.
+        quoted = '"' + self.inside + '"'
+        self.assertEqual(lm.file_name(lm.check_path(quoted, self.input)[0]), "a.png")
+        link = "/mmrefloader/media?file=" + quote(self.inside) + "&filename=a.png"
+        self.assertEqual(lm.file_name(lm.check_path(lm.path_from_drop(link), self.input)[0]), "a.png")
 
     def test_signature_follows_the_file(self):
         before = lm.signature(self.inside)

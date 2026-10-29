@@ -25,9 +25,11 @@ const KINDS = {
 };
 const mediaUrl = (path) => "/mmrefloader/media?file=" + encodeURIComponent(path);
 // Ordre des sorties, identique a RETURN_NAMES de nodes.py (choix utilisateur 24/10/2026 :
-// video_frames puis audio_video sous video ; audio = fichiers son seulement).
+// video_frames puis audio_video sous video ; audio = fichiers son seulement ; name en
+// dernier, 28/10/2026).
 const OUTPUTS = [
     ["video", "VIDEO"], ["video_frames", "IMAGE"], ["audio_video", "AUDIO"], ["image", "IMAGE"], ["audio", "AUDIO"],
+    ["name", "STRING"],
 ];
 
 /** Liens qui partent de la sortie slot du noeud (graph.links : LinkMap ou objet). */
@@ -89,6 +91,7 @@ const HELP_SECTIONS = [
                 "soundtrack, if it has one)"],
             [iconBadge(IMAGE_ICON, VIOLET), "<b>Image</b>: <b>image</b>"],
             [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Audio</b>: <b>audio</b>, whole length"],
+            ["<b>name</b>", "the name of the loaded file, with its extension (text)"],
         ]) +
         hNote("an output that does not match the file is empty: the optional inputs of the native nodes " +
             "ignore it.") +
@@ -129,6 +132,7 @@ const HELP_SECTIONS_FR = [
                 "s'il en a une)"],
             [iconBadge(IMAGE_ICON, VIOLET), "<b>Image</b> : <b>image</b>"],
             [iconBadge(AUDIO_ICON, TITLE_COLOR), "<b>Son</b> : <b>audio</b>, en entier"],
+            ["<b>name</b>", "le nom du fichier chargé, avec son extension (texte)"],
         ]) +
         hNote("une sortie qui ne correspond pas au fichier est vide : les entrées optionnelles des nœuds " +
             "natifs l'ignorent.", "Remarque :") +

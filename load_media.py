@@ -85,6 +85,11 @@ def check_path(text, input_dir):
     return path, kind
 
 
+def file_name(path):
+    """Sortie name (choix utilisateur 28/10/2026) : nom du fichier charge, extension comprise."""
+    return os.path.basename(path)
+
+
 def signature(path):
     """Change quand le fichier change (date et taille) : ComfyUI le recharge alors."""
     try:

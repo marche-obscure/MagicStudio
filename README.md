@@ -258,6 +258,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
   | Audio | empty | empty | empty | empty | the whole file (`AUDIO`, not cut) |
 
   An empty output is ignored by the optional inputs of the native nodes. `video_frames` holds every frame in memory: for a long or large video, prefer `video`.
+- **`name`** (last output, `STRING`): the name of the loaded file, with its extension (for example `LAST_FRAME_Clip.png`), for an image, a video or an audio file.
 - **No copy:** the file is read where it is. It is loaded again only when the path changes or when the file is modified.
 - **Safety:** only files inside the input folder of ComfyUI (or its subfolders) are accepted; any other path is refused before the run, with a message on the node.
 - A file dragged from the Windows Explorer gives no path to the browser: drag it from Final Cut, or type its path.
