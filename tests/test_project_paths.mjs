@@ -13,7 +13,7 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
     folderMax, activeLists, hiddenFolderItems,
-    frameAt, timeOf, frameText, EXTRACT_CHOICES,
+    frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -759,4 +759,18 @@ test("Extract Frame : numero d'image, temps, compteur, choix, galerie", () => {
     assert.ok(!isMediaSubfolder("A/G/P/40.Rush Videos/Picture Lock/Extract Frame", "ref2va"));
     // Lignes de medias inchangees avec le type de la ligne
     assert.ok(isMediaSubfolder("P/08.Images", "ref2va", "image"));
+});
+
+test("Extract Frame : bouton de l'en-tete de la fenetre 40", () => {
+    assert.equal(extractHeaderState({}, {}), "hidden");
+    assert.equal(extractHeaderState(null, null), "hidden");
+    assert.equal(extractHeaderState({ video: [] }, {}), "hidden");
+    assert.equal(extractHeaderState({ video: ["clip.mp4"] }, {}), "enabled");
+    assert.equal(extractHeaderState({ video: ["CLIP.MOV"] }, {}), "enabled");
+    assert.equal(extractHeaderState({ video: ["a.mp4", "b.mp4"] }, { video: 2 }), "disabled");
+    assert.equal(extractHeaderState({ video: ["a.mp4", "notes.txt"] }, {}), "disabled");
+    assert.equal(extractHeaderState({ video: ["a.mp4"] }, { video: 3 }), "disabled");
+    assert.equal(extractHeaderState({ video: ["still.png"] }, {}), "hidden");
+    // Picture Lock des images (60) sans effet
+    assert.equal(extractHeaderState({ video: ["a.mp4"], image: ["x.png", "y.png"] }, { image: 2 }), "enabled");
 });

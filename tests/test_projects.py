@@ -704,6 +704,15 @@ class SameAsJsTest(unittest.TestCase):
         self.assertIsNotNone(m)
         self.assertEqual(tuple(re.findall(r'"([^"]*)"', m.group(1))), projects.EXTRACT_DIR)
 
+    def test_js_lock_video_exts(self):
+        """Extensions video du Picture Lock (bouton Extract Frame de l'en-tete) : celles de run_record."""
+        import run_record
+        with open(os.path.join(os.path.dirname(HERE), "web", "js", "project_paths.js"), encoding="utf-8") as f:
+            src = f.read()
+        m = re.search(r"LOCK_VIDEO_EXTS\s*=\s*\[([^\]]*)\]", src)
+        self.assertIsNotNone(m)
+        self.assertEqual(set(re.findall(r'"([^"]*)"', m.group(1))), set(run_record.VIDEO_EXTS))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -863,6 +863,23 @@ export function timeOf(frame, fps) {
     return f > 0 ? (Math.max(0, Number(frame) || 0) + 0.5) / f : 0;
 }
 
+/** Extensions video du Picture Lock (= run_record.VIDEO_EXTS). */
+export const LOCK_VIDEO_EXTS = [".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"];
+
+/**
+ * Bouton Extract Frame de l'en-tete de la fenetre 40 (26/10/2026, choix utilisateur) :
+ * locked = /mmproject/runs `locked` ({video: [noms des fichiers de 40/Picture Lock]}),
+ * overfull = /mmproject/runs `overfull`. "disabled" : plus d'un fichier ; "enabled" :
+ * une seule video (meme deposee a la main) ; "hidden" : vide ou un seul fichier non video.
+ */
+export function extractHeaderState(locked, overfull) {
+    const names = (locked && Array.isArray(locked.video)) ? locked.video : [];
+    if (names.length > 1 || (overfull && Number(overfull.video) > 1)) return "disabled";
+    if (names.length !== 1) return "hidden";
+    const n = String(names[0]).toLowerCase();
+    return LOCK_VIDEO_EXTS.some((e) => n.endsWith(e)) ? "enabled" : "hidden";
+}
+
 /** Compteur de la fenetre Extract Frame : "Frame n / total". */
 export function frameText(n, total) {
     return "Frame " + n + " / " + total;

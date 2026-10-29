@@ -19,7 +19,7 @@ import {
     batchSortTargets, canDeleteRush, deletedText,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
-    EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText,
+    EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -3283,7 +3283,13 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         color: ORANGE, fontWeight: "bold", fontSize: "11px", whiteSpace: "nowrap", flex: "0 0 auto", display: "none",
         cursor: "help",
     });
-    head.append(title, lockBadge, filterBox, orderBtn, closeBtn);
+    // 40 : bouton Extract Frame de l'en-tete (26/10/2026, choix utilisateur) : la video du
+    // Picture Lock meme deposee a la main (sans vignette de Run) ; meme fenetre que sous la vignette.
+    const headExtract = makeTextButton("Extract Frame", SORT_COLORS.picture_lock);
+    Object.assign(headExtract.style, {
+        padding: "3px 10px", fontSize: "11px", color: SORT_TEXT_COLORS.picture_lock, flex: "0 0 auto", display: "none",
+    });
+    head.append(title, lockBadge, headExtract, filterBox, orderBtn, closeBtn);
     // Fenetre Extract Frame (40, 26/10/2026) : fermee avant la fenetre 40 (Echap, clic a cote).
     const extractWin = () => (rush && rush.extractWindow) || null;
     const extractOpen = () => !!(extractWin() && extractWin().isOpen());
@@ -3739,6 +3745,11 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         lockBadge.style.display = n > 1 ? "" : "none";
         lockBadge.title = n > 1 ? RUSH_FOLDER_OF[kind] + "/Picture Lock holds " + n + " files: only one is allowed. " +
             "Move the others out by hand." + (kind === "video" ? " Extract Frame is off until then." : "") : "";
+        // Bouton de l'en-tete : 40 seulement ; cache sans video dans le Picture Lock.
+        const state = folder === "40.Rush Videos" && rush && rush.openExtract && rush.extractHeader
+            ? rush.extractHeader() : "hidden";
+        headExtract.style.display = state === "hidden" ? "none" : "";
+        if (state !== "hidden") paintExtractButton(headExtract, state === "enabled");
     }
     function renderRush() {
         const all = allRush();
@@ -3863,27 +3874,33 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             display: "block", width: "100%", marginTop: "4px", padding: "3px 4px", fontSize: "11px",
             color: SORT_TEXT_COLORS.picture_lock,
         });
-        const over = rush.overfull ? rush.overfull("video") > 1 : false;
-        if (over) {
-            b.disabled = true;
-            Object.assign(b.style, { opacity: "0.45", cursor: "default" });
-            b.title = LOCK_KEEP_ONE;
-        } else {
-            b.title = "Extract the first, last or any frame of this video as PNG (" + EXTRACT_FRAME_DIR.join("/") + ")";
-        }
+        paintExtractButton(b, !(rush.overfull && rush.overfull("video") > 1));
         // Le clic ne choisit pas la vignette et n'ouvre pas l'apercu.
-        b.addEventListener("click", async (e) => {
+        b.addEventListener("click", (e) => {
             e.stopPropagation();
-            if (b.disabled) return;
-            preview.close();
-            const res = await rush.openExtract(card);
-            if (res && res.text) {
-                note.textContent = res.text;
-                note.style.color = res.ok ? "#9fd6cf" : ORANGE;
-            }
+            if (!b.disabled) openExtractWindow();
         });
         return b;
     }
+    /** Bouton Extract Frame (vignette ou en-tete) actif, ou grise avec « Picture Lock: keep one file ». */
+    function paintExtractButton(b, enabled) {
+        b.disabled = !enabled;
+        Object.assign(b.style, { opacity: enabled ? "1" : "0.45", cursor: enabled ? "pointer" : "default" });
+        b.title = enabled ? "Extract the first, last or any frame of the Picture Lock video as PNG (" +
+            EXTRACT_FRAME_DIR.join("/") + ")" : LOCK_KEEP_ONE;
+    }
+    /** Fenetre Extract Frame a cote de celle-ci ; refus (pas de video, plusieurs fichiers) dans la note. */
+    async function openExtractWindow() {
+        preview.close();
+        const res = await rush.openExtract(card);
+        if (res && res.text) {
+            note.textContent = res.text;
+            note.style.color = res.ok ? "#9fd6cf" : ORANGE;
+        }
+    }
+    headExtract.addEventListener("click", () => {
+        if (!headExtract.disabled) openExtractWindow();
+    });
 
     /** Sous les vignettes : boutons du fichier choisi, ou boutons du lot s'il y a des cases cochees. */
     function paintRushSort(items) {
@@ -4037,6 +4054,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 if (extractWin()) extractWin().close();
             }
             lockBadge.style.display = "none"; // 40 / 60 : repeint par renderRush
+            headExtract.style.display = "none";
             title.textContent = name + " – " + projectName;
             conf.label.textContent = "Configuration";
             pick.style.display = promptMode ? "flex" : "none";
@@ -4866,6 +4884,8 @@ app.registerExtension({
                 overfull: (kind) => Number(lockOverfull[kind]) || 0,
                 extractWindow,
                 openExtract: (anchor) => openExtract(anchor),
+                // Bouton de l'en-tete de 40 : lu dans locked / overfull de /mmproject/runs (deja charges).
+                extractHeader: () => extractHeaderState(lockedFiles, lockOverfull),
                 busy: () => !!replaceAsking || extractWindow.isBusy(),
                 remove: (run, out, trash) => apiPost("/mmproject/delete_rush",
                     { project: getState().path, run: run.file, index: out.index, trash }),
