@@ -9,8 +9,12 @@ import os
 
 import av
 
-import projects
-import run_record
+try:
+    from . import projects
+    from . import run_record
+except ImportError:  # tests : module charge seul
+    import projects
+    import run_record
 
 STATE_FILE = ".extract.json"
 PREFIXES = ("FIRST_FRAME_", "LAST_FRAME_", "FRAME_")
@@ -123,6 +127,16 @@ def _extraction_files(project):
     return sorted(n for n in os.listdir(folder)
                   if n.lower().endswith(".png") and n.startswith(PREFIXES)
                   and os.path.isfile(os.path.join(folder, n)))
+
+
+def listing(project):
+    """[{"name", "frame"}] des PNG d'extraction ; frame = numero note dans .extract.json, None si inconnu."""
+    frames = (_read_state(project) or {}).get("frames") or {}
+    out = []
+    for n in _extraction_files(project):
+        v = frames.get(n)
+        out.append({"name": n, "frame": v if isinstance(v, int) else None})
+    return out
 
 
 # --- lecture des images -------------------------------------------------------------------

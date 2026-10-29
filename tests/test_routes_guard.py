@@ -31,6 +31,8 @@ GUARDED = {
     "/mmproject/config/save": ["project"],
     "/mmproject/config/restore": ["project"],
     "/mmproject/delete_archive": ["project"],
+    "/mmproject/extract": ["project"],
+    "/mmproject/extract/replace": ["project"],
 }
 
 
@@ -58,6 +60,31 @@ class RoutesGuardTest(unittest.TestCase):
         with open(INIT, encoding="utf-8") as f:
             posts = set(re.findall(r'@routes\.post\("([^"]+)"\)', f.read()))
         self.assertEqual(posts - free, set(GUARDED))
+
+class ExtractRoutesTest(unittest.TestCase):
+    def test_info_route_checks_the_project(self):
+        body = route_bodies()["/mmproject/extract/info"]
+        self.assertRegex(body, r'require_project\(')
+        self.assertIn("extract_frame.listing", body)
+
+    def test_runs_and_sort_output_apply_the_lock_change_rules(self):
+        bodies = route_bodies()
+        for route in ("/mmproject/runs", "/mmproject/sort_output"):
+            self.assertIn("_extract_change", bodies[route], route)
+            self.assertIn("extract_change", bodies[route], route)
+
+    def test_helper_calls_check_lock_change_after_the_project_guard(self):
+        with open(INIT, encoding="utf-8") as f:
+            text = f.read()
+        helper = text.split("def _extract_change(project):")[1].split("@routes.get")[0]
+        self.assertLess(helper.index("require_project("), helper.index("check_lock_change("))
+        self.assertIn("[MagicStudio Project]", helper)
+
+    def test_trash_function_follows_availability(self):
+        with open(INIT, encoding="utf-8") as f:
+            text = f.read()
+        self.assertRegex(text, r"projects\._to_recycle_bin if projects\.TRASH_AVAILABLE else None")
+
 
 class DisplayNamesTest(unittest.TestCase):
     def test_display_names_and_category(self):

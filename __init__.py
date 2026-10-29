@@ -18,6 +18,7 @@ from . import profiles
 from . import projects
 from . import project_config
 from . import run_record
+from . import extract_frame
 from . import run_tracker
 from . import final_cut
 from . import load_media
@@ -466,11 +467,25 @@ try:
             return _project_error(e)
         return web.json_response(data)
 
+    def _extract_change(project):
+        """Regles de changement de video du Picture Lock (Extract Frame) ; None si rien ne s'est passe ou en cas d'echec."""
+        try:
+            projects.require_project(project)  # la lecture des Runs n'a pas de garde : on ne supprime que dans un vrai projet
+            trash_fn = projects._to_recycle_bin if projects.TRASH_AVAILABLE else None
+            res = extract_frame.check_lock_change(project, trash_fn)
+        except Exception as e:  # ne casse jamais la lecture des Runs ni le tri
+            print("[MagicStudio Project] Extract Frame check failed: %s" % e)
+            return None
+        if res and (res.get("emptied") or res.get("deleted") or res.get("ask_replace") or res.get("trash_error")):
+            return res
+        return None
+
     @routes.get("/mmproject/runs")
     async def mmproject_runs(request):
         """Runs enregistres du projet (04.Prompt), le plus recent d'abord."""
         try:
             project = request.rel_url.query.get("project", "").strip()
+            change = await _in_executor(_extract_change, project)  # Extract Frame : regles du changement de video
             runs = await _in_executor(run_record.list_runs, project)
             sets = await _in_executor(run_record.registry_sets, project)
             # Picture Lock (choix utilisateur, 26/10/2026) : un seul fichier, tous projets ; overfull = dossiers qui en tiennent plus.
@@ -482,8 +497,11 @@ try:
             orphans = await _in_executor(run_record.rush_orphans, project)
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"runs": runs, "registries": sets, "single_lock": single, "locked": locked,
-                                  "overfull": overfull, "counts": counts, "orphans": orphans})
+        data = {"runs": runs, "registries": sets, "single_lock": single, "locked": locked,
+                "overfull": overfull, "counts": counts, "orphans": orphans}
+        if change:
+            data["extract_change"] = change
+        return web.json_response(data)
 
     @routes.get("/mmproject/run_workflow")
     async def mmproject_run_workflow(request):
@@ -528,6 +546,53 @@ try:
             projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
             data = await _in_executor(run_record.sort_output, body.get("project", ""), body.get("run", ""),
                                       body.get("index"), body.get("target", ""), bool(body.get("swap")))
+            change = await _in_executor(_extract_change, body.get("project", ""))
+            if change and isinstance(data, dict):
+                data["extract_change"] = change
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.get("/mmproject/extract/info")
+    async def mmproject_extract_info(request):
+        """Extract Frame : video du Picture Lock (40), ses infos, fichiers deja extraits."""
+        try:
+            project = request.rel_url.query.get("project", "").strip()
+            projects.require_project(project)  # vrai projet seulement
+
+            def work():
+                video = extract_frame.lock_video(project)
+                info = extract_frame.video_info(video) if video else {}
+                return {"video": video, "frames": info.get("frames", 0), "fps": info.get("fps", 0),
+                        "width": info.get("width", 0), "height": info.get("height", 0),
+                        "files": extract_frame.listing(project),
+                        "overfull": "video" in run_record.lock_overfull(project)}
+            data = await _in_executor(work)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.post("/mmproject/extract")
+    async def mmproject_extract(request):
+        """Extract Frame : ecrit FIRST / LAST / les deux / une image N dans Picture Lock/Extract Frame."""
+        try:
+            body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement
+            n = body.get("n")
+            data = await _in_executor(extract_frame.extract, body.get("project", ""), body.get("which", ""),
+                                      None if n is None else int(n), bool(body.get("overwrite")))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.post("/mmproject/extract/replace")
+    async def mmproject_extract_replace(request):
+        """Extract Frame : reponse a la question apres un changement de video (keep = garder FIRST / LAST)."""
+        try:
+            body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement
+            data = await _in_executor(extract_frame.replace_first_last, body.get("project", ""),
+                                      bool(body.get("keep")))
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)

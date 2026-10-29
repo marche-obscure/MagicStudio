@@ -177,6 +177,21 @@ class ExtractTest(Base):
         self.assertEqual(ef.lock_video(self.project), self.video)
 
 
+class ListingTest(Base):
+    def test_listing_with_frames(self):
+        ef.extract(self.project, "fl")
+        self.touch("FRAME_000009.png")
+        self.touch("notes.txt")
+        got = {d["name"]: d["frame"] for d in ef.listing(self.project)}
+        self.assertEqual(len(got), 3)
+        self.assertNotIn("notes.txt", got)
+        self.assertEqual(sorted(v for v in got.values() if v is not None), [0, 9])
+        self.assertIsNone(got["FRAME_000009.png"])
+
+    def test_listing_empty_without_folder(self):
+        self.assertEqual(ef.listing(self.project), [])
+
+
 class ChangeTest(Base):
     def prepare(self):
         ef.extract(self.project, "fl")
