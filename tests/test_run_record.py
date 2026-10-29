@@ -240,6 +240,26 @@ class RunParamsTest(unittest.TestCase):
         del prompt["1"]["inputs"]["models_link"]
         self.assertEqual(rr.run_models(prompt)["diffusion_model"], [P0("other.safetensors")])
 
+    def test_run_models_from_selectmod(self):
+        """MagicStudio SelectMod (29/10/2026) : lu comme MultiFiles Select."""
+        def prompt_with(cls):
+            return {
+                "240": {"class_type": cls, "inputs": {
+                    "model_type_1": "diffusion_models", "field_1": "H3/unet.safetensors",
+                    "model_type_2": "text_encoders", "field_2": "qwen.safetensors",
+                    "model_type_3": "vae", "field_3": "video_vae.safetensors", "save_folder": "P/02.Models"}},
+                "194": {"class_type": "UNETLoader", "inputs": {"unet_name": "other.safetensors"}},
+                "225": {"class_type": "KSampler", "inputs": {"model": ["194", 0], "steps": 8, "cfg": 1}},
+                "1": {"class_type": "MiniMaxH3Project", "inputs": {"state": "{}", "models_link": ["240", 5]}},
+            }
+        self.assertEqual(rr.run_models(prompt_with("MagicStudioSelectMod")), rr.run_models(prompt_with("MultiFileSelect")))
+        self.assertEqual(rr.run_models(prompt_with("MagicStudioSelectMod"))["diffusion_model"],
+                         [{"position": 1, "name": "H3/unet.safetensors"}])
+
+    def test_resolve_file_from_selectmod(self):
+        prompt = {"240": {"class_type": "MagicStudioSelectMod", "inputs": {"field_3": " vae.safetensors "}}}
+        self.assertEqual(rr.resolve_file(prompt, ["240", 2]), "vae.safetensors")
+
     def test_models_link_through_switch_multi_in_out(self):
         """Switch MultiIN-OUT entre MultiFiles Select et models_link : groupe actif seulement."""
         fs = lambda unet: {"class_type": "MultiFileSelect", "inputs": {

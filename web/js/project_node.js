@@ -33,7 +33,8 @@ const NODE_NAME = "MiniMaxH3Project";
 const FINAL_CUT_TYPE = "MINIMAX_FINAL_CUT";
 // Entree reliee a la sortie model_link de MultiFiles Select (choix utilisateur).
 const MODELS_LINK = "models_link";
-const FILE_SELECT_TYPE = "MultiFileSelect";
+// MultiFiles Select et MagicStudio SelectMod (29/10/2026) : dossier de sauvegarde dans node.properties, chacun sa cle.
+const FILE_SELECT_TYPES = { MultiFileSelect: "saveFolder", MagicStudioSelectMod: "mmselectmodSaveFolder" };
 const REF_LOADER_NAME = "MiniMaxH3RefLoader";
 // Liste des projets + une ligne par dossier (28 px + 6 px d'ecart) + ligne des messages
 // (2 lignes de 14 px + 6 px d'ecart, 26/10/2026 : les messages longs etaient coupes) + ligne du bas.
@@ -5286,7 +5287,7 @@ app.registerExtension({
                 let link = slot >= 0 ? linkInto(node, slot) : null;
                 let src = link ? node.graph.getNodeById(link.origin_id) : null;
                 for (let hop = 0; src && hop < 10; hop++) {
-                    if (src.type === FILE_SELECT_TYPE) return src;
+                    if (FILE_SELECT_TYPES[src.type]) return src;
                     // Switch MultiIN-OUT : entree du groupe actif sur la ligne de la sortie suivie.
                     if (src.type === "SwitchMultiInOut") {
                         link = linkInto(src, switchSourceInput(src, link ? link.origin_slot : 0));
@@ -5334,10 +5335,11 @@ app.registerExtension({
                 const sep = s.path.includes("\\") ? "\\" : "/";
                 const target = s.path + sep + "02.Models";
                 fs.properties = fs.properties || {};
-                const cur = String(fs.properties.saveFolder || "").trim();
+                const key = FILE_SELECT_TYPES[fs.type] || "saveFolder";
+                const cur = String(fs.properties[key] || "").trim();
                 const auto = String(fs.properties.mmAutoSaveFolder || "");
                 if (cur === target || (cur && cur !== auto)) return;
-                fs.properties.saveFolder = target;
+                fs.properties[key] = target;
                 fs.properties.mmAutoSaveFolder = target;
                 const w = (fs.widgets || []).find((x) => x.name === "save_folder");
                 if (w) w.value = target;

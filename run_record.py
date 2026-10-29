@@ -197,6 +197,8 @@ def _is_file_name(v):
 # MultiFiles Select : sortie -> champ (la 6e sortie "model_link" donne le
 # dossier de sauvegarde, puis Option 1 / Option 2 = field_6 / field_7).
 MULTI_FILE_SELECT = "MultiFileSelect"
+# MagicStudio SelectMod (29/10/2026) : memes champs et sorties que MultiFiles Select.
+FILE_SELECT_CLASSES = (MULTI_FILE_SELECT, "MagicStudioSelectMod")
 _MULTI_SELECT_FIELDS = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 6: 6, 7: 7}
 
 
@@ -250,7 +252,7 @@ def resolve_file(prompt, value, depth=0):
         return None
     if node.get("class_type") == SWITCH_MULTI:
         return resolve_file(prompt, _switch_source(prompt, node, value[1]), depth + 1)
-    if node.get("class_type") == MULTI_FILE_SELECT:
+    if node.get("class_type") in FILE_SELECT_CLASSES:
         n = _MULTI_SELECT_FIELDS.get(value[1])
         v = inputs.get("field_%d" % n) if n else None
         return v.strip() if isinstance(v, str) and v.strip() else None
@@ -396,7 +398,7 @@ def run_models(prompt):
     # Modeles (choix utilisateur) : champs de MultiFiles Select relie a models_link
     # (position = numero du champ), sinon lus dans le graphe (position 0).
     fs = linked_file_select(prompt)
-    if fs and fs.get("class_type") == MULTI_FILE_SELECT:
+    if fs and fs.get("class_type") in FILE_SELECT_CLASSES:
         out.update(file_select_models(fs))
         groups = _EXTRA_GROUPS  # pas de type audio_vae dans MultiFiles Select : lu dans le graphe
     else:
