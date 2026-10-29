@@ -28,10 +28,17 @@ export const FOLDER_COLORS = {
 export const LIST_FOLDERS = {
     images: "08.Images", videos: "12.Video", video_audios: "14.Video-Audio", audios: "10.Son",
     first_frame: "08.Images", last_frame: "08.Images",
+    // Profil LTX 2.x
+    guide_images: "08.Images", guide_video: "12.Video", soundtrack: "10.Son", voice: "10.Son",
 };
 const LISTS = Object.keys(LIST_FOLDERS);
 // Liste -> type de rognage (cle de state.trims).
-const TRIM_OF_LIST = { videos: "video", video_audios: "video_audio", audios: "audio" };
+const TRIM_OF_LIST = {
+    videos: "video", video_audios: "video_audio", audios: "audio",
+    guide_video: "guide_video", soundtrack: "soundtrack", voice: "voice",
+};
+// Liste -> moments des guides LTX 2.x (cle de state.moments).
+const MOMENT_LISTS = ["guide_images", "guide_video"];
 
 /** Fichiers a copier par Save : [{path, folder}] dans l'ordre des listes. */
 export function saveItems(state) {
@@ -44,22 +51,28 @@ export function saveItems(state) {
 
 /**
  * Copie de l'etat du Ref Loader avec chaque chemin des listes remplace par
- * fn(chemin, liste) ; les cles de rognage suivent leur fichier.
+ * fn(chemin, liste) ; les cles de rognage et de moment suivent leur fichier.
  */
 export function remapState(state, fn) {
     const s = JSON.parse(JSON.stringify(state));
+    // Deplace la cle d'un fichier renomme dans une table {cle du chemin: valeur}.
+    const follow = (src, dst, old, now) => {
+        old.forEach((p, i) => {
+            const before = trimKey(p);
+            const after = trimKey(now[i]);
+            if (before === after || !(before in src)) return;
+            dst[after] = src[before];
+            delete dst[before];
+        });
+    };
     for (const list of LISTS) {
         const old = state[list] || [];
         s[list] = old.map((p) => fn(p, list));
         const kind = TRIM_OF_LIST[list];
-        if (!kind || !state.trims || !state.trims[kind]) continue;
-        old.forEach((p, i) => {
-            const before = trimKey(p);
-            const after = trimKey(s[list][i]);
-            if (before === after || !(before in state.trims[kind])) return;
-            s.trims[kind][after] = state.trims[kind][before];
-            delete s.trims[kind][before];
-        });
+        if (kind && state.trims && state.trims[kind]) follow(state.trims[kind], s.trims[kind], old, s[list]);
+        if (MOMENT_LISTS.includes(list) && state.moments && state.moments[list]) {
+            follow(state.moments[list], s.moments[list], old, s[list]);
+        }
     }
     return s;
 }
@@ -318,7 +331,8 @@ export const LOADABLE_FOLDERS = ["00.Workflows", "08.Images", "10.Son", "12.Vide
 /** Listes du Ref Loader envoyees a Save (chemins des fichiers du projet). */
 export function configRefs(state) {
     const out = {};
-    for (const list of LISTS) out[list] = (state[list] || []).slice();
+    // Listes des dossiers de medias seulement (les listes LTX 2.x y entreront avec MEDIA_FOLDERS).
+    for (const lists of Object.values(MEDIA_FOLDERS)) for (const list of lists) out[list] = (state[list] || []).slice();
     return out;
 }
 

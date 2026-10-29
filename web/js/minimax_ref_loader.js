@@ -1,5 +1,8 @@
 import { app } from "../../scripts/app.js";
-import { formatConfigJson, parseConfigJson, trimKey } from "./config_format.js";
+import { formatConfigJson, parseConfigJson, trimKey, configFilePrefix } from "./config_format.js";
+import { PROFILES, LABELS, profileOf, limitsOf, outputType, profileKey, legacyModeLinks, routeDefaults,
+    stateLayout as layoutOfState, parseState, TRIM_KINDS, COUNT_KEYS, LAST, secondsToFrame, videoGuideFrame,
+    guideMoments, checkMoment, sameFrameAs, limitBounds, limitOverrides, pruneMoments } from "./profiles.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
 import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
@@ -21,8 +24,14 @@ const MARK_RED = "#d32f2f";
 const INACTIVE_BG = "#2a2a2a";
 const INACTIVE_FG = "#888";
 
-// Plafonds des entrees de MiniMaxH3ReferenceToVideo (identiques a media.py).
-const LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3, first_frame: 1, last_frame: 1 };
+// Limites par profil : defauts lus une fois sur la route /mmrefloader/profiles
+// (setup de l'extension) ; null tant qu'elle n'a pas repondu = FALLBACK_LIMITS.
+let profileDefaults = null;
+/** Plafond d'une liste (kind) pour l'etat s : defauts du profil + reglages du noeud. */
+const limitOf = (s, kind) => limitsOf(s, profileDefaults)[kind];
+/** Sorties visibles (identique a media.state_layout). */
+const stateLayout = (state) => layoutOfState(state, profileDefaults);
+const isLtx = (s) => profileOf(s) === "ltx2";
 
 // Couleur des points de sortie d'une paire complete ref_video_N / ref_video_audio_N
 // (N = 1, 2, 3).
@@ -33,26 +42,32 @@ const PAIR_COLORS = [ORANGE, PINK, GREEN];
 const LIST_KEYS = {
     image: "images", video: "videos", video_audio: "video_audios", audio: "audios",
     first_frame: "first_frame", last_frame: "last_frame",
+    // Profil LTX 2.x
+    guide_image: "guide_images", guide_video: "guide_video", soundtrack: "soundtrack", voice: "voice",
 };
-const listOf = (s, kind) => s[LIST_KEYS[kind]];
-// Listes dont les fichiers peuvent etre rognes (identique a media.TRIM_KINDS).
-const TRIM_KINDS = ["video", "video_audio", "audio"];
+const listOf = (s, kind) => s[LIST_KEYS[kind]] || [];
+// Listes dont les fichiers peuvent etre rognes : TRIM_KINDS (profiles.js, = media.TRIM_KINDS).
 /** Rognage [debut, fin] d'un fichier d'une liste, ou null. */
 const trimOf = (s, kind, path) => (s.trims && s.trims[kind] ? s.trims[kind][trimKey(path)] || null : null);
 const fmtSec = (x) => String(Number(Number(x).toFixed(2)));
 const fmtTrim = (t) => fmtSec(t[0]) + "–" + fmtSec(t[1]) + " s";
 
 /** Type de fichier selectionnable pour une liste (video_audio : des videos ; frames : des images). */
-const fileKind = (kind) =>
-    kind === "video_audio" ? "video" : kind === "first_frame" || kind === "last_frame" ? "image" : kind;
+const FILE_KINDS = {
+    video_audio: "video", first_frame: "image", last_frame: "image",
+    guide_image: "image", guide_video: "video", soundtrack: "audio", voice: "audio",
+};
+const fileKind = (kind) => FILE_KINDS[kind] || kind;
 
 // Extensions video (identiques a media.KIND_EXTS["video"]).
 const VIDEO_EXTS = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"];
 const isVideoPath = (p) => VIDEO_EXTS.some((e) => String(p).toLowerCase().endsWith(e));
-/** Fichiers de type fk selectionnables dans la liste kind : Audio accepte aussi les videos ("son seul"). */
-const canPick = (kind, fk) => fk === fileKind(kind) || (kind === "audio" && fk === "video");
-/** Video choisie dans la liste Audio : seule sa bande-son sort, sur ref_audio_N. */
-const soundOnly = (kind, path) => kind === "audio" && isVideoPath(path);
+/** Listes de son qui acceptent aussi des videos ("son seul") : Audio, Soundtrack, Voice. */
+const acceptsVideo = (kind) => kind === "audio" || kind === "soundtrack" || kind === "voice";
+/** Fichiers de type fk selectionnables dans la liste kind. */
+const canPick = (kind, fk) => fk === fileKind(kind) || (acceptsVideo(kind) && fk === "video");
+/** Video choisie dans une liste de son : seule sa bande-son sort (piste audio). */
+const soundOnly = (kind, path) => acceptsVideo(kind) && isVideoPath(path);
 
 /** Badge "son seul" pose sur la vignette d'une video de la liste Audio. */
 function soundOnlyBadge(pos) {
@@ -67,8 +82,10 @@ function soundOnlyBadge(pos) {
 }
 
 // Hauteur de l'interface DOM : interrupteur de mode + lignes + barre du bas
-// (4 lignes en Ref2VA, 2 en F2VA/FL2VA).
-const UI_HEIGHT = { ref2va: 232, fl2va: 156 };
+// (4 lignes en Ref2VA, 2 en F2VA/FL2VA, 4 en LTX 2.x). La liste Model partage
+// la ligne de l'interrupteur (seule sur cette ligne en LTX 2.x).
+const UI_HEIGHT = { ref2va: 232, fl2va: 156, ltx2: 232 };
+const uiHeight = (s) => (isLtx(s) ? UI_HEIGHT.ltx2 : UI_HEIGHT[s.mode]);
 const MIN_WIDTH = 340;
 
 const svg = (body, size) =>
@@ -138,10 +155,25 @@ const FRAME_BUTTONS = [
     { id: "last_frame", kind: "last_frame", label: "Last frame", icon: IMAGE_ICON, color: TITLE_COLOR },
 ];
 
+// Lignes du profil LTX 2.x : images guides (galerie image), video guide (galerie
+// video), bande-son et voix (galerie audio, videos acceptees comme pour Audio).
+const LTX_BUTTONS = [
+    { id: "guide_image", kind: "guide_image", label: "Guide images", icon: IMAGE_ICON, color: VIOLET },
+    { id: "guide_video", kind: "guide_video", label: "Guide video", icon: VIDEO_ICON, color: ORANGE },
+    { id: "soundtrack", kind: "soundtrack", label: "Soundtrack", icon: AUDIO_ICON, color: GREEN },
+    { id: "voice", kind: "voice", label: "Voice", icon: AUDIO_ICON, color: TITLE_COLOR },
+];
+/** Mode passe a isMediaSubfolder : en LTX 2.x tous les dossiers de medias (pas la regle FL2VA). */
+const galleryMode = (s) => (isLtx(s) ? "ltx2" : s.mode);
+/** Lignes affichees selon le profil et le mode. */
+const rowsOf = (s) => (isLtx(s) ? LTX_BUTTONS : s.mode === "fl2va" ? FRAME_BUTTONS : BUTTONS);
+
 const KIND_TITLES = {
     image: "Reference images", video: "Reference videos",
     video_audio: "Video soundtracks (ref_video_audio)", audio: "Reference audio",
     first_frame: "First frame (F2VA / FL2VA)", last_frame: "Last frame (FL2VA, optional)",
+    guide_image: "Guide images (LTX 2.x)", guide_video: "Guide video (LTX 2.x)",
+    soundtrack: "Soundtrack (LTX 2.x)", voice: "Voice (LTX 2.x)",
 };
 
 // Vignette sans date dans l'URL : le serveur la fait revalider a chaque affichage (ETag, 304).
@@ -756,67 +788,7 @@ function helpSectionsFor(lang) {
 // --------------------------------------------------------------------
 // Etat et disposition des sorties
 // --------------------------------------------------------------------
-function emptyState() {
-    // folders[kind] : dossier de base propre a une galerie ("" = dossier racine) ;
-    // subs[kind] : sous-dossier choisi, relatif a la base ("" = la base elle-meme,
-    // conserve par type ; sans choix, la galerie affiche la base).
-    return {
-        root: "", folders: { image: "", video: "", audio: "" }, subs: { image: "", video: "", audio: "" },
-        images: [], videos: [], video_audios: [], audios: [],
-        // Mode F2VA/FL2VA : une image au plus dans chaque liste.
-        mode: "ref2va", first_frame: [], last_frame: [],
-        // Rognages par liste : {cle du chemin: [debut, fin]} en secondes.
-        trims: { video: {}, video_audio: {}, audio: {} },
-    };
-}
-
-function parseState(raw) {
-    const s = emptyState();
-    let data = null;
-    try {
-        data = JSON.parse(raw || "{}");
-    } catch (e) {
-        data = null;
-    }
-    if (!data || typeof data !== "object") return s;
-    const f = data.folders || {};
-    for (const k of ["image", "video", "audio"]) s.folders[k] = typeof f[k] === "string" ? f[k] : "";
-    s.root = typeof data.root === "string" ? data.root : "";
-    const sb = data.subs || {};
-    for (const k of ["image", "video", "audio"]) s.subs[k] = typeof sb[k] === "string" ? sb[k] : "";
-    s.images = (Array.isArray(data.images) ? data.images : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.image);
-    s.audios = (Array.isArray(data.audios) ? data.audios : []).filter((v) => typeof v === "string" && v).slice(0, LIMITS.audio);
-    // Videos : chemins simples. Ancien format {file, sound} : la video reste
-    // une video et, si sound, devient aussi une piste ref_video_audio.
-    const oldSounds = [];
-    s.videos = (Array.isArray(data.videos) ? data.videos : [])
-        .map((v) => {
-            if (v && typeof v === "object") {
-                if (v.sound && typeof v.file === "string" && v.file) oldSounds.push(v.file);
-                return v.file;
-            }
-            return v;
-        })
-        .filter((v) => typeof v === "string" && v)
-        .slice(0, LIMITS.video);
-    const va = (Array.isArray(data.video_audios) ? data.video_audios : []).filter((v) => typeof v === "string" && v);
-    s.video_audios = (va.length ? va : oldSounds).slice(0, LIMITS.video_audio);
-    s.mode = data.mode === "fl2va" ? "fl2va" : "ref2va";
-    const tr = data.trims && typeof data.trims === "object" ? data.trims : {};
-    for (const k of TRIM_KINDS) {
-        const entries = tr[k] && typeof tr[k] === "object" ? tr[k] : {};
-        for (const [key, v] of Object.entries(entries)) {
-            if (Array.isArray(v) && v.length === 2 && v[0] >= 0 && v[1] > v[0]) {
-                s.trims[k][trimKey(key)] = [Number(v[0]), Number(v[1])];
-            }
-        }
-    }
-    for (const k of ["first_frame", "last_frame"]) {
-        const v = data[k];
-        s[k] = (Array.isArray(v) ? v : [v]).filter((x) => typeof x === "string" && x).slice(0, 1);
-    }
-    return s;
-}
+// emptyState / parseState : profiles.js (pur, teste contre media.parse_state).
 
 /**
  * Le dossier racine change : les sous-dossiers choisis relativement a lui
@@ -871,22 +843,8 @@ function resetRootSubs(s) {
     }
 }
 
-/** Doit rester identique a media.layout_keys() cote Python. */
-function layoutKeys(ni, nv, nva, na) {
-    const clamp = (n, max) => Math.min(Math.max(1, n), max);
-    const keys = [];
-    for (let i = 1; i <= clamp(ni, LIMITS.image); i++) keys.push("ref_image_" + i);
-    for (let i = 1; i <= clamp(nv, LIMITS.video); i++) keys.push("ref_video_" + i);
-    for (let i = 1; i <= clamp(nva, LIMITS.video_audio); i++) keys.push("ref_video_audio_" + i);
-    for (let i = 1; i <= clamp(na, LIMITS.audio); i++) keys.push("ref_audio_" + i);
-    return keys;
-}
-
-/** Sorties visibles selon le mode (identique a media.state_layout cote Python). */
-function stateLayout(state) {
-    if (state.mode === "fl2va") return ["first_frame", "last_frame"];
-    return layoutKeys(state.images.length, state.videos.length, state.video_audios.length, state.audios.length);
-}
+// layoutKeys / stateLayout : profiles.js (identiques a media.layout_keys / state_layout,
+// profil compris) ; stateLayout(state) ci-dessus y passe les defauts de la route.
 
 // Derniere sortie : le Root folder, pour le noeud MiniMax H3 Project
 // (identique a media.PROJECT_KEY ; Python renvoie sa valeur a cette position).
@@ -896,11 +854,6 @@ const PROJECT_TYPE = "MINIMAX_PROJECT";
 /** Sorties affichees : celles du mode puis project (identique a media.output_names). */
 function outputNames(state) {
     return stateLayout(state).concat([PROJECT_KEY]);
-}
-
-function slotType(key) {
-    if (key === PROJECT_KEY) return PROJECT_TYPE;
-    return key.startsWith("ref_video_audio_") || key.startsWith("ref_audio_") ? "AUDIO" : "IMAGE";
 }
 
 /**
@@ -1018,9 +971,9 @@ function applyLayout(node, state, relink = true) {
     }
     // Paire complete (ref_video_N et ref_video_audio_N ont chacun une source) :
     // les deux points prennent la couleur de la paire N ; sinon couleur du type.
-    const paired = (n) => state.mode === "ref2va" && !!state.videos[n - 1] && !!state.video_audios[n - 1];
+    const paired = (n) => !isLtx(state) && state.mode === "ref2va" && !!state.videos[n - 1] && !!state.video_audios[n - 1];
     node.outputs.forEach((o) => {
-        o.type = slotType(o.name);
+        o.type = outputType(o.name);
         const m = o.name.match(/^ref_video(?:_audio)?_(\d)$/);
         const color = m && paired(Number(m[1])) ? PAIR_COLORS[Number(m[1]) - 1] : undefined;
         o.color_on = color;
@@ -2435,14 +2388,14 @@ function buildGallery(container, ctx) {
         subSelect.style.opacity = usable ? "1" : "0.45";
         subSelect.style.cursor = usable ? "pointer" : "default";
         subSelect.title = !base ? "Set a root folder first"
-            : usable ? "Subfolders of the root folder (number of " + (kind === "audio" ? "audio or video" : fileKind(kind)) + " files after the name)"
+            : usable ? "Subfolders of the root folder (number of " + (acceptsVideo(kind) ? "audio or video" : fileKind(kind)) + " files after the name)"
             : "No subfolder: the root folder itself is shown";
     }
 
     /** Sous-dossier propose : dans le projet du filtre et, sur le dossier des projets, un dossier de medias. */
     function allowedSub(path) {
         if (!inProjectFilter(path, projFilter)) return false;
-        return projRow.style.display === "none" || isMediaSubfolder(path, ctx.getState().mode);
+        return projRow.style.display === "none" || isMediaSubfolder(path, galleryMode(ctx.getState()));
     }
 
     const addOption = (select, value, text, multi) => {
@@ -2512,7 +2465,7 @@ function buildGallery(container, ctx) {
             if (id !== scanId || scanned !== base) return;
             subfolders = data.subfolders || [];
             // Galerie Audio : les videos comptent aussi (son seul).
-            if (kind === "audio") {
+            if (acceptsVideo(kind)) {
                 const vids = await apiGet("/mmrefloader/subfolders?path=" + encodeURIComponent(scanned) +
                     "&kind=video&all=1");
                 if (id !== scanId || scanned !== base) return;
@@ -2523,7 +2476,7 @@ function buildGallery(container, ctx) {
                 const n = subfolders.filter((e) => e.path).length;
                 const withFiles = subfolders.filter((e) => e.path && e.count).length;
                 status.textContent = n
-                    ? n + " subfolder" + (n > 1 ? "s" : "") + " found, " + withFiles + " with " + (kind === "audio" ? "audio or video" : fileKind(kind)) + " files."
+                    ? n + " subfolder" + (n > 1 ? "s" : "") + " found, " + withFiles + " with " + (acceptsVideo(kind) ? "audio or video" : fileKind(kind)) + " files."
                     : "No subfolder in the root folder.";
             }
         } catch (e) {
@@ -2570,7 +2523,7 @@ function buildGallery(container, ctx) {
         if (inPool(path)) return; // deja en attente de remplacement
         // Son seul : une video sans bande-son est refusee des la galerie.
         const s0 = ctx.getState();
-        const room = list(s0).length < LIMITS[kind] || marked.length > 0;
+        const room = list(s0).length < limitOf(s0, kind) || marked.length > 0;
         if (soundOnly(kind, path) && indexOf(path, s0) < 0 && room) {
             try {
                 const info = await apiGet("/mmrefloader/info?file=" + encodeURIComponent(path));
@@ -2594,9 +2547,9 @@ function buildGallery(container, ctx) {
             pool.push({ path, old: marked.shift(), f, folder });
             render();
             return;
-        } else if (arr.length < LIMITS[kind]) {
+        } else if (arr.length < limitOf(s, kind)) {
             arr.push(path);
-        } else if (LIMITS[kind] === 1) {
+        } else if (limitOf(s, kind) === 1) {
             arr[0] = path; // une seule image : elle est remplacee
         } else {
             if (project) status.textContent = "The selection is full: check below the file to replace.";
@@ -2618,7 +2571,7 @@ function buildGallery(container, ctx) {
     // ------ Affichage ------
     function updateCounters() {
         const arr = list();
-        counter.textContent = arr.length + " / " + LIMITS[kind] + " selected";
+        counter.textContent = arr.length + " / " + limitOf(ctx.getState(), kind) + " selected";
         const folder = currentFolder();
         const shown = (it) => (folder && files.some((f) => canPick(kind, f.kind) && samePath(joinPath(folder, f.name), it))) ||
             (project && projFiles.some((f) => canPick(kind, f.kind) && samePath(joinPath(projDir, f.name), it))) ||
@@ -2628,11 +2581,11 @@ function buildGallery(container, ctx) {
     }
 
     // Ordre et titres des sections quand le dossier melange les categories.
-    const SECTIONS = [
-        { kind: "image", title: "Images" },
-        { kind: "video", title: "Video or Video/Audio" },
-        { kind: "audio", title: "Audio" },
-    ];
+    const SECTIONS = [{ kind: "image" }, { kind: "video" }, { kind: "audio" }];
+    /** Boutons du noeud qui prennent un type de fichier (selon le profil affiche). */
+    const buttonsFor = (fk) => (isLtx(ctx.getState())
+        ? { image: "Guide images", video: "Guide video", audio: "Soundtrack or Voice" }
+        : { image: "Images", video: "Video or Video/Audio", audio: "Audio" })[fk];
 
     function sectionHeader(text) {
         const h = document.createElement("div");
@@ -2658,9 +2611,8 @@ function buildGallery(container, ctx) {
         const selectable = own && !pooled && (selected || !full || marked.length > 0);
 
         const tile = document.createElement("div");
-        tile.title = own ? f.name + (soundOnly(kind, path) ? "\n(sound only: its soundtrack goes out on ref_audio)" : "")
-            : f.name + "\n(" + f.kind + ": not selectable here, use the " +
-            (f.kind === "image" ? "Images" : f.kind === "video" ? "Video or Video/Audio" : "Audio") + " button)";
+        tile.title = own ? f.name + (soundOnly(kind, path) ? "\n(sound only: its soundtrack goes out as an audio track)" : "")
+            : f.name + "\n(" + f.kind + ": not selectable here, use the " + buttonsFor(f.kind) + " button)";
         Object.assign(tile.style, {
             position: "relative", background: "#151515", borderRadius: "6px", overflow: "hidden",
             cursor: selectable ? "pointer" : own ? "not-allowed" : "default",
@@ -2978,7 +2930,7 @@ function buildGallery(container, ctx) {
         return h;
     }
 
-    const countText = (n) => n + " " + (kind === "audio" ? "audio file" : fileKind(kind)) + (n > 1 ? "s" : "");
+    const countText = (n) => n + " " + (acceptsVideo(kind) ? "audio file" : fileKind(kind)) + (n > 1 ? "s" : "");
 
     function render() {
         marked = marked.filter((m) => indexOf(m) >= 0);
@@ -2997,7 +2949,8 @@ function buildGallery(container, ctx) {
         const folder = showArchives ? archDir() : currentFolder();
         const topFiles = showArchives ? archFiles : files;
         // Liste d'une seule image : jamais "pleine", un clic remplace l'image.
-        const full = LIMITS[kind] > 1 && list().length >= LIMITS[kind];
+        const lim = limitOf(ctx.getState(), kind);
+        const full = lim > 1 && list().length >= lim;
         if (project) {
             const head = zoneHeader(showArchives
                 ? "Content of " + escapeHtml(projFolder) + "/Archives of the project"
@@ -3022,7 +2975,7 @@ function buildGallery(container, ctx) {
             if (present.length > 1) {
                 const note = !canPick(kind, sec.kind) ? "  (for information)"
                     : sec.kind !== fileKind(kind) ? "  (sound only)" : "";
-                grid.appendChild(sectionHeader(sec.title + "  ·  " + group.length + note));
+                grid.appendChild(sectionHeader(buttonsFor(sec.kind) + "  ·  " + group.length + note));
             }
             if (!project) {
                 group.forEach((f) => grid.appendChild(makeTile(f, folder, full)));
@@ -3081,7 +3034,7 @@ function buildGallery(container, ctx) {
             escapeHtml(project.name) + "</span>", countText(own.length)));
         if (!own.length) {
             const none = document.createElement("div");
-            none.textContent = "No " + (kind === "audio" ? "audio" : fileKind(kind)) + " file in this folder of the project yet.";
+            none.textContent = "No " + (acceptsVideo(kind) ? "audio" : fileKind(kind)) + " file in this folder of the project yet.";
             Object.assign(none.style, { gridColumn: "1 / -1", color: "#888", padding: "2px" });
             grid.appendChild(none);
         }
@@ -3428,7 +3381,7 @@ function buildGallery(container, ctx) {
             projRow.style.display = "none"; // paintProjRow reprend le projet choisi
             projPicker.close();
             if (projList && projList.names.length && base && samePath(base, projList.root) && sub &&
-                !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, st.mode))) {
+                !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, galleryMode(st)))) {
                 sub = "";
                 saveNav();
             }
@@ -3436,7 +3389,10 @@ function buildGallery(container, ctx) {
             files = [];
             // Sortie project reliee a un projet : zone de son dossier (Images -> 08.Images...).
             project = ctx.getProject ? ctx.getProject() : null;
-            projFolder = project ? LIST_FOLDERS[LIST_KEYS[kind]] : "";
+            projFolder = project ? LIST_FOLDERS[LIST_KEYS[kind]] || "" : "";
+            // Liste sans dossier de projet connu (LTX 2.x tant que le noeud Projet ne les range pas) :
+            // pas de zone projet plutot qu'un chemin faux.
+            if (!projFolder) project = null;
             projDir = project ? joinPath(project.path, projFolder) : "";
             projFiles = [];
             initial = list(st).slice();
@@ -3687,13 +3643,20 @@ const VIEWER_TITLES = {
     image: "Selected images", video: "Selected videos",
     video_audio: "Selected video soundtracks", audio: "Selected audio",
 };
-const OUTPUT_PREFIX = { image: "ref_image_", video: "ref_video_", video_audio: "ref_video_audio_", audio: "ref_audio_" };
+const OUTPUT_PREFIX = {
+    image: "ref_image_", video: "ref_video_", video_audio: "ref_video_audio_", audio: "ref_audio_",
+    guide_image: "guide_image_",
+};
 VIEWER_TITLES.first_frame = "First frame";
 VIEWER_TITLES.last_frame = "Last frame";
+VIEWER_TITLES.guide_image = "Selected guide images";
+VIEWER_TITLES.guide_video = "Guide video";
+VIEWER_TITLES.soundtrack = "Soundtrack";
+VIEWER_TITLES.voice = "Voice";
 
-/** Nom de la sortie de l'element i (index 0) d'une liste. */
+/** Nom de la sortie de l'element i (index 0) d'une liste (listes a un element : la sortie porte son nom). */
 function outputName(kind, i) {
-    return kind === "first_frame" || kind === "last_frame" ? kind : OUTPUT_PREFIX[kind] + (i + 1);
+    return OUTPUT_PREFIX[kind] ? OUTPUT_PREFIX[kind] + (i + 1) : kind;
 }
 
 function buildSelectionViewer(container, ctx) {
@@ -3788,6 +3751,8 @@ function buildSelectionViewer(container, ctx) {
         const kept = arr.filter((it) => !marked.has(markKey(pathOf(it))));
         arr.splice(0, arr.length, ...kept);
         marked.clear();
+        // Guides LTX 2.x : les moments des fichiers retires partent avec eux.
+        pruneMoments(s);
         ctx.setState(s);
         render();
     }
@@ -3851,9 +3816,133 @@ function buildSelectionViewer(container, ctx) {
         return b;
     }
 
+    // ------ Moments des guides LTX 2.x (secondes ; LAST = -1) ------
+    // Note rouge d'un moment refuse, par cle de chemin (effacee au prochain choix valide).
+    const momentErrors = new Map();
+    const hasMoments = () => kind === "guide_image" || kind === "guide_video";
+
+    /**
+     * Moment effectif, numero d'image et guide au meme numero de chaque element
+     * (meme calcul que media._build_ltx_outputs ; null au-dela du plafond : non envoye).
+     */
+    function momentRows(s, arr) {
+        const lim = limitsOf(s, profileDefaults);
+        const stored = (s.moments && s.moments[LIST_KEYS[kind]]) || {};
+        const max = Math.min(arr.length, lim[kind]);
+        const used = arr.slice(0, max);
+        const moments = kind === "guide_image" ? guideMoments(used, stored)
+            : used.map((p) => (trimKey(p) in stored ? stored[trimKey(p)] : 0));
+        const frames = moments.map((m) => {
+            const f = secondsToFrame(m, lim.fps, lim.seconds);
+            return kind === "guide_video" ? videoGuideFrame(f) : f;
+        });
+        const same = kind === "guide_image" ? sameFrameAs(frames) : frames.map(() => 0);
+        return arr.map((p, i) => (i < max ? { moment: moments[i], frame: frames[i], same: same[i] } : null));
+    }
+
+    function setMoment(path, value) {
+        const s = ctx.getState();
+        const list = LIST_KEYS[kind];
+        s.moments = s.moments || {};
+        s.moments[list] = s.moments[list] || {};
+        s.moments[list][trimKey(path)] = value;
+        momentErrors.delete(trimKey(path));
+        ctx.setState(s);
+        render();
+    }
+
+    /** Champ Moment (s), boutons First / Last, numero d'image et notes sous une vignette. */
+    function momentBox(path, info, seconds) {
+        const box = document.createElement("div");
+        Object.assign(box.style, { padding: "4px 5px 0", fontSize: "10px", color: "#ccc" });
+        // Les clics du cadre ne selectionnent pas la vignette.
+        box.addEventListener("click", (e) => e.stopPropagation());
+        if (!info) {
+            box.textContent = "Over the limit: not sent";
+            box.style.color = INACTIVE_FG;
+            return box;
+        }
+        const line = document.createElement("div");
+        Object.assign(line.style, { display: "flex", alignItems: "center", gap: "4px" });
+        const input = document.createElement("input");
+        input.type = "number";
+        input.step = "0.1";
+        input.min = "0";
+        input.max = String(seconds);
+        input.title = "Moment (s): when this guide appears, in seconds (0 to " + seconds + ")";
+        input.value = info.moment === LAST ? "" : String(info.moment);
+        input.placeholder = info.moment === LAST ? "Last" : "";
+        Object.assign(input.style, {
+            width: "52px", background: "#111", color: "#ddd", border: "1px solid #444", borderRadius: "4px",
+            padding: "1px 3px", fontSize: "10px", boxSizing: "border-box",
+        });
+        input.addEventListener("change", () => {
+            const raw = input.value;
+            // Champ vide : rien ne change.
+            if (String(raw).trim() === "") {
+                render();
+                return;
+            }
+            const res = checkMoment(raw, seconds);
+            if (!res.ok) {
+                // Refus : le champ revient a l'ancienne valeur, note rouge sous la vignette.
+                momentErrors.set(trimKey(path), "Max " + seconds + " s");
+                render();
+                return;
+            }
+            setMoment(path, res.value);
+        });
+        const unit = document.createElement("span");
+        unit.textContent = "s";
+        const frame = document.createElement("span");
+        frame.textContent = info.frame === LAST ? "frame last" : "frame " + info.frame;
+        frame.title = "Frame number sent to the output" + (kind === "guide_video" ? " (rounded down to 8×k+1)" : "");
+        Object.assign(frame.style, { marginLeft: "auto", color: "#9fd6cf", whiteSpace: "nowrap" });
+        line.append(input, unit, frame);
+
+        const btns = document.createElement("div");
+        Object.assign(btns.style, { display: "flex", gap: "4px", marginTop: "3px" });
+        for (const [text, value, tip] of [["First", 0, "First frame (0 s)"], ["Last", LAST, "Last frame of the video"]]) {
+            const on = info.moment === value;
+            const b = document.createElement("button");
+            b.type = "button";
+            b.textContent = text;
+            b.title = tip;
+            Object.assign(b.style, {
+                flex: "1", border: "1px solid " + (on ? PINK : "#444"), borderRadius: "4px", cursor: "pointer",
+                background: on ? PINK : INACTIVE_BG, color: on ? "white" : INACTIVE_FG, fontSize: "10px",
+                fontWeight: "bold", padding: "1px 0",
+            });
+            b.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (!on) setMoment(path, value);
+            });
+            btns.appendChild(b);
+        }
+        box.append(line, btns);
+
+        const notes = [];
+        const err = momentErrors.get(trimKey(path));
+        if (err) notes.push([err, MARK_RED]);
+        if (info.same) notes.push(["Same frame as guide " + info.same, ORANGE]);
+        for (const [text, color] of notes) {
+            const n = document.createElement("div");
+            n.textContent = text;
+            Object.assign(n.style, { color, marginTop: "2px", fontWeight: "bold" });
+            box.appendChild(n);
+        }
+        return box;
+    }
+
     function render() {
         const arr = list();
-        counter.textContent = arr.length + " / " + LIMITS[kind];
+        const max = limitOf(ctx.getState(), kind);
+        counter.textContent = arr.length + " / " + max;
+        // Plus de fichiers que le plafond (Limits abaisse) : compteur orange.
+        counter.style.color = arr.length > max ? ORANGE : "#bbb";
+        const mstate = ctx.getState();
+        const mrows = hasMoments() ? momentRows(mstate, arr) : null;
+        const mseconds = limitsOf(mstate, profileDefaults).seconds;
         grid.innerHTML = "";
         if (!arr.length) {
             const empty = document.createElement("div");
@@ -3873,12 +3962,16 @@ function buildSelectionViewer(container, ctx) {
             const path = pathOf(item);
             const active = current && samePath(path, current);
             const isMarked = marked.has(markKey(path));
+            const minfo = mrows ? mrows[i] : null;
+            // Deux guides au meme numero d'image : bord orange.
+            const sameFrame = !!(minfo && minfo.same);
 
             const tile = document.createElement("div");
             tile.title = path;
             Object.assign(tile.style, {
                 position: "relative", background: "#151515", borderRadius: "6px", overflow: "hidden",
-                cursor: "pointer", border: "2px solid " + (isMarked ? MARK_RED : active ? VIOLET : PINK),
+                cursor: "pointer",
+                border: "2px solid " + (isMarked ? MARK_RED : sameFrame ? ORANGE : active ? VIOLET : PINK),
                 boxShadow: active ? "0 0 8px rgba(106,95,211,0.8)" : "none",
             });
 
@@ -3950,10 +4043,13 @@ function buildSelectionViewer(container, ctx) {
                     color: ORANGE, padding: "1px 5px", borderRadius: "4px", fontSize: "10px",
                 });
                 thumb.style.position = "relative";
-                tile.append(thumb, badge, bin, cut, name, out, arrows);
+                tile.append(thumb, badge, bin, cut, name, out);
             } else {
-                tile.append(thumb, badge, bin, name, out, arrows);
+                tile.append(thumb, badge, bin, name, out);
             }
+            // Guides LTX 2.x : moment sous la vignette, avant les fleches.
+            if (mrows) tile.appendChild(momentBox(path, minfo, mseconds));
+            tile.appendChild(arrows);
             if (soundTag) tile.appendChild(soundTag);
             tile.addEventListener("click", () => showInfo(path));
             grid.appendChild(tile);
@@ -4044,7 +4140,12 @@ function buildSelectionViewer(container, ctx) {
     }
 
     const onKey = (e) => {
-        if (overlay.style.display === "none" || e.key !== "Escape") return;
+        if (overlay.style.display === "none") return;
+        if (e.key !== "Escape") {
+            // Touches tapees dans un champ Moment : ne pas les laisser au canvas (Suppr...).
+            if (card.contains(e.target)) e.stopImmediatePropagation();
+            return;
+        }
         if (confirmOpen()) {
             // Echap ferme d'abord la confirmation, pas la fenetre.
             e.preventDefault();
@@ -4076,6 +4177,7 @@ function buildSelectionViewer(container, ctx) {
             kind = newKind;
             current = null;
             marked.clear();
+            momentErrors.clear();
             title.textContent = VIEWER_TITLES[kind];
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
@@ -4087,6 +4189,198 @@ function buildSelectionViewer(container, ctx) {
             close();
             overlay.remove();
             confirm.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
+// Fenetre Limits : plafonds du modele choisi, reglables par noeud
+// --------------------------------------------------------------------
+const LIMIT_LABELS = {
+    image: "Images", video: "Videos", video_audio: "Video/Audio", audio: "Audio",
+    first_frame: "First frame", last_frame: "Last frame",
+    guide_image: "Guide images", guide_video: "Guide video", soundtrack: "Soundtrack", voice: "Voice",
+};
+
+/**
+ * buildLimitsDialog(container, ctx) ; open({profile, defaults, bounds, current}) :
+ * un champ par nombre de fichiers (1..defaut), Max duration (s), Max size
+ * (largeur × hauteur), Frames per second. Reset = valeurs du modele (rien
+ * n'est ecrit avant OK) ; OK ecrit state.limits[profil] (seulement les valeurs
+ * differentes des defauts) puis setState ; Cancel, Echap, clic a cote ferment.
+ */
+function buildLimitsDialog(container, ctx) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, { width: "min(360px, 92vw)", padding: "12px 14px", borderColor: VIOLET });
+
+    const title = document.createElement("div");
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "4px" });
+    const hint = document.createElement("div");
+    hint.textContent = "Limits of this node for the model. A number of files cannot go above the model's value.";
+    Object.assign(hint.style, { color: "#999", marginBottom: "10px", lineHeight: "1.4" });
+    const form = document.createElement("div");
+    Object.assign(form.style, {
+        display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 10px", alignItems: "center",
+    });
+    const status = document.createElement("div");
+    Object.assign(status.style, { color: MARK_RED, minHeight: "14px", margin: "8px 0 0", fontWeight: "bold" });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", gap: "8px", marginTop: "10px" });
+    const resetBtn = makeTextButton("Reset", ORANGE);
+    resetBtn.title = "Put back the values of the model (saved with OK)";
+    const spacer = document.createElement("div");
+    spacer.style.flex = "1";
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const okBtn = makeTextButton("OK", PINK);
+    footer.append(resetBtn, spacer, cancelBtn, okBtn);
+    card.append(title, hint, form, status, footer);
+
+    let opts = null;
+    let fields = {}; // cle -> {inputs, lo, hi, integer}
+
+    const numberInput = (lo, hi, step) => {
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = String(lo);
+        input.max = String(hi);
+        input.step = String(step);
+        Object.assign(input.style, {
+            width: "72px", background: "#111", color: "#ddd", border: "1px solid #444", borderRadius: "6px",
+            padding: "3px 6px", fontSize: "12px", boxSizing: "border-box",
+        });
+        if (lo === hi) {
+            // Plafond du modele a 1 : rien a regler.
+            input.disabled = true;
+            input.style.opacity = "0.5";
+        }
+        return input;
+    };
+
+    function addRow(key, label, inputs, lo, hi, integer) {
+        const name = document.createElement("div");
+        name.textContent = label;
+        const cell = document.createElement("div");
+        Object.assign(cell.style, { display: "flex", alignItems: "center", gap: "6px" });
+        inputs.forEach((inp, i) => {
+            if (i) {
+                const x = document.createElement("span");
+                x.textContent = "×";
+                cell.appendChild(x);
+            }
+            cell.appendChild(inp);
+        });
+        const range = document.createElement("span");
+        range.textContent = lo + "–" + hi;
+        Object.assign(range.style, { color: INACTIVE_FG, fontSize: "11px" });
+        cell.appendChild(range);
+        form.append(name, cell);
+        fields[key] = { inputs, lo, hi, integer };
+    }
+
+    function fill(values) {
+        for (const [key, f] of Object.entries(fields)) {
+            const v = key === "max_size" ? values.max_size : [values[key]];
+            f.inputs.forEach((inp, i) => (inp.value = String(v[i])));
+        }
+        status.textContent = "";
+    }
+
+    function build() {
+        form.innerHTML = "";
+        fields = {};
+        const b = opts.bounds;
+        for (const key of COUNT_KEYS[opts.profile]) {
+            addRow(key, LIMIT_LABELS[key] || key, [numberInput(b[key][0], b[key][1], 1)], b[key][0], b[key][1], true);
+        }
+        addRow("seconds", "Max duration (s)", [numberInput(b.seconds[0], b.seconds[1], 0.1)], b.seconds[0], b.seconds[1], false);
+        const ms = b.max_side;
+        addRow("max_size", "Max size", [numberInput(ms[0], ms[1], 1), numberInput(ms[0], ms[1], 1)], ms[0], ms[1], true);
+        fields.max_size.inputs[0].title = "Width (px)";
+        fields.max_size.inputs[1].title = "Height (px)";
+        addRow("fps", "Frames per second", [numberInput(b.fps[0], b.fps[1], 1)], b.fps[0], b.fps[1], false);
+    }
+
+    /** Valeurs des champs, ou null (message rouge) si l'une sort de ses bornes. */
+    function read() {
+        const out = {};
+        for (const [key, f] of Object.entries(fields)) {
+            const vals = [];
+            for (const inp of f.inputs) {
+                const v = Number(String(inp.value).trim().replace(",", "."));
+                const label = key === "max_size" ? "Max size" : LIMIT_LABELS[key] ||
+                    (key === "seconds" ? "Max duration (s)" : "Frames per second");
+                if (String(inp.value).trim() === "" || !Number.isFinite(v) || v < f.lo || v > f.hi ||
+                    (f.integer && !Number.isInteger(v))) {
+                    status.textContent = label + ": " + (f.integer ? "a whole number " : "a number ") +
+                        "between " + f.lo + " and " + f.hi;
+                    inp.focus();
+                    return null;
+                }
+                vals.push(v);
+            }
+            out[key] = key === "max_size" ? vals : vals[0];
+        }
+        return out;
+    }
+
+    function save() {
+        const values = read();
+        if (!values) return;
+        const s = ctx.getState();
+        const over = limitOverrides(opts.profile, values, opts.defaults);
+        const all = Object.assign({}, s.limits);
+        if (Object.keys(over).length) all[opts.profile] = over;
+        else delete all[opts.profile];
+        s.limits = all;
+        ctx.setState(s);
+        close();
+    }
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            close();
+            return;
+        }
+        if (card.contains(e.target)) {
+            // Les touches des champs ne vont pas au canvas ; Entree = OK.
+            e.stopImmediatePropagation();
+            if (e.key === "Enter" && e.target.tagName === "INPUT") {
+                e.preventDefault();
+                save();
+            }
+        }
+    };
+
+    function close() {
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+
+    resetBtn.addEventListener("click", () => {
+        const base = (opts.defaults && opts.defaults[opts.profile]) || limitsOf({ profile: opts.profile });
+        fill(base);
+    });
+    cancelBtn.addEventListener("click", close);
+    okBtn.addEventListener("click", save);
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        open(o) {
+            opts = o;
+            title.textContent = "Limits — " + LABELS[o.profile];
+            build();
+            fill(o.current);
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 360);
+        },
+        close,
+        remove() {
+            close();
+            overlay.remove();
         },
     };
 }
@@ -4198,8 +4492,8 @@ function buildOverview(container, ctx) {
     function render() {
         const s = ctx.getState();
         const fl = s.mode === "fl2va";
-        const rows = fl ? FRAME_BUTTONS : BUTTONS;
-        title.textContent = "Project overview — " + (fl ? "F2VA / FL2VA" : "Ref2VA");
+        const rows = rowsOf(s);
+        title.textContent = "Project overview — " + (isLtx(s) ? LABELS.ltx2 : fl ? "F2VA / FL2VA" : "Ref2VA");
         let total = 0;
         body.innerHTML = "";
         for (const b of rows) {
@@ -4211,7 +4505,7 @@ function buildOverview(container, ctx) {
                 paddingBottom: "4px", borderBottom: "1px solid #2c2c2c", fontWeight: "bold", color: "#ddd",
             });
             head.innerHTML = iconBadge(b.icon, b.color) + "<span>" + b.label + "</span>" +
-                '<span style="color:#888;font-weight:normal">' + arr.length + " / " + LIMITS[b.kind] +
+                '<span style="color:#888;font-weight:normal">' + arr.length + " / " + limitOf(s, b.kind) +
                 (b.kind === "video_audio" ? " · audio" : "") + "</span>";
             body.appendChild(head);
             if (!arr.length) {
@@ -4270,6 +4564,18 @@ function buildOverview(container, ctx) {
 // --------------------------------------------------------------------
 app.registerExtension({
     name: "ComfyUI.MiniMaxRefLoader",
+    // Defauts des profils lus une fois ; jusqu'a la reponse, FALLBACK_LIMITS (profiles.js).
+    async setup() {
+        try {
+            const res = await fetch("/mmrefloader/profiles");
+            const defaults = res.ok ? routeDefaults(await res.json()) : null;
+            if (!defaults) return;
+            profileDefaults = defaults;
+            vueNodes.forEach((n) => typeof n.__mmrefRefresh === "function" && n.__mmrefRefresh());
+        } catch (e) {
+            console.warn("[MagicStudio RefLoader] profiles", e);
+        }
+    },
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== NODE_NAME) return;
 
@@ -4305,10 +4611,49 @@ app.registerExtension({
             });
 
             // Interrupteur de mode (pilule) : Ref2VA (orange) | F2VA/FL2VA (vert).
+            // Liste Model a sa gauche (meme style pilule) : MiniMax H3 | LTX 2.x ; en LTX 2.x
+            // l'interrupteur est cache et la liste prend toute la ligne.
+            const topRow = document.createElement("div");
+            Object.assign(topRow.style, { display: "flex", gap: "6px", alignItems: "center", flex: "0 0 auto", height: "24px" });
+            const modelSelect = document.createElement("select");
+            modelSelect.title = "Model: the video model the outputs are prepared for";
+            Object.assign(modelSelect.style, {
+                flex: "0 0 auto", height: "24px", borderRadius: "999px", border: "1px solid #0c3833",
+                background: VIOLET, color: "white", fontWeight: "bold", fontSize: "11px", padding: "0 8px",
+                cursor: "pointer", boxSizing: "border-box", minWidth: "0",
+            });
+            for (const p of PROFILES) {
+                const o = document.createElement("option");
+                o.value = p;
+                o.textContent = LABELS[p];
+                Object.assign(o.style, { background: "#222", color: "#ddd" });
+                modelSelect.appendChild(o);
+            }
+            modelSelect.addEventListener("change", () => setProfile(modelSelect.value));
+            topRow.appendChild(modelSelect);
+            // Bouton Limits (a droite de la liste Model) : plafonds du modele pour ce noeud.
+            const limitsBtn = document.createElement("button");
+            limitsBtn.type = "button";
+            limitsBtn.textContent = "Limits";
+            limitsBtn.title = "Limits of the model for this node (number of files, duration, size, frame rate)";
+            Object.assign(limitsBtn.style, {
+                flex: "0 0 auto", height: "24px", borderRadius: "999px", border: "1px solid #0c3833",
+                background: INACTIVE_BG, color: "#ddd", fontWeight: "bold", fontSize: "11px", padding: "0 10px",
+                cursor: "pointer", boxSizing: "border-box",
+            });
+            limitsBtn.addEventListener("click", () => {
+                const s = getState();
+                const profile = profileOf(s);
+                limitsDialog.open({
+                    profile, defaults: profileDefaults, bounds: limitBounds(profile, profileDefaults),
+                    current: limitsOf(s, profileDefaults),
+                });
+            });
+            topRow.appendChild(limitsBtn);
             const modeToggle = document.createElement("div");
             Object.assign(modeToggle.style, {
-                display: "flex", borderRadius: "999px", overflow: "hidden", flex: "0 0 auto",
-                border: "1px solid #0c3833", height: "24px",
+                display: "flex", borderRadius: "999px", overflow: "hidden", flex: "1 1 auto",
+                border: "1px solid #0c3833", height: "24px", boxSizing: "border-box", minWidth: "0",
             });
             const modeBtns = {};
             for (const [m, text, tip] of [
@@ -4327,10 +4672,11 @@ app.registerExtension({
                 modeToggle.appendChild(mb);
                 modeBtns[m] = mb;
             }
-            container.appendChild(modeToggle);
+            topRow.appendChild(modeToggle);
+            container.appendChild(topRow);
 
             const rows = {};
-            for (const b of BUTTONS.concat(FRAME_BUTTONS)) {
+            for (const b of BUTTONS.concat(FRAME_BUTTONS, LTX_BUTTONS)) {
                 const row = document.createElement("div");
                 Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center", flex: "0 0 auto" });
 
@@ -4387,6 +4733,8 @@ app.registerExtension({
                             const s = getState();
                             const before = getState();
                             s[LIST_KEYS[b.kind]] = [];
+                            // Guides LTX 2.x : leurs moments partent avec eux.
+                            pruneMoments(s);
                             setState(s);
                             orderWarning.check(before, getState());
                         });
@@ -4464,8 +4812,10 @@ app.registerExtension({
             // compare a sa fermeture (choix utilisateur, 19/10/2026).
             const orderWarning = buildOrderWarning(container);
             let orderSnap = null;
+            // Seulement en MiniMax Ref2VA (pas de balises <Picture N> en FL2VA ni en LTX 2.x).
             const watchOrder = () => {
-                orderSnap = getState();
+                const s = getState();
+                orderSnap = !isLtx(s) && s.mode === "ref2va" ? s : null;
             };
             const checkOrder = () => {
                 const before = orderSnap;
@@ -4491,24 +4841,28 @@ app.registerExtension({
             const rootDialog = buildRootDialog(container, { getState, setState, relink: relinkRoot });
             const help = buildHelpOverlay(container);
             const overview = buildOverview(container, { getState });
+            const limitsDialog = buildLimitsDialog(container, { getState, setState });
             helpBtn.addEventListener("click", () => help.open());
             overviewBtn.addEventListener("click", () => overview.open());
             rootBtn.addEventListener("click", () => rootDialog.open());
-            node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview, orderWarning];
+            node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview, orderWarning, limitsDialog];
 
             // Une configuration "existe" des qu'une reference est selectionnee ;
             // le dossier racine seul ne compte pas.
             const ref2vaRefs = (s) => s.images.length + s.videos.length + s.video_audios.length + s.audios.length;
             const frameRefs = (s) => s.first_frame.length + s.last_frame.length;
-            /** References du mode affiche (couleur du bouton Upload). */
-            const modeRefs = (s) => (s.mode === "fl2va" ? frameRefs(s) : ref2vaRefs(s));
+            const ltxRefs = (s) => s.guide_images.length + s.guide_video.length + s.soundtrack.length + s.voice.length;
+            /** References du profil / mode affiche (couleur du bouton Upload). */
+            const modeRefs = (s) => (isLtx(s) ? ltxRefs(s) : s.mode === "fl2va" ? frameRefs(s) : ref2vaRefs(s));
 
             /**
-             * Liens et noms renommes des sorties d'un mode, memorises dans
-             * node.properties.modeLinks : en revenant a ce mode, les liens sont
-             * rebranches si le noeud cible et son entree existent encore et sont libres.
+             * Liens et noms renommes des sorties d'un profil / mode, memorises dans
+             * node.properties.modeLinks sous la cle profileKey(etat) ("minimax_h3:ref2va",
+             * "minimax_h3:fl2va", "ltx2") : en y revenant, les liens sont rebranches si le
+             * noeud cible et son entree existent encore et sont libres. Anciennes cles
+             * ref2va / fl2va (anciens workflows) lues comme minimax_h3:* (legacyModeLinks).
              */
-            function saveModeLinks(mode) {
+            function saveModeLinks(key) {
                 const saved = [];
                 node.outputs.forEach((o, i) => {
                     const links = outputLinksOf(node, i).map((l) => {
@@ -4518,11 +4872,11 @@ app.registerExtension({
                     }).filter(Boolean);
                     saved.push({ key: o.name, label: o.label || null, links });
                 });
-                node.properties.modeLinks = Object.assign({}, node.properties.modeLinks, { [mode]: saved });
+                node.properties.modeLinks = Object.assign(legacyModeLinks(node.properties.modeLinks), { [key]: saved });
             }
 
-            function restoreModeLinks(mode) {
-                const saved = (node.properties.modeLinks || {})[mode] || [];
+            function restoreModeLinks(key) {
+                const saved = legacyModeLinks(node.properties.modeLinks)[key] || [];
                 for (const entry of saved) {
                     const outIdx = node.outputs.findIndex((o) => o.name === entry.key);
                     if (outIdx < 0) continue;
@@ -4541,10 +4895,20 @@ app.registerExtension({
             function setMode(mode, s) {
                 s = s || getState();
                 if (s.mode === mode) return;
-                saveModeLinks(s.mode);
+                saveModeLinks(profileKey(s));
                 s.mode = mode;
                 setState(s);
-                restoreModeLinks(mode);
+                restoreModeLinks(profileKey(s));
+            }
+
+            /** Liste Model : meme schema que setMode ; chaque profil garde sa selection et ses liens. */
+            function setProfile(profile, s) {
+                s = s || getState();
+                if (!PROFILES.includes(profile) || profileOf(s) === profile) return;
+                saveModeLinks(profileKey(s));
+                s.profile = profile;
+                setState(s);
+                restoreModeLinks(profileKey(s));
             }
             // Orange = le mode affiche a deja des references.
             const hasConfig = (s) => modeRefs(s) > 0;
@@ -4557,9 +4921,9 @@ app.registerExtension({
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                // Nom prefixe par le mode et suffixe par la date / heure locales
-                // (yyyyMMdd-HHmmss) : une nouvelle sauvegarde n'ecrase pas la precedente.
-                a.download = (s.mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config_" + timestamp() + ".json";
+                // Nom prefixe par le profil / mode (configFilePrefix) et suffixe par la date / heure
+                // locales (yyyyMMdd-HHmmss) : une nouvelle sauvegarde n'ecrase pas la precedente.
+                a.download = configFilePrefix(s) + timestamp() + ".json";
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
@@ -4575,12 +4939,14 @@ app.registerExtension({
                     fileInput.click();
                     return;
                 }
-                const fl = s.mode === "fl2va";
+                const fl = !isLtx(s) && s.mode === "fl2va";
+                const what = isLtx(s) ? LABELS.ltx2 : fl ? "F2VA / FL2VA" : "Ref2VA";
                 clearConfirm.ask(
-                    "<b>Overwrite the " + (fl ? "F2VA / FL2VA" : "Ref2VA") + " configuration?</b><br>" +
+                    "<b>Overwrite the " + what + " configuration?</b><br>" +
                     "Loading a file replaces the " + modeRefs(s) + " " + (fl ? "frame" : "reference") +
-                    (modeRefs(s) > 1 ? "s" : "") + " of this mode and the root folder; the other mode " +
-                    "is not changed." +
+                    (modeRefs(s) > 1 ? "s" : "") + " of " + (isLtx(s) ? "this model" : "this mode") +
+                    " and the root folder; the other " + (isLtx(s) ? "model is" : "mode and model are") +
+                    " not changed." +
                     '<div style="color:#999;margin-top:8px">Save it first with the download button ' +
                     "if you want to keep it.</div>",
                     "Overwrite", () => fileInput.click());
@@ -4600,23 +4966,24 @@ app.registerExtension({
                         refresh();
                         return;
                     }
-                    // Fichier de l'autre mode : refuse, rien n'est modifie (il
-                    // viderait la partie du mode affiche).
+                    // Fichier d'un autre profil ou de l'autre mode : refuse, rien n'est
+                    // modifie (il viderait la partie affichee).
                     const s = getState();
-                    if (conf.mode !== s.mode) {
-                        // Type lu dans l'en-tete du fichier (ou sa ligne mode pour
-                        // un ancien fichier) : avertissement visible + message.
-                        const name = (m) => (m === "fl2va" ? "FL2VA" : "REF2VA");
-                        notice = "⚠ " + name(conf.mode) + " file: switch to " + name(conf.mode) + " to load it";
-                        noticeTitle = "This configuration file was saved in " + name(conf.mode) +
-                            " mode; the node is in " + name(s.mode) + " mode. Nothing was changed.";
+                    const ltxConf = profileOf(conf) === "ltx2";
+                    if (ltxConf !== isLtx(s) || (!ltxConf && conf.mode !== s.mode)) {
+                        // Type lu dans le fichier : avertissement visible + message.
+                        const name = (x) => (profileOf(x) === "ltx2" ? LABELS.ltx2 : x.mode === "fl2va" ? "FL2VA" : "REF2VA");
+                        const where = (x) => (profileOf(x) === "ltx2" ? "the " + LABELS.ltx2 + " model" : name(x) + " mode");
+                        notice = "⚠ " + name(conf) + " file: switch to " + name(conf) + " to load it";
+                        noticeTitle = "This configuration file was saved for " + where(conf) +
+                            "; the node is on " + where(s) + ". Nothing was changed.";
                         refresh();
                         clearConfirm.ask(
                             "<b>Wrong configuration file</b><br>" + escapeHtml(file.name) + " is a <b>" +
-                            name(conf.mode) + "</b> configuration" +
-                            ", but the node is in <b>" + name(s.mode) + "</b> mode." +
+                            name(conf) + "</b> configuration" +
+                            ", but the node is on <b>" + where(s) + "</b>." +
                             '<div style="color:#999;margin-top:8px">Nothing was changed. Switch the node to ' +
-                            name(conf.mode) + " first, or load a " + name(s.mode) + " file.</div>",
+                            name(conf) + " first, or load a " + name(s) + " file.</div>",
                             "OK", () => {}, null, true);
                         return;
                     }
@@ -4626,7 +4993,13 @@ app.registerExtension({
                     if (s.root !== conf.root) resetRootSubs(s);
                     s.root = conf.root;
                     let paths;
-                    if (s.mode === "fl2va") {
+                    if (ltxConf) {
+                        // LTX 2.x : ses 4 listes, ses moments et ses rognages ; MiniMax intact.
+                        for (const k of ["guide_images", "guide_video", "soundtrack", "voice"]) s[k] = conf[k];
+                        s.moments = conf.moments;
+                        s.trims = Object.assign({}, s.trims, conf.trims);
+                        paths = conf.guide_images.concat(conf.guide_video, conf.soundtrack, conf.voice);
+                    } else if (s.mode === "fl2va") {
                         s.first_frame = conf.first_frame;
                         s.last_frame = conf.last_frame;
                         paths = conf.first_frame.concat(conf.last_frame);
@@ -4635,7 +5008,8 @@ app.registerExtension({
                         s.videos = conf.videos;
                         s.video_audios = conf.video_audios;
                         s.audios = conf.audios;
-                        s.trims = conf.trims;
+                        // Rognages des listes Ref2VA seulement (ceux de LTX 2.x restent).
+                        s.trims = Object.assign({}, s.trims, conf.trims);
                         paths = conf.images.concat(conf.videos, conf.video_audios, conf.audios);
                     }
                     setState(s);
@@ -4666,28 +5040,45 @@ app.registerExtension({
 
             function refresh() {
                 const s = getState();
-                const fl = s.mode === "fl2va";
-                // Interrupteur et lignes du mode actif.
+                const ltx = isLtx(s);
+                const fl = !ltx && s.mode === "fl2va";
+                const lim = (kind) => limitOf(s, kind);
+                // Liste Model ; interrupteur cache en LTX 2.x (la liste prend la ligne).
+                modelSelect.value = profileOf(s);
+                modelSelect.style.flex = ltx ? "1 1 auto" : "0 0 auto";
+                modeToggle.style.display = ltx ? "none" : "flex";
+                // Interrupteur et lignes du profil / mode actif.
                 modeBtns.ref2va.style.background = fl ? INACTIVE_BG : ORANGE;
                 modeBtns.ref2va.style.color = fl ? INACTIVE_FG : "white";
                 modeBtns.fl2va.style.background = fl ? GREEN : INACTIVE_BG;
                 modeBtns.fl2va.style.color = fl ? "white" : INACTIVE_FG;
-                BUTTONS.forEach((b) => (rows[b.id].row.style.display = fl ? "none" : "flex"));
-                FRAME_BUTTONS.forEach((b) => (rows[b.id].row.style.display = fl ? "flex" : "none"));
+                const shown = rowsOf(s);
+                BUTTONS.concat(FRAME_BUTTONS, LTX_BUTTONS)
+                    .forEach((b) => (rows[b.id].row.style.display = shown.includes(b) ? "flex" : "none"));
                 for (const b of FRAME_BUTTONS) {
                     const v = s[b.kind][0];
                     rows[b.id].count.textContent = v ? baseName(v) : b.id === "last_frame" ? "none (F2VA)" : "empty";
                     rows[b.id].btn.title = v || (b.id === "last_frame"
                         ? "Optional: without a last frame, MiniMax does F2VA" : "Pick the first frame");
                 }
-                rows.image.count.textContent = s.images.length + " / " + LIMITS.image;
-                rows.video.count.textContent = s.videos.length + " / " + LIMITS.video;
+                rows.image.count.textContent = s.images.length + " / " + lim("image");
+                rows.video.count.textContent = s.videos.length + " / " + lim("video");
                 // Video/Audio : des pistes audio (bande-son extraite des videos).
-                rows.video_audio.count.textContent = s.video_audios.length + " / " + LIMITS.video_audio + " · audio";
-                rows.audio.count.textContent = s.audios.length + " / " + LIMITS.audio;
+                rows.video_audio.count.textContent = s.video_audios.length + " / " + lim("video_audio") + " · audio";
+                rows.audio.count.textContent = s.audios.length + " / " + lim("audio");
+                // LTX 2.x : n / max (limites du profil).
+                for (const b of LTX_BUTTONS) {
+                    const arr = listOf(s, b.kind);
+                    rows[b.id].count.textContent = arr.length + " / " + lim(b.kind);
+                    rows[b.id].btn.title = TRIM_KINDS.includes(b.kind) ? listTitle(arr, b.kind, s) : listTitle(arr);
+                }
+                // Compteurs n / max en orange quand n > max (plafond abaisse par Limits).
+                for (const b of BUTTONS.concat(LTX_BUTTONS)) {
+                    rows[b.id].count.style.color = listOf(s, b.kind).length > lim(b.kind) ? ORANGE : INACTIVE_FG;
+                }
 
                 // Poubelles : grises et inactives sans reference, rouges sinon.
-                for (const b of BUTTONS.concat(FRAME_BUTTONS)) {
+                for (const b of BUTTONS.concat(FRAME_BUTTONS, LTX_BUTTONS)) {
                     const t = rows[b.id].trash;
                     const on = listOf(s, b.kind).length > 0;
                     t.disabled = !on;
@@ -4703,14 +5094,18 @@ app.registerExtension({
                     : "No video soundtrack selected";
                 rows.audio.btn.title = listTitle(s.audios, "audio", s);
 
-                const refText = fl
+                const refText = ltx
+                    ? s.guide_images.length + "/" + lim("guide_image") + " guide image(s), " +
+                      s.guide_video.length + "/" + lim("guide_video") + " guide video, " +
+                      (s.soundtrack.length + s.voice.length) + " audio(s)"
+                    : fl
                     ? (s.first_frame.length ? (s.last_frame.length ? "FL2VA: first + last frame" : "F2VA: first frame")
                         : "Pick a first frame")
                     // Ref2VA : nombre / plafond par groupe (les bandes-son Video/Audio
                     // ont leurs propres places, affichees sur leur ligne).
-                    : s.images.length + "/" + LIMITS.image + " image(s), " +
-                      s.videos.length + "/" + LIMITS.video + " video(s), " +
-                      s.audios.length + "/" + LIMITS.audio + " audio(s)";
+                    : s.images.length + "/" + lim("image") + " image(s), " +
+                      s.videos.length + "/" + lim("video") + " video(s), " +
+                      s.audios.length + "/" + lim("audio") + " audio(s)";
                 summary.textContent = notice || refText;
                 summary.style.color = notice ? ORANGE : "#9fd6cf";
                 summary.title = notice ? noticeTitle : "";
@@ -4745,8 +5140,8 @@ app.registerExtension({
             node.addDOMWidget("mmrefloader_ui", "mmrefloader", container, {
                 serialize: false,
                 hideOnZoom: false,
-                getMinHeight: () => UI_HEIGHT[getState().mode],
-                getHeight: () => UI_HEIGHT[getState().mode],
+                getMinHeight: () => uiHeight(getState()),
+                getHeight: () => uiHeight(getState()),
             });
 
             const onResize = node.onResize;
@@ -4812,6 +5207,8 @@ app.registerExtension({
             // Save, renommer / deplacer du noeud Projet : il lit la selection et
             // la remplace par les chemins des copies (ou du projet deplace).
             node.mmGetState = () => getState();
+            // Defauts des profils arrives (setup) : compteurs et sorties relus.
+            node.__mmrefRefresh = () => refresh();
             node.mmSetState = (s) => setState(parseState(JSON.stringify(s)));
             creating = true;
             try {

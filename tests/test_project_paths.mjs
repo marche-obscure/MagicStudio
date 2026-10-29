@@ -278,6 +278,7 @@ test("chaque liste du Ref Loader va dans un sous-dossier", () => {
     assert.deepEqual(LIST_FOLDERS, {
         images: "08.Images", first_frame: "08.Images", last_frame: "08.Images",
         videos: "12.Video", video_audios: "14.Video-Audio", audios: "10.Son",
+        guide_images: "08.Images", guide_video: "12.Video", soundtrack: "10.Son", voice: "10.Son",
     });
     for (const f of Object.values(LIST_FOLDERS)) assert.ok(PROJECT_SUBFOLDERS.includes(f));
 });
@@ -523,4 +524,35 @@ test("Load data only: same MultiProject, values of the common nodes", () => {
     assert.deepEqual(m.links, current.links);
     assert.equal(m.nodes.length, 3);
     assert.deepEqual(current.nodes[0].widgets_values, ["walk"]);   // current n'est pas modifie
+});
+
+// ---- Task 6 : listes LTX 2.x et moments ----
+test("remapState moves moment keys", () => {
+    const state = {
+        guide_images: ["C:\\R\\a.png", "C:\\R\\b.png"], guide_video: ["C:\\R\\v.mp4"], soundtrack: ["C:\\R\\s.wav"],
+        moments: { guide_images: { "c:/r/a.png": 2, "c:/r/b.png": -1 }, guide_video: { "c:/r/v.mp4": 1.5 } },
+        trims: { guide_video: { "c:/r/v.mp4": [1, 3] }, soundtrack: { "c:/r/s.wav": [0, 2] } },
+    };
+    const out = remapState(state, (p) => p.replace("C:\\R", "P:\\08"));
+    assert.deepEqual(out.guide_images, ["P:\\08\\a.png", "P:\\08\\b.png"]);
+    assert.deepEqual(out.moments.guide_images, { "p:/08/a.png": 2, "p:/08/b.png": -1 });
+    assert.deepEqual(out.moments.guide_video, { "p:/08/v.mp4": 1.5 });
+    assert.deepEqual(out.trims.guide_video, { "p:/08/v.mp4": [1, 3] });
+    assert.deepEqual(out.trims.soundtrack, { "p:/08/s.wav": [0, 2] });
+    // l'etat d'origine n'est pas touche
+    assert.deepEqual(state.moments.guide_images, { "c:/r/a.png": 2, "c:/r/b.png": -1 });
+    // etat sans moments : rien ne casse
+    assert.deepEqual(remapState({ images: ["a"] }, (p) => p + "x").images, ["ax"]);
+});
+
+test("Save : listes LTX 2.x dans leurs dossiers, etat MiniMax inchange", () => {
+    assert.equal(LIST_FOLDERS.guide_images, "08.Images");
+    assert.equal(LIST_FOLDERS.guide_video, "12.Video");
+    assert.equal(LIST_FOLDERS.soundtrack, "10.Son");
+    assert.equal(LIST_FOLDERS.voice, "10.Son");
+    assert.deepEqual(saveItems({ profile: "ltx2", guide_images: ["g"], voice: ["v"] }),
+        [{ path: "g", folder: "08.Images" }, { path: "v", folder: "10.Son" }]);
+    // configRefs : seulement les listes MiniMax (MEDIA_FOLDERS), comme avant
+    assert.deepEqual(Object.keys(configRefs({ guide_images: ["g"] })).sort(),
+        ["audios", "first_frame", "images", "last_frame", "video_audios", "videos"]);
 });
