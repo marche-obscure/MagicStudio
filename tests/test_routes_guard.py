@@ -59,6 +59,29 @@ class RoutesGuardTest(unittest.TestCase):
             posts = set(re.findall(r'@routes\.post\("([^"]+)"\)', f.read()))
         self.assertEqual(posts - free, set(GUARDED))
 
+class DisplayNamesTest(unittest.TestCase):
+    def test_display_names_and_category(self):
+        root = os.path.dirname(HERE)
+        with open(INIT, encoding="utf-8") as f:
+            init = f.read()
+        with open(os.path.join(root, "nodes.py"), encoding="utf-8") as f:
+            nodes = f.read()
+        for name in ("MagicStudio RefLoader", "MagicStudio Project",
+                     "MagicStudio Final Cut", "MagicStudio MedLoad"):
+            self.assertIn('"%s"' % name, init)
+        self.assertNotIn("loaders/minimax", nodes)
+        self.assertEqual(nodes.count('CATEGORY = "MagicStudio"'), 4)
+        # Plus de prefixe de message console a l'ancien nom.
+        for folder, _dirs, files in os.walk(root):
+            if any(x in folder for x in (".git", ".superpowers", "node_modules", "tests")):
+                continue
+            for fn in files:
+                if fn.endswith((".py", ".js")):
+                    with open(os.path.join(folder, fn), encoding="utf-8") as f:
+                        text = f.read()
+                    self.assertNotIn('"[MiniMax H3 ', text, fn)
+                    self.assertNotIn('"[MiniMaxRefLoader]', text, fn)
+
 
 if __name__ == "__main__":
     unittest.main()

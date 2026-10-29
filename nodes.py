@@ -59,7 +59,7 @@ class MiniMaxH3RefLoader:
     RETURN_TYPES = tuple(ANY_TYPE for _ in range(len(_ALL_KEYS) + 1))
     RETURN_NAMES = tuple(_ALL_KEYS) + (media.PROJECT_KEY,)
     FUNCTION = "run"
-    CATEGORY = "loaders/minimax"
+    CATEGORY = "MagicStudio"
     DESCRIPTION = (
         "Pick reference images, videos, video soundtracks and audio for "
         "MiniMax H3 Reference to Video."
@@ -85,12 +85,12 @@ class MiniMaxH3Project:
     """
     Dossier de projet (00.Workflows ... 60.Rush Images) choisi ou cree dans
     l'interface JS (web/js/project_node.js), dans le Root folder recu du
-    MiniMax H3 Reference Loader (entree "project", obligatoire : choix
+    MagicStudio RefLoader (entree "project", obligatoire : choix
     utilisateur 19/10/2026), ou <input de ComfyUI>/Projets si ce Root folder
     est vide. Le dossier se gere dans l'interface ; avec
     l'entree text_prompt branchee, chaque Run est enregistre dans
     04.Prompt (voir run_record.py). Sortie final_cut (22/10/2026) : le dossier du
-    projet, pour le noeud MiniMax H3 Final Cut.
+    projet, pour le noeud MagicStudio Final Cut.
     """
 
     @classmethod
@@ -116,10 +116,10 @@ class MiniMaxH3Project:
     # Noeud de sortie : execute a chaque Run pour l'enregistrer (choix utilisateur).
     OUTPUT_NODE = True
     FUNCTION = "run"
-    CATEGORY = "loaders/minimax"
+    CATEGORY = "MagicStudio"
     DESCRIPTION = (
         "Create or pick a project folder (00.Workflows, 02.Models, 04.Prompt, 06.LoRA, 08.Images, "
-        "10.Son, 40.Rush Videos, 60.Rush Images) in the root folder of the MiniMax H3 Reference Loader."
+        "10.Son, 40.Rush Videos, 60.Rush Images) in the root folder of the MagicStudio RefLoader."
     )
 
     @classmethod
@@ -140,7 +140,7 @@ class MiniMaxH3Project:
         if text_prompt is None:
             return {"result": result}
         if not result[0]:
-            print("[MiniMax H3 Project] No project picked: this run is not recorded.")
+            print("[MagicStudio Project] No project picked: this run is not recorded.")
             return {"result": result}
         workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
         run_file = run_record.start_run(path, text_prompt, prompt, workflow=workflow)
@@ -162,7 +162,7 @@ class MiniMaxH3FinalCut:
 
     RETURN_TYPES = ()
     FUNCTION = "run"
-    CATEGORY = "loaders/minimax"
+    CATEGORY = "MagicStudio"
     DESCRIPTION = (
         "Mirror of the Picture Lock folders of a project (Images, Video, Audio) in Final-Cut_<Name>, linked in "
         "the input folder of ComfyUI: drag the files into MiniMax H3 Director."
@@ -175,7 +175,7 @@ class MiniMaxH3FinalCut:
 class MiniMaxH3LoadMedia:
     """
     Charge, sans copie, une image, une video ou un son glisse depuis le noeud
-    MiniMax H3 Final Cut (choix utilisateur, 24/10/2026). Le JS
+    MagicStudio Final Cut (choix utilisateur, 24/10/2026). Le JS
     (web/js/load_media_node.js) lit le chemin dans le lien depose et le met
     dans le champ "file" ; seuls les fichiers du dossier input sont acceptes
     (voir load_media.py).
@@ -188,7 +188,7 @@ class MiniMaxH3LoadMedia:
                 "file": ("STRING", {
                     "default": "", "multiline": False,
                     "tooltip": "Full path of the file, in the input folder of ComfyUI. Drop a file from "
-                               "MiniMax H3 Final Cut on the node to fill it.",
+                               "MagicStudio Final Cut on the node to fill it.",
                 }),
             },
         }
@@ -200,9 +200,9 @@ class MiniMaxH3LoadMedia:
     RETURN_TYPES = ("VIDEO", "IMAGE", "AUDIO", "IMAGE", "AUDIO")
     RETURN_NAMES = ("video", "video_frames", "audio_video", "image", "audio")
     FUNCTION = "run"
-    CATEGORY = "loaders/minimax"
+    CATEGORY = "MagicStudio"
     DESCRIPTION = (
-        "Load an image, a video or an audio file dropped from MiniMax H3 Final Cut, where it is (no copy). "
+        "Load an image, a video or an audio file dropped from MagicStudio Final Cut, where it is (no copy). "
         "video: a video (same type as Load Video); video_frames: all the frames of a video, as images; "
         "audio_video: the soundtrack of a video; image: an image; audio: an audio file."
     )

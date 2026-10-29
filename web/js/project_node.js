@@ -133,7 +133,7 @@ async function apiPost(url, body) {
 // --------------------------------------------------------------------
 const folderList = PROJECT_SUBFOLDERS.map((f) => "<b>" + f + "</b>").join(", ");
 // Entree project obligatoire (choix utilisateur, 19/10/2026) : message du noeud sans lien.
-const WIRE_PROJECT = "Wire the project output of the MiniMax H3 Reference Loader";
+const WIRE_PROJECT = "Wire the project output of the MagicStudio RefLoader";
 // Bouton Purge du noeud (choix utilisateur, 19/10/2026) : rouge fonce.
 const PURGE_RED = "#8b1a1a";
 // Carte d'une entree du noeud pour l'aide (choix utilisateur, 19/10/2026) : nom, badge
@@ -930,7 +930,7 @@ function buildCreateDialog(container, ctx) {
     const folderBox = document.createElement("div");
     Object.assign(folderBox.style, { display: "none", marginBottom: "8px" });
     const folderLabel = document.createElement("div");
-    folderLabel.textContent = "No Root folder in the MiniMax H3 Reference Loader: choose the projects folder.";
+    folderLabel.textContent = "No Root folder in the MagicStudio RefLoader: choose the projects folder.";
     Object.assign(folderLabel.style, { color: "#bbb", lineHeight: "1.5", marginBottom: "6px" });
     const folderRow = document.createElement("div");
     Object.assign(folderRow.style, { display: "flex", gap: "6px", alignItems: "center" });
@@ -1161,7 +1161,7 @@ function buildCreateDialog(container, ctx) {
             where.style.display = info.fixed ? "block" : "none";
             folderBox.style.display = info.fixed ? "none" : "block";
             if (info.fixed) {
-                where.innerHTML = "Create the project in the Root folder of the MiniMax H3 Reference Loader:" +
+                where.innerHTML = "Create the project in the Root folder of the MagicStudio RefLoader:" +
                     "<br><b style=\"color:#9fd6cf\">" + escapeHtml(info.root) + "</b>";
             } else {
                 folderInput.value = info.root || info.fallback;
@@ -1397,7 +1397,7 @@ function buildCopyDialog(container) {
                     '</td><td style="text-align:right">' + f.archives + '</td><td style="text-align:right">' + f.copy +
                     '</td><td style="text-align:right;color:#888">' + f.skip + "</td></tr>").join("") + "</table>" +
                 '<div style="margin-top:8px;color:' + (data.report ? "#9fd6cf" : ORANGE) + '">' + (data.report
-                    ? "The Reference Loader will be filled with the saved configuration of this project " +
+                    ? "The MagicStudio RefLoader will be filled with the saved configuration of this project " +
                     "(same order and trims, pointing to the copies)."
                     : sub === ALL_SUBS
                         ? "All: the files of every project of this folder are copied (a file only once); " +
@@ -1662,7 +1662,7 @@ function buildRenameMoveDialog(container, ctx) {
             title: mode === "rename" ? "Rename the project?" : "Move the project?",
             html: escapeHtml(current) + '<br><span style="color:#888">→</span> <b style="color:#9fd6cf">' +
                 escapeHtml(t) + "</b>" +
-                '<div style="color:#999;margin-top:8px">The references of the Reference Loader that are in the ' +
+                '<div style="color:#999;margin-top:8px">The references of the MagicStudio RefLoader that are in the ' +
                 "project follow it.</div>",
             okLabel: mode === "rename" ? "Rename" : "Move",
             okColor: mode === "rename" ? ORANGE : GREEN,
@@ -4306,7 +4306,7 @@ app.registerExtension({
                 check: (path) => apiGet("/mmproject/list?root=" + encodeURIComponent(path)),
             });
             const help = buildHelpOverlay(container, {
-                sectionsFor: projectHelpSections, nodeTitle: "MiniMax H3 Project", sectionKey: "mmproject.helpSection",
+                sectionsFor: projectHelpSections, nodeTitle: "MagicStudio Project", sectionKey: "mmproject.helpSection",
             });
             const confirm = buildConfirm(container);
             const resetDialog = buildResetDialog(container);
@@ -4446,15 +4446,15 @@ app.registerExtension({
                     : "Pick a project first");
                 setOn(newBtn, wired(), PINK, wired() ? "New project" : WIRE_PROJECT);
                 setOn(saveBtn, canSave && !locked, PINK, !current ? "Pick a project first"
-                    : !canSave ? "Wire the project output of the Reference Loader first" : locked ? LOCKED
-                        : "Save: copy the files of the Reference Loader into the project, save the workflow and " +
+                    : !canSave ? "Wire the project output of the MagicStudio RefLoader first" : locked ? LOCKED
+                        : "Save: copy the files of the MagicStudio RefLoader into the project, save the workflow and " +
                         "the configuration of the project (" + configPathOf(s.name) + ")");
                 setOn(loadBtn, current && !locked, PINK, !current ? "Pick a project first" : locked ? LOCKED
                     : "Load: check the files, then load the saved configuration of the project (" + configPathOf(s.name) + ")");
                 setOn(copyBtn, current && !locked, COPY_BLUE, !current ? "Pick a project first" : locked ? LOCKED
                     : "Copy: copy the files of 08.Images to 14.Video-Audio (and their Archives) from another project");
                 setOn(resetBtn, current && !locked, RESET_RED, !current ? "Pick a project first" : locked ? LOCKED
-                    : "Reset: every file of the project goes to the Recycle Bin, and the Reference Loader is emptied");
+                    : "Reset: every file of the project goes to the Recycle Bin, and the MagicStudio RefLoader is emptied");
                 setOn(purgeBtn, current, PURGE_RED, current ? "Purge: delete the runs still marked running while no " +
                     "run is in progress, move the runs in error to 98.Error" : "Pick a project first");
                 syncModelsLink();
@@ -4654,7 +4654,7 @@ app.registerExtension({
                 const refState = loader.mmGetState();
                 const items = saveItems(refState);
                 if (!items.length) {
-                    if (!first) say("Nothing to save: the Reference Loader has no reference.");
+                    if (!first) say("Nothing to save: the MagicStudio RefLoader has no reference.");
                     return "none";
                 }
                 let plan;
@@ -4669,7 +4669,7 @@ app.registerExtension({
                 plan.filter((x) => x.action === "copy").forEach((x) => (byFolder[x.folder] = (byFolder[x.folder] || 0) + 1));
                 const lines = Object.entries(byFolder).map(([f, n]) => n + " → <b>" + f + "</b>");
                 const html = (first
-                    ? "<b>All the files of the Reference Loader will be copied to their folders in the project.</b><br>"
+                    ? "<b>All the files of the MagicStudio RefLoader will be copied to their folders in the project.</b><br>"
                     : "") +
                     count("copy") + " file(s) to copy" + (lines.length ? ":<br>" + lines.join("<br>") : "") +
                     (count("skip") ? "<br>" + count("skip") + " already in the project" : "") +
@@ -4677,7 +4677,7 @@ app.registerExtension({
                         " missing on disk (not copied)</span>" : "") +
                     "<br>Then the workflow, and the configuration of the project in <b>" + escapeHtml(configPathOf(s.name)) + "</b> (the " +
                     "previous one goes to its Archives)." +
-                    '<div style="color:#999;margin-top:8px">Then the Reference Loader uses the copies of the project.</div>';
+                    '<div style="color:#999;margin-top:8px">Then the MagicStudio RefLoader uses the copies of the project.</div>';
                 const ok = await confirm.ask({
                     title: first ? "Initialize a first save?" : "Save the project?", html,
                     okLabel: first ? "Copy and save" : "Save", okColor: PINK,
@@ -4822,7 +4822,7 @@ app.registerExtension({
 
             /** Runs enregistres du projet (boutons 04 / 40 / 60). */
             /**
-             * Noeuds MiniMax H3 Final Cut du graphe : ils relisent leur plan (chacun remonte
+             * Noeuds MagicStudio Final Cut du graphe : ils relisent leur plan (chacun remonte
              * lui-meme jusqu'a son noeud Project, directement ou par Get / Set et Reroute).
              */
             function notifyFinalCut() {
@@ -5187,7 +5187,7 @@ app.registerExtension({
                         ? "moved to the <b>Recycle Bin</b>" : '<b style="color:' + RESET_RED + '">deleted permanently</b>') +
                         ". The folders stay, empty." + (rows ? '<table style="border-collapse:collapse;width:100%;margin:6px 0;' +
                         'font-size:12px">' + rows + "</table>" : "") +
-                        "The selection of the <b>Reference Loader</b> is emptied in both modes (its root folder does not change)." +
+                        "The selection of the <b>MagicStudio RefLoader</b> is emptied in both modes (its root folder does not change)." +
                         '<div style="color:#999;margin-top:4px">Files outside the project are never touched.</div>',
                 });
                 if (!ok) return;
@@ -5204,7 +5204,7 @@ app.registerExtension({
                     await loadWorkflowInfo();
                     await loadFolderFiles();
                     say("Reset: " + data.total + " file(s) " + (data.trash ? "moved to the Recycle Bin" : "deleted") +
-                        "; the Reference Loader is empty.", true);
+                        "; the MagicStudio RefLoader is empty.", true);
                 } catch (e) {
                     say(e.message);
                     await loadFolderFiles();
@@ -5242,7 +5242,7 @@ app.registerExtension({
                         const media = Object.keys(MEDIA_FOLDERS);
                         loader.mmSetState(loadedState(loader.mmGetState(), data.report, s.path, media));
                         setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: s.path });
-                        filled = "; the Reference Loader follows its configuration";
+                        filled = "; the MagicStudio RefLoader follows its configuration";
                     }
                     await loadFolderFiles();
                     say("Copy: " + data.copied + " file(s) copied, " + data.skipped + " already there (same SHA256)" +
@@ -5333,7 +5333,7 @@ app.registerExtension({
                     const changed = !!ch && (ch.added.length > 0 || ch.removed.length > 0 || unused.length > 0);
                     const tip = !changed ? "" : [
                         ch.added.length ? ch.added.length + " new reference(s) to copy" : "",
-                        ch.removed.length ? ch.removed.length + " reference(s) removed in the Reference Loader" : "",
+                        ch.removed.length ? ch.removed.length + " reference(s) removed in the MagicStudio RefLoader" : "",
                         unused.length ? unused.length + " unused file(s) to archive" : "",
                     ].filter(Boolean).join(", ");
                     f.warn.style.visibility = changed ? "visible" : "hidden";
@@ -5341,7 +5341,7 @@ app.registerExtension({
                     f.bell.style.background = changed ? BELL_ORANGE : INACTIVE_BG;
                     f.bell.style.opacity = changed ? "1" : "0.6";
                     f.bell.style.cursor = changed ? "pointer" : "default";
-                    f.bell.title = !current ? "" : !loader ? "Link a Reference Loader to follow " + f.name
+                    f.bell.title = !current ? "" : !loader ? "Link a MagicStudio RefLoader to follow " + f.name
                         : changed ? tip + ": click to update " + f.name : f.name + " is up to date";
                     // A droite du nom : "Use: n/x | Orphelins: m | In Archives: y" (choix utilisateur ;
                     // Orphelins = fichiers de la racine sans numero, pas encore archives, cache a 0).
@@ -5402,11 +5402,11 @@ app.registerExtension({
                 if (missing.length) {
                     const ok = await confirm.ask({
                         title: "Missing files in " + f,
-                        html: missing.length + " reference(s) of the Reference Loader point to files that are not on " +
+                        html: missing.length + " reference(s) of the MagicStudio RefLoader point to files that are not on " +
                             "disk anymore: " + nameList(missing.map((x) => x.src)) +
                             '<div style="color:' + ORANGE + ';margin-top:6px">Nothing is copied or archived while ' +
                             "references are missing.</div>" + '<div style="color:#999;margin-top:4px">Their folder may ' +
-                            "have been renamed or moved: set the root folder of the Reference Loader again (gear " +
+                            "have been renamed or moved: set the root folder of the MagicStudio RefLoader again (gear " +
                             "button) to relink them, or remove them here, then click the bell again.</div>",
                         okLabel: "Remove missing references", okColor: ORANGE,
                     });
@@ -5415,7 +5415,7 @@ app.registerExtension({
                     const st = loader.mmGetState();
                     for (const list of MEDIA_FOLDERS[f] || []) st[list] = withoutPaths(st[list], gone);
                     loader.mmSetState(remapState(st, (p) => p));
-                    say(gone.length + " missing reference(s) removed from the Reference Loader; click the bell of " + f +
+                    say(gone.length + " missing reference(s) removed from the MagicStudio RefLoader; click the bell of " + f +
                         " again to update it.", true);
                     await loadFolderFiles();
                     return;
@@ -5424,12 +5424,12 @@ app.registerExtension({
                     nameList(copies.map((x) => x.src)) : "No file to copy") +
                     (missing.length ? '<br><span style="color:' + ORANGE + '">' + missing.length +
                         " missing on disk (not copied): " + nameList(missing.map((x) => x.src)) + "</span>" : "") +
-                    (ch.removed.length ? "<br>" + ch.removed.length + " reference(s) removed in the Reference Loader: " +
+                    (ch.removed.length ? "<br>" + ch.removed.length + " reference(s) removed in the MagicStudio RefLoader: " +
                         nameList(ch.removed) : "") +
                     (unused.length ? "<br>→ moved to <b>" + escapeHtml(f) + "/Archives</b>: " + nameList(unused) +
-                        '<br><span style="color:#999">Files no list of the Reference Loader uses anymore; nothing is ' +
+                        '<br><span style="color:#999">Files no list of the MagicStudio RefLoader uses anymore; nothing is ' +
                         "deleted.</span>" : "") +
-                    (copies.length ? '<div style="color:#999;margin-top:8px">Then the Reference Loader uses the copies ' +
+                    (copies.length ? '<div style="color:#999;margin-top:8px">Then the MagicStudio RefLoader uses the copies ' +
                         "of the project.</div>" : "");
                 const ok = await confirm.ask({ title: "Update " + f + "?", html, okLabel: "Update", okColor: BELL_ORANGE });
                 if (!ok) return;
@@ -5859,7 +5859,7 @@ app.registerExtension({
                     await confirm.ask({
                         title: "Project configuration not saved",
                         html: "Every file of <b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> and <b>14.Video-Audio</b> " +
-                            "needs an index: use it in the Reference Loader, or move it to the Archives folder." +
+                            "needs an index: use it in the MagicStudio RefLoader, or move it to the Archives folder." +
                             '<div style="margin-top:8px">' + shown + (errors.length > 20 ? "<div>… (+" +
                             (errors.length - 20) + ")</div>" : "") + "</div>",
                         okLabel: "OK", okColor: ORANGE, noCancel: true,
@@ -5995,7 +5995,7 @@ app.registerExtension({
                     if (media.length) {
                         const loader = linkedLoader(node);
                         if (!loader) {
-                            say("Wire the project output of the Reference Loader to load its files." + restored);
+                            say("Wire the project output of the MagicStudio RefLoader to load its files." + restored);
                             return;
                         }
                         loader.mmSetState(loadedState(loader.mmGetState(), report, s.path, media));

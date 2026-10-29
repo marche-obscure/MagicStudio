@@ -208,7 +208,7 @@ app.registerExtension({
             container.append(top, zone);
 
             const help = buildHelpOverlay(container, {
-                sectionsFor: helpSections, nodeTitle: "MiniMax H3 Load Media", sectionKey: "mmloadmedia.helpSection",
+                sectionsFor: helpSections, nodeTitle: "MagicStudio MedLoad", sectionKey: "mmloadmedia.helpSection",
             });
             helpBtn.addEventListener("click", () => help.open());
             node.__mmloadmediaOverlays = [help];
@@ -240,7 +240,7 @@ app.registerExtension({
                 shown = path;
                 if (!path) {
                     say("", null);
-                    empty("Drop a file from MiniMax H3 Final Cut here");
+                    empty("Drop a file from MagicStudio Final Cut here");
                     return;
                 }
                 let info;
@@ -249,7 +249,7 @@ app.registerExtension({
                 } catch (e) {
                     if (shown !== path) return;
                     say(e.message, null);
-                    empty("Drop a file from MiniMax H3 Final Cut here");
+                    empty("Drop a file from MagicStudio Final Cut here");
                     return;
                 }
                 if (shown !== path) return;
@@ -275,7 +275,7 @@ app.registerExtension({
             /** Depot d'un lien : le serveur en lit le chemin et le verifie, puis il va dans "file". */
             async function applyDrop(text) {
                 if (!text) {
-                    say("No path in this drop: drag the file from MiniMax H3 Final Cut.", null);
+                    say("No path in this drop: drag the file from MagicStudio Final Cut.", null);
                     return;
                 }
                 try {

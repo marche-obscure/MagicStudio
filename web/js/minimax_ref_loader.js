@@ -961,13 +961,13 @@ function restoreLinks(node) {
             try {
                 node.connect(i, target, slot);
             } catch (e) {
-                console.warn("[MiniMaxRefLoader] relink", o.name, e);
+                console.warn("[MagicStudio RefLoader] relink", o.name, e);
             }
         });
     });
 }
 
-/** Previent les noeuds MiniMax H3 Project du graphe (Root folder change). */
+/** Previent les noeuds MagicStudio Project du graphe (Root folder change). */
 function notifyProjectNodes(node) {
     const graph = node.graph;
     const nodes = (graph && (graph._nodes || graph.nodes)) || [];
@@ -1421,7 +1421,7 @@ function hideWidget(widget) {
  */
 function buildHelpOverlay(container, opts) {
     const o = Object.assign({
-        sectionsFor: helpSectionsFor, nodeTitle: "MiniMax H3 Reference Loader", sectionKey: HELP_SECTION_KEY,
+        sectionsFor: helpSectionsFor, nodeTitle: "MagicStudio RefLoader", sectionKey: HELP_SECTION_KEY,
     }, opts);
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
@@ -3319,7 +3319,7 @@ function buildGallery(container, ctx) {
                 const ok = await choice.ask(card, {
                     title: "Archive the files not used anymore?",
                     html: unused.length + " file(s) of <b>" + escapeHtml(projFolder) + "</b> are not used anymore by the " +
-                        "Reference Loader and go to <b>" + escapeHtml(projFolder) + "/Archives</b>: " +
+                        "MagicStudio RefLoader and go to <b>" + escapeHtml(projFolder) + "/Archives</b>: " +
                         names.slice(0, 8).join(", ") + (names.length > 8 ? ", … (+" + (names.length - 8) + ")" : "") +
                         '<div style="color:#999;margin-top:6px">No unused file stays in the project; nothing is deleted.</div>',
                     buttons: [

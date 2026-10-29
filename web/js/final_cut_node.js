@@ -467,7 +467,7 @@ function buildFilesWindow(container, ctx) {
                 e.dataTransfer.items.add(file);
             } else {
                 ready();
-                say("Preparing " + c.name + " for MiniMax H3 Director… (MiniMax H3 Load Media can take it now)",
+                say("Preparing " + c.name + " for MiniMax H3 Director… (MagicStudio MedLoad can take it now)",
                     false);
             }
         });
@@ -712,7 +712,7 @@ app.registerExtension({
             container.appendChild(status);
 
             const help = buildHelpOverlay(container, {
-                sectionsFor: helpSections, nodeTitle: "MiniMax H3 Final Cut", sectionKey: "mmfinalcut.helpSection",
+                sectionsFor: helpSections, nodeTitle: "MagicStudio Final Cut", sectionKey: "mmfinalcut.helpSection",
             });
             helpBtn.addEventListener("click", () => help.open());
 
@@ -724,7 +724,7 @@ app.registerExtension({
             };
 
             /**
-             * Projet du noeud MiniMax H3 Project relie a l'entree final_cut ({name, path}), sinon null.
+             * Projet du noeud MagicStudio Project relie a l'entree final_cut ({name, path}), sinon null.
              * Traverse Get / Set (le Set du meme nom : findSetter de KJNodes / Easy-Use, sinon un
              * noeud "Set" de meme nom dans le graphe) et les Reroute, comme models_link du noeud Project.
              */
@@ -810,10 +810,10 @@ app.registerExtension({
                 paintSyncButton(syncBtn, ready ? plan : null, busy);
                 if (!wired) {
                     where.textContent = "Not wired";
-                    say("Wire the final_cut output of the MiniMax H3 Project node.");
+                    say("Wire the final_cut output of the MagicStudio Project node.");
                 } else if (!info) {
                     where.textContent = "No project";
-                    say("Pick a project in the MiniMax H3 Project node.");
+                    say("Pick a project in the MagicStudio Project node.");
                 } else if (plan) {
                     where.textContent = plan.name;
                     where.title = plan.folder + (plan.link ? "\nLinked in input: " + plan.link : "");

@@ -111,4 +111,4 @@ class RunTracker:
         try:
             self.finish(run_file, files, status, duration)
         except Exception as e:
-            print("[MiniMax H3 Project] Run not recorded (%s): %s" % (run_file, e))
+            print("[MagicStudio Project] Run not recorded (%s): %s" % (run_file, e))

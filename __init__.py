@@ -31,10 +31,10 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "MiniMaxH3RefLoader": "MiniMax H3 Reference Loader",
-    "MiniMaxH3Project": "MiniMax H3 Project",
-    "MiniMaxH3FinalCut": "MiniMax H3 Final Cut",
-    "MiniMaxH3LoadMedia": "MiniMax H3 Load Media",
+    "MiniMaxH3RefLoader": "MagicStudio RefLoader",
+    "MiniMaxH3Project": "MagicStudio Project",
+    "MiniMaxH3FinalCut": "MagicStudio Final Cut",
+    "MiniMaxH3LoadMedia": "MagicStudio MedLoad",
 }
 
 WEB_DIRECTORY = "./web/js"
@@ -132,7 +132,7 @@ try:
             if "drop" in q:
                 text = load_media.path_from_drop(q.get("drop", ""))
                 if not text:
-                    raise ValueError("Not a file of MiniMax H3 Final Cut.")
+                    raise ValueError("Not a file of MagicStudio Final Cut.")
             else:
                 text = q.get("file", "")
             path, kind = load_media.check_path(text, folder_paths.get_input_directory())
@@ -652,7 +652,7 @@ try:
         return web.json_response({"ok": True})
 
 except Exception:
-    print("[ComfyUI-MiniMaxRefLoader] Could not register the API routes:")
+    print("[MagicStudio] Could not register the API routes:")
     traceback.print_exc()
 
 # ------------------------------------------------------------------
@@ -676,7 +676,7 @@ try:
 
     _server.send_sync = _tracked_send_sync
 except Exception:
-    print("[ComfyUI-MiniMaxRefLoader] Could not follow the runs on the server:")
+    print("[MagicStudio] Could not follow the runs on the server:")
     traceback.print_exc()
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

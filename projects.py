@@ -1,7 +1,7 @@
 """
 Logique des dossiers de projet du noeud MiniMaxH3Project (sans import
 ComfyUI, testable seule) : un projet = un dossier de la racine des
-projets (le Root folder du MiniMax H3 Reference Loader branche, sinon
+projets (le Root folder du MagicStudio RefLoader branche, sinon
 <input de ComfyUI>/Projets), avec toujours les memes sous-dossiers.
 """
 
@@ -117,7 +117,7 @@ def mark_group(path):
         return
     try:
         with open(mark, "w", encoding="utf-8") as f:
-            f.write("Folder of projects of the MiniMax H3 Project node.\n")
+            f.write("Folder of projects of the MagicStudio Project node.\n")
         if sys.platform == "win32":
             import ctypes
             ctypes.windll.kernel32.SetFileAttributesW(mark, 2)  # FILE_ATTRIBUTE_HIDDEN

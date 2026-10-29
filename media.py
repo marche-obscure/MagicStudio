@@ -168,7 +168,7 @@ def state_layout(state):
 
 
 # Derniere sortie (apres celles de state_layout) : le Root folder, pour le
-# noeud MiniMax H3 Project. Doit rester identique a PROJECT_KEY du JS.
+# noeud MagicStudio Project. Doit rester identique a PROJECT_KEY du JS.
 PROJECT_KEY = "project"
 
 

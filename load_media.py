@@ -1,8 +1,8 @@
 """
-Noeud MiniMax H3 Load Media (choix utilisateur, 24/10/2026) : logique pure,
+Noeud MagicStudio MedLoad (choix utilisateur, 24/10/2026) : logique pure,
 sans dependance a ComfyUI, pour pouvoir etre testee seule.
 
-Un fichier glisse depuis le noeud MiniMax H3 Final Cut arrive comme un lien
+Un fichier glisse depuis le noeud MagicStudio Final Cut arrive comme un lien
 text/uri-list vers /mmrefloader/media?file=<chemin> (Chromium perd le fichier
 joint pendant un vrai glisser). Le chemin est lu dans ce lien, garde dans le
 champ "file" du noeud, et le fichier est charge la ou il est (pas de copie),
@@ -73,7 +73,7 @@ def check_path(text, input_dir):
     """
     path = _unquote_path(text)
     if not path:
-        raise ValueError("No file: drop a file from MiniMax H3 Final Cut, or type its path.")
+        raise ValueError("No file: drop a file from MagicStudio Final Cut, or type its path.")
     path = os.path.abspath(path)
     if not is_within_directory(input_dir, path):
         raise ValueError("Only files in the input folder of ComfyUI can be loaded: " + path)

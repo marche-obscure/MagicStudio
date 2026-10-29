@@ -94,7 +94,7 @@ def group_numbers(group):
         numbers["%02d" % last] = n
         changed = True
     if changed or data.get("last") != last:
-        data.update({"note": "Folder of projects of the MiniMax H3 Project node.", "numbers": numbers, "last": last})
+        data.update({"note": "Folder of projects of the MagicStudio Project node.", "numbers": numbers, "last": last})
         _write_mark(group, data)
     return numbers
 
@@ -243,7 +243,7 @@ def _read_stamp(folder):
 
 
 def _write_stamp(folder, data):
-    data["note"] = "Last sync of the MiniMax H3 Final Cut node."
+    data["note"] = "Last sync of the MagicStudio Final Cut node."
     try:
         with open(os.path.join(folder, STAMP), "w", encoding="utf-8") as f:
             json.dump(data, f)
@@ -319,7 +319,7 @@ def sync(project, trash_fn, input_dir=None):
                 if sig is not None:
                     files[kind + "/" + f["name"]] = sig
         with open(os.path.join(p["folder"], STAMP), "w", encoding="utf-8") as f:
-            json.dump({"note": "Last sync of the MiniMax H3 Final Cut node.", "last_sync": p["last_sync"],
+            json.dump({"note": "Last sync of the MagicStudio Final Cut node.", "last_sync": p["last_sync"],
                        "files": files}, f)
         p["first"] = first
         return p
