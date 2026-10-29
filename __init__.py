@@ -469,7 +469,7 @@ try:
             body = await request.json()
             # Deja enregistre par le serveur (suivi des messages) : meme resultat, rien n'est refait.
             data = await _in_executor(_run_tracker.finish, body.get("run_file", ""), list(body.get("files") or []),
-                                      body.get("status", ""), body.get("duration"))
+                                      body.get("status", ""), body.get("duration"), body.get("prompt_id"))
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
@@ -759,7 +759,15 @@ try:
     import folder_paths
     from server import PromptServer
 
-    _run_tracker = run_tracker.RunTracker(folder_paths.get_output_directory)
+    def _prompt_of(prompt_id):
+        """(prompt, extra_data) de l'execution en cours (post-traitements, 29/10/2026), sinon None."""
+        running, _pending = PromptServer.instance.prompt_queue.get_current_queue()
+        for item in running or []:
+            if len(item) > 3 and item[1] == prompt_id:
+                return item[2], item[3]
+        return None
+
+    _run_tracker = run_tracker.RunTracker(folder_paths.get_output_directory, prompt_fn=_prompt_of)
     _server = PromptServer.instance
     _send_sync = _server.send_sync
 

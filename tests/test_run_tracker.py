@@ -122,5 +122,103 @@ class TrackerTest(unittest.TestCase):
         self.assertNotIn("0", self.tracker.runs)
 
 
+
+class PostTrackerTest(unittest.TestCase):
+    """Post-traitements classes par le serveur a la fin de chaque execution (29/10/2026)."""
+
+    MOTHER = {"project": "P", "run_file": "P/04.Prompt/20261029_100000_run.json", "index": 0, "level": 0}
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.out = os.path.join(self.root, "output")
+        for n in ("a2.png", "b.mp4", "c.png"):
+            write(os.path.join(self.out, n))
+        # 2 : generation (SaveImage) ; 5 -> 6 -> 7 : MedLoad -> retouche -> SaveVideo.
+        self.prompt = {
+            "1": {"class_type": "KSampler", "inputs": {"seed": 1, "steps": 4, "cfg": 1}},
+            "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}},
+            "5": {"class_type": "MiniMaxH3LoadMedia", "inputs": {"file": "G:/in/A.mp4"}},
+            "6": {"class_type": "Light", "inputs": {"video": ["5", 0], "gain": 1.2}},
+            "7": {"class_type": "SaveVideo", "inputs": {"video": ["6", 0]}},
+        }
+        self.mothers = {"G:/in/A.mp4": self.MOTHER}
+        self.attached, self.finished = [], []
+        self.t = rt.RunTracker(lambda: self.out, self.fake_finish, prompt_fn=self.fake_prompt,
+                               attach_fn=self.fake_attach, mother_fn=lambda path: self.mothers.get(path))
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def fake_prompt(self, pid):
+        return self.prompt, {"extra_pnginfo": {"workflow": {"nodes": []}}}
+
+    def fake_attach(self, run_file, index, level, src, params, workflow, warning=None):
+        self.attached.append((run_file, index, level, os.path.basename(src), warning))
+        return {"post_level": level + 1}
+
+    def fake_finish(self, run_file, files, status, output_dir, now, duration):
+        self.finished.append((run_file, sorted(f["filename"] for f in files)))
+        return {"status": status}
+
+    def img(self, name):
+        return {"images": [{"filename": name, "subfolder": "", "type": "output"}]}
+
+    def execute(self, pid, outputs, mmrun=None):
+        self.t.on_message("execution_start", {"prompt_id": pid, "timestamp": 1})
+        if mmrun:
+            self.t.on_message("executed", {"node": "9", "prompt_id": pid, "output": {"mmrun": [mmrun]}})
+        for node, name in outputs:
+            self.t.on_message("executed", {"node": node, "prompt_id": pid, "output": self.img(name)})
+        return self.t.on_message("execution_success", {"prompt_id": pid, "timestamp": 2})
+
+    def test_branch_alone_no_new_run(self):
+        self.assertIsNone(self.execute("p", [("7", "b.mp4")]))
+        self.t.settle("p")
+        self.assertEqual(self.attached, [(self.MOTHER["run_file"], 0, 0, "b.mp4", None)])
+        self.assertEqual(self.finished, [])
+
+    def test_global_run_new_generation_and_post(self):
+        end = self.execute("p", [("2", "a2.png"), ("7", "b.mp4")], mmrun="new.json")
+        self.t.finish(*end)
+        self.assertEqual(self.finished, [("new.json", ["a2.png"])])
+        self.assertEqual([a[3] for a in self.attached], ["b.mp4"])
+
+    def test_global_run_cached_generation(self):
+        end = self.execute("p", [("7", "b.mp4")], mmrun="new.json")
+        self.t.finish(*end)
+        self.assertEqual(self.finished, [("new.json", [])])
+
+    def test_run_done_first_still_filters_posts(self):
+        self.execute("p", [("2", "a2.png"), ("7", "b.mp4")], mmrun="new.json")
+        tab_files = [self.img("a2.png")["images"][0], self.img("b.mp4")["images"][0]]
+        self.t.finish("new.json", tab_files, "done", 3)
+        self.assertEqual(self.finished, [("new.json", ["a2.png"])])
+
+    def test_loaded_outside_runs(self):
+        self.mothers = {}
+        end = self.execute("p", [("2", "a2.png"), ("7", "b.mp4")], mmrun="new.json")
+        self.t.finish(*end)
+        self.assertEqual(self.attached, [])
+        self.assertEqual(self.finished, [("new.json", ["a2.png", "b.mp4"])])
+
+    def test_settle_once(self):
+        end = self.execute("p", [("7", "b.mp4")], mmrun="new.json")
+        self.t.settle("p")
+        self.t.finish(*end)
+        self.t.finish(*end)
+        self.assertEqual(len(self.attached), 1)
+
+    def test_two_medloads_other_run_warns(self):
+        self.prompt["8"] = {"class_type": "MiniMaxH3LoadMedia", "inputs": {"file": "G:/in/Z.mp4"}}
+        self.prompt["6"]["inputs"]["mask"] = ["10", 0]
+        self.prompt["10"] = {"class_type": "Resize", "inputs": {"image": ["8", 0]}}
+        self.mothers["G:/in/Z.mp4"] = dict(self.MOTHER, run_file="P/04.Prompt/20261028_090000_run.json")
+        self.prompt["7"]["inputs"]["video"] = ["5", 0]
+        self.prompt["7"]["inputs"]["extra"] = ["6", 0]
+        self.execute("p", [("7", "b.mp4")])
+        self.t.settle("p")
+        self.assertEqual(self.attached[0][0], self.MOTHER["run_file"])
+        self.assertIn("20261028_090000_run.json", self.attached[0][4])
+
 if __name__ == "__main__":
     unittest.main()
