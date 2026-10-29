@@ -98,8 +98,8 @@ class LayoutTests(unittest.TestCase):
 
     def test_counts_are_clamped_to_minimax_limits(self):
         keys = media.layout_keys(20, 9, 9, 9)
-        self.assertEqual(len(keys), media.TOTAL_OUTPUTS)
-        self.assertEqual(media.TOTAL_OUTPUTS, 18)
+        self.assertEqual(len(keys), 18)
+        self.assertEqual(media.TOTAL_OUTPUTS, 22)  # plus grande disposition (LTX 2.x, 9 images guides)
         self.assertIn("ref_image_9", keys)
         self.assertNotIn("ref_image_10", keys)
         self.assertIn("ref_audio_3", keys)
@@ -529,6 +529,95 @@ class BuildOutputsTests(TmpDirTest):
         with self.assertRaises(FileNotFoundError) as ctx:
             media.build_outputs(state)
         self.assertIn("gone.png", str(ctx.exception))
+
+
+class ProfileOutputTests(TmpDirTest):
+    def ltx(self, **extra):
+        d = {"profile": "ltx2", "folders": {"image": self.dir, "video": self.dir, "audio": self.dir}}
+        d.update(extra)
+        return media.parse_state(json.dumps(d))
+
+    def test_state_without_profile_is_minimax(self):
+        s = media.parse_state('{"images": ["a.png"]}')
+        self.assertEqual(s["profile"], "minimax_h3")
+        self.assertEqual(media.state_layout(s), media.layout_keys(1, 0, 0, 0))
+
+    def test_ltx_layout_and_outputs(self):
+        Image.new("RGB", (8, 8)).save(self.p("a.png"))
+        Image.new("RGB", (8, 8)).save(self.p("b.png"))
+        make_audio(self.p("s.wav"), 0.5)
+        a, b = self.p("a.png"), self.p("b.png")
+        s = self.ltx(guide_images=[a, b], soundtrack=["s.wav"],
+                     moments={"guide_images": {media.trim_key(a): 0, media.trim_key(b): -1}})
+        self.assertEqual(media.state_layout(s), [
+            "guide_image_1", "guide_frame_1", "guide_image_2", "guide_frame_2",
+            "guide_video", "guide_video_frame", "soundtrack", "voice"])
+        out = media.build_outputs(s)
+        self.assertEqual(len(out), 22)
+        self.assertEqual(tuple(out[0].shape), (1, 8, 8, 3))
+        self.assertEqual(out[1], 0)
+        self.assertEqual(tuple(out[2].shape), (1, 8, 8, 3))
+        self.assertEqual(out[3], -1)
+        self.assertIsNone(out[4])
+        self.assertIn("waveform", out[6])
+        self.assertIsNone(out[7])
+        self.assertEqual(media.outputs_with_project(s, out, "R")[8], "R")
+
+    def test_ltx_missing_moment_uses_default_rule(self):
+        for n in "abc":
+            Image.new("RGB", (8, 8)).save(self.p(n + ".png"))
+        paths = [self.p(n + ".png") for n in "abc"]
+        s = self.ltx(guide_images=paths, moments={"guide_images": {media.trim_key(paths[2]): 0}})
+        out = media.build_outputs(s)
+        # c a 0 stocke ; a -> Last (First pris), b -> First (les deux pris)
+        self.assertEqual([out[1], out[3], out[5]], [-1, 0, 0])
+
+    def test_ltx_guide_video_8n1_and_32(self):
+        make_video(self.p("g.mp4"), 100 / 24.0, 24, width=100, height=60, with_audio=False)
+        g = self.p("g.mp4")
+        s = self.ltx(guide_video=[g], moments={"guide_video": {media.trim_key(g): 2}})
+        out = media.build_outputs(s)
+        # guide_image_1, guide_frame_1, guide_video, guide_video_frame
+        self.assertEqual(out[2].shape[0] % 8, 1)
+        self.assertEqual(out[2].shape[0], 97)
+        self.assertEqual(out[2].shape[1] % 32, 0)
+        self.assertEqual(out[2].shape[2] % 32, 0)
+        self.assertEqual(out[3], 41)
+
+    def test_ltx_fps_resample(self):
+        make_video(self.p("g.mp4"), 2.0, 24, with_audio=False)
+        s = self.ltx(guide_video=[self.p("g.mp4")], limits={"ltx2": {"fps": 12}})
+        out = media.build_outputs(s)
+        self.assertEqual(out[2].shape[0], 17)   # 24 images a 12 i/s, coupees a 8n+1
+
+    def test_ltx_voice_from_video_file(self):
+        make_video(self.p("v.mp4"), 1.0, 24, sr=16000)
+        s = self.ltx(voice=["v.mp4"])
+        out = media.build_outputs(s)
+        # guide_image_1, guide_frame_1, guide_video, guide_video_frame, soundtrack, voice
+        self.assertIsNone(out[4])
+        self.assertEqual(out[5]["sample_rate"], 16000)
+
+    def test_ltx_selected_paths_and_signature(self):
+        s = self.ltx(guide_images=["a.png"], guide_video=["g.mp4"], soundtrack=["s.wav"], voice=["v.wav"])
+        names = [os.path.basename(p) for p in media.selected_paths(s)]
+        self.assertEqual(names, ["a.png", "g.mp4", "s.wav", "v.wav"])
+
+    def test_build_outputs_respects_lowered_limit(self):
+        for n in "abc":
+            Image.new("RGB", (8, 8)).save(self.p(n + ".png"))
+        s = media.parse_state(json.dumps({
+            "folders": {"image": self.dir}, "images": ["a.png", "b.png", "c.png"],
+            "limits": {"minimax_h3": {"image": 2}}}))
+        out = media.build_outputs(s)
+        self.assertEqual(sum(1 for v in out[:3] if v is not None), 2)
+        self.assertEqual(len(media.state_layout(s)), 5)  # 2 images + 1 video + 1 piste son + 1 audio
+
+    def test_declared_names_keep_old_order(self):
+        names = media.declared_output_names()
+        self.assertEqual(len(names), 23)
+        self.assertEqual(names[:18], media.layout_keys(9, 3, 3, 3))
+        self.assertEqual(names[-1], "project")
 
 
 if __name__ == "__main__":

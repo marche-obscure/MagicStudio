@@ -35,6 +35,10 @@ class SharedCasesTest(unittest.TestCase):
         for c in CASES["limits"]:
             self.assertEqual(profiles.limits_of(c["state"])[c["key"]], c["expected"], c)
 
+    def test_default_moment(self):
+        for used, exp in CASES["default_moment"]:
+            self.assertEqual(profiles.default_moment(used), exp, used)
+
     def test_moment_clamped(self):
         self.assertEqual(profiles.seconds_to_frame(25, 24, 20), 480)
 

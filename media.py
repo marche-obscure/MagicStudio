@@ -19,6 +19,11 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
+try:
+    from . import profiles
+except ImportError:  # tests : module charge seul
+    import profiles
+
 # Cadence attendue par MiniMax H3 pour les videos de reference.
 FPS = 24
 # Duree maximale utile d'une reference (le MiniMax accepte 2 a 15 s).
@@ -27,19 +32,23 @@ MAX_SECONDS = 15.0
 # inutile de garder plus en memoire (360 images en pleine HD = plusieurs Go).
 MAX_PIXELS = 768 * 1344
 
-# Plafonds des entrees du noeud MiniMaxH3ReferenceToVideo.
-MAX_IMAGES = 9
-MAX_VIDEOS = 3
-MAX_VIDEO_AUDIOS = 3
-MAX_AUDIOS = 3
-TOTAL_OUTPUTS = MAX_IMAGES + MAX_VIDEOS + MAX_VIDEO_AUDIOS + MAX_AUDIOS
+# Plafonds des entrees du noeud MiniMaxH3ReferenceToVideo (valeurs par defaut du profil).
+_MM = profiles.DEFAULT_LIMITS["minimax_h3"]
+MAX_IMAGES = _MM["image"]
+MAX_VIDEOS = _MM["video"]
+MAX_VIDEO_AUDIOS = _MM["video_audio"]
+MAX_AUDIOS = _MM["audio"]
+_LTX = profiles.DEFAULT_LIMITS["ltx2"]
+# Plus grande disposition : LTX 2.x avec 9 images guides (paires) + video, bande-son, voix.
+TOTAL_OUTPUTS = max(MAX_IMAGES + MAX_VIDEOS + MAX_VIDEO_AUDIOS + MAX_AUDIOS,
+                    len(profiles.ltx_layout_keys(_LTX["guide_image"], _LTX)))
 
 # Modes du noeud : Ref2VA (MiniMax H3 Reference to Video) ou F2VA/FL2VA
 # (MiniMax H3 Image to Video : premiere image, et derniere en option).
 MODES = ("ref2va", "fl2va")
 FRAME_KEYS = ["first_frame", "last_frame"]
 # Listes dont les fichiers peuvent etre rognes.
-TRIM_KINDS = ("video", "video_audio", "audio")
+TRIM_KINDS = ("video", "video_audio", "audio", "guide_video", "soundtrack", "voice")
 
 KIND_EXTS = {
     "image": (".png", ".jpg", ".jpeg", ".webp", ".bmp"),
@@ -67,6 +76,13 @@ def layout_keys(n_images, n_videos, n_video_audios, n_audios):
     keys += ["ref_video_audio_%d" % i for i in range(1, nva + 1)]
     keys += ["ref_audio_%d" % i for i in range(1, na + 1)]
     return keys
+
+
+def declared_output_names():
+    """Sorties declarees par le noeud : les 18 de MiniMax (ordre inchange, anciens workflows),
+    des sorties de reserve (LTX 2.x en demande davantage), puis project."""
+    return (layout_keys(MAX_IMAGES, MAX_VIDEOS, MAX_VIDEO_AUDIOS, MAX_AUDIOS)
+            + ["spare_%d" % i for i in range(1, 5)] + [PROJECT_KEY])
 
 
 # ----------------------------------------------------------------------
@@ -124,7 +140,29 @@ def parse_state(raw):
             if isinstance(k, str) and 0 <= a < b:
                 trims[kind][trim_key(k)] = [a, b]
 
+    def names(key):
+        return [n for n in (_clean_name(v) for v in _as_list(data.get(key))) if n]
+
+    # Moments (secondes, -1 = Last) des images guides et de la video guide, par cle de chemin.
+    moments_in = data.get("moments") if isinstance(data.get("moments"), dict) else {}
+    moments = {}
+    for kind in ("guide_images", "guide_video"):
+        entries = moments_in.get(kind) if isinstance(moments_in.get(kind), dict) else {}
+        moments[kind] = {}
+        for k, v in entries.items():
+            if isinstance(k, str) and profiles._num(v) is not None:
+                moments[kind][trim_key(k)] = float(v)
+
+    ltx = profiles.DEFAULT_LIMITS["ltx2"]
     return {
+        "profile": profiles.profile_of(data),
+        # limites reglees : gardees telles quelles (le JS les relit), bornees a l'usage par limits_of
+        "limits": data.get("limits") if isinstance(data.get("limits"), dict) else {},
+        "guide_images": names("guide_images")[:ltx["guide_image"]],
+        "guide_video": names("guide_video")[:ltx["guide_video"]],
+        "soundtrack": names("soundtrack")[:ltx["soundtrack"]],
+        "voice": names("voice")[:ltx["voice"]],
+        "moments": moments,
         "mode": mode,
         "trims": trims,
         "first_frame": _frame(data.get("first_frame")),
@@ -160,11 +198,15 @@ def _frame(value):
 
 
 def state_layout(state):
-    """Sorties visibles selon le mode (doit rester identique au JS)."""
+    """Sorties visibles selon le profil et le mode (doit rester identique au JS)."""
+    lim = profiles.limits_of(state)
+    if profiles.profile_of(state) == "ltx2":
+        return profiles.ltx_layout_keys(len(state["guide_images"]), lim)
     if state["mode"] == "fl2va":
         return list(FRAME_KEYS)
-    return layout_keys(len(state["images"]), len(state["videos"]), len(state["video_audios"]),
-                       len(state["audios"]))
+    return layout_keys(min(len(state["images"]), lim["image"]), min(len(state["videos"]), lim["video"]),
+                       min(len(state["video_audios"]), lim["video_audio"]),
+                       min(len(state["audios"]), lim["audio"]))
 
 
 # Derniere sortie (apres celles de state_layout) : le Root folder, pour le
@@ -199,7 +241,12 @@ def _resolve(state, kind, name):
 
 
 def selected_paths(state):
-    """Chemins complets des fichiers selectionnes du mode actif."""
+    """Chemins complets des fichiers selectionnes du profil et du mode actifs."""
+    if profiles.profile_of(state) == "ltx2":
+        paths = [_resolve(state, "image", n) for n in state["guide_images"]]
+        paths += [_resolve(state, "video", n) for n in state["guide_video"]]
+        paths += [_resolve(state, "audio", n) for n in state["soundtrack"] + state["voice"]]
+        return paths
     if state["mode"] == "fl2va":
         return [_resolve(state, "image", n) for n in state["first_frame"] + state["last_frame"]]
     paths = [_resolve(state, "image", n) for n in state["images"]]
@@ -460,17 +507,18 @@ def load_audio(path, max_seconds=MAX_SECONDS, start=0.0, end=None):
 
 
 def load_video(path, with_audio=False, max_seconds=MAX_SECONDS, max_pixels=MAX_PIXELS,
-               start=0.0, end=None):
+               start=0.0, end=None, fps=FPS, multiple=1):
     """
-    Video -> (images [N, H, W, 3] a 24 ips, piste son ou None).
+    Video -> (images [N, H, W, 3] a 'fps' ips (24 par defaut), piste son ou None).
 
-    Reechantillonnage : chaque instant k/24 recoit la derniere image source
+    multiple > 1 : cotes ramenes a un multiple de 'multiple' (profiles.fit_size).
+    Reechantillonnage : chaque instant k/fps recoit la derniere image source
     affichee a cet instant (images repetees sous 24 ips, sautees au-dessus).
     Rognage : seule la portion [start, end] (secondes) est gardee, coupee a
     max_seconds. La piste son est coupee a la meme portion que les images.
     """
     start = max(0.0, float(start or 0.0))
-    max_frames = max(1, int(round(_trim_length(max_seconds, start, end) * FPS)))
+    max_frames = max(1, int(round(_trim_length(max_seconds, start, end) * fps)))
     eps = 1e-3
 
     with av.open(path) as c:
@@ -478,8 +526,15 @@ def load_video(path, with_audio=False, max_seconds=MAX_SECONDS, max_pixels=MAX_P
             raise ValueError("No video stream in %s" % path)
         vs = c.streams.video[0]
         vs.thread_type = "AUTO"
-        src_fps = float(vs.average_rate or vs.guessed_rate or FPS)
-        tw, th = _target_size(vs.codec_context.width, vs.codec_context.height, max_pixels)
+        src_fps = float(vs.average_rate or vs.guessed_rate or fps)
+        vw, vh = vs.codec_context.width, vs.codec_context.height
+        if not vw or not vh:
+            raise ValueError("No video frame decoded from %s" % path)
+        if multiple > 1:
+            # budget de pixels passe a fit_size sous la forme [max_pixels, 1]
+            tw, th = profiles.fit_size(vw, vh, [max_pixels, 1], multiple)
+        else:
+            tw, th = _target_size(vw, vh, max_pixels)
 
         out = []
         pending = None      # derniere image source decodee (pas encore convertie)
@@ -493,7 +548,7 @@ def load_video(path, with_audio=False, max_seconds=MAX_SECONDS, max_pixels=MAX_P
 
         def emit_until(limit):
             nonlocal pending_arr
-            while len(out) < max_frames and len(out) / FPS < limit - eps:
+            while len(out) < max_frames and len(out) / fps < limit - eps:
                 if pending_arr is None:
                     pending_arr = pending.reformat(width=tw, height=th, format="rgb24").to_ndarray()
                 out.append(pending_arr)
@@ -521,7 +576,7 @@ def load_video(path, with_audio=False, max_seconds=MAX_SECONDS, max_pixels=MAX_P
     audio = None
     if with_audio:
         with av.open(path) as c:
-            audio = _decode_audio(c, len(out) / FPS, start)
+            audio = _decode_audio(c, len(out) / fps, start)
     return frames, audio
 
 
@@ -535,12 +590,60 @@ def _checked(state, kind, name, key):
     return path
 
 
+def _build_ltx_outputs(state):
+    """Sorties LTX 2.x : paires image guide / moment, video guide, bande-son, voix."""
+    lim = profiles.limits_of(state)
+    fps, seconds = lim["fps"], lim["seconds"]
+    values = {}
+    stored = state["moments"]["guide_images"]
+    images = state["guide_images"][:lim["guide_image"]]
+    # Moment non choisi : First s'il est libre, sinon Last (moments memorises d'abord).
+    used = [stored[trim_key(n)] for n in images if trim_key(n) in stored]
+    for i, name in enumerate(images, 1):
+        key = "guide_image_%d" % i
+        values[key] = load_image(_checked(state, "image", name, key))
+        moment = stored.get(trim_key(name))
+        if moment is None:
+            moment = profiles.default_moment(used)
+            used.append(moment)
+        values["guide_frame_%d" % i] = profiles.seconds_to_frame(moment, fps, seconds)
+
+    for name in state["guide_video"][:lim["guide_video"]]:
+        start, end = _trim(state, "guide_video", name)
+        frames, _ = load_video(_checked(state, "video", name, "guide_video"), max_seconds=seconds,
+                               max_pixels=lim["max_size"][0] * lim["max_size"][1],
+                               start=start, end=end, fps=fps, multiple=lim["multiple"])
+        values["guide_video"] = frames[:profiles.frames_8n1(frames.shape[0])]
+        moment = state["moments"]["guide_video"].get(trim_key(name), 0.0)
+        values["guide_video_frame"] = profiles.video_guide_frame(
+            profiles.seconds_to_frame(moment, fps, seconds))
+
+    # Bande-son et voix : fichiers audio, ou videos dont seul le son est pris.
+    for key in ("soundtrack", "voice"):
+        for name in state[key][:lim[key]]:
+            path = _checked(state, "audio", name, key)
+            start, end = _trim(state, key, name)
+            try:
+                values[key] = load_audio(path, max_seconds=seconds, start=start, end=end)
+            except ValueError:
+                raise ValueError("%s: no soundtrack in %s" % (key, path))
+
+    out = [values.get(k) for k in state_layout(state)]
+    return tuple(out + [None] * (TOTAL_OUTPUTS - len(out)))
+
+
 def build_outputs(state):
     """
     Charge les fichiers selectionnes et renvoie un tuple de TOTAL_OUTPUTS
-    valeurs : d'abord celles des sorties visibles (ordre de layout_keys),
+    valeurs : d'abord celles des sorties visibles (ordre de state_layout),
     puis None pour les sorties inutilisees.
     """
+    if profiles.profile_of(state) == "ltx2":
+        return _build_ltx_outputs(state)
+    lim = profiles.limits_of(state)
+    seconds = lim["seconds"]
+    pixels = lim["max_size"][0] * lim["max_size"][1]
+    fps = lim["fps"]
     values = {}
     if state["mode"] == "fl2va":
         # F2VA / FL2VA : premiere image, et derniere en option (None sinon).
@@ -550,30 +653,31 @@ def build_outputs(state):
         out = [values.get(k) for k in FRAME_KEYS]
         return tuple(out + [None] * (TOTAL_OUTPUTS - len(out)))
 
-    for i, name in enumerate(state["images"], 1):
+    for i, name in enumerate(state["images"][:lim["image"]], 1):
         key = "ref_image_%d" % i
         values[key] = load_image(_checked(state, "image", name, key))
-    for i, name in enumerate(state["videos"], 1):
+    for i, name in enumerate(state["videos"][:lim["video"]], 1):
         key = "ref_video_%d" % i
         start, end = _trim(state, "video", name)
-        frames, _ = load_video(_checked(state, "video", name, key), start=start, end=end)
+        frames, _ = load_video(_checked(state, "video", name, key), max_seconds=seconds,
+                               max_pixels=pixels, start=start, end=end, fps=fps)
         values[key] = frames
     # ref_video_audio : seulement la bande-son de la video (une piste audio).
-    for i, name in enumerate(state["video_audios"], 1):
+    for i, name in enumerate(state["video_audios"][:lim["video_audio"]], 1):
         key = "ref_video_audio_%d" % i
         path = _checked(state, "video", name, key)
         start, end = _trim(state, "video_audio", name)
         try:
-            values[key] = load_audio(path, start=start, end=end)
+            values[key] = load_audio(path, max_seconds=seconds, start=start, end=end)
         except ValueError:
             raise ValueError("%s: no soundtrack in %s" % (key, path))
     # ref_audio : fichiers audio, ou videos dont seul le son est pris ("son seul").
-    for i, name in enumerate(state["audios"], 1):
+    for i, name in enumerate(state["audios"][:lim["audio"]], 1):
         key = "ref_audio_%d" % i
         path = _checked(state, "audio", name, key)
         start, end = _trim(state, "audio", name)
         try:
-            values[key] = load_audio(path, start=start, end=end)
+            values[key] = load_audio(path, max_seconds=seconds, start=start, end=end)
         except ValueError:
             raise ValueError("%s: no soundtrack in %s" % (key, path))
 

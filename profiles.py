@@ -121,3 +121,23 @@ def fit_size(width, height, max_size, multiple):
     w, h = width * scale, height * scale
     m = max(1, int(multiple))
     return (max(m, int(w) // m * m), max(m, int(h) // m * m))
+
+
+def default_moment(used):
+    """Moment d'une image guide sans moment choisi : First (0) s'il est libre,
+    sinon Last (-1) s'il est libre, sinon 0. 'used' = moments deja pris."""
+    if not any(u == 0 for u in used):
+        return 0.0
+    if not any(u == LAST for u in used):
+        return LAST
+    return 0.0
+
+
+def default_moment(used):
+    """Moment d une image guide sans moment choisi : First (0) s il est libre,
+    sinon Last (-1) s il est libre, sinon 0. used = moments deja pris."""
+    if not any(u == 0 for u in used):
+        return 0.0
+    if not any(u == LAST for u in used):
+        return LAST
+    return 0.0

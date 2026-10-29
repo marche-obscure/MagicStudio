@@ -4,9 +4,9 @@ bande-son) et audios de reference, a brancher sur MiniMaxH3ReferenceToVideo.
 
 La selection est faite dans l'interface JS (web/js/minimax_ref_loader.js)
 et transmise en JSON dans le widget cache "state". Le noeud declare toutes
-les sorties possibles (18) en type joker ; le JS n'affiche que celles qui
-servent, dans l'ordre de media.layout_keys(), et leur donne leur vrai type
-(IMAGE ou AUDIO) pour les branchements.
+les sorties possibles (23) en type joker ; le JS n'affiche que celles qui
+servent, dans l'ordre de media.state_layout() selon le profil (MiniMax H3 ou
+LTX 2.x), et leur donne leur vrai type (IMAGE, AUDIO, INT) pour les branchements.
 """
 
 import json
@@ -38,11 +38,6 @@ PROJECT_TYPE = "MINIMAX_PROJECT"
 # Sortie final_cut du noeud Project -> entree du noeud Final Cut (choix utilisateur, 22/10/2026).
 FINAL_CUT_TYPE = "MINIMAX_FINAL_CUT"
 
-# Noms techniques des 18 sorties (dans l'ordre maximal) : le JS les
-# renomme et les reordonne selon la selection.
-_ALL_KEYS = media.layout_keys(media.MAX_IMAGES, media.MAX_VIDEOS, media.MAX_VIDEO_AUDIOS,
-                               media.MAX_AUDIOS)
-
 
 class MiniMaxH3RefLoader:
     @classmethod
@@ -56,8 +51,10 @@ class MiniMaxH3RefLoader:
     # Derniere sortie declaree "project" (Root folder pour le noeud Projet) :
     # le JS l'affiche toujours apres les sorties du mode, et run() renvoie
     # sa valeur a cette position (media.outputs_with_project).
-    RETURN_TYPES = tuple(ANY_TYPE for _ in range(len(_ALL_KEYS) + 1))
-    RETURN_NAMES = tuple(_ALL_KEYS) + (media.PROJECT_KEY,)
+    # Noms techniques : 18 sorties MiniMax, 4 de reserve, project (media.declared_output_names).
+    # Le JS les renomme et les reordonne selon le profil et la selection.
+    RETURN_NAMES = tuple(media.declared_output_names())
+    RETURN_TYPES = tuple(ANY_TYPE for _ in RETURN_NAMES)
     FUNCTION = "run"
     CATEGORY = "MagicStudio"
     DESCRIPTION = (
