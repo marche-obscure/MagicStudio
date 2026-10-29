@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import time
 
 try:
@@ -490,6 +491,8 @@ def _check_run_file(path):
 
 
 RUN_START_MARGIN = 2
+# Fin d'un Run : le fichier peut etre ecrit un peu apres la fin mesuree (s).
+RUN_END_MARGIN = 120
 
 
 def run_duration(duration, data, now=None):
@@ -510,7 +513,25 @@ def run_duration(duration, data, now=None):
     return round(max(0.0, (time.time() if now is None else now) - started), 1)
 
 
+_LOCKS = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def project_lock(project):
+    """
+    Verrou d'un projet (26/10/2026) : finish_run et tidy_rush deplacent des fichiers
+    (_reclaim_media) ; deux lectures des Runs en meme temps ne deplacent pas le meme.
+    """
+    with _LOCKS_GUARD:
+        return _LOCKS.setdefault(_key(project), threading.RLock())
+
+
 def finish_run(run_file, files, status, output_dir, now=None, duration=None):
+    with project_lock(_check_run_file(run_file)):
+        return _finish_run(run_file, files, status, output_dir, now, duration)
+
+
+def _finish_run(run_file, files, status, output_dir, now=None, duration=None):
     """
     Fin du Run : files = [{filename, subfolder, type}] des sorties (seulement
     type "output", sous output_dir). Seuls les fichiers NOUVEAUX comptent :
@@ -561,7 +582,7 @@ def finish_run(run_file, files, status, output_dir, now=None, duration=None):
             # Run enregistre dans 08 a 14 : l'original va dans 40 / 60 (Footage), pas de copie reduite.
             size = video_size(src) if ext in VIDEO_EXTS else None
             n += 1
-            _reclaim_media(project, out, out["kind"], base if n == 1 else "%s_%02d" % (base, n), started)
+            _reclaim_media(project, out, out["kind"], base if n == 1 else "%s_%02d" % (base, n), own=True)
             if out.get("in_place"):
                 if size:
                     out["size"] = "%dx%d" % size
@@ -797,6 +818,8 @@ def _move_verified(src, dst):
             os.remove(part)
     try:
         os.remove(src)
+    except FileNotFoundError:
+        pass  # deja deplace par une autre lecture des Runs : la copie verifiee est le seul exemplaire
     except OSError:
         os.remove(dst)
         raise
@@ -974,27 +997,45 @@ def media_folder_of(project, path):
     return None
 
 
-def _archived_original(project, path, started):
+def _run_window(data):
+    """
+    (debut, fin) du Run : date du JSON et duree (26/10/2026) ; None sans duree
+    (anciens JSON) : on ne sait pas quel fichier ce Run a ecrit.
+    """
+    start, duration = _run_start(data), data.get("duration")
+    if start is None or not isinstance(duration, (int, float)):
+        return None
+    return start, start + duration
+
+
+def _in_window(path, window):
+    """Fichier ecrit pendant le Run (marges : date a la seconde, fin de l'ecriture)."""
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return False
+    return bool(window) and window[0] - RUN_START_MARGIN <= mtime <= window[1] + RUN_END_MARGIN
+
+
+def _archived_original(project, path, window):
     """
     Original d'un Run range dans <dossier>/Archives par la cloche (nom date
     yyyyMMdd_HHmmss_<nom>) : path n'existe plus et son dossier est la racine d'un
-    dossier 08 a 14. Candidat ecrit apres le debut du Run, le plus proche ; started
-    None : le plus ancien. None sinon.
+    dossier 08 a 14. Candidat ecrit pendant le Run (window), le plus proche de sa
+    fin ; window None ou aucun candidat : None (jamais le fichier d'un autre Run).
     """
-    if not path or os.path.isfile(path):
+    if not window or not path or os.path.isfile(path):
         return None
     folder = media_folder_of(project, path)
     if not folder or not _same_dir(os.path.dirname(path), os.path.join(project, folder)):
         return None
     arch = os.path.join(project, folder, projects.ARCHIVE_FOLDER)
-    name = os.path.basename(path)
+    name = projects.clean_archive_name(os.path.basename(path))
     found = []
     for n in os.listdir(arch) if os.path.isdir(arch) else []:
         p = os.path.join(arch, n)
-        if os.path.isfile(p) and projects.clean_archive_name(n) == name:
-            mtime = os.path.getmtime(p)
-            if started is None or mtime >= started - RUN_START_MARGIN:
-                found.append((mtime, p))
+        if os.path.isfile(p) and projects.clean_archive_name(n) == name and _in_window(p, window):
+            found.append((abs(os.path.getmtime(p) - window[1]), p))
     return min(found)[1] if found else None
 
 
@@ -1023,19 +1064,28 @@ def protected_files(project, paths):
     return [p for p in paths if _key(p) in cited or any(_written_since(p, s) for s in starts)]
 
 
-def _reclaim_media(project, o, kind, name, started):
+def _reclaim_media(project, o, kind, name, window=None, own=False):
     """
-    Original d'un Run reste dans 08 a 14 (racine, ou Archives apres la cloche) :
-    deplace (copie, SHA256, suppression) dans le dossier de tri de sa copie, a sa
-    place et sous son nom (la copie reduite est retiree), sinon dans Footage sous
-    name. Echec : move_error, rien n'est perdu (nouvel essai par tidy_rush).
-    True si o a change.
+    Original d'un Run reste dans 08 a 14 : deplace (copie, SHA256, suppression)
+    dans le dossier de tri de sa copie, a sa place et sous son nom (la copie
+    reduite est retiree), sinon dans Footage sous name. Quel original :
+    - own (finish_run) : le fichier nouveau du Run, a la racine du dossier ;
+    - sinon (tidy_rush) : a la racine seulement apres un echec de fin de Run
+      (move_error) et ecrit pendant le Run (un Run d'avant ce changement peut
+      servir de reference au RefLoader : pas touche) ; disparu : son exemplaire
+      d'Archives ecrit pendant le Run (_archived_original).
+    Echec du deplacement : move_error, rien n'est perdu. Copie reduite impossible a
+    retirer : copy_left, le JSON suit quand meme l'original. True si o a change.
     """
     if o.get("deleted"):
         return False
     src = o.get("source") or ""
-    orig = src if src and os.path.isfile(src) and media_folder_of(project, src) else \
-        _archived_original(project, src, started)
+    if src and os.path.isfile(src):
+        if not media_folder_of(project, src) or not (own or (o.get("move_error") and _in_window(src, window))):
+            return False
+        orig = src
+    else:
+        orig = _archived_original(project, src, window)
     if not orig:
         return False
     ext = os.path.splitext(orig)[1]
@@ -1045,27 +1095,34 @@ def _reclaim_media(project, o, kind, name, started):
         folder, stem = os.path.dirname(copy), os.path.splitext(os.path.basename(copy))[0]
     else:
         folder, stem = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[DEFAULT_SORT]), name
-    os.makedirs(folder, exist_ok=True)
     wanted = os.path.join(folder, stem + ext)
     try:
+        os.makedirs(folder, exist_ok=True)
         dst = _free_path(folder, stem + ext)
         _move_verified(orig, dst)
-        if copy and os.path.isfile(copy) and not _same_dir(copy, dst):
-            os.remove(copy)
-            if not os.path.exists(wanted):
-                os.replace(dst, wanted)
-                dst = wanted
     except (OSError, IOError) as e:
         if o.get("move_error") == (str(e) or e.__class__.__name__):
             return False
         o["move_error"] = str(e) or e.__class__.__name__
         return True
+    # L'original est deplace : le JSON le suit tout de suite, la suite est du rangement.
+    left = None
+    if copy and os.path.isfile(copy) and not _same_dir(copy, dst):
+        try:
+            os.remove(copy)
+            if not os.path.exists(wanted):
+                os.replace(dst, wanted)
+                dst = wanted
+        except OSError:
+            left = o.get("copy")
     o["source"] = dst
     if kind == "video":
         o["copy"] = _rel(project, dst)
     o.update({"in_place": True, "moved_from": orig, "from_media": media_folder_of(project, orig)})
-    for k in ("copy_size", "resize_error", "move_error"):
+    for k in ("copy_size", "resize_error", "move_error", "copy_left"):
         o.pop(k, None)
+    if left:
+        o["copy_left"] = left
     return True
 
 
@@ -1217,6 +1274,11 @@ def _lock_out(project, kind, path, back):
 
 
 def tidy_rush(project):
+    with project_lock(project):
+        return _tidy_rush(project)
+
+
+def _tidy_rush(project):
     """
     Fichiers de Runs restes a la racine de 40 / 60 (avant les sous-dossiers,
     choix utilisateur) : ranges dans Footage, JSON mis a jour. Les fichiers
@@ -1247,7 +1309,7 @@ def tidy_rush(project):
             if _relink_output(project, o):
                 changed = True
             # Original reste dans 08 a 14 (ou range dans leur Archives par la cloche) : ramene dans 40 / 60.
-            if _reclaim_media(project, o, kind, name[:-len(".json")], _run_start(data)):
+            if _reclaim_media(project, o, kind, name[:-len(".json")], _run_window(data)):
                 changed = True
             p = _project_file(project, o, kind)
             if p and sort_of(project, kind, p) == "root" and os.path.isfile(p):

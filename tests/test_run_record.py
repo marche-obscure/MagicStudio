@@ -1065,18 +1065,25 @@ class MediaReclaimTest(unittest.TestCase):
         self.root = tempfile.mkdtemp()
         self.p = projects.create_project(self.root, "Clip")
         self.out = os.path.join(self.root, "output")
-        self.when = time.mktime((2026, 10, 17, 15, 30, 0, 0, 0, -1))
-        self.base = "20261017_153000_run"
+        # Run commence il y a 10 min (fenetre du Run : debut .. debut + duree).
+        self.when = float(int(time.time()) - 600)
+        self.base = time.strftime("%Y%m%d_%H%M%S_run", time.localtime(self.when))
 
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
 
-    def done_run(self, src, copy_rel, data=b"small"):
+    def at(self, path, offset):
+        """Date de modification = debut du Run + offset (s)."""
+        os.utime(path, (self.when + offset, self.when + offset))
+
+    def done_run(self, src, copy_rel, data=b"small", duration=200, move_error=None):
         """Run deja enregistre a l'ancienne : source dans 12.Video, copie reduite copy_rel."""
         run = rr.start_run(self.p, "p", PROMPT, self.when)
         d = read_json(run)
-        d.update({"status": "done", "outputs": [{"source": src, "kind": "video", "copy": copy_rel,
-                                                 "copy_size": "960x540"}]})
+        o = {"source": src, "kind": "video", "copy": copy_rel, "copy_size": "960x540"}
+        if move_error:
+            o["move_error"] = move_error
+        d.update({"status": "done", "duration": duration, "outputs": [o]})
         rr._write(run, d)
         write(os.path.join(self.p, *copy_rel.split("/")), data)
         return run
@@ -1161,9 +1168,10 @@ class MediaReclaimTest(unittest.TestCase):
     def test_tidy_rush_reclaims_archived_original(self):
         src = os.path.join(self.p, "12.Video", "Video_001.mp4")
         write(src, b"original")
+        self.at(src, 150)
         copy = "40.Rush Videos/No Good/" + self.base + ".mp4"
         run = self.done_run(src, copy)
-        projects.archive_files(self.p, "12.Video", ["Video_001.mp4"], when=self.when + 60)
+        projects.archive_files(self.p, "12.Video", ["Video_001.mp4"], when=self.when + 400)
         arch = os.path.join(self.p, "12.Video", "Archives")
         archived = os.path.join(arch, files_in(arch)[0])
         rr.tidy_rush(self.p)
@@ -1180,9 +1188,11 @@ class MediaReclaimTest(unittest.TestCase):
         self.assertEqual((listed["in_project"], listed["place"], listed["source_exists"]), (True, "rejected", True))
 
     def test_reclaim_replaces_copy_in_sort_folder(self):
+        # Deplacement de fin de Run rate (move_error) : nouvel essai depuis la racine.
         src = os.path.join(self.p, "12.Video", "Video_001.mp4")
         write(src, b"original")
-        self.done_run(src, "40.Rush Videos/Picture Lock/" + self.base + ".mp4")
+        self.at(src, 150)
+        self.done_run(src, "40.Rush Videos/Picture Lock/" + self.base + ".mp4", move_error="locked")
         rr.tidy_rush(self.p)
         lock = os.path.join(self.p, "40.Rush Videos", "Picture Lock")
         self.assertEqual(files_in(lock), [self.base + ".mp4"])
@@ -1190,38 +1200,140 @@ class MediaReclaimTest(unittest.TestCase):
             self.assertEqual(f.read(), b"original")
         self.assertFalse(os.path.exists(src))
 
+    def test_old_run_root_file_left_in_place(self):
+        # Run d'avant ce changement (pas de move_error) : le fichier de 12.Video peut servir de
+        # reference au RefLoader, il n'est pas deplace par une simple lecture des Runs.
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        write(src, b"original")
+        self.at(src, 150)
+        run = self.done_run(src, "40.Rush Videos/Footage/" + self.base + ".mp4")
+        rr.tidy_rush(self.p)
+        self.assertTrue(os.path.isfile(src))
+        self.assertEqual(read_json(run)["outputs"][0]["source"], src)
+
+    def test_root_file_of_another_run_not_taken(self):
+        # Meme nom repris par un Run suivant (compteur reparti a 00001) : ecrit apres la fin du Run.
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        write(src, b"other run")
+        self.at(src, 500)
+        run = self.done_run(src, "40.Rush Videos/Footage/" + self.base + ".mp4", move_error="locked")
+        rr.tidy_rush(self.p)
+        self.assertTrue(os.path.isfile(src))
+        with open(os.path.join(self.p, "40.Rush Videos", "Footage", self.base + ".mp4"), "rb") as f:
+            self.assertEqual(f.read(), b"small")
+        self.assertEqual(read_json(run)["outputs"][0]["source"], src)
+
     def test_reclaim_picks_archive_by_date(self):
         src = os.path.join(self.p, "12.Video", "Video_001.mp4")
         arch = os.path.join(self.p, "12.Video", "Archives")
-        old = os.path.join(arch, "20261017_143000_Video_001.mp4")
-        new = os.path.join(arch, "20261017_153100_Video_001.mp4")
-        write(old, b"old")
-        write(new, b"new")
-        os.utime(old, (self.when - 3600, self.when - 3600))
-        os.utime(new, (self.when + 30, self.when + 30))
+        names = {"before": "20200101_000000_Video_001.mp4", "inside": "20200101_000001_Video_001.mp4",
+                 "after": "20200101_000002_Video_001.mp4"}
+        for key, offset in (("before", -3600), ("inside", 150), ("after", 5000)):
+            write(os.path.join(arch, names[key]), key.encode())
+            self.at(os.path.join(arch, names[key]), offset)
         self.done_run(src, "40.Rush Videos/Footage/" + self.base + ".mp4")
         rr.tidy_rush(self.p)
         with open(os.path.join(self.p, "40.Rush Videos", "Footage", self.base + ".mp4"), "rb") as f:
-            self.assertEqual(f.read(), b"new")
-        self.assertEqual(files_in(arch), ["20261017_143000_Video_001.mp4"])
+            self.assertEqual(f.read(), b"inside")
+        self.assertEqual(files_in(arch), [names["before"], names["after"]])
 
-    def test_reclaim_ignores_archive_older_than_run(self):
+    def test_reclaim_ignores_archive_outside_run(self):
         src = os.path.join(self.p, "12.Video", "Video_001.mp4")
-        old = os.path.join(self.p, "12.Video", "Archives", "20261017_143000_Video_001.mp4")
+        arch = os.path.join(self.p, "12.Video", "Archives")
+        old = os.path.join(arch, "20200101_000000_Video_001.mp4")
+        late = os.path.join(arch, "20200101_000001_Video_001.mp4")
         write(old, b"old")
-        os.utime(old, (self.when - 3600, self.when - 3600))
+        write(late, b"late")
+        self.at(old, -3600)
+        self.at(late, 5000)
         run = self.done_run(src, "40.Rush Videos/Footage/" + self.base + ".mp4")
         rr.tidy_rush(self.p)
-        self.assertTrue(os.path.isfile(old))
+        self.assertEqual(files_in(arch), sorted([os.path.basename(old), os.path.basename(late)]))
         self.assertEqual(read_json(run)["outputs"][0]["source"], src)
+
+    def test_reclaim_without_duration_skips_archives(self):
+        # Run sans duree (anciens JSON) : fenetre inconnue, rien n'est pris dans Archives.
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        cand = os.path.join(self.p, "12.Video", "Archives", "20200101_000000_Video_001.mp4")
+        write(cand, b"x")
+        self.at(cand, 150)
+        self.done_run(src, "40.Rush Videos/Footage/" + self.base + ".mp4", duration=None)
+        rr.tidy_rush(self.p)
+        self.assertTrue(os.path.isfile(cand))
+
+    def test_reclaim_copy_left_keeps_json_consistent(self):
+        # La copie reduite ne peut pas etre retiree (ouverte ailleurs) : le JSON suit quand meme l'original.
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        write(src, b"original")
+        self.at(src, 150)
+        copy = "40.Rush Videos/No Good/" + self.base + ".mp4"
+        run = self.done_run(src, copy, move_error="locked")
+        copy_abs = os.path.join(self.p, *copy.split("/"))
+        real_remove = os.remove
+
+        def busy(path):
+            if os.path.normcase(os.path.abspath(path)) == os.path.normcase(copy_abs):
+                raise PermissionError("in use")
+            real_remove(path)
+        rr.os.remove = busy
+        try:
+            rr.tidy_rush(self.p)
+        finally:
+            rr.os.remove = real_remove
+        o = read_json(run)["outputs"][0]
+        self.assertFalse(os.path.exists(src))
+        self.assertTrue(os.path.isfile(o["source"]))
+        with open(o["source"], "rb") as f:
+            self.assertEqual(f.read(), b"original")
+        self.assertEqual(o["copy"], rr._rel(self.p, o["source"]))
+        self.assertTrue(o["in_place"])
+        self.assertEqual(o["copy_left"], copy)
+        self.assertNotIn("move_error", o)
+
+    def test_move_verified_source_already_moved(self):
+        # Autre lecture des Runs en meme temps : l'original a deja disparu, la copie verifiee reste.
+        src = os.path.join(self.root, "a.mp4")
+        dst = os.path.join(self.root, "b.mp4")
+        write(src, b"data")
+        real_remove = os.remove
+
+        def gone(path):
+            if path == src:
+                real_remove(path)
+                raise FileNotFoundError(path)
+            real_remove(path)
+        rr.os.remove = gone
+        try:
+            rr._move_verified(src, dst)
+        finally:
+            rr.os.remove = real_remove
+        self.assertTrue(os.path.isfile(dst))
+
+    def test_reclaim_holds_project_lock(self):
+        # tidy_rush et finish_run deplacent des fichiers : une seule lecture des Runs a la fois par projet.
+        lock = rr.project_lock(self.p)
+        self.assertIs(lock, rr.project_lock(os.path.join(self.p, "")))
+        self.assertIsNot(lock, rr.project_lock(self.root))
+        seen = []
+        saved = rr._tidy_rush
+
+        def spy(project):
+            seen.append(lock._is_owned())
+            return saved(project)
+        rr._tidy_rush = spy
+        try:
+            rr.tidy_rush(self.p)
+        finally:
+            rr._tidy_rush = saved
+        self.assertEqual(seen, [True])
 
     def test_protected_files_cited_source(self):
         a = os.path.join(self.p, "12.Video", "a.mp4")
         b = os.path.join(self.p, "12.Video", "b.mp4")
         write(a)
         write(b)
-        os.utime(a, (self.when - 3600, self.when - 3600))
-        os.utime(b, (self.when - 3600, self.when - 3600))
+        self.at(a, -3600)
+        self.at(b, -3600)
         self.done_run(a, "40.Rush Videos/Footage/" + self.base + ".mp4")
         self.assertEqual(rr.protected_files(self.p, [b, a]), [a])
 
@@ -1234,7 +1346,6 @@ class MediaReclaimTest(unittest.TestCase):
         write(d)
         os.utime(d, (now - 3600, now - 3600))
         self.assertEqual(rr.protected_files(self.p, [c, d]), [c])
-
 
 if __name__ == "__main__":
     unittest.main()
