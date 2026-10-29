@@ -177,6 +177,10 @@ def extract(project, which, n=None, overwrite=False):
     video = lock_video(project)
     if video is None:
         raise ValueError("Picture Lock: keep one file")
+    state = _read_state(project)
+    if state and state.get("video") and not _same_video(state, video) and _extraction_files(project):
+        # La video a change et check_lock_change n'a pas encore tranche : on n'ecrit rien.
+        raise ValueError("The Picture Lock video changed: check the Extract Frame folder first")
     total = video_info(video)["frames"]
     items = [(frame_name(kind, project, num if kind == "n" else None), num)
              for kind, num in targets(which, total, n)]
@@ -192,6 +196,8 @@ def _trash(trash_fn, folder, names):
     if trash_fn is None:
         return "Recycle Bin not available: nothing was deleted"
     try:
+        # Echec partiel possible (certains fichiers deja a la Corbeille) : on ne note rien, l'etat
+        # reste inchange et le prochain appel recalcule la liste depuis le dossier, donc finit le travail.
         trash_fn([os.path.join(folder, n) for n in names])
     except Exception as e:  # noqa: BLE001 - la Corbeille peut echouer de bien des facons
         return str(e) or "Could not move the files to the Recycle Bin"

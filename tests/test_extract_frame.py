@@ -273,6 +273,41 @@ class ChangeTest(Base):
         self.assertIn("no bin", r["trash_error"])
         self.assertEqual(self.listing(), before)
 
+    def test_extract_refused_while_video_change_pending(self):
+        ef.extract(self.project, "first")
+        before = self.state()
+        self.replace_video()
+        with self.assertRaises(ValueError) as cm:
+            ef.extract(self.project, "n", 1)
+        self.assertIn("Picture Lock video changed", str(cm.exception))
+        self.assertEqual(self.listing(), [ef.STATE_FILE, "FIRST_FRAME_Sub.png"])
+        self.assertEqual(self.state(), before)
+        r = ef.check_lock_change(self.project, FakeTrash())
+        self.assertEqual(r["ask_replace"], ["FIRST_FRAME_Sub.png"])
+        with self.assertRaises(ValueError):  # tant que la question n'a pas recu de reponse
+            ef.extract(self.project, "n", 1)
+        ef.replace_first_last(self.project, True)
+        self.assertEqual(ef.extract(self.project, "n", 1)["written"], ["FRAME_0001_Sub.png"])
+
+    def test_partial_trash_failure_then_retry(self):
+        self.prepare()
+        os.remove(self.video)
+        before = self.state()
+
+        def half(paths):
+            os.remove(paths[0])
+            raise OSError("half done")
+
+        r = ef.check_lock_change(self.project, half)
+        self.assertIn("half done", r["trash_error"])
+        self.assertEqual((r["emptied"], r["deleted"]), ([], []))
+        self.assertEqual(self.state(), before)
+        r = ef.check_lock_change(self.project, FakeTrash())
+        self.assertIsNone(r["trash_error"])
+        self.assertEqual(len(r["emptied"]), 2)  # reste du dossier
+        self.assertEqual(self.listing(), [ef.STATE_FILE])
+        self.assertIsNone(self.state()["video"])
+
     def test_no_state_no_files_writes_nothing(self):
         r = ef.check_lock_change(self.project, FakeTrash())
         self.assertEqual(r["emptied"], [])
