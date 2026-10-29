@@ -221,6 +221,20 @@ class ProjectFoldersTest(unittest.TestCase):
         projects.ensure_project(path)
         self.assertTrue(os.path.isdir(extract))
 
+    def test_ensure_project_creates_pickup(self):
+        self.assertEqual((projects.PICKUP_DIR, projects.PICKUP_SUBS), ("90.Pick Up", ("Image", "Son", "Video")))
+        p = projects.create_project(self.root, "Clip")
+        for sub in ("Image", "Son", "Video"):
+            self.assertTrue(os.path.isdir(os.path.join(p, "90.Pick Up", sub)), sub)
+        self.assertNotIn("90.Pick Up", projects.SUBFOLDERS)
+        # Projet existant sans Pick Up : recree par ensure_project, fichiers presents gardes.
+        shutil.rmtree(os.path.join(p, "90.Pick Up", "Son"))
+        keep = os.path.join(p, "90.Pick Up", "Video", "a.mp4")
+        open(keep, "wb").close()
+        projects.ensure_project(p)
+        self.assertTrue(os.path.isdir(os.path.join(p, "90.Pick Up", "Son")))
+        self.assertTrue(os.path.isfile(keep))
+
     def test_ensure_missing_project_raises(self):
         with self.assertRaises(FileNotFoundError):
             projects.ensure_project(os.path.join(self.root, "nope"))

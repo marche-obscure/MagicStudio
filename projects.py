@@ -16,6 +16,11 @@ import time
 # Images extraites d'une video du Picture Lock (Extract Frame, 26/10/2026).
 EXTRACT_DIR = ("40.Rush Videos", "Picture Lock", "Extract Frame")
 
+# Pick Up (26/10/2026) : dossier propose pour enregistrer les Runs (= PICKUP_DIR en JS),
+# sans ligne dans le noeud ; ses sous-dossiers apparaissent dans la galerie du Ref Loader.
+PICKUP_DIR = "90.Pick Up"
+PICKUP_SUBS = ("Image", "Son", "Video")
+
 # Sous-dossiers de chaque projet (meme liste que web/js/project_paths.js).
 SUBFOLDERS = ("00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son",
               "12.Video", "14.Video-Audio", "40.Rush Videos", "60.Rush Images")
@@ -212,6 +217,9 @@ def ensure_project(path):
             os.makedirs(os.path.join(path, rush, sub), exist_ok=True)
     # Images extraites d'une video du Picture Lock (Extract Frame, 26/10/2026) : jamais comptees ni synchronisees.
     os.makedirs(os.path.join(path, *EXTRACT_DIR), exist_ok=True)
+    # Pick Up (26/10/2026) : dossier propose pour enregistrer les Runs, sans ligne dans le noeud.
+    for sub in PICKUP_SUBS:
+        os.makedirs(os.path.join(path, PICKUP_DIR, sub), exist_ok=True)
     # Workflows des Runs (run_record.RUN_WORKFLOW_FOLDER), a cote de Archives :
     # jamais listes comme workflows du projet (lectures non recursives).
     os.makedirs(os.path.join(path, CONFIG_FOLDER, "Run"), exist_ok=True)
