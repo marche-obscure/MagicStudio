@@ -17,6 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 import projects  # noqa: E402
+import project_config  # noqa: E402
 import run_record as rr  # noqa: E402
 
 
@@ -1055,6 +1056,164 @@ class RunFileTest(unittest.TestCase):
             rr.finish_run(os.path.join(self.p, "04.Prompt", "20261017_160000_run.json"), [], "done", self.out)
         with self.assertRaises(FileNotFoundError):
             rr.start_run(os.path.join(self.root, "nope"), "p")
+
+
+class MediaReclaimTest(unittest.TestCase):
+    """Run enregistre dans 08 a 14 (26/10/2026) : l'original va dans 40 / 60, jamais archive par la cloche."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.p = projects.create_project(self.root, "Clip")
+        self.out = os.path.join(self.root, "output")
+        self.when = time.mktime((2026, 10, 17, 15, 30, 0, 0, 0, -1))
+        self.base = "20261017_153000_run"
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def done_run(self, src, copy_rel, data=b"small"):
+        """Run deja enregistre a l'ancienne : source dans 12.Video, copie reduite copy_rel."""
+        run = rr.start_run(self.p, "p", PROMPT, self.when)
+        d = read_json(run)
+        d.update({"status": "done", "outputs": [{"source": src, "kind": "video", "copy": copy_rel,
+                                                 "copy_size": "960x540"}]})
+        rr._write(run, d)
+        write(os.path.join(self.p, *copy_rel.split("/")), data)
+        return run
+
+    def test_media_folder_of(self):
+        v = os.path.join(self.p, "12.Video")
+        self.assertEqual(rr.media_folder_of(self.p, os.path.join(v, "a.mp4")), "12.Video")
+        self.assertEqual(rr.media_folder_of(self.p, os.path.join(v, "Archives", "a.mp4")), "12.Video")
+        self.assertIsNone(rr.media_folder_of(self.p, os.path.join(self.p, "40.Rush Videos", "a.mp4")))
+        self.assertIsNone(rr.media_folder_of(self.p, os.path.join(v, "Sub", "a.mp4")))
+        self.assertIsNone(rr.media_folder_of(self.p, ""))
+        self.assertEqual(rr.MEDIA_FOLDERS, tuple(project_config.MEDIA))
+
+    def test_finish_run_moves_video_from_media(self):
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        make_video(src, 1280, 720)
+        run = rr.start_run(self.p, "p", PROMPT, self.when)
+        data = rr.finish_run(run, [{"filename": "Video_001.mp4", "fullpath": src}], "done", self.out)
+        o = data["outputs"][0]
+        dst = os.path.join(self.p, "40.Rush Videos", "Footage", self.base + ".mp4")
+        self.assertFalse(os.path.exists(src))
+        self.assertTrue(os.path.isfile(dst))
+        self.assertEqual((o["source"], o["copy"], o["in_place"], o["moved_from"], o["from_media"]),
+                         (dst, "40.Rush Videos/Footage/" + self.base + ".mp4", True, src, "12.Video"))
+        self.assertNotIn("copy_size", o)
+        self.assertEqual(rr.video_size(dst), (1280, 720))
+        self.assertEqual(files_in(os.path.join(self.p, "40.Rush Videos", "Footage")), [self.base + ".mp4"])
+
+    def test_finish_run_moves_image_from_media(self):
+        from PIL import Image
+        src = os.path.join(self.p, "08.Images", "Img_001.png")
+        Image.new("RGB", (8, 8)).save(src)
+        run = rr.start_run(self.p, "p", PROMPT, self.when)
+        data = rr.finish_run(run, [{"filename": "Img_001.png", "fullpath": src}], "done", self.out)
+        o = data["outputs"][0]
+        dst = os.path.join(self.p, "60.Rush Images", "Footage", self.base + ".png")
+        self.assertFalse(os.path.exists(src))
+        self.assertTrue(os.path.isfile(dst))
+        self.assertEqual((o["source"], o["copy"], o["from_media"], o["moved_from"]), (dst, None, "08.Images", src))
+
+    def test_finish_run_media_move_fails_falls_back(self):
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        make_video(src, 1280, 720)
+        run = rr.start_run(self.p, "p", PROMPT, self.when)
+        saved = rr._move_verified
+
+        def locked(a, b):
+            raise OSError("locked")
+        rr._move_verified = locked
+        try:
+            data = rr.finish_run(run, [{"filename": "Video_001.mp4", "fullpath": src}], "done", self.out)
+        finally:
+            rr._move_verified = saved
+        o = data["outputs"][0]
+        self.assertTrue(os.path.isfile(src))
+        self.assertEqual((o["source"], o["copy"], o["move_error"]),
+                         (src, "40.Rush Videos/Footage/" + self.base + ".mp4", "locked"))
+        self.assertIn("copy_size", o)
+        self.assertNotIn("from_media", o)
+        # Nouvel essai a la lecture des Runs : l'original remplace la copie reduite.
+        rr.tidy_rush(self.p)
+        o = read_json(run)["outputs"][0]
+        self.assertFalse(os.path.exists(src))
+        self.assertEqual((o["in_place"], o["from_media"]), (True, "12.Video"))
+        self.assertNotIn("move_error", o)
+        self.assertNotIn("copy_size", o)
+        self.assertEqual(rr.video_size(o["source"]), (1280, 720))
+
+    def test_finish_run_other_project_media_untouched(self):
+        other = projects.create_project(self.root, "Other")
+        src = os.path.join(other, "12.Video", "Video_001.mp4")
+        make_video(src, 64, 64)
+        run = rr.start_run(self.p, "p", PROMPT, self.when)
+        data = rr.finish_run(run, [{"filename": "Video_001.mp4", "fullpath": src}], "done", self.out)
+        o = data["outputs"][0]
+        self.assertTrue(os.path.isfile(src))
+        self.assertEqual((o["source"], o["copy"]), (src, "40.Rush Videos/Footage/" + self.base + ".mp4"))
+        self.assertNotIn("from_media", o)
+        rr.tidy_rush(self.p)
+        self.assertTrue(os.path.isfile(src))
+
+    def test_tidy_rush_reclaims_archived_original(self):
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        write(src, b"original")
+        copy = "40.Rush Videos/No Good/" + self.base + ".mp4"
+        run = self.done_run(src, copy)
+        projects.archive_files(self.p, "12.Video", ["Video_001.mp4"], when=self.when + 60)
+        arch = os.path.join(self.p, "12.Video", "Archives")
+        archived = os.path.join(arch, files_in(arch)[0])
+        rr.tidy_rush(self.p)
+        ng = os.path.join(self.p, "40.Rush Videos", "No Good")
+        self.assertEqual(files_in(ng), [self.base + ".mp4"])
+        with open(os.path.join(ng, self.base + ".mp4"), "rb") as f:
+            self.assertEqual(f.read(), b"original")
+        self.assertEqual(files_in(arch), [])
+        o = read_json(run)["outputs"][0]
+        self.assertEqual((o["source"], o["copy"], o["in_place"], o["moved_from"], o["from_media"]),
+                         (os.path.join(ng, self.base + ".mp4"), copy, True, archived, "12.Video"))
+        self.assertNotIn("copy_size", o)
+        listed = rr.list_runs(self.p)[0]["outputs"][0]
+        self.assertEqual((listed["in_project"], listed["place"], listed["source_exists"]), (True, "rejected", True))
+
+    def test_reclaim_replaces_copy_in_sort_folder(self):
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        write(src, b"original")
+        self.done_run(src, "40.Rush Videos/Picture Lock/" + self.base + ".mp4")
+        rr.tidy_rush(self.p)
+        lock = os.path.join(self.p, "40.Rush Videos", "Picture Lock")
+        self.assertEqual(files_in(lock), [self.base + ".mp4"])
+        with open(os.path.join(lock, self.base + ".mp4"), "rb") as f:
+            self.assertEqual(f.read(), b"original")
+        self.assertFalse(os.path.exists(src))
+
+    def test_reclaim_picks_archive_by_date(self):
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        arch = os.path.join(self.p, "12.Video", "Archives")
+        old = os.path.join(arch, "20261017_143000_Video_001.mp4")
+        new = os.path.join(arch, "20261017_153100_Video_001.mp4")
+        write(old, b"old")
+        write(new, b"new")
+        os.utime(old, (self.when - 3600, self.when - 3600))
+        os.utime(new, (self.when + 30, self.when + 30))
+        self.done_run(src, "40.Rush Videos/Footage/" + self.base + ".mp4")
+        rr.tidy_rush(self.p)
+        with open(os.path.join(self.p, "40.Rush Videos", "Footage", self.base + ".mp4"), "rb") as f:
+            self.assertEqual(f.read(), b"new")
+        self.assertEqual(files_in(arch), ["20261017_143000_Video_001.mp4"])
+
+    def test_reclaim_ignores_archive_older_than_run(self):
+        src = os.path.join(self.p, "12.Video", "Video_001.mp4")
+        old = os.path.join(self.p, "12.Video", "Archives", "20261017_143000_Video_001.mp4")
+        write(old, b"old")
+        os.utime(old, (self.when - 3600, self.when - 3600))
+        run = self.done_run(src, "40.Rush Videos/Footage/" + self.base + ".mp4")
+        rr.tidy_rush(self.p)
+        self.assertTrue(os.path.isfile(old))
+        self.assertEqual(read_json(run)["outputs"][0]["source"], src)
 
 
 if __name__ == "__main__":

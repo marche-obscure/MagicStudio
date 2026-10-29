@@ -27,6 +27,9 @@ PROMPT_FOLDER = "04.Prompt"
 RUN_WORKFLOW_FOLDER = ("00.Workflows", "Run")
 RUSH_IMAGES = "60.Rush Images"
 RUSH_VIDEOS = "40.Rush Videos"
+# Dossiers des references du Ref Loader (= project_config.MEDIA) : un fichier de Run
+# enregistre dedans est ramene dans 40 / 60 (26/10/2026), la cloche l'aurait archive.
+MEDIA_FOLDERS = ("08.Images", "10.Son", "12.Video", "14.Video-Audio")
 REF_LOADER = "MiniMaxH3RefLoader"
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
@@ -554,6 +557,17 @@ def finish_run(run_file, files, status, output_dir, now=None, duration=None):
     for src in new:
         ext = os.path.splitext(src)[1].lower()
         out = {"source": src, "kind": "video" if ext in VIDEO_EXTS else "image", "copy": None}
+        if media_folder_of(project, src):
+            # Run enregistre dans 08 a 14 : l'original va dans 40 / 60 (Footage), pas de copie reduite.
+            size = video_size(src) if ext in VIDEO_EXTS else None
+            n += 1
+            _reclaim_media(project, out, out["kind"], base if n == 1 else "%s_%02d" % (base, n), started)
+            if out.get("in_place"):
+                if size:
+                    out["size"] = "%dx%d" % size
+                outputs.append(out)
+                continue
+            n -= 1  # echec : copie reduite ci-dessous, meme numero
         if ext in VIDEO_EXTS:
             size = video_size(src)
             if size:
@@ -948,6 +962,88 @@ def _relink_output(project, o):
     return True
 
 
+def media_folder_of(project, path):
+    """Dossier de references (08 a 14) du projet contenant path (racine ou Archives), None sinon."""
+    if not path:
+        return None
+    d = os.path.dirname(path)
+    for folder in MEDIA_FOLDERS:
+        base = os.path.join(project, folder)
+        if _same_dir(d, base) or _same_dir(d, os.path.join(base, projects.ARCHIVE_FOLDER)):
+            return folder
+    return None
+
+
+def _archived_original(project, path, started):
+    """
+    Original d'un Run range dans <dossier>/Archives par la cloche (nom date
+    yyyyMMdd_HHmmss_<nom>) : path n'existe plus et son dossier est la racine d'un
+    dossier 08 a 14. Candidat ecrit apres le debut du Run, le plus proche ; started
+    None : le plus ancien. None sinon.
+    """
+    if not path or os.path.isfile(path):
+        return None
+    folder = media_folder_of(project, path)
+    if not folder or not _same_dir(os.path.dirname(path), os.path.join(project, folder)):
+        return None
+    arch = os.path.join(project, folder, projects.ARCHIVE_FOLDER)
+    name = os.path.basename(path)
+    found = []
+    for n in os.listdir(arch) if os.path.isdir(arch) else []:
+        p = os.path.join(arch, n)
+        if os.path.isfile(p) and projects.clean_archive_name(n) == name:
+            mtime = os.path.getmtime(p)
+            if started is None or mtime >= started - RUN_START_MARGIN:
+                found.append((mtime, p))
+    return min(found)[1] if found else None
+
+
+def _reclaim_media(project, o, kind, name, started):
+    """
+    Original d'un Run reste dans 08 a 14 (racine, ou Archives apres la cloche) :
+    deplace (copie, SHA256, suppression) dans le dossier de tri de sa copie, a sa
+    place et sous son nom (la copie reduite est retiree), sinon dans Footage sous
+    name. Echec : move_error, rien n'est perdu (nouvel essai par tidy_rush).
+    True si o a change.
+    """
+    if o.get("deleted"):
+        return False
+    src = o.get("source") or ""
+    orig = src if src and os.path.isfile(src) and media_folder_of(project, src) else \
+        _archived_original(project, src, started)
+    if not orig:
+        return False
+    ext = os.path.splitext(orig)[1]
+    copy = _abs_copy(project, o)
+    place = sort_of(project, kind, copy) if copy else None
+    if place in SORT_FOLDERS:
+        folder, stem = os.path.dirname(copy), os.path.splitext(os.path.basename(copy))[0]
+    else:
+        folder, stem = os.path.join(_rush_dir(project, kind), SORT_FOLDERS[DEFAULT_SORT]), name
+    os.makedirs(folder, exist_ok=True)
+    wanted = os.path.join(folder, stem + ext)
+    try:
+        dst = _free_path(folder, stem + ext)
+        _move_verified(orig, dst)
+        if copy and os.path.isfile(copy) and not _same_dir(copy, dst):
+            os.remove(copy)
+            if not os.path.exists(wanted):
+                os.replace(dst, wanted)
+                dst = wanted
+    except (OSError, IOError) as e:
+        if o.get("move_error") == (str(e) or e.__class__.__name__):
+            return False
+        o["move_error"] = str(e) or e.__class__.__name__
+        return True
+    o["source"] = dst
+    if kind == "video":
+        o["copy"] = _rel(project, dst)
+    o.update({"in_place": True, "moved_from": orig, "from_media": media_folder_of(project, orig)})
+    for k in ("copy_size", "resize_error", "move_error"):
+        o.pop(k, None)
+    return True
+
+
 def single_lock(project):
     """Picture Lock a un seul fichier : tous les projets (choix utilisateur, 26/10/2026, Extract Frame)."""
     return True
@@ -1124,6 +1220,9 @@ def tidy_rush(project):
             if _migrate_output(project, o, moved_dirs):
                 changed = True
             if _relink_output(project, o):
+                changed = True
+            # Original reste dans 08 a 14 (ou range dans leur Archives par la cloche) : ramene dans 40 / 60.
+            if _reclaim_media(project, o, kind, name[:-len(".json")], _run_start(data)):
                 changed = True
             p = _project_file(project, o, kind)
             if p and sort_of(project, kind, p) == "root" and os.path.isfile(p):
