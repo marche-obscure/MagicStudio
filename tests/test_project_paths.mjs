@@ -830,3 +830,24 @@ test("Post-traitements : original suivi de ses posts, badge Post n (29/10/2026)"
     const runs = [{ file: "r.json", outputs: [A, A2, B] }];
     assert.deepEqual(rushItems(runs, "40.Rush Videos").map((x) => x.output.index), [0, 1, 2]);
 });
+
+// ---- Etat des variantes (Task 4 : utilise par la galerie du RefLoader) ----
+import { migrateState as msv } from "../web/js/profiles.js";
+
+test("remapState and unusedProjectFiles read every variant", () => {
+    const s = msv({ variant: "minimax_h3.ref2va" });
+    s.selections["ltx.2_5"].rows.guide_video = ["D:/P/12.Video/a.mp4"];
+    s.selections["ltx.2_5"].trims.guide_video = { "d:/p/12.video/a.mp4": [1, 2] };
+    s.selections["minimax_h3.ref2va"].rows.videos = ["D:/P/12.Video/b.mp4"];
+    const r = remapState(s, (p, rid) => (rid === "guide_video" ? p.replace("a.mp4", "c.mp4") : p));
+    assert.deepEqual(r.selections["ltx.2_5"].rows.guide_video, ["D:/P/12.Video/c.mp4"]);
+    assert.deepEqual(r.selections["ltx.2_5"].trims.guide_video, { "d:/p/12.video/c.mp4": [1, 2] });
+    assert.deepEqual(r.selections["minimax_h3.ref2va"].rows.videos, ["D:/P/12.Video/b.mp4"]);
+    const files = ["D:/P/12.Video/a.mp4", "D:/P/12.Video/b.mp4", "D:/P/12.Video/z.mp4"];
+    assert.deepEqual(unusedProjectFiles(files, s), ["D:/P/12.Video/z.mp4"]);
+});
+
+test("isMediaSubfolder accepts the folders of the variant rows", () => {
+    assert.equal(isMediaSubfolder("P/10.Son", ["08.Images", "10.Son"], "audio"), true);
+    assert.equal(isMediaSubfolder("P/14.Video-Audio", ["08.Images", "10.Son"], "video"), false);
+});

@@ -67,8 +67,32 @@ export function saveItems(state) {
  * Copie de l'etat du Ref Loader avec chaque chemin des listes remplace par
  * fn(chemin, liste) ; les cles de rognage et de moment suivent leur fichier.
  */
+/** Deplace la cle d'un fichier renomme dans une table {cle du chemin: valeur} (src lu, dst ecrit). */
+function followKeys(src, dst, old, now) {
+    old.forEach((p, i) => {
+        const before = trimKey(p);
+        const after = trimKey(now[i]);
+        if (before === after || !(before in src)) return;
+        dst[after] = src[before];
+        delete dst[before];
+    });
+}
+
 export function remapState(state, fn) {
     const s = JSON.parse(JSON.stringify(state));
+    // Etat des variantes (29/10/2026) : toutes les selections, fn(chemin, ligne).
+    if (state && state.selections && typeof state.selections === "object") {
+        for (const [v, sel] of Object.entries(state.selections)) {
+            const out = s.selections[v];
+            for (const [rid, old] of Object.entries((sel && sel.rows) || {})) {
+                out.rows[rid] = (old || []).map((p) => fn(p, rid));
+                for (const table of ["trims", "moments"]) {
+                    if (sel[table] && sel[table][rid]) followKeys(sel[table][rid], out[table][rid], old, out.rows[rid]);
+                }
+            }
+        }
+        return s;
+    }
     // Deplace la cle d'un fichier renomme dans une table {cle du chemin: valeur}.
     const follow = (src, dst, old, now) => {
         old.forEach((p, i) => {
@@ -230,6 +254,10 @@ export function replaceSelection(initial, final) {
 export function unusedProjectFiles(paths, state, cited = new Set()) {
     const used = new Set();
     for (const list of LISTS) for (const p of state[list] || []) used.add(normPath(p));
+    // Etat des variantes : un fichier utilise par n'importe quelle variante reste.
+    for (const sel of Object.values((state && state.selections) || {})) {
+        for (const list of Object.values((sel && sel.rows) || {})) for (const p of list || []) used.add(normPath(p));
+    }
     return paths.filter((p) => !used.has(normPath(p)) && !cited.has(normPath(p)));
 }
 
@@ -883,7 +911,9 @@ export function isMediaSubfolder(path, mode, kind) {
     if ((n === 3 || n === 4) && parts[n - 2] === PICKUP_DIR) {
         return kind ? parts[n - 1] === PICKUP_SUBS[kind] : Object.values(PICKUP_SUBS).includes(parts[n - 1]);
     }
-    const allowed = mode === "fl2va" ? ["08.Images"] : mode === "ltx2" ? ["08.Images", "10.Son", "12.Video"] : UPDATE_FOLDERS;
+    // mode peut etre la liste des dossiers des lignes de la variante (RefLoader des variantes).
+    const allowed = Array.isArray(mode) ? mode
+        : mode === "fl2va" ? ["08.Images"] : mode === "ltx2" ? ["08.Images", "10.Son", "12.Video"] : UPDATE_FOLDERS;
     // Projet de la racine (P/08.Images) ou d'un dossier de projets (G/P/08.Images, 22/10/2026).
     return (n === 2 || n === 3) && allowed.includes(parts[n - 1]);
 }

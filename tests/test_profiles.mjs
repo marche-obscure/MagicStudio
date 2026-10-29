@@ -173,3 +173,62 @@ test("pruneMoments : retire les moments des fichiers qui ne sont plus dans leur 
     assert.deepEqual(s.moments, { guide_images: { "a.png": 1 }, guide_video: {} });
     assert.deepEqual(pruneMoments({}).moments, undefined);
 });
+
+// ---- RefLoader des variantes (plan des variantes, Task 4) ----
+import { FALLBACK_DESCRIPTION as VD, variantsOfModel as vom, setRowList as srl, rowList as rl, migrateState as ms,
+    uiHeight, limitLabels, variantLimitOverrides, variantLimits as vl } from "../web/js/profiles.js";
+
+test("variantsOfModel lists ltx 2.3 then 2.5", () => {
+    assert.deepEqual(vom(VD, "ltx"), ["ltx.2_3", "ltx.2_5"]);
+    assert.deepEqual(vom(VD, "minimax_h3"), ["minimax_h3.ref2va", "minimax_h3.fl2va"]);
+});
+
+test("setRowList keeps other variants untouched", () => {
+    const s = ms({ variant: "ltx.2_3" });
+    srl(s, "guide_images", ["D:/a.png"], "ltx.2_5");
+    assert.deepEqual(rl(s, "guide_images", "ltx.2_5"), ["D:/a.png"]);
+    assert.deepEqual(rl(s, "guide_images", "ltx.2_3"), []);
+    srl(s, "guide_images", ["D:/b.png"]);
+    assert.deepEqual(rl(s, "guide_images"), ["D:/b.png"]);
+    assert.deepEqual(rl(s, "guide_images", "ltx.2_5"), ["D:/a.png"]);
+});
+
+test("uiHeight Ref2VA 232 FL2VA 156", () => {
+    assert.equal(uiHeight(VD, "minimax_h3.ref2va"), 232);
+    assert.equal(uiHeight(VD, "minimax_h3.fl2va"), 156);
+    assert.equal(uiHeight(VD, "ltx.2_5"), 232);
+    assert.equal(uiHeight(null, "nope"), 232); // variante inconnue : celle par defaut
+});
+
+test("limit labels use Duration for length variants", () => {
+    assert.equal(limitLabels(VD, "ltx.2_3").seconds, "Duration (s)");
+    assert.equal(limitLabels(VD, "minimax_h3.ref2va").seconds, "Max duration (s)");
+    assert.equal(limitLabels(VD, "minimax_h3.ref2va").counts.video_audios, "Video/Audio");
+    assert.deepEqual(Object.keys(limitLabels(VD, "minimax_h3.fl2va").counts), ["first_frame", "last_frame"]);
+});
+
+test("variantLimitOverrides : seulement les valeurs differentes de la variante", () => {
+    const base = vl({}, VD, "ltx.2_5");
+    assert.deepEqual(variantLimitOverrides(VD, "ltx.2_5", base), {});
+    const v = JSON.parse(JSON.stringify(base));
+    v.counts.guide_images = 4;
+    v.seconds = 10;
+    v.max_size = [512, 896];
+    assert.deepEqual(variantLimitOverrides(VD, "ltx.2_5", v), { counts: { guide_images: 4 }, seconds: 10, max_size: [512, 896] });
+    // relu par variantLimits
+    const s = ms({ variant: "ltx.2_5", limits: { "ltx.2_5": variantLimitOverrides(VD, "ltx.2_5", v) } });
+    assert.equal(vl(s, VD).counts.guide_images, 4);
+    assert.equal(vl(s, VD).seconds, 10);
+});
+
+import { pruneVariantMoments } from "../web/js/profiles.js";
+
+test("pruneVariantMoments : moments des fichiers retires de leur ligne", () => {
+    const s = ms({ variant: "ltx.2_3" });
+    s.selections["ltx.2_3"].rows.guide_images = ["A.png"];
+    s.selections["ltx.2_3"].moments.guide_images = { "a.png": 1, "b.png": 2 };
+    s.selections["ltx.2_5"].moments.guide_images = { "z.png": 3 };
+    assert.equal(pruneVariantMoments(s), s);
+    assert.deepEqual(s.selections["ltx.2_3"].moments.guide_images, { "a.png": 1 });
+    assert.deepEqual(s.selections["ltx.2_5"].moments.guide_images, {});
+});

@@ -4,13 +4,40 @@
 // d'ordre change ces jetons : le noeud previent. Module sans dependance a
 // ComfyUI, teste par tests/test_ref_order.mjs.
 
-import { profileOf } from "./profiles.js";
+import { profileOf, variantOf, rowsOf } from "./profiles.js";
 
 const LISTS = [["images", "Picture"], ["videos", "Video"], ["video_audios", "Audio"], ["audios", "Audio"]];
 
 /** Jetons du prompt de la selection Ref2VA : [{list, path, token}] ; rien en F2VA/FL2VA. */
+// Mot du jeton selon la valeur de la premiere sortie d'une ligne (etat des variantes).
+const WORDS = { image: "Picture", video_frames: "Video", audio: "Audio" };
+
+/**
+ * Jetons de la variante affichee (etat des variantes) : seulement si une de ses lignes
+ * a "tags" ; numerotes par mot dans l'ordre des lignes (bandes-son avant les audios).
+ */
+function variantTokens(state) {
+    const v = variantOf(state);
+    const rows = rowsOf(null, v);
+    if (!rows.some((r) => r.tags)) return [];
+    const sel = (state.selections || {})[v] || {};
+    const counts = {};
+    const out = [];
+    for (const r of rows) {
+        const word = WORDS[r.outputs[0][2]];
+        if (!word) continue;
+        ((sel.rows || {})[r.id] || []).forEach((path) => {
+            if (!path) return;
+            counts[word] = (counts[word] || 0) + 1;
+            out.push({ list: r.id, path, token: "<" + word + " " + counts[word] + ">" });
+        });
+    }
+    return out;
+}
+
 export function refTokens(state) {
     const out = [];
+    if (state && state.selections) return variantTokens(state);
     // Seulement MiniMax Ref2VA : ni F2VA/FL2VA, ni LTX 2.x (pas de balises).
     if (!state || state.mode === "fl2va" || profileOf(state) !== "minimax_h3") return out;
     const soundtracks = (state.video_audios || []).filter(Boolean).length;
@@ -31,8 +58,14 @@ export function refTokens(state) {
  * nouveau fichier, from = to = le jeton, replaced: ancien fichier}.
  */
 export function orderChanges(before, after) {
-    if (!before || !after || before.mode === "fl2va" || after.mode === "fl2va") return [];
-    if (profileOf(before) !== "minimax_h3" || profileOf(after) !== "minimax_h3") return [];
+    if (!before || !after) return [];
+    if (before.selections || after.selections) {
+        // Etat des variantes : meme variante des deux cotes (sinon rien a comparer).
+        if (!before.selections || !after.selections || variantOf(before) !== variantOf(after)) return [];
+    } else {
+        if (before.mode === "fl2va" || after.mode === "fl2va") return [];
+        if (profileOf(before) !== "minimax_h3" || profileOf(after) !== "minimax_h3") return [];
+    }
     const key = (t, seen) => {
         const k = t.list + "|" + t.path;
         const n = seen.get(k) || 0;

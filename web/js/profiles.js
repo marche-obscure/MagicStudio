@@ -989,3 +989,51 @@ export function routeDescription(json) {
     const d = json && isObj(json.description) ? json.description : json; // route : sous la cle "description"
     return d && isObj(d.variants) && isObj(d.models) && d.default ? d : FALLBACK_DESCRIPTION;
 }
+
+// ---- Interface du RefLoader des variantes (Task 4) ----
+
+/** Hauteur de l'interface DOM du RefLoader : ligne Model + une ligne par ligne de la variante + bas. */
+export function uiHeight(desc, variant) {
+    return 80 + 38 * rowsOf(desc, variant).length;
+}
+
+/** Libelles de la fenetre Limits ; "Duration (s)" quand la variante sort une longueur (reglage length). */
+export function limitLabels(desc, variant) {
+    const d = descOf(desc);
+    const vd = d.variants[variant] || d.variants[d.default];
+    const counts = {};
+    for (const r of vd.rows) counts[r.id] = r.label;
+    const length = vd.settings.some((s) => s[2] === "length");
+    return { counts, seconds: length ? "Duration (s)" : "Max duration (s)", max_size: "Max size", fps: "Frames per second" };
+}
+
+/** Valeurs de la fenetre Limits -> ce qui differe des valeurs de la variante (state.limits[variante]). */
+export function variantLimitOverrides(desc, variant, values) {
+    const base = variantLimits({}, desc, variant);
+    const out = {};
+    const counts = {};
+    for (const [rid, n] of Object.entries((values && values.counts) || {})) {
+        if (rid in base.counts && Number(n) !== base.counts[rid]) counts[rid] = Number(n);
+    }
+    if (Object.keys(counts).length) out.counts = counts;
+    for (const key of ["seconds", "fps", "frame_step", "multiple"]) {
+        if (values && key in values && Number(values[key]) !== base[key]) out[key] = Number(values[key]);
+    }
+    const ms = values && values.max_size;
+    if (Array.isArray(ms) && (Number(ms[0]) !== base.max_size[0] || Number(ms[1]) !== base.max_size[1])) {
+        out.max_size = [Number(ms[0]), Number(ms[1])];
+    }
+    return out;
+}
+
+/** Retire, dans chaque variante, les moments des fichiers qui ne sont plus dans leur ligne. */
+export function pruneVariantMoments(state) {
+    for (const sel of Object.values((state && state.selections) || {})) {
+        for (const [rid, table] of Object.entries((sel && sel.moments) || {})) {
+            if (!isObj(table)) continue;
+            const keep = new Set(((sel.rows || {})[rid] || []).map(variantTrimKey));
+            for (const k of Object.keys(table)) if (!keep.has(k)) delete table[k];
+        }
+    }
+    return state;
+}

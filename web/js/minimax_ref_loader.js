@@ -1,11 +1,12 @@
 import { app } from "../../scripts/app.js";
-import { formatConfigJson, parseConfigJson, trimKey, configFilePrefix } from "./config_format.js";
-import { PROFILES, LABELS, profileOf, limitsOf, outputType, profileKey, legacyModeLinks, routeDefaults,
-    stateLayout as layoutOfState, parseState, TRIM_KINDS, COUNT_KEYS, LAST, secondsToFrame, videoGuideFrame,
-    guideMoments, checkMoment, sameFrameAs, limitBounds, limitOverrides, pruneMoments } from "./profiles.js";
+import { formatVariantConfig, parseVariantConfig, variantConfigPrefix, trimKey } from "./config_format.js";
+import { routeDefaults, LAST, secondsToFrame, guideMoments, checkMoment, sameFrameAs, stepFrame,
+    FALLBACK_DESCRIPTION, routeDescription, variantOf, modelOf, variantsOfModel, rowsOf as variantRowsOf,
+    variantLimits, parseVariantState, uiHeight as variantUiHeight, limitLabels, variantLimitOverrides,
+    pruneVariantMoments } from "./profiles.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
-import { LIST_FOLDERS, gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
+import { gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
     relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, anchoredSubs,
     subfolderLabel } from "./project_paths.js";
 
@@ -24,48 +25,66 @@ const MARK_RED = "#d32f2f";
 const INACTIVE_BG = "#2a2a2a";
 const INACTIVE_FG = "#888";
 
-// Limites par profil : defauts lus une fois sur la route /mmrefloader/profiles
-// (setup de l'extension) ; null tant qu'elle n'a pas repondu = FALLBACK_LIMITS.
+// Defauts des anciens profils (compteurs "Use: n/x" du noeud Project jusqu'a son passage
+// aux variantes) ; null tant que la route n'a pas repondu = FALLBACK_LIMITS.
 let profileDefaults = null;
-/** Defauts des profils pour le noeud Project (compteurs "Use: n/x") ; null = FALLBACK_LIMITS. */
 const profileLimitDefaults = () => profileDefaults;
-/** Plafond d'une liste (kind) pour l'etat s : defauts du profil + reglages du noeud. */
-const limitOf = (s, kind) => limitsOf(s, profileDefaults)[kind];
-/** Sorties visibles (identique a media.state_layout). */
-const stateLayout = (state) => layoutOfState(state, profileDefaults);
-const isLtx = (s) => profileOf(s) === "ltx2";
+// Description des variantes (modeles, lignes, limites) : lue une fois sur la route
+// /mmrefloader/profiles (setup de l'extension) ; d'ici la, la copie de secours.
+let variantDesc = FALLBACK_DESCRIPTION;
+/** Variante affichee par l'etat s. */
+const variantOfState = (s) => variantOf(s, variantDesc);
+/** Lignes de la variante affichee (description). */
+const rowsOfState = (s) => variantRowsOf(variantDesc, variantOfState(s));
+/** Ligne d'id rid (une meme ligne a les memes reglages dans toutes les variantes qui l'ont). */
+function rowInfo(rid) {
+    for (const v of Object.values(variantDesc.variants)) {
+        const r = v.rows.find((x) => x.id === rid);
+        if (r) return r;
+    }
+    return { id: rid, kind: "image", label: rid, max: 1, outputs: [[rid, "IMAGE", "image"]] };
+}
+/** Plafond d'une ligne pour l'etat s : description + reglages du noeud (Limits). */
+const limitOf = (s, rid) => variantLimits(s, variantDesc).counts[rid] || 0;
 
 // Couleur des points de sortie d'une paire complete ref_video_N / ref_video_audio_N
 // (N = 1, 2, 3).
 const PAIR_COLORS = [ORANGE, PINK, GREEN];
 
-// Les 4 listes de references. video_audio : bandes-son extraites de videos
-// (pistes audio ref_video_audio_N), liste independante des videos.
-const LIST_KEYS = {
-    image: "images", video: "videos", video_audio: "video_audios", audio: "audios",
-    first_frame: "first_frame", last_frame: "last_frame",
-    // Profil LTX 2.x
-    guide_image: "guide_images", guide_video: "guide_video", soundtrack: "soundtrack", voice: "voice",
+// Listes de references : les lignes de la variante affichee (s.selections[variante].rows).
+/** Selection de la variante affichee : objet vivant de s (le modifier puis setState(s)). */
+function selOf(s) {
+    const v = variantOfState(s);
+    s.selections = s.selections || {};
+    const sel = (s.selections[v] = s.selections[v] || {});
+    for (const k of ["rows", "trims", "moments"]) sel[k] = sel[k] || {};
+    return sel;
+}
+/** Liste vivante d'une ligne de la variante affichee. */
+function listOf(s, rid) {
+    const rows = selOf(s).rows;
+    return (rows[rid] = rows[rid] || []);
+}
+const setList = (s, rid, list) => {
+    selOf(s).rows[rid] = list;
 };
-const listOf = (s, kind) => s[LIST_KEYS[kind]] || [];
-// Listes dont les fichiers peuvent etre rognes : TRIM_KINDS (profiles.js, = media.TRIM_KINDS).
-/** Rognage [debut, fin] d'un fichier d'une liste, ou null. */
-const trimOf = (s, kind, path) => (s.trims && s.trims[kind] ? s.trims[kind][trimKey(path)] || null : null);
+/** Rognage [debut, fin] d'un fichier d'une ligne, ou null. */
+const trimOf = (s, rid, path) => (selOf(s).trims[rid] || {})[trimKey(path)] || null;
+/** Ligne dont les fichiers se rognent (description : trim). */
+const canTrim = (rid) => !!rowInfo(rid).trim;
 const fmtSec = (x) => String(Number(Number(x).toFixed(2)));
 const fmtTrim = (t) => fmtSec(t[0]) + "–" + fmtSec(t[1]) + " s";
 
-/** Type de fichier selectionnable pour une liste (video_audio : des videos ; frames : des images). */
-const FILE_KINDS = {
-    video_audio: "video", first_frame: "image", last_frame: "image",
-    guide_image: "image", guide_video: "video", soundtrack: "audio", voice: "audio",
-};
-const fileKind = (kind) => FILE_KINDS[kind] || kind;
+/** Type de fichier selectionnable pour une ligne : image, video ou audio (description : kind). */
+const fileKind = (rid) => rowInfo(rid).kind;
+/** Ligne de videos dont seule la bande-son sort (Video/Audio). */
+const isTrackRow = (rid) => fileKind(rid) === "video" && rowInfo(rid).outputs[0][2] === "audio";
 
 // Extensions video (identiques a media.KIND_EXTS["video"]).
 const VIDEO_EXTS = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"];
 const isVideoPath = (p) => VIDEO_EXTS.some((e) => String(p).toLowerCase().endsWith(e));
-/** Listes de son qui acceptent aussi des videos ("son seul") : Audio, Soundtrack, Voice. */
-const acceptsVideo = (kind) => kind === "audio" || kind === "soundtrack" || kind === "voice";
+/** Lignes de son qui acceptent aussi des videos ("son seul") : description, accepts_video. */
+const acceptsVideo = (rid) => !!rowInfo(rid).accepts_video;
 /** Fichiers de type fk selectionnables dans la liste kind. */
 const canPick = (kind, fk) => fk === fileKind(kind) || (acceptsVideo(kind) && fk === "video");
 /** Video choisie dans une liste de son : seule sa bande-son sort (piste audio). */
@@ -83,11 +102,9 @@ function soundOnlyBadge(pos) {
     return b;
 }
 
-// Hauteur de l'interface DOM : interrupteur de mode + lignes + barre du bas
-// (4 lignes en Ref2VA, 2 en F2VA/FL2VA, 4 en LTX 2.x). La liste Model partage
-// la ligne de l'interrupteur (seule sur cette ligne en LTX 2.x).
-const UI_HEIGHT = { ref2va: 232, fl2va: 156, ltx2: 232 };
-const uiHeight = (s) => (isLtx(s) ? UI_HEIGHT.ltx2 : UI_HEIGHT[s.mode]);
+// Hauteur de l'interface DOM : ligne Model + lignes de la variante + barre du bas
+// (Ref2VA 232, F2VA/FL2VA 156 : profiles.uiHeight).
+const uiHeight = (s) => variantUiHeight(variantDesc, variantOfState(s));
 const MIN_WIDTH = 340;
 
 const svg = (body, size) =>
@@ -142,41 +159,23 @@ const OVERVIEW_ICON = svg(
 const LEFT_ICON = svg('<polyline points="15 18 9 12 15 6"></polyline>', 12);
 const RIGHT_ICON = svg('<polyline points="9 18 15 12 9 6"></polyline>', 12);
 
-// Une ligne par bouton : type de galerie ouverte, son par defaut d'une
-// nouvelle video selectionnee depuis ce bouton.
-const BUTTONS = [
-    { id: "image", kind: "image", label: "Images", icon: IMAGE_ICON, color: VIOLET },
-    { id: "video", kind: "video", label: "Video", icon: VIDEO_ICON, color: ORANGE },
-    { id: "video_audio", kind: "video_audio", label: "Video/Audio", icon: VIDEO_AUDIO_ICON, color: GREEN },
-    { id: "audio", kind: "audio", label: "Audio", icon: AUDIO_ICON, color: TITLE_COLOR },
-];
-
-// Lignes du mode F2VA/FL2VA (MiniMax H3 Image to Video).
-const FRAME_BUTTONS = [
-    { id: "first_frame", kind: "first_frame", label: "First frame", icon: IMAGE_ICON, color: VIOLET },
-    { id: "last_frame", kind: "last_frame", label: "Last frame", icon: IMAGE_ICON, color: TITLE_COLOR },
-];
-
-// Lignes du profil LTX 2.x : images guides (galerie image), video guide (galerie
-// video), bande-son et voix (galerie audio, videos acceptees comme pour Audio).
-const LTX_BUTTONS = [
-    { id: "guide_image", kind: "guide_image", label: "Guide images", icon: IMAGE_ICON, color: VIOLET },
-    { id: "guide_video", kind: "guide_video", label: "Guide video", icon: VIDEO_ICON, color: ORANGE },
-    { id: "soundtrack", kind: "soundtrack", label: "Soundtrack", icon: AUDIO_ICON, color: GREEN },
-    { id: "voice", kind: "voice", label: "Voice", icon: AUDIO_ICON, color: TITLE_COLOR },
-];
-/** Mode passe a isMediaSubfolder : en LTX 2.x tous les dossiers de medias (pas la regle FL2VA). */
-const galleryMode = (s) => (isLtx(s) ? "ltx2" : s.mode);
-/** Lignes affichees selon le profil et le mode. */
-const rowsOf = (s) => (isLtx(s) ? LTX_BUTTONS : s.mode === "fl2va" ? FRAME_BUTTONS : BUTTONS);
-
-const KIND_TITLES = {
-    image: "Reference images", video: "Reference videos",
-    video_audio: "Video soundtracks (ref_video_audio)", audio: "Reference audio",
-    first_frame: "First frame (F2VA / FL2VA)", last_frame: "Last frame (FL2VA, optional)",
-    guide_image: "Guide images (LTX 2.x)", guide_video: "Guide video (LTX 2.x)",
-    soundtrack: "Soundtrack (LTX 2.x)", voice: "Voice (LTX 2.x)",
-};
+// Lignes du noeud (description) : icone selon le type de fichier, couleur selon la
+// place (violet, orange, vert ; la derniere en turquoise).
+function rowIcon(rid) {
+    if (isTrackRow(rid)) return VIDEO_AUDIO_ICON;
+    const k = fileKind(rid);
+    return k === "video" ? VIDEO_ICON : k === "audio" ? AUDIO_ICON : IMAGE_ICON;
+}
+const ROW_COLORS = [VIOLET, ORANGE, GREEN];
+function rowColor(s, rid) {
+    const ids = rowsOfState(s).map((r) => r.id);
+    const i = ids.indexOf(rid);
+    return i === ids.length - 1 ? TITLE_COLOR : ROW_COLORS[i % ROW_COLORS.length] || VIOLET;
+}
+/** Dossiers de medias des lignes de la variante (sous-dossiers proposes par la galerie avec un projet). */
+const galleryFolders = (s) => [...new Set(rowsOfState(s).map((r) => r.folder).filter(Boolean))];
+/** Titre des fenetres d'une ligne : "Guide images (LTX 2.3)". */
+const rowTitle = (s, rid) => rowInfo(rid).label + " (" + variantDesc.variants[variantOfState(s)].label + ")";
 
 // Vignette sans date dans l'URL : le serveur la fait revalider a chaque affichage (ETag, 304).
 // Ce marqueur change aussi l'URL, pour ignorer les vignettes gardees un jour par le navigateur
@@ -1004,7 +1003,7 @@ function helpSectionsFor(lang) {
 // --------------------------------------------------------------------
 // Etat et disposition des sorties
 // --------------------------------------------------------------------
-// emptyState / parseState : profiles.js (pur, teste contre media.parse_state).
+// Etat au format des variantes : parseVariantState / migrateState (profiles.js, = profiles.migrate_state).
 
 /**
  * Le dossier racine change : les sous-dossiers choisis relativement a lui
@@ -1028,10 +1027,6 @@ async function missingPaths(paths) {
     return uniq.filter((p, i) => !ok[i]);
 }
 
-// Listes re-liees au nouveau Root folder : les deux profils (MiniMax H3 et LTX 2.x).
-const SELECTION_LISTS = ["images", "videos", "video_audios", "audios", "first_frame", "last_frame",
-    "guide_images", "guide_video", "soundtrack", "voice"];
-
 /**
  * Nouveau Root folder (choix utilisateur, 19/10/2026) : chaque reference
  * introuvable est cherchee sous le nouveau dossier (memes derniers elements du
@@ -1040,7 +1035,9 @@ const SELECTION_LISTS = ["images", "videos", "video_audios", "audios", "first_fr
 async function relinkToRoot(getState, setState, root) {
     if (!root) return 0;
     const s = getState();
-    const gone = await missingPaths(SELECTION_LISTS.flatMap((k) => s[k] || []));
+    // Listes de toutes les variantes.
+    const all = Object.values(s.selections || {}).flatMap((sel) => Object.values((sel && sel.rows) || {}).flat());
+    const gone = await missingPaths(all);
     const map = new Map();
     for (const p of gone) {
         for (const c of relinkCandidates(p, root)) {
@@ -1061,32 +1058,16 @@ function resetRootSubs(s) {
     }
 }
 
-// layoutKeys / stateLayout : profiles.js (identiques a media.layout_keys / state_layout,
-// profil compris) ; stateLayout(state) ci-dessus y passe les defauts de la route.
-
-// Derniere sortie : le Root folder, pour le noeud MiniMax H3 Project
-// (identique a media.PROJECT_KEY ; Python renvoie sa valeur a cette position).
+// Deux sorties fixes (variantes, 29/10/2026) : project (Root folder, pour le noeud
+// MagicStudio Project) puis package (fichiers de la variante, pour MagicStudio Container).
 const PROJECT_KEY = "project";
 const PROJECT_TYPE = "MINIMAX_PROJECT";
-
-/** Sorties affichees : celles du mode puis project (identique a media.output_names). */
-function outputNames(state) {
-    return stateLayout(state).concat([PROJECT_KEY]);
-}
+const PACKAGE_KEY = "package";
+const PACKAGE_TYPE = "MAGICSTUDIO_PACKAGE";
 
 /**
- * Aligne les sorties du noeud sur la selection, dans l'ordre de
- * layoutKeys(). Les sorties en trop sont d'abord debranchees ; pour les
- * autres, nom renomme et liens sont relus puis reecrits position par
- * position, en corrigeant l'index d'origine des liens, sans jamais
- * debrancher les noeuds en aval (debrancher retrecirait les entrees
- * Autogrow du MiniMax).
- *
- * Dans le frontend actuel, les liens d'une sortie sont deduits de la
- * liste des liens du graphe (link.origin_id / link.origin_slot) : les
- * objets sortie restent donc a leur place, on ne fait que corriger
- * origin_slot des liens et reecrire nom/type/etiquette par position.
- * Ne jamais assigner output.links (obsolete : une affectation debranche).
+ * Liens d'une sortie, deduits de la liste des liens du graphe (link.origin_id /
+ * link.origin_slot). Ne jamais assigner output.links (obsolete : une affectation debranche).
  */
 function outputLinksOf(node, slot) {
     const graph = node.graph;
@@ -1147,60 +1128,27 @@ function notifyProjectNodes(node) {
     });
 }
 
-/**
- * relink = false a la creation du noeud : il n'a encore aucun lien a lui,
- * mais au chargement d'un workflow le graphe contient deja les liens
- * enregistres sous son id (charges avant les noeuds). Les renumeroter ici,
- * avec l'etat par defaut, deplacait les noeuds en aval (ref_image_2 et 3
- * passaient sur ref_video_1 et ref_video_audio_1) ; configure() remet
- * ensuite les sorties enregistrees.
- */
-function applyLayout(node, state, relink = true) {
-    const keys = outputNames(state);
-    const same = node.outputs.length === keys.length && node.outputs.every((o, i) => o.name === keys[i]);
-    if (!same) {
-        if (relink) {
-            for (let i = node.outputs.length - 1; i >= 0; i--) {
-                if (!keys.includes(node.outputs[i].name) && node.isOutputConnected(i)) {
-                    rememberLinks(node, node.outputs[i].name, outputLinksOf(node, i));
-                    node.disconnectOutput(i);
-                }
-            }
-        }
-        // Instantane des sorties conservees : etiquette et objets lien.
-        const saved = {};
-        node.outputs.forEach((o, i) => {
-            if (keys.includes(o.name)) saved[o.name] = { label: o.label, links: relink ? outputLinksOf(node, i) : [] };
-        });
-        // Nouveaux index d'abord : ainsi, retirer les dernieres sorties ne
-        // debranche que des positions devenues vides.
-        keys.forEach((k, i) => {
-            (saved[k] ? saved[k].links : []).forEach((l) => (l.origin_slot = i));
-        });
-        while (node.outputs.length < keys.length) node.addOutput("ref_tmp", "*");
-        while (node.outputs.length > keys.length) node.removeOutput(node.outputs.length - 1);
-
-        keys.forEach((k, i) => {
-            const o = node.outputs[i];
-            o.name = k;
-            o.localized_name = k;
-            o.label = saved[k] ? saved[k].label : undefined;
-        });
-    }
-    // Paire complete (ref_video_N et ref_video_audio_N ont chacun une source) :
-    // les deux points prennent la couleur de la paire N ; sinon couleur du type.
-    const paired = (n) => !isLtx(state) && state.mode === "ref2va" && !!state.videos[n - 1] && !!state.video_audios[n - 1];
-    node.outputs.forEach((o) => {
-        o.type = outputType(o.name);
-        const m = o.name.match(/^ref_video(?:_audio)?_(\d)$/);
-        const color = m && paired(Number(m[1])) ? PAIR_COLORS[Number(m[1]) - 1] : undefined;
-        o.color_on = color;
-        o.color_off = color;
+/** Previent les noeuds MagicStudio Container du graphe (variante ou selection changee). */
+function notifyContainers(node) {
+    const graph = node.graph;
+    const nodes = (graph && (graph._nodes || graph.nodes)) || [];
+    nodes.forEach((n) => {
+        if (n && typeof n.__mmContainerRefresh === "function") n.__mmContainerRefresh();
     });
-    // Apres les types : une sortie qui etait AUDIO refuserait une entree IMAGE.
-    if (!same && relink) restoreLinks(node);
+}
+
+/**
+ * Sorties fixes : seuls les types de project et package sont remis. Un ancien RefLoader
+ * (une sortie par fichier) garde ses sorties tant que la reprise par un MagicStudio
+ * Container n'est pas faite (rien n'est retire).
+ */
+function fixOutputs(node) {
+    for (const o of node.outputs || []) {
+        if (o.name === PROJECT_KEY) o.type = PROJECT_TYPE;
+        else if (o.name === PACKAGE_KEY) o.type = PACKAGE_TYPE;
+    }
     const min = node.computeSize();
-    // La hauteur suit le contenu (elle rapetisse quand des sorties disparaissent).
+    // La hauteur suit le contenu (la variante change le nombre de lignes).
     node.setSize([Math.max(node.size[0], MIN_WIDTH), min[1]]);
     node.setDirtyCanvas(true, true);
     scheduleVueSync();
@@ -2613,7 +2561,7 @@ function buildGallery(container, ctx) {
     /** Sous-dossier propose : dans le projet du filtre et, sur le dossier des projets, un dossier de medias. */
     function allowedSub(path) {
         if (!inProjectFilter(path, projFilter)) return false;
-        return projRow.style.display === "none" || isMediaSubfolder(path, galleryMode(ctx.getState()), fileKind(kind));
+        return projRow.style.display === "none" || isMediaSubfolder(path, galleryFolders(ctx.getState()), fileKind(kind));
     }
 
     const addOption = (select, value, text, multi) => {
@@ -2800,10 +2748,11 @@ function buildGallery(container, ctx) {
 
     // Ordre et titres des sections quand le dossier melange les categories.
     const SECTIONS = [{ kind: "image" }, { kind: "video" }, { kind: "audio" }];
-    /** Boutons du noeud qui prennent un type de fichier (selon le profil affiche). */
-    const buttonsFor = (fk) => (isLtx(ctx.getState())
-        ? { image: "Guide images", video: "Guide video", audio: "Soundtrack or Voice" }
-        : { image: "Images", video: "Video or Video/Audio", audio: "Audio" })[fk];
+    /** Lignes de la variante affichee qui prennent un type de fichier (description). */
+    const buttonsFor = (fk) => {
+        const names = rowsOfState(ctx.getState()).filter((r) => r.kind === fk).map((r) => r.label);
+        return names.length ? names.join(" or ") : "no row of this variant";
+    };
 
     function sectionHeader(text) {
         const h = document.createElement("div");
@@ -3451,7 +3400,7 @@ function buildGallery(container, ctx) {
                 if (!answer) {
                     // Cancel (choix utilisateur) : selection de l'ouverture, rien d'archive, fenetre fermee.
                     const back = ctx.getState();
-                    back[LIST_KEYS[kind]] = initial.slice();
+                    setList(back, kind, initial.slice());
                     ctx.setState(back);
                     pool = [];
                     marked = [];
@@ -3460,7 +3409,7 @@ function buildGallery(container, ctx) {
                 }
                 if (answer === "replace") next = replaceSelection(initial, final);
             }
-            s[LIST_KEYS[kind]] = next;
+            setList(s, kind, next);
             // Fichiers introuvables (dossier renomme hors de ComfyUI...) : on propose de les
             // retirer ; tant qu'il en reste, rien n'est importe ni archive (choix utilisateur).
             const gone = await missingPaths(next);
@@ -3481,7 +3430,7 @@ function buildGallery(container, ctx) {
                     render();
                     return;
                 }
-                s[LIST_KEYS[kind]] = withoutPaths(next, gone);
+                setList(s, kind, withoutPaths(next, gone));
             }
             await loadProject();
             const unused = unusedProjectFiles(projFiles.map((f) => joinPath(projDir, f.name)), s);
@@ -3508,7 +3457,7 @@ function buildGallery(container, ctx) {
             }
             // Projet associe (choix utilisateur) : tous les fichiers de la liste vont dans son dossier
             // (copies, deplaces depuis Archives, "_02" si le nom est pris) ; les rognages suivent.
-            const listKey = LIST_KEYS[kind];
+            const listKey = kind;
             const inDir = (p) => samePath(p.replace(/[\\/][^\\/]*$/, ""), projDir);
             const outside = list(s).filter((p) => !inDir(p));
             if (outside.length) {
@@ -3578,7 +3527,7 @@ function buildGallery(container, ctx) {
     clearBtn.addEventListener("click", () => {
         if (project) return; // l'ordre des fichiers du projet ne se vide pas
         const s = ctx.getState();
-        s[LIST_KEYS[kind]] = [];
+        setList(s, kind, []);
         ctx.setState(s);
         render();
     });
@@ -3586,7 +3535,7 @@ function buildGallery(container, ctx) {
     return {
         open(newKind) {
             kind = newKind;
-            title.textContent = KIND_TITLES[kind];
+            title.textContent = rowTitle(ctx.getState(), kind);
             // Champ prerempli avec le dossier propre a ce type, sinon le dossier
             // racine ; on affiche le sous-dossier memorise (ou le Root folder
             // lui-meme) et on repere les sous-dossiers pour la liste deroulante.
@@ -3599,7 +3548,7 @@ function buildGallery(container, ctx) {
             projRow.style.display = "none"; // paintProjRow reprend le projet choisi
             projPicker.close();
             if (projList && projList.names.length && base && samePath(base, projList.root) && sub &&
-                !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, galleryMode(st), fileKind(kind)))) {
+                !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, galleryFolders(st), fileKind(kind)))) {
                 sub = "";
                 saveNav();
             }
@@ -3607,9 +3556,8 @@ function buildGallery(container, ctx) {
             files = [];
             // Sortie project reliee a un projet : zone de son dossier (Images -> 08.Images...).
             project = ctx.getProject ? ctx.getProject() : null;
-            projFolder = project ? LIST_FOLDERS[LIST_KEYS[kind]] || "" : "";
-            // Liste sans dossier de projet connu (LTX 2.x tant que le noeud Projet ne les range pas) :
-            // pas de zone projet plutot qu'un chemin faux.
+            projFolder = project ? rowInfo(kind).folder || "" : "";
+            // Ligne sans dossier de projet dans la description : pas de zone projet plutot qu'un chemin faux.
             if (!projFolder) project = null;
             projDir = project ? joinPath(project.path, projFolder) : "";
             projFiles = [];
@@ -3857,24 +3805,9 @@ function buildRootDialog(container, ctx) {
 // --------------------------------------------------------------------
 // Fenetre de la selection : ordre, reorganisation et infos d'un fichier
 // --------------------------------------------------------------------
-const VIEWER_TITLES = {
-    image: "Selected images", video: "Selected videos",
-    video_audio: "Selected video soundtracks", audio: "Selected audio",
-};
-const OUTPUT_PREFIX = {
-    image: "ref_image_", video: "ref_video_", video_audio: "ref_video_audio_", audio: "ref_audio_",
-    guide_image: "guide_image_",
-};
-VIEWER_TITLES.first_frame = "First frame";
-VIEWER_TITLES.last_frame = "Last frame";
-VIEWER_TITLES.guide_image = "Selected guide images";
-VIEWER_TITLES.guide_video = "Guide video";
-VIEWER_TITLES.soundtrack = "Soundtrack";
-VIEWER_TITLES.voice = "Voice";
-
-/** Nom de la sortie de l'element i (index 0) d'une liste (listes a un element : la sortie porte son nom). */
-function outputName(kind, i) {
-    return OUTPUT_PREFIX[kind] ? OUTPUT_PREFIX[kind] + (i + 1) : kind;
+/** Nom de la sortie de l'element i (index 0) d'une ligne : premiere sortie de la ligne, {n} = numero. */
+function outputName(rid, i) {
+    return rowInfo(rid).outputs[0][0].replace("{n}", String(i + 1));
 }
 
 function buildSelectionViewer(container, ctx) {
@@ -3960,7 +3893,7 @@ function buildSelectionViewer(container, ctx) {
      * Retire les fichiers marques. Les suivants remontent (la ref 4 devient
      * la ref 3...) : comme les liens restent sur les sorties, chaque sortie
      * recoit simplement le fichier qui porte desormais son numero, et la
-     * derniere sortie devenue vide est retiree par applyLayout() (une
+     * derniere sortie devenue vide est retiree par le MagicStudio Container (une
      * sortie de base par type reste toujours presente).
      */
     function deleteMarked() {
@@ -3969,8 +3902,8 @@ function buildSelectionViewer(container, ctx) {
         const kept = arr.filter((it) => !marked.has(markKey(pathOf(it))));
         arr.splice(0, arr.length, ...kept);
         marked.clear();
-        // Guides LTX 2.x : les moments des fichiers retires partent avec eux.
-        pruneMoments(s);
+        // Lignes a moments : les moments des fichiers retires partent avec eux.
+        pruneVariantMoments(s);
         ctx.setState(s);
         render();
     }
@@ -4034,36 +3967,37 @@ function buildSelectionViewer(container, ctx) {
         return b;
     }
 
-    // ------ Moments des guides LTX 2.x (secondes ; LAST = -1) ------
+    // ------ Moments (lignes "moment" de la description : secondes ; LAST = -1) ------
     // Note rouge d'un moment refuse, par cle de chemin (effacee au prochain choix valide).
     const momentErrors = new Map();
-    const hasMoments = () => kind === "guide_image" || kind === "guide_video";
+    const hasMoments = () => !!rowInfo(kind).moment;
 
     /**
-     * Moment effectif, numero d'image et guide au meme numero de chaque element
-     * (meme calcul que media._build_ltx_outputs ; null au-dela du plafond : non envoye).
+     * Moment effectif, numero d'image et fichier au meme numero de chaque element
+     * (meme calcul que media._row_moments / build_package ; null au-dela du plafond : non envoye).
      */
     function momentRows(s, arr) {
-        const lim = limitsOf(s, profileDefaults);
-        const stored = (s.moments && s.moments[LIST_KEYS[kind]]) || {};
-        const max = Math.min(arr.length, lim[kind]);
+        const lim = variantLimits(s, variantDesc);
+        const row = rowInfo(kind);
+        const stored = selOf(s).moments[kind] || {};
+        const max = Math.min(arr.length, lim.counts[kind] || 0);
         const used = arr.slice(0, max);
-        const moments = kind === "guide_image" ? guideMoments(used, stored)
+        const frameRow = row.moment === "frame";
+        const moments = frameRow ? guideMoments(used, stored)
             : used.map((p) => (trimKey(p) in stored ? stored[trimKey(p)] : 0));
         const frames = moments.map((m) => {
             const f = secondsToFrame(m, lim.fps, lim.seconds);
-            return kind === "guide_video" ? videoGuideFrame(f) : f;
+            return row.moment === "video_frame" ? stepFrame(f, lim.frame_step) : f;
         });
-        const same = kind === "guide_image" ? sameFrameAs(frames) : frames.map(() => 0);
+        const same = frameRow ? sameFrameAs(frames) : frames.map(() => 0);
         return arr.map((p, i) => (i < max ? { moment: moments[i], frame: frames[i], same: same[i] } : null));
     }
 
     function setMoment(path, value) {
         const s = ctx.getState();
-        const list = LIST_KEYS[kind];
-        s.moments = s.moments || {};
-        s.moments[list] = s.moments[list] || {};
-        s.moments[list][trimKey(path)] = value;
+        const m = selOf(s).moments;
+        m[kind] = m[kind] || {};
+        m[kind][trimKey(path)] = value;
         momentErrors.delete(trimKey(path));
         ctx.setState(s);
         render();
@@ -4114,7 +4048,9 @@ function buildSelectionViewer(container, ctx) {
         unit.textContent = "s";
         const frame = document.createElement("span");
         frame.textContent = info.frame === LAST ? "frame last" : "frame " + info.frame;
-        frame.title = "Frame number sent to the output" + (kind === "guide_video" ? " (rounded down to 8×k+1)" : "");
+        const step = variantLimits(ctx.getState(), variantDesc).frame_step;
+        frame.title = "Frame number sent to the output" +
+            (rowInfo(kind).moment === "video_frame" && step > 1 ? " (rounded down to " + step + "×k+1)" : "");
         Object.assign(frame.style, { marginLeft: "auto", color: "#9fd6cf", whiteSpace: "nowrap" });
         line.append(input, unit, frame);
 
@@ -4160,7 +4096,7 @@ function buildSelectionViewer(container, ctx) {
         counter.style.color = arr.length > max ? ORANGE : "#bbb";
         const mstate = ctx.getState();
         const mrows = hasMoments() ? momentRows(mstate, arr) : null;
-        const mseconds = limitsOf(mstate, profileDefaults).seconds;
+        const mseconds = variantLimits(mstate, variantDesc).seconds;
         grid.innerHTML = "";
         if (!arr.length) {
             const empty = document.createElement("div");
@@ -4225,7 +4161,7 @@ function buildSelectionViewer(container, ctx) {
                 textOverflow: "ellipsis", color: "#fff",
             });
             const out = document.createElement("div");
-            out.textContent = "→ " + outputName(kind, i) + (kind === "video_audio" ? "  (sound)" : "");
+            out.textContent = "→ " + outputName(kind, i) + (isTrackRow(kind) ? "  (sound)" : "");
             Object.assign(out.style, { padding: "0 5px", fontSize: "10px", color: "#9fd6cf" });
             const soundTag = soundOnly(kind, path) ? soundOnlyBadge({ right: "4px", top: "58px" }) : null;
 
@@ -4251,7 +4187,7 @@ function buildSelectionViewer(container, ctx) {
             if (isMarked) thumb.style.opacity = "0.45";
 
             // Fichier rogne : badge avec la portion gardee.
-            const tr = TRIM_KINDS.includes(kind) ? trimOf(ctx.getState(), kind, path) : null;
+            const tr = canTrim(kind) ? trimOf(ctx.getState(), kind, path) : null;
             if (tr) {
                 const cut = document.createElement("div");
                 cut.textContent = "✂ " + fmtTrim(tr);
@@ -4286,12 +4222,14 @@ function buildSelectionViewer(container, ctx) {
     const sidePreview = buildSidePreview(card, overlay);
 
     function showSide(path, idx) {
-        const trim = TRIM_KINDS.includes(kind) ? {
+        const trim = canTrim(kind) ? {
             range: trimOf(ctx.getState(), kind, path),
             onChange: (range) => {
                 const s = ctx.getState();
-                if (range) s.trims[kind][trimKey(path)] = range;
-                else delete s.trims[kind][trimKey(path)];
+                const t = selOf(s).trims;
+                t[kind] = t[kind] || {};
+                if (range) t[kind][trimKey(path)] = range;
+                else delete t[kind][trimKey(path)];
                 ctx.setState(s);
                 render();
             },
@@ -4396,7 +4334,7 @@ function buildSelectionViewer(container, ctx) {
             current = null;
             marked.clear();
             momentErrors.clear();
-            title.textContent = VIEWER_TITLES[kind];
+            title.textContent = rowTitle(ctx.getState(), kind);
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             render();
@@ -4414,18 +4352,12 @@ function buildSelectionViewer(container, ctx) {
 // --------------------------------------------------------------------
 // Fenetre Limits : plafonds du modele choisi, reglables par noeud
 // --------------------------------------------------------------------
-const LIMIT_LABELS = {
-    image: "Images", video: "Videos", video_audio: "Video/Audio", audio: "Audio",
-    first_frame: "First frame", last_frame: "Last frame",
-    guide_image: "Guide images", guide_video: "Guide video", soundtrack: "Soundtrack", voice: "Voice",
-};
-
 /**
- * buildLimitsDialog(container, ctx) ; open({profile, defaults, bounds, current}) :
- * un champ par nombre de fichiers (1..defaut), Max duration (s), Max size
- * (largeur × hauteur), Frames per second. Reset = valeurs du modele (rien
- * n'est ecrit avant OK) ; OK ecrit state.limits[profil] (seulement les valeurs
- * differentes des defauts) puis setState ; Cancel, Echap, clic a cote ferment.
+ * buildLimitsDialog(container, ctx) ; open({variant, current}) : un champ par ligne
+ * de la variante (1..max de la ligne), Max duration (s) (Duration (s) si la variante
+ * sort une longueur), Max size (largeur × hauteur), Frames per second. Reset = valeurs
+ * de la variante (rien n'est ecrit avant OK) ; OK ecrit state.limits[variante]
+ * (seulement les valeurs differentes) puis setState ; Cancel, Echap, clic a cote ferment.
  */
 function buildLimitsDialog(container, ctx) {
     const { overlay, card } = makeOverlay();
@@ -4454,7 +4386,7 @@ function buildLimitsDialog(container, ctx) {
     card.append(title, hint, form, status, footer);
 
     let opts = null;
-    let fields = {}; // cle -> {inputs, lo, hi, integer}
+    let fields = {}; // cle -> {inputs, lo, hi, integer, label, count}
 
     const numberInput = (lo, hi, step) => {
         const input = document.createElement("input");
@@ -4474,7 +4406,7 @@ function buildLimitsDialog(container, ctx) {
         return input;
     };
 
-    function addRow(key, label, inputs, lo, hi, integer) {
+    function addRow(key, label, inputs, lo, hi, integer, count) {
         const name = document.createElement("div");
         name.textContent = label;
         const cell = document.createElement("div");
@@ -4492,12 +4424,12 @@ function buildLimitsDialog(container, ctx) {
         Object.assign(range.style, { color: INACTIVE_FG, fontSize: "11px" });
         cell.appendChild(range);
         form.append(name, cell);
-        fields[key] = { inputs, lo, hi, integer };
+        fields[key] = { inputs, lo, hi, integer, label, count: !!count };
     }
 
     function fill(values) {
         for (const [key, f] of Object.entries(fields)) {
-            const v = key === "max_size" ? values.max_size : [values[key]];
+            const v = f.count ? [values.counts[key]] : key === "max_size" ? values.max_size : [values[key]];
             f.inputs.forEach((inp, i) => (inp.value = String(v[i])));
         }
         status.textContent = "";
@@ -4506,27 +4438,27 @@ function buildLimitsDialog(container, ctx) {
     function build() {
         form.innerHTML = "";
         fields = {};
-        const b = opts.bounds;
-        for (const key of COUNT_KEYS[opts.profile]) {
-            addRow(key, LIMIT_LABELS[key] || key, [numberInput(b[key][0], b[key][1], 1)], b[key][0], b[key][1], true);
+        const b = variantDesc.bounds;
+        const labels = limitLabels(variantDesc, opts.variant);
+        for (const r of variantRowsOf(variantDesc, opts.variant)) {
+            addRow(r.id, labels.counts[r.id], [numberInput(1, r.max, 1)], 1, r.max, true, true);
         }
-        addRow("seconds", "Max duration (s)", [numberInput(b.seconds[0], b.seconds[1], 0.1)], b.seconds[0], b.seconds[1], false);
+        addRow("seconds", labels.seconds, [numberInput(b.seconds[0], b.seconds[1], 0.1)], b.seconds[0], b.seconds[1], false);
         const ms = b.max_side;
-        addRow("max_size", "Max size", [numberInput(ms[0], ms[1], 1), numberInput(ms[0], ms[1], 1)], ms[0], ms[1], true);
+        addRow("max_size", labels.max_size, [numberInput(ms[0], ms[1], 1), numberInput(ms[0], ms[1], 1)], ms[0], ms[1], true);
         fields.max_size.inputs[0].title = "Width (px)";
         fields.max_size.inputs[1].title = "Height (px)";
-        addRow("fps", "Frames per second", [numberInput(b.fps[0], b.fps[1], 1)], b.fps[0], b.fps[1], false);
+        addRow("fps", labels.fps, [numberInput(b.fps[0], b.fps[1], 1)], b.fps[0], b.fps[1], false);
     }
 
     /** Valeurs des champs, ou null (message rouge) si l'une sort de ses bornes. */
     function read() {
-        const out = {};
+        const out = { counts: {} };
         for (const [key, f] of Object.entries(fields)) {
             const vals = [];
             for (const inp of f.inputs) {
                 const v = Number(String(inp.value).trim().replace(",", "."));
-                const label = key === "max_size" ? "Max size" : LIMIT_LABELS[key] ||
-                    (key === "seconds" ? "Max duration (s)" : "Frames per second");
+                const label = f.label;
                 if (String(inp.value).trim() === "" || !Number.isFinite(v) || v < f.lo || v > f.hi ||
                     (f.integer && !Number.isInteger(v))) {
                     status.textContent = label + ": " + (f.integer ? "a whole number " : "a number ") +
@@ -4536,7 +4468,8 @@ function buildLimitsDialog(container, ctx) {
                 }
                 vals.push(v);
             }
-            out[key] = key === "max_size" ? vals : vals[0];
+            if (f.count) out.counts[key] = vals[0];
+            else out[key] = key === "max_size" ? vals : vals[0];
         }
         return out;
     }
@@ -4545,10 +4478,10 @@ function buildLimitsDialog(container, ctx) {
         const values = read();
         if (!values) return;
         const s = ctx.getState();
-        const over = limitOverrides(opts.profile, values, opts.defaults);
+        const over = variantLimitOverrides(variantDesc, opts.variant, values);
         const all = Object.assign({}, s.limits);
-        if (Object.keys(over).length) all[opts.profile] = over;
-        else delete all[opts.profile];
+        if (Object.keys(over).length) all[opts.variant] = over;
+        else delete all[opts.variant];
         s.limits = all;
         ctx.setState(s);
         close();
@@ -4578,8 +4511,7 @@ function buildLimitsDialog(container, ctx) {
     }
 
     resetBtn.addEventListener("click", () => {
-        const base = (opts.defaults && opts.defaults[opts.profile]) || limitsOf({ profile: opts.profile });
-        fill(base);
+        fill(variantLimits({}, variantDesc, opts.variant));
     });
     cancelBtn.addEventListener("click", close);
     okBtn.addEventListener("click", save);
@@ -4588,7 +4520,8 @@ function buildLimitsDialog(container, ctx) {
     return {
         open(o) {
             opts = o;
-            title.textContent = "Limits — " + LABELS[o.profile];
+            const vd = variantDesc.variants[o.variant];
+            title.textContent = "Limits — " + variantDesc.models[vd.model].label + " · " + vd.label;
             build();
             fill(o.current);
             overlay.style.display = "block";
@@ -4643,7 +4576,7 @@ function buildOverview(container, ctx) {
 
     function showSide(kind, path, idx) {
         current = { kind, path };
-        const trim = TRIM_KINDS.includes(kind)
+        const trim = canTrim(kind)
             ? { range: trimOf(ctx.getState(), kind, path), onChange: () => {}, readOnly: true } : null;
         sidePreview.show(path, fileKind(kind), outputName(kind, idx), trim);
         render();
@@ -4687,10 +4620,10 @@ function buildOverview(container, ctx) {
             textOverflow: "ellipsis", color: "#fff",
         });
         const out = document.createElement("div");
-        out.textContent = "→ " + outputName(kind, i) + (kind === "video_audio" ? "  (sound)" : "");
+        out.textContent = "→ " + outputName(kind, i) + (isTrackRow(kind) ? "  (sound)" : "");
         Object.assign(out.style, { padding: "0 5px 5px", fontSize: "10px", color: "#9fd6cf" });
         tile.append(thumb, badge);
-        const tr = TRIM_KINDS.includes(kind) ? trimOf(ctx.getState(), kind, path) : null;
+        const tr = canTrim(kind) ? trimOf(ctx.getState(), kind, path) : null;
         if (tr) {
             const cut = document.createElement("div");
             cut.textContent = "✂ " + fmtTrim(tr);
@@ -4709,12 +4642,11 @@ function buildOverview(container, ctx) {
 
     function render() {
         const s = ctx.getState();
-        const fl = s.mode === "fl2va";
-        const rows = rowsOf(s);
-        title.textContent = "Project overview — " + (isLtx(s) ? LABELS.ltx2 : fl ? "F2VA / FL2VA" : "Ref2VA");
+        title.textContent = "Project overview — " + variantDesc.variants[variantOfState(s)].label;
         let total = 0;
         body.innerHTML = "";
-        for (const b of rows) {
+        for (const r of rowsOfState(s)) {
+            const b = { kind: r.id, label: r.label, icon: rowIcon(r.id), color: rowColor(s, r.id) };
             const arr = listOf(s, b.kind);
             total += arr.length;
             const head = document.createElement("div");
@@ -4724,7 +4656,7 @@ function buildOverview(container, ctx) {
             });
             head.innerHTML = iconBadge(b.icon, b.color) + "<span>" + b.label + "</span>" +
                 '<span style="color:#888;font-weight:normal">' + arr.length + " / " + limitOf(s, b.kind) +
-                (b.kind === "video_audio" ? " · audio" : "") + "</span>";
+                (isTrackRow(b.kind) ? " · audio" : "") + "</span>";
             body.appendChild(head);
             if (!arr.length) {
                 const empty = document.createElement("div");
@@ -4782,13 +4714,14 @@ function buildOverview(container, ctx) {
 // --------------------------------------------------------------------
 app.registerExtension({
     name: "ComfyUI.MiniMaxRefLoader",
-    // Defauts des profils lus une fois ; jusqu'a la reponse, FALLBACK_LIMITS (profiles.js).
+    // Description des variantes lue une fois ; jusqu'a la reponse, FALLBACK_DESCRIPTION (profiles.js).
     async setup() {
         try {
             const res = await fetch("/mmrefloader/profiles");
-            const defaults = res.ok ? routeDefaults(await res.json()) : null;
-            if (!defaults) return;
-            profileDefaults = defaults;
+            if (!res.ok) return;
+            const json = await res.json();
+            variantDesc = routeDescription(json);
+            profileDefaults = routeDefaults(json);
             vueNodes.forEach((n) => typeof n.__mmrefRefresh === "function" && n.__mmrefRefresh());
         } catch (e) {
             console.warn("[MagicStudio RefLoader] profiles", e);
@@ -4807,12 +4740,12 @@ app.registerExtension({
             const stateWidget = node.widgets.find((w) => w.name === "state");
             hideWidget(stateWidget);
 
-            const getState = () => parseState(stateWidget.value);
+            const getState = () => parseVariantState(stateWidget.value, variantDesc);
             // Message temporaire du resume (ex. fichiers manquants apres un
             // Upload) : efface au prochain changement de la selection.
             let notice = "";
             let noticeTitle = "";
-            // Creation du noeud : pas de liens a lui (voir applyLayout).
+            // Creation du noeud : les Containers ne sont pas encore prevenus.
             let creating = false;
             const setState = (s) => {
                 notice = "";
@@ -4828,9 +4761,8 @@ app.registerExtension({
                 boxSizing: "border-box", width: "100%", fontFamily: "sans-serif", fontSize: "12px",
             });
 
-            // Interrupteur de mode (pilule) : Ref2VA (orange) | F2VA/FL2VA (vert).
-            // Liste Model a sa gauche (meme style pilule) : MiniMax H3 | LTX 2.x ; en LTX 2.x
-            // l'interrupteur est cache et la liste prend toute la ligne.
+            // Ligne du haut : liste Model (modeles de la description), bouton Limits, pilules des
+            // variantes du modele (cachees s'il n'y en a qu'une ; la liste prend alors la ligne).
             const topRow = document.createElement("div");
             Object.assign(topRow.style, { display: "flex", gap: "6px", alignItems: "center", flex: "0 0 auto", height: "24px" });
             const modelSelect = document.createElement("select");
@@ -4840,20 +4772,25 @@ app.registerExtension({
                 background: VIOLET, color: "white", fontWeight: "bold", fontSize: "11px", padding: "0 8px",
                 cursor: "pointer", boxSizing: "border-box", minWidth: "0",
             });
-            for (const p of PROFILES) {
-                const o = document.createElement("option");
-                o.value = p;
-                o.textContent = LABELS[p];
-                Object.assign(o.style, { background: "#222", color: "#ddd" });
-                modelSelect.appendChild(o);
+            function fillModels() {
+                const ids = Object.keys(variantDesc.models);
+                if ([...modelSelect.options].map((o) => o.value).join("|") === ids.join("|")) return;
+                modelSelect.innerHTML = "";
+                for (const m of ids) {
+                    const o = document.createElement("option");
+                    o.value = m;
+                    o.textContent = variantDesc.models[m].label;
+                    Object.assign(o.style, { background: "#222", color: "#ddd" });
+                    modelSelect.appendChild(o);
+                }
             }
-            modelSelect.addEventListener("change", () => setProfile(modelSelect.value));
+            modelSelect.addEventListener("change", () => setModel(modelSelect.value));
             topRow.appendChild(modelSelect);
-            // Bouton Limits (a droite de la liste Model) : plafonds du modele pour ce noeud.
+            // Bouton Limits (a droite de la liste Model) : plafonds de la variante pour ce noeud.
             const limitsBtn = document.createElement("button");
             limitsBtn.type = "button";
             limitsBtn.textContent = "Limits";
-            limitsBtn.title = "Limits of the model for this node (number of files, duration, size, frame rate)";
+            limitsBtn.title = "Limits of the variant for this node (number of files, duration, size, frame rate)";
             Object.assign(limitsBtn.style, {
                 flex: "0 0 auto", height: "24px", borderRadius: "999px", border: "1px solid #0c3833",
                 background: INACTIVE_BG, color: "#ddd", fontWeight: "bold", fontSize: "11px", padding: "0 10px",
@@ -4861,11 +4798,7 @@ app.registerExtension({
             });
             limitsBtn.addEventListener("click", () => {
                 const s = getState();
-                const profile = profileOf(s);
-                limitsDialog.open({
-                    profile, defaults: profileDefaults, bounds: limitBounds(profile, profileDefaults),
-                    current: limitsOf(s, profileDefaults),
-                });
+                limitsDialog.open({ variant: variantOfState(s), current: variantLimits(s, variantDesc) });
             });
             topRow.appendChild(limitsBtn);
             const modeToggle = document.createElement("div");
@@ -4873,28 +4806,48 @@ app.registerExtension({
                 display: "flex", borderRadius: "999px", overflow: "hidden", flex: "1 1 auto",
                 border: "1px solid #0c3833", height: "24px", boxSizing: "border-box", minWidth: "0",
             });
-            const modeBtns = {};
-            for (const [m, text, tip] of [
-                ["ref2va", "Ref2VA", "References for MiniMax H3 Reference to Video"],
-                ["fl2va", "F2VA / FL2VA", "First (and last) frame for MiniMax H3 Image to Video"],
-            ]) {
-                const mb = document.createElement("button");
-                mb.type = "button";
-                mb.textContent = text;
-                mb.title = tip;
-                Object.assign(mb.style, {
-                    flex: "1", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold",
-                    fontSize: "11px", padding: "0",
-                });
-                mb.addEventListener("click", () => setMode(m));
-                modeToggle.appendChild(mb);
-                modeBtns[m] = mb;
-            }
             topRow.appendChild(modeToggle);
             container.appendChild(topRow);
+            // Pilules du modele affiche : une par variante (actives : orange, vert, puis de nouveau orange...).
+            const PILL_COLORS = [ORANGE, GREEN];
+            let pillsOf = "";
+            function paintPills(s) {
+                const v = variantOfState(s);
+                const list = variantsOfModel(variantDesc, modelOf(variantDesc, v));
+                if (pillsOf !== list.join("|")) {
+                    pillsOf = list.join("|");
+                    modeToggle.innerHTML = "";
+                    for (const id of list) {
+                        const mb = document.createElement("button");
+                        mb.type = "button";
+                        mb.textContent = variantDesc.variants[id].label;
+                        mb.dataset.variant = id;
+                        Object.assign(mb.style, {
+                            flex: "1", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold",
+                            fontSize: "11px", padding: "0", whiteSpace: "nowrap", overflow: "hidden",
+                        });
+                        mb.addEventListener("click", () => setVariant(id));
+                        modeToggle.appendChild(mb);
+                    }
+                }
+                [...modeToggle.children].forEach((mb, i) => {
+                    const on = mb.dataset.variant === v;
+                    mb.style.background = on ? PILL_COLORS[i % PILL_COLORS.length] : INACTIVE_BG;
+                    mb.style.color = on ? "white" : INACTIVE_FG;
+                });
+                const one = list.length < 2;
+                modeToggle.style.display = one ? "none" : "flex";
+                modelSelect.style.flex = one ? "1 1 auto" : "0 0 auto";
+            }
 
+            // Une ligne par ligne de la description (toutes les variantes, chacune une fois) ;
+            // refresh() n'affiche que celles de la variante, dans son ordre.
             const rows = {};
-            for (const b of BUTTONS.concat(FRAME_BUTTONS, LTX_BUTTONS)) {
+            const allRows = [];
+            for (const v of Object.values(variantDesc.variants)) {
+                for (const r of v.rows) if (!allRows.some((x) => x.id === r.id)) allRows.push(r);
+            }
+            for (const b of allRows.map((r) => ({ id: r.id, kind: r.id, label: r.label, icon: rowIcon(r.id) }))) {
                 const row = document.createElement("div");
                 Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center", flex: "0 0 auto" });
 
@@ -4910,7 +4863,7 @@ app.registerExtension({
                 icon.innerHTML = b.icon;
                 Object.assign(icon.style, {
                     display: "flex", alignItems: "center", justifyContent: "center", minWidth: "24px",
-                    height: "24px", padding: "0 3px", borderRadius: "5px", background: b.color, flex: "0 0 auto",
+                    height: "24px", padding: "0 3px", borderRadius: "5px", background: VIOLET, flex: "0 0 auto",
                     boxSizing: "border-box",
                 });
                 const label = document.createElement("span");
@@ -4950,9 +4903,9 @@ app.registerExtension({
                         "Delete all", () => {
                             const s = getState();
                             const before = getState();
-                            s[LIST_KEYS[b.kind]] = [];
-                            // Guides LTX 2.x : leurs moments partent avec eux.
-                            pruneMoments(s);
+                            setList(s, b.kind, []);
+                            // Lignes a moments : leurs moments partent avec eux.
+                            pruneVariantMoments(s);
                             setState(s);
                             orderWarning.check(before, getState());
                         });
@@ -4960,7 +4913,7 @@ app.registerExtension({
                 row.appendChild(trash);
 
                 container.appendChild(row);
-                rows[b.id] = { row, btn, count, trash };
+                rows[b.id] = { row, btn, icon, count, trash };
             }
 
             const bottom = document.createElement("div");
@@ -5030,10 +4983,10 @@ app.registerExtension({
             // compare a sa fermeture (choix utilisateur, 19/10/2026).
             const orderWarning = buildOrderWarning(container);
             let orderSnap = null;
-            // Seulement en MiniMax Ref2VA (pas de balises <Picture N> en FL2VA ni en LTX 2.x).
+            // Seulement pour une variante qui a une ligne "tags" (balises <Picture N> du prompt).
             const watchOrder = () => {
                 const s = getState();
-                orderSnap = !isLtx(s) && s.mode === "ref2va" ? s : null;
+                orderSnap = rowsOfState(s).some((r) => r.tags) ? s : null;
             };
             const checkOrder = () => {
                 const before = orderSnap;
@@ -5065,106 +5018,60 @@ app.registerExtension({
             rootBtn.addEventListener("click", () => rootDialog.open());
             node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview, orderWarning, limitsDialog];
 
-            // Une configuration "existe" des qu'une reference est selectionnee ;
-            // le dossier racine seul ne compte pas.
-            const ref2vaRefs = (s) => s.images.length + s.videos.length + s.video_audios.length + s.audios.length;
-            const frameRefs = (s) => s.first_frame.length + s.last_frame.length;
-            const ltxRefs = (s) => s.guide_images.length + s.guide_video.length + s.soundtrack.length + s.voice.length;
-            /** References du profil / mode affiche (couleur du bouton Upload). */
-            const modeRefs = (s) => (isLtx(s) ? ltxRefs(s) : s.mode === "fl2va" ? frameRefs(s) : ref2vaRefs(s));
+            // Une configuration "existe" des qu'une reference est selectionnee dans la variante
+            // affichee ; le dossier racine seul ne compte pas.
+            const modeRefs = (s) => rowsOfState(s).reduce((n, r) => n + listOf(s, r.id).length, 0);
 
-            /**
-             * Liens et noms renommes des sorties d'un profil / mode, memorises dans
-             * node.properties.modeLinks sous la cle profileKey(etat) ("minimax_h3:ref2va",
-             * "minimax_h3:fl2va", "ltx2") : en y revenant, les liens sont rebranches si le
-             * noeud cible et son entree existent encore et sont libres. Anciennes cles
-             * ref2va / fl2va (anciens workflows) lues comme minimax_h3:* (legacyModeLinks).
-             */
-            function saveModeLinks(key) {
-                const saved = [];
-                node.outputs.forEach((o, i) => {
-                    const links = outputLinksOf(node, i).map((l) => {
-                        const target = node.graph && node.graph.getNodeById(l.target_id);
-                        const input = target && target.inputs && target.inputs[l.target_slot];
-                        return input ? { targetId: l.target_id, input: input.name } : null;
-                    }).filter(Boolean);
-                    saved.push({ key: o.name, label: o.label || null, links });
-                });
-                node.properties.modeLinks = Object.assign(legacyModeLinks(node.properties.modeLinks), { [key]: saved });
-            }
-
-            function restoreModeLinks(key) {
-                const saved = legacyModeLinks(node.properties.modeLinks)[key] || [];
-                for (const entry of saved) {
-                    const outIdx = node.outputs.findIndex((o) => o.name === entry.key);
-                    if (outIdx < 0) continue;
-                    if (entry.label) node.outputs[outIdx].label = entry.label;
-                    for (const l of entry.links) {
-                        const target = node.graph && node.graph.getNodeById(l.targetId);
-                        if (!target || !target.inputs) continue;
-                        const inIdx = target.inputs.findIndex((inp) => inp.name === l.input);
-                        if (inIdx >= 0 && target.inputs[inIdx].link == null) node.connect(outIdx, target, inIdx);
-                    }
-                }
-                node.setDirtyCanvas(true, true);
-            }
-
-            /** Bascule Ref2VA <-> F2VA/FL2VA ; chaque mode garde sa configuration. */
-            function setMode(mode, s) {
-                s = s || getState();
-                if (s.mode === mode) return;
-                saveModeLinks(profileKey(s));
-                s.mode = mode;
+            /** Change de variante ; chaque variante garde sa selection (les liens sont sur le Container). */
+            function setVariant(v) {
+                const s = getState();
+                if (!variantDesc.variants[v] || variantOfState(s) === v) return;
+                s.variant = v;
+                s.lastVariant = Object.assign({}, s.lastVariant, { [modelOf(variantDesc, v)]: v });
                 setState(s);
-                restoreModeLinks(profileKey(s));
             }
 
-            /** Liste Model : meme schema que setMode ; chaque profil garde sa selection et ses liens. */
-            function setProfile(profile, s) {
-                s = s || getState();
-                if (!PROFILES.includes(profile) || profileOf(s) === profile) return;
-                saveModeLinks(profileKey(s));
-                s.profile = profile;
-                setState(s);
-                restoreModeLinks(profileKey(s));
+            /** Liste Model : derniere variante utilisee de ce modele, sinon sa premiere. */
+            function setModel(model) {
+                const s = getState();
+                if (!variantDesc.models[model] || modelOf(variantDesc, variantOfState(s)) === model) return;
+                const last = (s.lastVariant || {})[model];
+                const ok = variantDesc.variants[last] && variantDesc.variants[last].model === model;
+                setVariant(ok ? last : variantsOfModel(variantDesc, model)[0]);
             }
-            // Orange = le mode affiche a deja des references.
+            // Orange = la variante affichee a deja des references.
             const hasConfig = (s) => modeRefs(s) > 0;
 
-            // Download : fichier du mode affiche seulement (un fichier par mode).
+            // Download : fichier de la variante affichee seulement (un fichier par variante).
             downloadBtn.addEventListener("click", () => {
                 const s = getState();
                 if (!hasConfig(s)) return; // mode vide : rien a sauvegarder (bouton grise)
-                const blob = new Blob([formatConfigJson(s)], { type: "application/json" });
+                const blob = new Blob([formatVariantConfig(s, variantDesc)], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                // Nom prefixe par le profil / mode (configFilePrefix) et suffixe par la date / heure
+                // Nom prefixe par la variante (variantConfigPrefix) et suffixe par la date / heure
                 // locales (yyyyMMdd-HHmmss) : une nouvelle sauvegarde n'ecrase pas la precedente.
-                a.download = configFilePrefix(s) + timestamp() + ".json";
+                a.download = variantConfigPrefix(s, variantDesc) + timestamp() + ".json";
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
             });
 
-            // Upload : ne remplace que la partie du mode affiche (Ref2VA : les 4
-            // listes ; F2VA/FL2VA : les deux frames). Confirmation seulement si
-            // cette partie a deja des references (bouton orange).
+            // Upload : ne remplace que la variante affichee (et le dossier racine). Confirmation
+            // seulement si elle a deja des references (bouton orange).
             uploadBtn.addEventListener("click", () => {
                 const s = getState();
                 if (!hasConfig(s)) {
                     fileInput.click();
                     return;
                 }
-                const fl = !isLtx(s) && s.mode === "fl2va";
-                const what = isLtx(s) ? LABELS.ltx2 : fl ? "F2VA / FL2VA" : "Ref2VA";
+                const what = variantDesc.variants[variantOfState(s)].label;
                 clearConfirm.ask(
-                    "<b>Overwrite the " + what + " configuration?</b><br>" +
-                    "Loading a file replaces the " + modeRefs(s) + " " + (fl ? "frame" : "reference") +
-                    (modeRefs(s) > 1 ? "s" : "") + " of " + (isLtx(s) ? "this model" : "this mode") +
-                    " and the root folder; the other " + (isLtx(s) ? "model is" : "mode and model are") +
-                    " not changed." +
+                    "<b>Overwrite the " + escapeHtml(what) + " configuration?</b><br>" +
+                    "Loading a file replaces the " + modeRefs(s) + " reference" + (modeRefs(s) > 1 ? "s" : "") +
+                    " of " + escapeHtml(what) + " and the root folder; the other variants are not changed." +
                     '<div style="color:#999;margin-top:8px">Save it first with the download button ' +
                     "if you want to keep it.</div>",
                     "Overwrite", () => fileInput.click());
@@ -5178,58 +5085,39 @@ app.registerExtension({
                 reader.onload = async () => {
                     let conf;
                     try {
-                        conf = parseConfigJson(String(reader.result || ""));
+                        conf = parseVariantConfig(String(reader.result || ""), variantDesc);
                     } catch (e) {
                         notice = "⚠ " + e.message;
                         refresh();
                         return;
                     }
-                    // Fichier d'un autre profil ou de l'autre mode : refuse, rien n'est
-                    // modifie (il viderait la partie affichee).
+                    // Fichier d'une autre variante : refuse, rien n'est modifie.
                     const s = getState();
-                    const ltxConf = profileOf(conf) === "ltx2";
-                    if (ltxConf !== isLtx(s) || (!ltxConf && conf.mode !== s.mode)) {
-                        // Type lu dans le fichier : avertissement visible + message.
-                        const name = (x) => (profileOf(x) === "ltx2" ? LABELS.ltx2 : x.mode === "fl2va" ? "FL2VA" : "REF2VA");
-                        const where = (x) => (profileOf(x) === "ltx2" ? "the " + LABELS.ltx2 + " model" : name(x) + " mode");
-                        notice = "⚠ " + name(conf) + " file: switch to " + name(conf) + " to load it";
-                        noticeTitle = "This configuration file was saved for " + where(conf) +
-                            "; the node is on " + where(s) + ". Nothing was changed.";
+                    const v = variantOfState(s);
+                    if (conf.variant !== v) {
+                        const name = (x) => variantDesc.variants[x].label;
+                        notice = "⚠ " + name(conf.variant) + " file: switch to " + name(conf.variant) + " to load it";
+                        noticeTitle = "This configuration file was saved for " + name(conf.variant) +
+                            "; the node is on " + name(v) + ". Nothing was changed.";
                         refresh();
                         clearConfirm.ask(
                             "<b>Wrong configuration file</b><br>" + escapeHtml(file.name) + " is a <b>" +
-                            name(conf) + "</b> configuration" +
-                            ", but the node is on <b>" + where(s) + "</b>." +
+                            escapeHtml(name(conf.variant)) + "</b> configuration, but the node is on <b>" +
+                            escapeHtml(name(v)) + "</b>." +
                             '<div style="color:#999;margin-top:8px">Nothing was changed. Switch the node to ' +
-                            name(conf) + " first, or load a " + name(s) + " file.</div>",
+                            escapeHtml(name(conf.variant)) + " first, or load a " + escapeHtml(name(v)) + " file.</div>",
                             "OK", () => {}, null, true);
                         return;
                     }
-                    // Seule la partie du mode affiche est remplacee ; le mode du
-                    // noeud ne change pas. Le dossier racine (commun) est repris.
+                    // Seule la variante affichee est remplacee ; le dossier racine (commun) est repris.
                     const before = getState();
                     if (s.root !== conf.root) resetRootSubs(s);
                     s.root = conf.root;
-                    let paths;
-                    if (ltxConf) {
-                        // LTX 2.x : ses 4 listes, ses moments et ses rognages ; MiniMax intact.
-                        for (const k of ["guide_images", "guide_video", "soundtrack", "voice"]) s[k] = conf[k];
-                        s.moments = conf.moments;
-                        s.trims = Object.assign({}, s.trims, conf.trims);
-                        paths = conf.guide_images.concat(conf.guide_video, conf.soundtrack, conf.voice);
-                    } else if (s.mode === "fl2va") {
-                        s.first_frame = conf.first_frame;
-                        s.last_frame = conf.last_frame;
-                        paths = conf.first_frame.concat(conf.last_frame);
-                    } else {
-                        s.images = conf.images;
-                        s.videos = conf.videos;
-                        s.video_audios = conf.video_audios;
-                        s.audios = conf.audios;
-                        // Rognages des listes Ref2VA seulement (ceux de LTX 2.x restent).
-                        s.trims = Object.assign({}, s.trims, conf.trims);
-                        paths = conf.images.concat(conf.videos, conf.video_audios, conf.audios);
-                    }
+                    const sel = selOf(s);
+                    sel.rows = conf.rows;
+                    sel.trims = conf.trims;
+                    sel.moments = conf.moments;
+                    const paths = Object.values(conf.rows).flat();
                     setState(s);
                     orderWarning.check(before, getState());
                     // Fichiers absents du disque : charges quand meme, signales.
@@ -5258,79 +5146,53 @@ app.registerExtension({
 
             function refresh() {
                 const s = getState();
-                const ltx = isLtx(s);
-                const fl = !ltx && s.mode === "fl2va";
-                const lim = (kind) => limitOf(s, kind);
-                // Liste Model ; interrupteur cache en LTX 2.x (la liste prend la ligne).
-                modelSelect.value = profileOf(s);
-                modelSelect.style.flex = ltx ? "1 1 auto" : "0 0 auto";
-                modeToggle.style.display = ltx ? "none" : "flex";
-                // Interrupteur et lignes du profil / mode actif.
-                modeBtns.ref2va.style.background = fl ? INACTIVE_BG : ORANGE;
-                modeBtns.ref2va.style.color = fl ? INACTIVE_FG : "white";
-                modeBtns.fl2va.style.background = fl ? GREEN : INACTIVE_BG;
-                modeBtns.fl2va.style.color = fl ? "white" : INACTIVE_FG;
-                const shown = rowsOf(s);
-                BUTTONS.concat(FRAME_BUTTONS, LTX_BUTTONS)
-                    .forEach((b) => (rows[b.id].row.style.display = shown.includes(b) ? "flex" : "none"));
-                for (const b of FRAME_BUTTONS) {
-                    const v = s[b.kind][0];
-                    rows[b.id].count.textContent = v ? baseName(v) : b.id === "last_frame" ? "none (F2VA)" : "empty";
-                    rows[b.id].btn.title = v || (b.id === "last_frame"
-                        ? "Optional: without a last frame, MiniMax does F2VA" : "Pick the first frame");
-                }
-                rows.image.count.textContent = s.images.length + " / " + lim("image");
-                rows.video.count.textContent = s.videos.length + " / " + lim("video");
-                // Video/Audio : des pistes audio (bande-son extraite des videos).
-                rows.video_audio.count.textContent = s.video_audios.length + " / " + lim("video_audio") + " · audio";
-                rows.audio.count.textContent = s.audios.length + " / " + lim("audio");
-                // LTX 2.x : n / max (limites du profil).
-                for (const b of LTX_BUTTONS) {
-                    const arr = listOf(s, b.kind);
-                    rows[b.id].count.textContent = arr.length + " / " + lim(b.kind);
-                    rows[b.id].btn.title = TRIM_KINDS.includes(b.kind) ? listTitle(arr, b.kind, s) : listTitle(arr);
-                }
-                // Compteurs n / max en orange quand n > max (plafond abaisse par Limits).
-                for (const b of BUTTONS.concat(LTX_BUTTONS)) {
-                    rows[b.id].count.style.color = listOf(s, b.kind).length > lim(b.kind) ? ORANGE : INACTIVE_FG;
-                }
-
-                // Poubelles : grises et inactives sans reference, rouges sinon.
-                for (const b of BUTTONS.concat(FRAME_BUTTONS, LTX_BUTTONS)) {
-                    const t = rows[b.id].trash;
-                    const on = listOf(s, b.kind).length > 0;
-                    t.disabled = !on;
-                    t.style.background = on ? MARK_RED : INACTIVE_BG;
-                    t.style.opacity = on ? "1" : "0.45";
-                    t.style.cursor = on ? "pointer" : "default";
+                const lim = variantLimits(s, variantDesc);
+                fillModels();
+                modelSelect.value = modelOf(variantDesc, variantOfState(s));
+                paintPills(s);
+                // Lignes de la variante, dans son ordre (avant la barre du bas) ; les autres cachees.
+                const shown = rowsOfState(s);
+                for (const id of Object.keys(rows)) rows[id].row.style.display = "none";
+                for (const r of shown) {
+                    const ui = rows[r.id];
+                    if (!ui) continue;
+                    container.insertBefore(ui.row, bottom);
+                    ui.row.style.display = "flex";
+                    ui.icon.style.background = rowColor(s, r.id);
+                    const arr = listOf(s, r.id);
+                    const max = lim.counts[r.id];
+                    if (r.max === 1 && r.kind === "image") {
+                        // Une seule image (First / Last frame) : son nom.
+                        ui.count.textContent = arr[0] ? baseName(arr[0]) : "empty";
+                        ui.btn.title = arr[0] || "Pick the " + r.label.toLowerCase();
+                    } else if (isTrackRow(r.id)) {
+                        ui.count.textContent = arr.length + " / " + max + " · audio";
+                        ui.btn.title = arr.length ? "Soundtracks (" + outputName(r.id, 0) + "...):\n" + listTitle(arr, r.id, s)
+                            : "No video soundtrack selected";
+                    } else {
+                        ui.count.textContent = arr.length + " / " + max;
+                        ui.btn.title = listTitle(arr, r.trim ? r.id : null, s);
+                    }
+                    // Compteur n / max en orange quand n > max (plafond abaisse par Limits).
+                    ui.count.style.color = arr.length > max ? ORANGE : INACTIVE_FG;
+                    // Poubelle : grise et inactive sans reference, rouge sinon.
+                    const on = arr.length > 0;
+                    ui.trash.disabled = !on;
+                    ui.trash.style.background = on ? MARK_RED : INACTIVE_BG;
+                    ui.trash.style.opacity = on ? "1" : "0.45";
+                    ui.trash.style.cursor = on ? "pointer" : "default";
                 }
 
-                rows.image.btn.title = listTitle(s.images);
-                rows.video.btn.title = listTitle(s.videos, "video", s);
-                rows.video_audio.btn.title = s.video_audios.length
-                    ? "Soundtracks (ref_video_audio):\n" + listTitle(s.video_audios, "video_audio", s)
-                    : "No video soundtrack selected";
-                rows.audio.btn.title = listTitle(s.audios, "audio", s);
-
-                const refText = ltx
-                    ? s.guide_images.length + "/" + lim("guide_image") + " guide image(s), " +
-                      s.guide_video.length + "/" + lim("guide_video") + " guide video, " +
-                      (s.soundtrack.length + s.voice.length) + " audio(s)"
-                    : fl
-                    ? (s.first_frame.length ? (s.last_frame.length ? "FL2VA: first + last frame" : "F2VA: first frame")
-                        : "Pick a first frame")
-                    // Ref2VA : nombre / plafond par groupe (les bandes-son Video/Audio
-                    // ont leurs propres places, affichees sur leur ligne).
-                    : s.images.length + "/" + lim("image") + " image(s), " +
-                      s.videos.length + "/" + lim("video") + " video(s), " +
-                      s.audios.length + "/" + lim("audio") + " audio(s)";
+                const parts = shown.filter((r) => listOf(s, r.id).length)
+                    .map((r) => listOf(s, r.id).length + "/" + lim.counts[r.id] + " " + r.label.toLowerCase());
+                const refText = parts.length ? parts.join(", ") : "Nothing selected yet";
                 summary.textContent = notice || refText;
                 summary.style.color = notice ? ORANGE : "#9fd6cf";
                 summary.title = notice ? noticeTitle : "";
 
                 // Upload orange s'il ecrasera des references, couleur standard sinon.
                 uploadBtn.style.background = hasConfig(s) ? ORANGE : PINK;
-                // Download grise et inactif si le mode affiche n'a aucune reference
+                // Download grise et inactif si la variante affichee n'a aucune reference
                 // (le dossier racine seul ne compte pas).
                 const canSave = hasConfig(s);
                 downloadBtn.disabled = !canSave;
@@ -5338,8 +5200,8 @@ app.registerExtension({
                 downloadBtn.style.opacity = canSave ? "1" : "0.45";
                 downloadBtn.style.cursor = canSave ? "pointer" : "default";
                 downloadBtn.title = canSave ? "Save the configuration (.json)"
-                    : "Save the configuration (.json) - nothing to save in this mode";
-                // Vue d'ensemble grisee tant que le mode affiche est vide.
+                    : "Save the configuration (.json) - nothing to save in this variant";
+                // Vue d'ensemble grisee tant que la variante affichee est vide.
                 overviewBtn.disabled = !canSave;
                 overviewBtn.style.background = canSave ? VIOLET : INACTIVE_BG;
                 overviewBtn.style.opacity = canSave ? "1" : "0.45";
@@ -5352,7 +5214,9 @@ app.registerExtension({
                     if (!first) notifyProjectNodes(node);
                 }
 
-                applyLayout(node, s, !creating);
+                fixOutputs(node);
+                // Variante ou selection changee : les Containers relisent le RefLoader.
+                if (!creating) notifyContainers(node);
             }
 
             node.addDOMWidget("mmrefloader_ui", "mmrefloader", container, {
@@ -5373,8 +5237,8 @@ app.registerExtension({
             // configure() garde les noms des sorties creees par onNodeCreated (etat par
             // defaut), n'ajoute que les sorties en plus et recopie ces noms dans les
             // donnees recues : on releve les noms et etiquettes enregistres avant lui
-            // et on les remet dans onConfigure, sinon applyLayout suivrait de faux noms
-            // et deplacerait les liens (ref_image_2 et 3 -> ref_video_1 et ref_video_audio_1).
+            // et on les remet dans onConfigure, sinon un ancien RefLoader perdrait ses noms
+            // (la reprise des anciennes sorties par un Container lit ces noms).
             let savedOutputs = null;
             const configure = node.configure;
             node.configure = function (info) {
@@ -5425,9 +5289,9 @@ app.registerExtension({
             // Save, renommer / deplacer du noeud Projet : il lit la selection et
             // la remplace par les chemins des copies (ou du projet deplace).
             node.mmGetState = () => getState();
-            // Defauts des profils arrives (setup) : compteurs et sorties relus.
+            // Description des variantes arrivee (setup) : lignes, compteurs et sorties relus.
             node.__mmrefRefresh = () => refresh();
-            node.mmSetState = (s) => setState(parseState(JSON.stringify(s)));
+            node.mmSetState = (s) => setState(parseVariantState(JSON.stringify(s), variantDesc));
             creating = true;
             try {
                 refresh();

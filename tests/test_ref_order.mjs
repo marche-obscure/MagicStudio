@@ -54,3 +54,25 @@ test("profil LTX 2.x : pas de balises <Picture N>, aucun avertissement d'ordre",
     assert.deepEqual(orderChanges({ ...before, profile: "ltx2" }, { ...after, profile: "ltx2" }), []);
     assert.deepEqual(orderChanges(before, { ...after, profile: "ltx2" }), []);
 });
+
+// ---- Etat des variantes (Task 4) : jetons seulement pour une variante avec une ligne "tags" ----
+import { migrateState } from "../web/js/profiles.js";
+
+const vs = (variant, rows) => {
+    const s = migrateState({ variant });
+    Object.assign(s.selections[variant].rows, rows);
+    return s;
+};
+
+test("variant state : Ref2VA tokens from the description", () => {
+    const s = vs("minimax_h3.ref2va", { images: ["a.png"], videos: ["v.mp4"], video_audios: ["va.mp4"], audios: ["s.wav"] });
+    assert.deepEqual(refTokens(s).map((t) => t.list + ":" + t.path + "=" + t.token), [
+        "images:a.png=<Picture 1>", "videos:v.mp4=<Video 1>", "video_audios:va.mp4=<Audio 1>", "audios:s.wav=<Audio 2>",
+    ]);
+    assert.deepEqual(refTokens(vs("ltx.2_3", { guide_images: ["a.png"] })), []);
+    assert.deepEqual(refTokens(vs("minimax_h3.fl2va", { first_frame: ["a.png"] })), []);
+    const before = vs("minimax_h3.ref2va", { images: ["a.png", "b.png"] });
+    const after = vs("minimax_h3.ref2va", { images: ["b.png", "a.png"] });
+    assert.ok(orderWarningNeeded(orderChanges(before, after)));
+    assert.deepEqual(orderChanges(before, vs("ltx.2_3", {})), []);
+});
