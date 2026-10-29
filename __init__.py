@@ -106,6 +106,35 @@ try:
         except OSError as e:
             return web.json_response({"error": str(e)}, status=400)
 
+    @routes.get("/mmselectmod/list_dirs")
+    async def mmselectmod_list_dirs(request):
+        """Sous-dossiers avec des fichiers de l'origine (relatifs), dans les dossiers de modeles seulement."""
+        path = request.rel_url.query.get("path", "")
+        try:
+            return web.json_response({"dirs": await _in_executor(select_mod.list_dirs, path, _selectmod_roots())})
+        except PermissionError as e:
+            return _selectmod_refused(e)
+        except OSError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    @routes.get("/mmselectmod/list_files")
+    async def mmselectmod_list_files(request):
+        """Fichiers de <origin>/<subdir>, dans les dossiers de modeles seulement."""
+        q = request.rel_url.query
+        try:
+            return web.json_response({"files": await _in_executor(select_mod.list_files, q.get("origin", ""),
+                                                                  q.get("subdir", ""), _selectmod_roots())})
+        except PermissionError as e:
+            return _selectmod_refused(e)
+        except OSError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    @routes.get("/mmselectmod/dir_exists")
+    async def mmselectmod_dir_exists(request):
+        """Le dossier de sauvegarde (roue) existe-t-il ? (il peut etre hors des modeles, ex. 02.Models)."""
+        path = request.rel_url.query.get("path", "").strip()
+        return web.json_response({"exists": bool(path) and os.path.isdir(path)})
+
     @routes.get("/mmselectmod/join_path")
     async def mmselectmod_join_path(request):
         """Chemin d'un champ (Absolute : origine + sous-dossier + fichier ; Relative : sans l'origine)."""

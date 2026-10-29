@@ -105,7 +105,8 @@ class ExtractRoutesTest(unittest.TestCase):
     def test_selectmod_reads_only_server_roots(self):
         # SelectMod (29/10/2026) : racines lues par le serveur, chaque lecture controlee par select_mod.
         bodies = route_bodies()
-        for route in ("/mmselectmod/tree", "/mmselectmod/files", "/mmselectmod/search"):
+        for route in ("/mmselectmod/tree", "/mmselectmod/files", "/mmselectmod/search",
+                      "/mmselectmod/list_dirs", "/mmselectmod/list_files"):
             self.assertIn(route, bodies, route)
             self.assertIn("_selectmod_roots()", bodies[route], route)
             self.assertNotIn('get("roots"', bodies[route], route)

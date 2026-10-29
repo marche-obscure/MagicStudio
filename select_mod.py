@@ -228,3 +228,21 @@ def write_export(folder, name, content):
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(content)
     return path
+
+
+def list_dirs(origin, roots_):
+    """Sous-dossiers de l'origine qui contiennent des fichiers visibles (chemins relatifs, "/"), comme MultiFiles Select."""
+    folder = _check(origin, roots_)
+    out = []
+    for dirpath, dirnames, filenames in os.walk(folder):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d != "__pycache__"
+                       and allowed(os.path.join(dirpath, d), roots_)]
+        if dirpath != folder and any(not is_hidden(n) for n in filenames):
+            out.append(os.path.relpath(dirpath, folder).replace(os.sep, "/"))
+    return sorted(out, key=str.lower)
+
+
+def list_files(origin, subdir, roots_):
+    """Noms des fichiers visibles de <origin>/<subdir> (dossier permis seulement)."""
+    folder = _check(os.path.join(origin or "", subdir or "") if subdir else origin, roots_)
+    return sorted(_visible_files(folder), key=str.lower)

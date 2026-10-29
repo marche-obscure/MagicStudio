@@ -132,6 +132,18 @@ class SelectModTest(unittest.TestCase):
             sm.check_fields(["../../ailleurs/secret.safetensors"], self.models, self.roots)
 
 
+    def test_list_dirs_and_files(self):
+        self.assertEqual(sm.list_dirs(self.models, self.roots), ["diffusion_models", "diffusion_models/sub"])
+        self.assertEqual(sm.list_files(self.models, "diffusion_models", self.roots), ["a.safetensors"])
+        with self.assertRaises(PermissionError):
+            sm.list_dirs(self.other, self.roots)
+        with self.assertRaises(PermissionError):
+            sm.list_files(self.models, "../../ailleurs", self.roots)
+
+    def test_check_fields_relative_from_another_root(self):
+        # Champ relatif rempli depuis Models (Linker) alors que l'origine est models : accepte.
+        sm.check_fields(["vae/v.safetensors"], self.models, self.roots)
+
     def test_join_path(self):
         self.assertEqual(os.path.normcase(sm.join_path(self.models, "vae", "v.safetensors", "Absolute")),
                          os.path.normcase(os.path.join(self.models, "vae", "v.safetensors")))
