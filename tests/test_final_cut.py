@@ -49,6 +49,18 @@ class FinalCutTest(unittest.TestCase):
             self.trashed.append(os.path.basename(p))
             os.remove(p)
 
+    def test_source_of_unknown_name_gives_none(self):
+        p = projects.create_project(self.root, "Solo")
+        write(os.path.join(p, "40.Rush Videos", "Picture Lock", "v.mp4"), b"video")
+        folder = os.path.join(p, fc.PREFIX + "Solo", "Video")
+        write(os.path.join(folder, "_00_v.mp4"), b"video")
+        write(os.path.join(folder, "v.mp4"), b"video")
+        self.assertEqual(os.path.normcase(fc.source_of(os.path.join(folder, "_00_v.mp4"))),
+                         os.path.normcase(os.path.join(p, "40.Rush Videos", "Picture Lock", "v.mp4")))
+        self.assertIsNone(fc.source_of(os.path.join(folder, "v.mp4")))
+        self.assertIsNone(fc.source_of(os.path.join(folder, "_07_v.mp4")))
+        self.assertIsNone(fc.source_of(os.path.join(p, "40.Rush Videos", "Picture Lock", "v.mp4")))
+
     def test_new_project_has_70_rush_audio(self):
         p = projects.create_project(self.root, "Solo")
         self.assertEqual(sorted(os.listdir(os.path.join(p, "70.Rush Audio"))),

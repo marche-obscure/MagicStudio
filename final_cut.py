@@ -127,6 +127,33 @@ def project_number(project):
     return "00"
 
 
+_COPY_NAME = re.compile(r"^_(\d{2})_(.+)$")
+
+
+def source_of(path):
+    """
+    Original d'une copie du Final Cut (post-traitements, 29/10/2026) :
+    <base>/Final-Cut_<Nom>/<Images|Video|Audio>/_NN_<fichier> -> <projet NN>/<60|40|70>/
+    Picture Lock/<fichier> s'il existe (base = projet Simple si NN = 00, sinon le
+    dossier de projets et son sous-projet NN) ; None sinon.
+    """
+    p = os.path.abspath(path or "")
+    m = _COPY_NAME.match(os.path.basename(p))
+    kind_dir = os.path.dirname(p)
+    fc_dir = os.path.dirname(kind_dir)
+    rush = dict(KINDS).get(os.path.basename(kind_dir))
+    if not m or not rush or not os.path.basename(fc_dir).startswith(PREFIX):
+        return None
+    base, num = os.path.dirname(fc_dir), m.group(1)
+    if projects.is_group(base):
+        sub = group_numbers(base).get(num) if num != "00" else None
+        project = os.path.join(base, sub) if sub else None
+    else:
+        project = base if num == "00" else None
+    src = os.path.join(project, rush, LOCK, m.group(2)) if project else ""
+    return src if src and os.path.isfile(src) else None
+
+
 # ----------------------------------------------------------------------
 # Plan du miroir
 # ----------------------------------------------------------------------
