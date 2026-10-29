@@ -6,6 +6,7 @@ import {
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, escapeHtml, buildHelpOverlay,
 } from "./minimax_ref_loader.js";
 import { makeFileCache } from "./final_cut_cache.js";
+import { frameStrip, stepIndex, numberedLabel, framesOfCopy } from "./final_cut_frames.js";
 
 // --------------------------------------------------------------------
 // Noeud MiniMax H3 Final Cut (choix utilisateur, 22/10/2026) : copies des
@@ -29,6 +30,14 @@ const KINDS = [
     ["Video", VIDEO_ICON, ORANGE],
     ["Audio", AUDIO_ICON, TITLE_COLOR],
 ];
+// Bande d'images extraites (Picture Lock/Extract Frame) a cote de chaque video : ciseaux
+// (deux anneaux, deux lames), meme trait clair que les autres icones du noeud.
+const SCISSORS_ICON = svg(
+    '<circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle>' +
+    '<line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line>' +
+    '<line x1="8.12" y1="8.12" x2="12" y2="12"></line>', 22);
+const FRAME_TILE = { list: 48, thumbs: 72 }; // cote des vignettes d'images (px)
+const dirOf = (path) => String(path).replace(/[\\/][^\\/]*$/, "");
 const MIME = {
     png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", bmp: "image/bmp", gif: "image/gif",
     mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", mkv: "video/x-matroska", avi: "video/x-msvideo",
@@ -379,11 +388,18 @@ function buildFilesWindow(container, ctx) {
     card.append(head, bar.bar, body, foot);
 
     let kind = "Images";
+    // Selection : nom de la copie (video), ou "frame:<chemin>" pour une image extraite.
     let selected = "";
+    let stagedFrame = null; // image extraite montree a droite ({path, mtime})
+    // Vignette N : index courant par video (nom de la copie), garde tant que la fenetre est ouverte.
+    const frameIndex = new Map();
+    const frameKey = (entry) => "frame:" + entry.path;
 
     function close() {
         overlay.style.display = "none";
         stage.innerHTML = "";
+        stagedFrame = null;
+        frameIndex.clear();
         ctx.release(); // fichiers prepares pour le glisser : memoire rendue
     }
     cancel.addEventListener("click", close);
@@ -392,24 +408,32 @@ function buildFilesWindow(container, ctx) {
     }, true);
     syncBtn.addEventListener("click", () => ctx.sync());
 
-    function showStage(c, dir) {
+    /** Lecture a droite ; image = image extraite du projet ({name, path, mtime}), pas une copie. */
+    function showStage(c, dir, image) {
         stage.innerHTML = "";
         info.innerHTML = "";
+        stagedFrame = image && c ? { path: c.path, mtime: c.mtime } : null;
         if (!c) {
             stage.textContent = "Click a file to play it here.";
             return;
         }
-        const path = joinDir(dir, c.name);
+        const path = image ? c.path : joinDir(dir, c.name);
         const url = "/mmrefloader/media?file=" + encodeURIComponent(path) + "&t=" + Math.round(c.mtime);
-        const el = document.createElement(kind === "Images" ? "img" : kind === "Video" ? "video" : "audio");
+        const still = image || kind === "Images";
+        const el = document.createElement(still ? "img" : kind === "Video" ? "video" : "audio");
         el.src = url;
-        if (kind !== "Images") el.controls = true;
-        Object.assign(el.style, kind === "Audio" ? { width: "90%" } :
+        if (!still) el.controls = true;
+        Object.assign(el.style, kind === "Audio" && !still ? { width: "90%" } :
             { maxWidth: "100%", maxHeight: "100%", objectFit: "contain" });
         stage.appendChild(el);
+        const line = (label, text) => "<div><b style=\"color:#bbb\">" + label + "</b> " + escapeHtml(text) + "</div>";
+        if (image) {
+            // Image extraite : chemin complet dans le projet, pas de ligne Source.
+            info.innerHTML = line("File:", c.name) + line("Path:", c.path);
+            return;
+        }
         const plan = ctx.getPlan();
         const source = ((plan.kinds[kind].files || []).find((f) => f.name === c.name) || {}).source;
-        const line = (label, text) => "<div><b style=\"color:#bbb\">" + label + "</b> " + escapeHtml(text) + "</div>";
         info.innerHTML = line("File:", c.name) +
             line("Path:", "Final-Cut_" + plan.name + "/" + kind + "/" + c.name) +
             (source ? line("Source:", source) : "");
@@ -419,8 +443,9 @@ function buildFilesWindow(container, ctx) {
      * Fichier glissable : vrai fichier joint au glisser (comme H3 Director l'attend), prepare
      * apres un court survol ou des l'appui ; survol quitte avant la fin : telechargement annule.
      * Le fichier n'est garde que par le cache (borne), jamais par la vignette.
+     * onPick : clic (par defaut, la video est selectionnee et lue a droite).
      */
-    function draggable(el, c, dir) {
+    function draggable(el, c, dir, onPick) {
         el.draggable = true;
         const path = joinDir(dir, c.name);
         let timer = null;
@@ -472,10 +497,97 @@ function buildFilesWindow(container, ctx) {
             }
         });
         el.addEventListener("click", () => {
+            if (onPick) return onPick();
             selected = c.name;
             renderFiles();
             showStage(c, dir);
         });
+    }
+
+    /**
+     * Vignette d'une image extraite : carre glissable comme une video (le fichier glisse est
+     * l'image du projet, dossier Extract Frame), libelle dessous (texte ou element), clic =
+     * image a droite. Le libelle est hors du carre : ses fleches ne glissent rien.
+     */
+    function frameTile(entry, label, side) {
+        const wrap = document.createElement("div");
+        Object.assign(wrap.style, { display: "flex", flexDirection: "column", alignItems: "center", gap: "2px",
+            flex: "0 0 auto" });
+        const on = selected === frameKey(entry);
+        const folder = dirOf(entry.path);
+        const pic = thumbOf(entry, folder, { w: side + "px", h: side + "px" });
+        Object.assign(pic.style, { cursor: "grab", boxSizing: "border-box",
+            border: "2px solid " + (on ? GREEN : "#2c2c2c") });
+        pic.title = entry.name + "\nDrag onto MiniMax H3 Director · click to show it";
+        draggable(pic, entry, folder, () => {
+            selected = frameKey(entry);
+            renderFiles();
+            showStage(entry, null, true);
+        });
+        const cap = document.createElement("div");
+        Object.assign(cap.style, { fontSize: "10px", color: on ? GREEN : "#ccc", whiteSpace: "nowrap",
+            display: "flex", alignItems: "center", gap: "4px" });
+        if (typeof label === "string") cap.textContent = label;
+        else cap.appendChild(label);
+        wrap.append(pic, cap);
+        return wrap;
+    }
+
+    /** Vignette N : images FRAME_ dans l'ordre des numeros, ◀ ▶ de part et d'autre du libelle. */
+    function numberedTile(copyName, numbered, side) {
+        let i = frameIndex.get(copyName) || 0;
+        if (i >= numbered.length) i = 0; // liste relue plus courte : retour au debut
+        frameIndex.set(copyName, i);
+        const entry = numbered[i];
+        const row = document.createElement("span");
+        Object.assign(row.style, { display: "flex", alignItems: "center", gap: "4px" });
+        const arrow = (text, dir, tip) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.textContent = text;
+            b.title = tip;
+            Object.assign(b.style, { background: "none", border: "none", color: "#bbb", cursor: "pointer",
+                padding: "0 2px", fontSize: "10px", lineHeight: "1" });
+            if (numbered.length < 2) b.style.display = "none"; // un seul FRAME_ : pas de fleches
+            const stop = (e) => e.stopPropagation();
+            b.addEventListener("pointerdown", stop);
+            b.addEventListener("mousedown", stop);
+            b.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const next = stepIndex(i, numbered.length, dir);
+                frameIndex.set(copyName, next);
+                // Vignette N selectionnee : la selection (et l'image a droite) suit.
+                if (selected === frameKey(entry)) {
+                    selected = frameKey(numbered[next]);
+                    showStage(numbered[next], null, true);
+                }
+                tile.replaceWith(numberedTile(copyName, numbered, side));
+            });
+            return b;
+        };
+        const text = document.createElement("span");
+        text.textContent = numberedLabel(entry);
+        row.append(arrow("◀", -1, "Previous frame"), text, arrow("▶", 1, "Next frame"));
+        const tile = frameTile(entry, row, side);
+        return tile;
+    }
+
+    /** Bande d'une video : ciseaux, First, Last, N (seulement les vignettes qui existent), sinon null. */
+    function frameStripOf(c, side) {
+        if (kind !== "Video") return null;
+        const { first, last, numbered } = frameStrip(framesOfCopy(ctx.getPlan(), c.name));
+        if (!first && !last && !numbered.length) return null;
+        const strip = document.createElement("div");
+        Object.assign(strip.style, { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" });
+        const icon = document.createElement("span");
+        icon.innerHTML = SCISSORS_ICON;
+        icon.title = "Frames extracted in Picture Lock/Extract Frame of the project";
+        Object.assign(icon.style, { display: "flex", flex: "0 0 auto", opacity: "0.85" });
+        strip.appendChild(icon);
+        if (first) strip.appendChild(frameTile(first, "First", side));
+        if (last) strip.appendChild(frameTile(last, "Last", side));
+        if (numbered.length) strip.appendChild(numberedTile(c.name, numbered, side));
+        return strip;
     }
 
     function thumbOf(c, dir, size) {
@@ -491,6 +603,7 @@ function buildFilesWindow(container, ctx) {
 
     function renderFiles() {
         const plan = ctx.getPlan();
+        const scroll = left.scrollTop; // garde la position (re-rendu a chaque clic)
         left.innerHTML = "";
         if (!plan) return;
         const k = plan.kinds[kind];
@@ -545,10 +658,30 @@ function buildFilesWindow(container, ctx) {
                     item.append(thumbOf(c, dir, { w: "100%", h: "92px" }), cap);
                 }
                 draggable(item, c, dir);
-                box.appendChild(item);
+                // Video avec images extraites : bande sous la ligne (List) ou a droite de la grande
+                // vignette, sur toute la largeur de la grille (Thumbnails). La bande est a cote de
+                // la ligne / vignette, pas dedans : un clic sur une image ne selectionne pas la video.
+                const strip = frameStripOf(c, view === "list" ? FRAME_TILE.list : FRAME_TILE.thumbs);
+                if (!strip) {
+                    box.appendChild(item);
+                } else if (view === "list") {
+                    const group = document.createElement("div");
+                    Object.assign(group.style, { display: "flex", flexDirection: "column", gap: "4px" });
+                    Object.assign(strip.style, { padding: "2px 0 6px 18px" });
+                    group.append(item, strip);
+                    box.appendChild(group);
+                } else {
+                    const cell = document.createElement("div");
+                    Object.assign(cell.style, { gridColumn: "1 / -1", display: "flex", alignItems: "center",
+                        gap: "12px" });
+                    Object.assign(item.style, { width: "160px", flex: "0 0 auto", boxSizing: "border-box" });
+                    cell.append(item, strip);
+                    box.appendChild(cell);
+                }
             }
             left.appendChild(box);
         }
+        left.scrollTop = scroll;
     }
 
     function say(text, ok) {
@@ -589,7 +722,17 @@ function buildFilesWindow(container, ctx) {
             if (!plan) return close();
             paintHead();
             renderFiles();
-            if (selected && !plan.kinds[kind].copies.some((c) => c.name === selected)) {
+            if (selected.startsWith("frame:")) {
+                // Image extraite montree : retiree -> plus rien ; remplacee (autre date) -> relue.
+                const all = Object.values(plan.frames || {}).flat();
+                const entry = all.find((f) => frameKey(f) === selected);
+                if (!entry) {
+                    selected = "";
+                    showStage(null);
+                } else if (stagedFrame && stagedFrame.mtime !== entry.mtime) {
+                    showStage(entry, null, true);
+                }
+            } else if (selected && !plan.kinds[kind].copies.some((c) => c.name === selected)) {
                 selected = "";
                 showStage(null);
             }

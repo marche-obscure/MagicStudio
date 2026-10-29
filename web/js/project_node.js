@@ -4989,7 +4989,11 @@ app.registerExtension({
             let lastReplaceAnswer = { path: "", t: 0 };
             const extractWindow = buildExtractWindow(container, {
                 info: (path) => apiGet("/mmproject/extract/info?project=" + encodeURIComponent(path)),
-                extract: (body) => apiPost("/mmproject/extract", body),
+                // Images extraites : les noeuds Final Cut ouverts relisent leur plan (bande d'images).
+                extract: (body) => apiPost("/mmproject/extract", body).then((res) => {
+                    notifyFinalCut();
+                    return res;
+                }),
                 askReplace: (path) => askReplace(path),
                 blocked: () => !!replaceAsking,
             });
@@ -5610,6 +5614,7 @@ app.registerExtension({
              */
             async function handleExtractChange(change, path, silent) {
                 if (!change) return;
+                notifyFinalCut(); // images extraites changees : bande du Final Cut a jour
                 const msg = extractChangeText(change);
                 if (msg && !silent) showExtractText(msg.text, msg.ok);
                 // Question deja posee et repondue a l'instant : une relecture partie avant la reponse ne la repose pas.
@@ -5650,6 +5655,7 @@ app.registerExtension({
                         });
                         try {
                             const res = await apiPost("/mmproject/extract/replace", { project: path, keep: yes !== true });
+                            notifyFinalCut();
                             const written = (res && res.written) || [];
                             showExtractText(yes === true
                                 ? "Extract Frame: " + (written.length ? written.join(", ") + " replaced with frames of the new video"
