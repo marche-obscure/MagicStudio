@@ -1157,25 +1157,15 @@ function notifyContainers(node) {
 
 /**
  * Deplace un lien sur une autre sortie sans le defaire (une entree Autogrow du modele ne
- * retrecit pas) : origine corrigee dans graph.links, et listes output.links mises a jour
- * seulement quand ce sont de vraies listes (pas un accesseur du frontend).
+ * retrecit pas) : seule l'origine est corrigee dans graph.links. Ne jamais toucher a
+ * output.links : dans le frontend recent c'est une liste surveillee, et la modifier (splice,
+ * push) defait les liens en aval (constate le 30/10/2026 sur un ancien workflow).
  */
-function moveLink(l, from, fromSlot, to, toSlot) {
-    const plain = (o) => o && Array.isArray(o.links) && !(Object.getOwnPropertyDescriptor(o, "links") || {}).get;
-    const a = from.outputs[fromSlot];
-    if (plain(a)) {
-        const k = a.links.indexOf(l.id);
-        if (k >= 0) a.links.splice(k, 1);
-    }
+function moveLink(l, to, toSlot) {
     l.origin_id = to.id;
     l.origin_slot = toSlot;
     const b = to.outputs[toSlot];
     if (b && b.type) l.type = b.type;
-    if (plain(b)) {
-        if (!b.links.includes(l.id)) b.links.push(l.id);
-    } else if (b && b.links == null && !(Object.getOwnPropertyDescriptor(b, "links") || {}).get) {
-        b.links = [l.id];
-    }
 }
 
 /**
@@ -1219,8 +1209,8 @@ function rewireOldLoader(node, names, state) {
         if (plan.dropped.includes(o.name)) return;
         const k = keys.indexOf(o.name);
         for (const l of o.links) {
-            if (o.name === PROJECT_KEY) moveLink(l, node, i, node, 0);
-            else if (k >= 0) moveLink(l, node, i, container, k);
+            if (o.name === PROJECT_KEY) moveLink(l, node, 0);
+            else if (k >= 0) moveLink(l, container, k);
         }
     });
     [[PROJECT_KEY, PROJECT_TYPE, projectLabel], [PACKAGE_KEY, PACKAGE_TYPE, undefined]].forEach(([name, type, label], i) => {
@@ -4946,8 +4936,9 @@ app.registerExtension({
                         mb.textContent = variantDesc.variants[id].label;
                         mb.dataset.variant = id;
                         Object.assign(mb.style, {
-                            flex: "1", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold",
-                            fontSize: "11px", padding: "0", whiteSpace: "nowrap", overflow: "hidden",
+                            // Au moins la largeur du texte (F2VA / FL2VA etait coupe a 340 px).
+                            flex: "1 0 auto", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold",
+                            fontSize: "11px", padding: "0 6px", whiteSpace: "nowrap",
                         });
                         mb.addEventListener("click", () => setVariant(id));
                         modeToggle.appendChild(mb);
