@@ -1,5 +1,5 @@
 // Modele de la bande d'images a cote de chaque video du Final Cut (sans dependance
-// a ComfyUI, teste par true 
+// a ComfyUI, teste par node --test tests/test_final_cut_frames.mjs
 // a l'ordre du serveur : classement par prefixe du nom, tri par numero d'image.
 
 const numberInName = (name) => {

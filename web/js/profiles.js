@@ -1,5 +1,5 @@
 // Profils de modele (MiniMax H3, LTX 2.x) : miroir JS pur de profiles.py.
-// Pas d'import ComfyUI : testable avec true 
+// Pas d'import ComfyUI : testable avec node --test tests/test_profiles.mjs
 // Les defauts viennent de la route /mmrefloader/profiles ; FALLBACK_LIMITS sert
 // tant qu'elle n'a pas repondu (verifie egal a DEFAULT_LIMITS par test_profiles.py).
 

@@ -2,7 +2,7 @@
 Tests du module profiles (sans ComfyUI) : lancer depuis la racine de
 l'extension avec le Python embarque :
 
-    true 
+    ..\\..\\..\\python_embeded\\python.exe -m unittest discover -s tests -v
 """
 
 import json

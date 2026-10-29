@@ -1,4 +1,4 @@
-// true 
+// node --test tests/test_final_cut_frames.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { frameStrip, stepIndex, numberedLabel, framesOfCopy } from "../web/js/final_cut_frames.js";
