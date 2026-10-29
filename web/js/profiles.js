@@ -1037,3 +1037,55 @@ export function pruneVariantMoments(state) {
     }
     return state;
 }
+
+// ---- MagicStudio Container (Task 5) ----
+
+/** Sorties d'un RefLoader d'avant les variantes (une sortie par fichier) : autre chose que project, package. */
+export function isOldLoaderOutputs(names) {
+    if (!Array.isArray(names) || !names.length) return false;
+    return !(names.length === 2 && names[0] === "project" && names[1] === "package");
+}
+
+/**
+ * Reprise d'un ancien RefLoader : chaque lien d'une sortie de fichier va sur la sortie de meme
+ * nom du Container ; project reste sur la sortie project du RefLoader ; un nom absent du
+ * Container (avec des liens) est signale dans dropped.
+ */
+export function rewirePlan(oldOutputs, containerKeys) {
+    const keys = new Set(containerKeys || []);
+    const plan = { toContainer: [], toProject: [], dropped: [] };
+    for (const o of oldOutputs || []) {
+        const links = (o && o.links) || [];
+        if (!links.length) continue;
+        const to = o.name === "project" ? plan.toProject : keys.has(o.name) ? plan.toContainer : null;
+        if (!to) {
+            plan.dropped.push(o.name);
+            continue;
+        }
+        for (const l of links) to.push({ name: o.name, targetId: l.targetId, targetSlot: l.targetSlot });
+    }
+    return plan;
+}
+
+/**
+ * Paires colorees du Container : dans une variante qui a une ligne de bandes-son (videos dont
+ * seule la bande-son sort), la video N et la bande-son N, si les deux ont un fichier -> N.
+ * Renvoie {nom de sortie: N}.
+ */
+export function pairedOutputs(state, desc) {
+    const d = descOf(desc);
+    const v = variantOf(state, d);
+    const rows = rowsOf(d, v);
+    const track = rows.find((r) => r.kind === "video" && r.outputs[0][2] === "audio");
+    const video = rows.find((r) => r.kind === "video" && r.outputs[0][2] === "video_frames");
+    const out = {};
+    if (!track || !video) return out;
+    const a = rowList(state, video.id, v, d);
+    const b = rowList(state, track.id, v, d);
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+        if (!a[i] || !b[i]) continue;
+        out[video.outputs[0][0].replace("{n}", String(i + 1))] = i + 1;
+        out[track.outputs[0][0].replace("{n}", String(i + 1))] = i + 1;
+    }
+    return out;
+}

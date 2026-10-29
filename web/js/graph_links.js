@@ -1,0 +1,95 @@
+// Liens du graphe (MagicStudio Container, plan des variantes 29/10/2026). Module sans
+// dependance a ComfyUI : il n'utilise que les champs de LiteGraph (graph.links Map ou
+// objet, getNodeById, inputs[].link, getInputLink, connect), teste par tests/test_container.mjs
+// avec un faux graphe.
+
+/** Lien d'un identifiant (graph.links : LinkMap ou objet). */
+function linkById(graph, id) {
+    if (!graph || !graph.links || id == null) return null;
+    return (typeof graph.links.get === "function" ? graph.links.get(id) : graph.links[id]) || null;
+}
+
+/** Lien qui arrive sur l'entree slot du noeud n, ou null. */
+export function linkInto(n, slot) {
+    if (!n || !n.graph || slot < 0 || !n.inputs || !n.inputs[slot]) return null;
+    if (typeof n.getInputLink === "function") return n.getInputLink(slot) || null;
+    return linkById(n.graph, n.inputs[slot].link);
+}
+
+/**
+ * Liens qui partent de la sortie slot du noeud, deduits de graph.links (origin_id /
+ * origin_slot). Ne jamais assigner output.links (obsolete : une affectation debranche).
+ */
+export function outputLinksOf(node, slot) {
+    const graph = node && node.graph;
+    if (!graph || !graph.links) return [];
+    const all = typeof graph.links.values === "function" ? [...graph.links.values()] : Object.values(graph.links);
+    return all.filter((l) => l && l.origin_id === node.id && l.origin_slot === slot);
+}
+
+/**
+ * Noeud source de l'entree slot, a travers Get (Pixaroma / KJNodes : getInputLink du Get,
+ * sinon findSetter ou Set de meme nom), Set et Reroute : le premier noeud accepte par
+ * accept(n), ou null (autre noeud, rien de branche, plus de maxHops sauts). Meme methode que
+ * linkedFileSelect du noeud Project.
+ */
+export function traceSource(node, slot, accept, maxHops = 10) {
+    let link = linkInto(node, slot);
+    let src = link ? node.graph.getNodeById(link.origin_id) : null;
+    for (let hop = 0; src && hop <= maxHops; hop++) {
+        if (accept(src)) return src;
+        const type = String(src.type || "");
+        const from = src;
+        if (/get/i.test(type) && typeof from.getInputLink === "function") {
+            link = from.getInputLink(0) || null;
+        } else if (/get/i.test(type) && from.widgets && from.widgets[0]) {
+            const name = from.widgets[0].value;
+            let setter = typeof from.findSetter === "function" ? from.findSetter(from.graph) : null;
+            if (setter && setter.node) setter = setter.node;
+            if (!setter && from.graph) {
+                setter = (from.graph._nodes || []).find((n) => /set/i.test(String(n.type || "")) &&
+                    n.widgets && n.widgets[0] && n.widgets[0].value === name) || null;
+            }
+            link = setter ? linkInto(setter, 0) : null;
+            src = link ? setter.graph.getNodeById(link.origin_id) : null;
+            continue;
+        } else if (from.isVirtualNode || /reroute|set/i.test(type)) {
+            link = linkInto(from, 0);
+        } else {
+            return null;
+        }
+        src = link ? from.graph.getNodeById(link.origin_id) : null;
+    }
+    return null;
+}
+
+/** Liens et etiquettes de chaque sortie : [{key, label, links: [{targetId, input}]}] (entree par nom). */
+export function saveOutputLinks(node) {
+    return (node.outputs || []).map((o, i) => ({
+        key: o.name,
+        label: o.label || null,
+        links: outputLinksOf(node, i).map((l) => {
+            const target = node.graph && node.graph.getNodeById(l.target_id);
+            const input = target && target.inputs && target.inputs[l.target_slot];
+            return input ? { targetId: l.target_id, input: input.name } : null;
+        }).filter(Boolean),
+    }));
+}
+
+/**
+ * Remet les etiquettes et rebranche les liens memorises, par nom de sortie, seulement si le
+ * noeud cible existe encore et si son entree (cherchee par nom) est libre.
+ */
+export function restoreOutputLinks(node, saved) {
+    for (const entry of saved || []) {
+        const outIdx = (node.outputs || []).findIndex((o) => o.name === entry.key);
+        if (outIdx < 0) continue;
+        if (entry.label) node.outputs[outIdx].label = entry.label;
+        for (const l of entry.links || []) {
+            const target = node.graph && node.graph.getNodeById(l.targetId);
+            if (!target || !target.inputs) continue;
+            const inIdx = target.inputs.findIndex((inp) => inp.name === l.input);
+            if (inIdx >= 0 && target.inputs[inIdx].link == null) node.connect(outIdx, target, inIdx);
+        }
+    }
+}

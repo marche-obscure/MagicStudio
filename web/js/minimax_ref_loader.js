@@ -3,7 +3,8 @@ import { formatVariantConfig, parseVariantConfig, variantConfigPrefix, trimKey }
 import { routeDefaults, LAST, secondsToFrame, guideMoments, checkMoment, sameFrameAs, stepFrame,
     FALLBACK_DESCRIPTION, routeDescription, variantOf, modelOf, variantsOfModel, rowsOf as variantRowsOf,
     variantLimits, parseVariantState, uiHeight as variantUiHeight, limitLabels, variantLimitOverrides,
-    pruneVariantMoments } from "./profiles.js";
+    pruneVariantMoments, variantLayoutKeys, variantModeLinks, isOldLoaderOutputs, rewirePlan } from "./profiles.js";
+import { outputLinksOf } from "./graph_links.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
 import { gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
@@ -1066,17 +1067,6 @@ const PACKAGE_KEY = "package";
 const PACKAGE_TYPE = "MAGICSTUDIO_PACKAGE";
 
 /**
- * Liens d'une sortie, deduits de la liste des liens du graphe (link.origin_id /
- * link.origin_slot). Ne jamais assigner output.links (obsolete : une affectation debranche).
- */
-function outputLinksOf(node, slot) {
-    const graph = node.graph;
-    if (!graph || !graph.links) return [];
-    const all = typeof graph.links.values === "function" ? [...graph.links.values()] : Object.values(graph.links);
-    return all.filter((l) => l && l.origin_id === node.id && l.origin_slot === slot);
-}
-
-/**
  * Liens d'une sortie retiree (selection reduite, meme un instant) : gardes
  * en memoire par nom de sortie (jamais enregistres dans le workflow), puis
  * rebranches quand la sortie revient, si l'entree en aval est encore libre.
@@ -1128,6 +1118,8 @@ function notifyProjectNodes(node) {
     });
 }
 
+const CONTAINER_NAME = "MagicStudioContainer";
+
 /** Previent les noeuds MagicStudio Container du graphe (variante ou selection changee). */
 function notifyContainers(node) {
     const graph = node.graph;
@@ -1135,6 +1127,95 @@ function notifyContainers(node) {
     nodes.forEach((n) => {
         if (n && typeof n.__mmContainerRefresh === "function") n.__mmContainerRefresh();
     });
+}
+
+/**
+ * Deplace un lien sur une autre sortie sans le defaire (une entree Autogrow du modele ne
+ * retrecit pas) : origine corrigee dans graph.links, et listes output.links mises a jour
+ * seulement quand ce sont de vraies listes (pas un accesseur du frontend).
+ */
+function moveLink(l, from, fromSlot, to, toSlot) {
+    const plain = (o) => o && Array.isArray(o.links) && !(Object.getOwnPropertyDescriptor(o, "links") || {}).get;
+    const a = from.outputs[fromSlot];
+    if (plain(a)) {
+        const k = a.links.indexOf(l.id);
+        if (k >= 0) a.links.splice(k, 1);
+    }
+    l.origin_id = to.id;
+    l.origin_slot = toSlot;
+    const b = to.outputs[toSlot];
+    if (b && b.type) l.type = b.type;
+    if (plain(b)) {
+        if (!b.links.includes(l.id)) b.links.push(l.id);
+    } else if (b && b.links == null && !(Object.getOwnPropertyDescriptor(b, "links") || {}).get) {
+        b.links = [l.id];
+    }
+}
+
+/**
+ * Ancien RefLoader (une sortie par fichier, names = noms enregistres) : un MagicStudio
+ * Container est pose a sa droite et relie a package ; chaque lien d'une sortie de fichier
+ * passe sur la sortie de meme nom du Container, project reste sur project. Les liens sont
+ * deplaces, jamais defaits (sauf ceux d'un nom absent du Container : dropped).
+ * Renvoie {container, dropped} ou null si le Container n'a pas pu etre cree.
+ */
+function rewireOldLoader(node, names, state) {
+    const graph = node.graph;
+    const LG = window.LiteGraph;
+    if (!graph || !LG || typeof LG.createNode !== "function") return null;
+    const container = LG.createNode(CONTAINER_NAME);
+    if (!container) return null;
+    container.pos = [node.pos[0] + node.size[0] + 40, node.pos[1]];
+    graph.add(container);
+    // Sorties du Container d'apres l'etat (memes noms que les anciennes sorties), sans lien.
+    if (typeof container.mmLayoutFrom === "function") container.mmLayoutFrom(state);
+    const keys = variantLayoutKeys(state, variantDesc);
+    const old = names.map((name, i) => ({ name, label: node.outputs[i] && node.outputs[i].label, links: outputLinksOf(node, i) }));
+    const plan = rewirePlan(old.map((o) => ({ name: o.name, links: o.links.map((l) => ({ targetId: l.target_id,
+        targetSlot: l.target_slot })) })), keys);
+    // Liens d'un nom inconnu du Container : defaits d'abord.
+    for (const o of old) {
+        if (!plan.dropped.includes(o.name)) continue;
+        for (const l of o.links) {
+            const t = graph.getNodeById(l.target_id);
+            if (t) t.disconnectInput(l.target_slot);
+        }
+    }
+    // Etiquettes renommees a la main : suivent leur sortie.
+    old.forEach((o, i) => {
+        const k = keys.indexOf(o.name);
+        if (k >= 0 && o.label && container.outputs[k]) container.outputs[k].label = o.label;
+    });
+    // project et package d'abord a leur place (les objets sortie restent), puis les liens deplaces.
+    const projectLabel = (old.find((o) => o.name === PROJECT_KEY) || {}).label;
+    while (node.outputs.length < 2) node.addOutput("tmp", "*");
+    old.forEach((o, i) => {
+        if (plan.dropped.includes(o.name)) return;
+        const k = keys.indexOf(o.name);
+        for (const l of o.links) {
+            if (o.name === PROJECT_KEY) moveLink(l, node, i, node, 0);
+            else if (k >= 0) moveLink(l, node, i, container, k);
+        }
+    });
+    [[PROJECT_KEY, PROJECT_TYPE, projectLabel], [PACKAGE_KEY, PACKAGE_TYPE, undefined]].forEach(([name, type, label], i) => {
+        const o = node.outputs[i];
+        o.name = name;
+        o.localized_name = name;
+        o.type = type;
+        o.label = label;
+    });
+    // Sorties en trop : plus aucun lien, retirees depuis la fin.
+    while (node.outputs.length > 2) node.removeOutput(node.outputs.length - 1);
+    for (const l of outputLinksOf(node, 0)) l.type = PROJECT_TYPE;
+    node.connect(1, container, 0);
+    // Liens memorises par mode / profil : passent au Container, par variante.
+    container.properties = container.properties || {};
+    container.properties.modeLinks = variantModeLinks(node.properties && node.properties.modeLinks);
+    container.properties.mmVariant = variantOf(state, variantDesc);
+    if (node.properties) delete node.properties.modeLinks;
+    if (typeof container.__mmContainerRefresh === "function") container.__mmContainerRefresh();
+    graph.setDirtyCanvas(true, true);
+    return { container, dropped: plan.dropped };
 }
 
 /**
@@ -1330,6 +1411,22 @@ function syncVueNode(node) {
         openOutputLabelEditor(node, Number(m[1]));
     }, true);
 }
+
+/** Noeud suivi en Nodes 2.0 (points colores, double-clic sur les sorties) : RefLoader et Container. */
+function trackVueNode(node) {
+    vueNodes.add(node);
+    watchVueNodes();
+    scheduleVueSync();
+}
+function untrackVueNode(node) {
+    vueNodes.delete(node);
+}
+/** Ferme le champ de renommage ouvert sur ce noeud (noeud retire). */
+function closeOutputEditor(node) {
+    if (activeOutputEditor && activeOutputEditor.node === node) activeOutputEditor.close(false);
+}
+/** Description des variantes (route lue par setup, sinon la copie de secours). */
+const getVariantDesc = () => variantDesc;
 
 let vueSyncPending = false;
 function scheduleVueSync() {
@@ -5257,7 +5354,24 @@ app.registerExtension({
                     out.localized_name = o.name;
                     out.label = o.label;
                 });
+                const savedNames = (savedOutputs || []).map((o) => (o ? o.name : ""));
                 savedOutputs = null;
+                // Ancien RefLoader (une sortie par fichier) : reprise par un Container une fois
+                // tout le graphe charge (noeuds en aval compris).
+                if (isOldLoaderOutputs(savedNames.filter(Boolean))) {
+                    setTimeout(() => {
+                        const res = rewireOldLoader(node, savedNames, getState());
+                        if (!res) {
+                            notice = "⚠ Old outputs: add a MagicStudio Container and wire it by hand";
+                            noticeTitle = "The MagicStudio Container node could not be created.";
+                        } else {
+                            notice = "A MagicStudio Container was added and rewired" +
+                                (res.dropped.length ? " (not rewired: " + res.dropped.join(", ") + ")" : "");
+                            noticeTitle = notice;
+                        }
+                        refresh();
+                    }, 0);
+                }
                 // Entree "project" d'une version de test (sens inverse) : retiree.
                 const old = (node.inputs || []).findIndex((inp) => inp.name === "project");
                 if (old >= 0) node.removeInput(old);
@@ -5355,4 +5469,7 @@ export {
     escapeHtml, buildHelpOverlay, vueMode, PROJECT_TYPE,
     FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker, THUMB_REVALIDATE,
     profileLimitDefaults,
+    // MagicStudio Container (web/js/container_node.js)
+    getVariantDesc, PAIR_COLORS, rememberLinks, restoreLinks, trackVueNode, untrackVueNode, scheduleVueSync,
+    hitOutputLabel, openOutputLabelEditor, setOutputLabel, closeOutputEditor,
 };
