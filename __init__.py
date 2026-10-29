@@ -363,15 +363,22 @@ try:
 
     @routes.post("/mmproject/archive_files")
     async def mmproject_archive_files(request):
-        """Deplace des fichiers d'un dossier du projet dans son sous-dossier Archives (deja confirme)."""
+        """
+        Deplace des fichiers d'un dossier du projet dans son sous-dossier Archives (deja confirme).
+        Les fichiers d'un Run restent en place (kept, 26/10/2026) : finish_run / tidy_rush les rangent dans 40 / 60.
+        """
         try:
             body = await request.json()
             projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
-            moved = await _in_executor(projects.archive_files, body.get("project", ""), body.get("folder", ""),
-                                       list(body.get("names") or []))
+            project, folder = body.get("project", ""), body.get("folder", "")
+            names = [str(n) for n in (body.get("names") or [])]
+            paths = [os.path.join(project, folder, n) for n in names]
+            held = set(await _in_executor(run_record.protected_files, project, paths))
+            kept = [n for n, p in zip(names, paths) if p in held]
+            moved = await _in_executor(projects.archive_files, project, folder, [n for n in names if n not in kept])
         except Exception as e:
             return _project_error(e)
-        return web.json_response({"moved": moved})
+        return web.json_response({"moved": moved, "kept": kept})
 
     @routes.post("/mmproject/import_files")
     async def mmproject_import_files(request):

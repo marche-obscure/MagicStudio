@@ -1215,6 +1215,26 @@ class MediaReclaimTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(old))
         self.assertEqual(read_json(run)["outputs"][0]["source"], src)
 
+    def test_protected_files_cited_source(self):
+        a = os.path.join(self.p, "12.Video", "a.mp4")
+        b = os.path.join(self.p, "12.Video", "b.mp4")
+        write(a)
+        write(b)
+        os.utime(a, (self.when - 3600, self.when - 3600))
+        os.utime(b, (self.when - 3600, self.when - 3600))
+        self.done_run(a, "40.Rush Videos/Footage/" + self.base + ".mp4")
+        self.assertEqual(rr.protected_files(self.p, [b, a]), [a])
+
+    def test_protected_files_running_run(self):
+        now = time.time()
+        rr.start_run(self.p, "p", PROMPT, now)
+        c = os.path.join(self.p, "12.Video", "c.mp4")
+        d = os.path.join(self.p, "12.Video", "d.mp4")
+        write(c)
+        write(d)
+        os.utime(d, (now - 3600, now - 3600))
+        self.assertEqual(rr.protected_files(self.p, [c, d]), [c])
+
 
 if __name__ == "__main__":
     unittest.main()

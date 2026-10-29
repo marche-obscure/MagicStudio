@@ -998,6 +998,31 @@ def _archived_original(project, path, started):
     return min(found)[1] if found else None
 
 
+def protected_files(project, paths):
+    """
+    Fichiers que la cloche ne doit jamais archiver (26/10/2026), dans l'ordre de
+    paths : source d'une sortie d'un Run du projet, ou fichier ecrit depuis le
+    debut d'un Run encore "running" (pas encore range par finish_run).
+    """
+    folder = os.path.join(project, PROMPT_FOLDER)
+    names = [n for n in os.listdir(folder) if _RUN_NAME.match(n)] if os.path.isdir(folder) else []
+    cited, starts = set(), []
+    for name in names:
+        try:
+            with open(os.path.join(folder, name), "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        if data.get("status") == "running":
+            starts.append(_run_start(data))
+        for o in data.get("outputs") or []:
+            if isinstance(o, dict) and o.get("source"):
+                cited.add(_key(o["source"]))
+    return [p for p in paths if _key(p) in cited or any(_written_since(p, s) for s in starts)]
+
+
 def _reclaim_media(project, o, kind, name, started):
     """
     Original d'un Run reste dans 08 a 14 (racine, ou Archives apres la cloche) :

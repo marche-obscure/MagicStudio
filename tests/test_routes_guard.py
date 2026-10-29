@@ -61,6 +61,14 @@ class RoutesGuardTest(unittest.TestCase):
             posts = set(re.findall(r'@routes\.post\("([^"]+)"\)', f.read()))
         self.assertEqual(posts - free, set(GUARDED))
 
+    def test_archive_files_keeps_run_files(self):
+        # La cloche n'archive jamais un fichier de Run (26/10/2026).
+        body = route_bodies()["/mmproject/archive_files"]
+        self.assertIn("run_record.protected_files", body)
+        self.assertLess(body.index("protected_files"), body.index("projects.archive_files"))
+        self.assertIn('"kept"', body)
+
+
 class ExtractRoutesTest(unittest.TestCase):
     def test_info_route_checks_the_project(self):
         body = route_bodies()["/mmproject/extract/info"]
