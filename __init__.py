@@ -14,6 +14,7 @@ import subprocess
 import traceback
 
 from . import media
+from . import profiles
 from . import projects
 from . import project_config
 from . import run_record
@@ -64,6 +65,20 @@ try:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
         return web.json_response({"files": files})
+
+    @routes.get("/mmrefloader/profiles")
+    async def mmrefloader_profiles(request):
+        """Profils de modele : {"profiles": [{"id", "label", "limits", "bounds"}], "default": id}.
+        limits = limites par defaut du profil ; bounds = LIMIT_BOUNDS (seconds, fps, max_side)
+        plus, pour chaque cle de nombre du profil, [1, valeur par defaut]."""
+        items = []
+        for pid in profiles.PROFILES:
+            lim = profiles.DEFAULT_LIMITS[pid]
+            bounds = {k: list(v) for k, v in profiles.LIMIT_BOUNDS.items()}
+            for k in profiles.COUNT_KEYS[pid]:
+                bounds[k] = [1, lim[k]]
+            items.append({"id": pid, "label": profiles.LABELS[pid], "limits": lim, "bounds": bounds})
+        return web.json_response({"profiles": items, "default": profiles.DEFAULT_PROFILE})
 
     @routes.get("/mmrefloader/subfolders")
     async def mmrefloader_subfolders(request):

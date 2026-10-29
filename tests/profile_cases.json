@@ -1,0 +1,202 @@
+{
+ "seconds_to_frame": [
+  [
+   0,
+   24,
+   20,
+   0
+  ],
+  [
+   -1,
+   24,
+   20,
+   -1
+  ],
+  [
+   4,
+   24,
+   20,
+   96
+  ],
+  [
+   1.02,
+   24,
+   20,
+   24
+  ],
+  [
+   25,
+   24,
+   20,
+   480
+  ],
+  [
+   -3,
+   24,
+   20,
+   -1
+  ]
+ ],
+ "video_guide_frame": [
+  [
+   0,
+   0
+  ],
+  [
+   -1,
+   -1
+  ],
+  [
+   1,
+   1
+  ],
+  [
+   8,
+   1
+  ],
+  [
+   9,
+   9
+  ],
+  [
+   48,
+   41
+  ],
+  [
+   49,
+   49
+  ]
+ ],
+ "frames_8n1": [
+  [
+   0,
+   0
+  ],
+  [
+   1,
+   1
+  ],
+  [
+   8,
+   1
+  ],
+  [
+   9,
+   9
+  ],
+  [
+   100,
+   97
+  ]
+ ],
+ "ltx_layout": [
+  [
+   0,
+   [
+    "guide_image_1",
+    "guide_frame_1",
+    "guide_video",
+    "guide_video_frame",
+    "soundtrack",
+    "voice"
+   ]
+  ],
+  [
+   2,
+   [
+    "guide_image_1",
+    "guide_frame_1",
+    "guide_image_2",
+    "guide_frame_2",
+    "guide_video",
+    "guide_video_frame",
+    "soundtrack",
+    "voice"
+   ]
+  ],
+  [
+   12,
+   [
+    "guide_image_1",
+    "guide_frame_1",
+    "guide_image_2",
+    "guide_frame_2",
+    "guide_image_3",
+    "guide_frame_3",
+    "guide_image_4",
+    "guide_frame_4",
+    "guide_image_5",
+    "guide_frame_5",
+    "guide_image_6",
+    "guide_frame_6",
+    "guide_image_7",
+    "guide_frame_7",
+    "guide_image_8",
+    "guide_frame_8",
+    "guide_image_9",
+    "guide_frame_9",
+    "guide_video",
+    "guide_video_frame",
+    "soundtrack",
+    "voice"
+   ]
+  ]
+ ],
+ "limits": [
+  {
+   "state": {},
+   "key": "image",
+   "expected": 9
+  },
+  {
+   "state": {
+    "profile": "ltx2"
+   },
+   "key": "guide_image",
+   "expected": 9
+  },
+  {
+   "state": {
+    "profile": "ltx2",
+    "limits": {
+     "ltx2": {
+      "guide_image": 4
+     }
+    }
+   },
+   "key": "guide_image",
+   "expected": 4
+  },
+  {
+   "state": {
+    "profile": "ltx2",
+    "limits": {
+     "ltx2": {
+      "guide_image": 30
+     }
+    }
+   },
+   "key": "guide_image",
+   "expected": 9
+  },
+  {
+   "state": {
+    "profile": "ltx2",
+    "limits": {
+     "ltx2": {
+      "seconds": 999
+     }
+    }
+   },
+   "key": "seconds",
+   "expected": 60
+  },
+  {
+   "state": {
+    "profile": "inconnu"
+   },
+   "key": "seconds",
+   "expected": 15
+  }
+ ]
+}
