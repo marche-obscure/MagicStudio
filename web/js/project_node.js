@@ -34,9 +34,12 @@ const FINAL_CUT_TYPE = "MINIMAX_FINAL_CUT";
 const MODELS_LINK = "models_link";
 const FILE_SELECT_TYPE = "MultiFileSelect";
 const REF_LOADER_NAME = "MiniMaxH3RefLoader";
-// Liste des projets + une ligne par dossier (28 px + 6 px d'ecart) + ligne du bas.
+// Liste des projets + une ligne par dossier (28 px + 6 px d'ecart) + ligne des messages
+// (2 lignes de 14 px + 6 px d'ecart, 26/10/2026 : les messages longs etaient coupes) + ligne du bas.
 const FOLDER_ROW_HEIGHT = 28;
-const UI_HEIGHT = 66 + PROJECT_SUBFOLDERS.length * (FOLDER_ROW_HEIGHT + 6) + 4;
+const STATUS_LINE_HEIGHT = 14;
+const STATUS_HEIGHT = 2 * STATUS_LINE_HEIGHT;
+const UI_HEIGHT = 66 + PROJECT_SUBFOLDERS.length * (FOLDER_ROW_HEIGHT + 6) + (STATUS_HEIGHT + 6) + 4;
 // Assez large pour « Last save: dd/MM/yyyy at hh:mm:ss » sur la ligne 00.Workflows.
 const MIN_WIDTH = 420;
 // Verification de secours de la cloche (l'evenement graphChanged fait le reste).
@@ -4862,14 +4865,23 @@ app.registerExtension({
             newBtn.style.width = newBtn.style.height = "26px";
             pickRow.append(nameLabel, select, editBtn, newBtn);
 
-            // Ligne du bas : messages (erreurs, resultat d'un Save), Save, Relire, aide.
+            // Ligne du bas : Copy, Reset, Purge, Load, Save, Relire, aide (a droite).
             const bottom = document.createElement("div");
             Object.assign(bottom.style, { display: "flex", alignItems: "center", gap: "6px", flex: "0 0 auto" });
+            const bottomSpace = document.createElement("div");
+            Object.assign(bottomSpace.style, { flex: "1", minWidth: "0" });
+            // Messages (erreurs, resultat d'un Save, Extract Frame...) : ligne a eux, toute la largeur,
+            // juste au-dessus des boutons, 2 lignes au plus (hauteur fixe comptee dans UI_HEIGHT :
+            // rien ne bouge quand un message arrive) ; texte complet dans l'infobulle (26/10/2026).
             const status = document.createElement("div");
             Object.assign(status.style, {
-                flex: "1", minWidth: "0", fontSize: "11px", whiteSpace: "nowrap", overflow: "hidden",
-                textOverflow: "ellipsis",
+                flex: "0 0 auto", width: "100%", height: STATUS_HEIGHT + "px", fontSize: "11px",
+                lineHeight: STATUS_LINE_HEIGHT + "px", overflow: "hidden", wordBreak: "break-word",
+                display: "-webkit-box", boxSizing: "border-box",
             });
+            // Coupe propre apres 2 lignes (proprietes prefixees : setProperty plutot que Object.assign).
+            status.style.setProperty("-webkit-box-orient", "vertical");
+            status.style.setProperty("-webkit-line-clamp", "2");
             // Load et Save : configuration du projet (99.Project-Config).
             const smallText = (text) => {
                 const b = makeTextButton(text, PINK);
@@ -4892,7 +4904,7 @@ app.registerExtension({
                 width: "22px", height: "22px", borderRadius: "50%", border: "none", background: PINK,
                 color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
             });
-            bottom.append(status, copyBtn, resetBtn, purgeBtn, loadBtn, saveBtn, reloadBtn, helpBtn);
+            bottom.append(bottomSpace, copyBtn, resetBtn, purgeBtn, loadBtn, saveBtn, reloadBtn, helpBtn);
 
             // Une ligne par sous-dossier : bouton (pastille coloree + nom) et
             // petite cloche. Pas encore d'action : leur role viendra plus tard.
@@ -4947,7 +4959,7 @@ app.registerExtension({
                 return { name, row, btn, bell, arch, last, warn };
             });
 
-            container.append(pickRow, ...folderRows.map((f) => f.row), bottom);
+            container.append(pickRow, ...folderRows.map((f) => f.row), status, bottom);
 
             const createDialog = buildCreateDialog(container, {
                 create: createProject,
@@ -6851,6 +6863,9 @@ app.registerExtension({
             };
             const fitWidth = () => {
                 if (node.size[0] < MIN_WIDTH) node.setSize([MIN_WIDTH, node.size[1]]);
+                // Workflow enregistre avant la ligne des messages (26/10/2026) : noeud agrandi a la hauteur minimale.
+                const min = typeof node.computeSize === "function" ? node.computeSize() : null;
+                if (min && min[1] > node.size[1]) node.setSize([node.size[0], min[1]]);
             };
 
             // Rechargement d'un workflow : liens et etat sont en place, on relit.
