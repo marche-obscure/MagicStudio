@@ -70,7 +70,7 @@ const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Open the window of <b>MiniMax H3 Final Cut</b> (<b>Images</b>, <b>Video</b> or <b>Audio</b>).",
+            "Open the window of <b>MagicStudio Final Cut</b> (<b>Images</b>, <b>Video</b> or <b>Audio</b>).",
             "Drag a file onto this node.",
             "Wire the outputs that match the file: <b>video</b>, <b>video_frames</b> or <b>audio_video</b> " +
             "for a video, <b>image</b> for an image, <b>audio</b> for an audio file.",
@@ -100,17 +100,17 @@ const HELP_SECTIONS = [
         html: hList([
             "Only files <b>in the input folder of ComfyUI</b> (or its subfolders) are loaded.",
             "The file is read where it is: <b>no copy</b> is made.",
-            "Types: images, videos and audio files (the same as the Reference Loader).",
+            "Types: images, videos and audio files (the same as the RefLoader).",
         ]) +
         hNote("a file dragged from the Windows Explorer has no path for the browser: drag it from " +
-            "<b>MiniMax H3 Final Cut</b>, or type its path in <b>file</b>."),
+            "<b>MagicStudio Final Cut</b>, or type its path in <b>file</b>."),
     },
 ];
 const HELP_SECTIONS_FR = [
     {
         id: "start", title: "Démarrage rapide",
         html: hSteps([
-            "Ouvrez la fenêtre de <b>MiniMax H3 Final Cut</b> (<b>Images</b>, <b>Video</b> ou <b>Audio</b>).",
+            "Ouvrez la fenêtre de <b>MagicStudio Final Cut</b> (<b>Images</b>, <b>Video</b> ou <b>Audio</b>).",
             "Glissez un fichier sur ce nœud.",
             "Branchez les sorties qui correspondent au fichier : <b>video</b>, <b>video_frames</b> ou " +
             "<b>audio_video</b> pour une vidéo, <b>image</b> pour une image, <b>audio</b> pour un son.",
@@ -141,10 +141,10 @@ const HELP_SECTIONS_FR = [
         html: hList([
             "Seuls les fichiers <b>du dossier input de ComfyUI</b> (ou de ses sous-dossiers) sont chargés.",
             "Le fichier est lu là où il est : <b>aucune copie</b>.",
-            "Types : images, vidéos et sons (les mêmes que le Reference Loader).",
+            "Types : images, vidéos et sons (les mêmes que le RefLoader).",
         ]) +
         hNote("un fichier glissé depuis l'Explorateur Windows n'a pas de chemin pour le navigateur : glissez-le " +
-            "depuis <b>MiniMax H3 Final Cut</b>, ou tapez son chemin dans <b>file</b>.", "Remarque :"),
+            "depuis <b>MagicStudio Final Cut</b>, ou tapez son chemin dans <b>file</b>.", "Remarque :"),
     },
 ];
 function helpSections(lang) {

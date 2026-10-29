@@ -169,7 +169,7 @@ const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Wire the <b>project</b> output of the <b>MiniMax H3 Reference Loader</b> (its last output) to the " +
+            "Wire the <b>project</b> output of the <b>MagicStudio RefLoader</b> (its last output) to the " +
             "<b>project</b> input of this node.",
             "Click " + iconBadge(PLUS_ICON, PINK) + ", type the name of the project: <b>Simple</b> (one project) or " +
             "<b>MultiProject</b> (a folder of projects), then <b>Create</b>.",
@@ -189,7 +189,7 @@ const HELP_SECTIONS = [
             [iconBadge(ARCHIVE_ICON, VIOLET), "Archived workflows"],
         ]) +
         hWarn("<b>Reset</b> sends <b>every file of the project</b> to the Recycle Bin (after a summary and typing " +
-            "the name of the project); the folders stay and the selection of the Reference Loader is emptied.",
+            "the name of the project); the folders stay and the selection of the RefLoader is emptied.",
             "Warning:"),
     },
     {
@@ -197,13 +197,13 @@ const HELP_SECTIONS = [
         html: "<p>The node has three inputs: <b>project is required</b> (it is the point of this node), " +
             "<b>text_prompt</b> and <b>models_link</b> are optional and each adds a feature.</p>" +
             inputCard("project", "Required", [
-                ["Wire", "the <b>project</b> output of the <b>MiniMax H3 Reference Loader</b>: always its last output, in " +
+                ["Wire", "the <b>project</b> output of the <b>MagicStudio RefLoader</b>: always its last output, in " +
                     "both modes; the link stays when you switch Ref2VA / F2VA-FL2VA."],
-                ["Gives", "the projects folder (Root folder of the Reference Loader) and the link to the Reference " +
-                    "Loader: needed by <b>Save</b>, by <b>Load</b> to fill the Reference Loader, and by the bells of " +
+                ["Gives", "the projects folder (Root folder of the RefLoader) and the link to the MagicStudio " +
+                    "RefLoader: needed by <b>Save</b>, by <b>Load</b> to fill the RefLoader, and by the bells of " +
                     "08 to 14. It gives the Root folder only: the references and the galleries are not changed."],
                 ["Without it", "the node is greyed (projects, folders, Load, Save, Purge) with the message " +
-                    "<b>Wire the project output of the MiniMax H3 Reference Loader</b>, and ComfyUI refuses the run " +
+                    "<b>Wire the project output of the MagicStudio RefLoader</b>, and ComfyUI refuses the run " +
                     "(required input missing)."],
             ]) +
             inputCard("text_prompt", "Optional", [
@@ -220,7 +220,7 @@ const HELP_SECTIONS = [
                     "chosen by hand is never replaced)."],
                 ["Without it", "the models are read in the graph (position 0). The LoRA are always read in the graph."],
             ]) +
-            hNote("output <b>final_cut</b>: wire it to the <b>MiniMax H3 Final Cut</b> node (copies of the " +
+            hNote("output <b>final_cut</b>: wire it to the <b>MagicStudio Final Cut</b> node (copies of the " +
                 "Picture Lock folders for MiniMax H3 Director)."),
     },
     {
@@ -230,7 +230,7 @@ const HELP_SECTIONS = [
                 [folderBadge("00.Workflows"), "<b>00.Workflows</b>: the workflow of the project and its archives (see <b>Workflow</b>)"],
                 [folderBadge("02.Models"), "<b>02.Models</b>, <b>06.LoRA</b>: the sets of models and LoRA used by the runs (see <b>Sets 02 / 06</b>)"],
                 [folderBadge("04.Prompt"), "<b>04.Prompt</b>: the recorded runs (see <b>Run windows</b>)"],
-                [folderBadge("08.Images"), "<b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b>, <b>14.Video-Audio</b>: the files of the Reference Loader (see <b>Media 08 to 14</b>)"],
+                [folderBadge("08.Images"), "<b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b>, <b>14.Video-Audio</b>: the files of the RefLoader (see <b>Media 08 to 14</b>)"],
                 [folderBadge("40.Rush Videos"), "<b>40.Rush Videos</b>, <b>60.Rush Images</b>: the outputs of the runs (see <b>Run windows</b> and <b>Sorting the rushes</b>)"],
             ]) +
             hCard("Good to know", [
@@ -239,29 +239,36 @@ const HELP_SECTIONS = [
                 ["Hidden", "<b>99.Project-Config</b> (configuration and its Archives) and <b>98.Error</b> (runs in error) " +
                     "are in the project folder but have no row in the node."],
                 ["70.Rush Audio", "same four sort folders as 40 and 60, no row yet; its Picture Lock feeds the Audio " +
-                    "of <b>MiniMax H3 Final Cut</b>."],
+                    "of <b>MagicStudio Final Cut</b>."],
             ]) +
             hTip("A project name cannot contain <b>&lt; &gt; : \" / \\ | ? *</b> nor end with a dot."),
     },
     {
         id: "media", title: "Media 08 to 14", icon: FOLDER_ICONS["08.Images"], color: FOLDER_COLORS["08.Images"],
         html: "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> and <b>14.Video-Audio</b> follow the lists of the " +
-            "Reference Loader.</p>" +
+            "RefLoader.</p>" +
+            hCard("Which list goes where", [
+                ["MiniMax H3", "<b>08</b> Images, First / Last frame; <b>10</b> Audio; <b>12</b> Video; " +
+                    "<b>14</b> Video/Audio."],
+                ["LTX 2.x", "<b>08</b> Guide images; <b>10</b> Soundtrack and Voice; <b>12</b> Guide video; " +
+                    "<b>14</b> not used."],
+            ]) +
             hCard("The row of the folder", [
-                ["Use: n/x", "files used out of the most allowed (08: 9 in Ref2VA, 2 in FL2VA; 10, 12 and 14: 3)."],
+                ["Use: n/x", "files used out of the most allowed. The maximum follows the model chosen in the RefLoader " +
+                    "(and its <b>Limits</b>). In LTX 2.x, 14.Video-Audio shows <b>Not used</b>."],
                 ["Orphelins: m", "files no list uses anymore, in orange."],
                 ["In Archives: y", "files in <b>&lt;folder&gt;/Archives</b>."],
             ]) +
             "<p><b>Update the folder</b> (orange bell)</p>" +
             hSteps([
-                "A reference added or removed in the Reference Loader turns the bell " +
+                "A reference added or removed in the RefLoader turns the bell " +
                 iconBadge(BELL_ICON, BELL_ORANGE) + " orange, with " + iconBadge(WARN_ICON, INACTIVE_BG) + " left of the folder.",
-                "Click the bell, then <b>Update</b>: the new files are copied (the Reference Loader then uses the " +
+                "Click the bell, then <b>Update</b>: the new files are copied (the RefLoader then uses the " +
                 "copies) and the unused files go to <b>&lt;folder&gt;/Archives</b>.",
                 "The bell turns grey again. No file is deleted.",
             ]) +
             hCard("The window of the folder", [
-                ["Files", "in the order of the Reference Loader with their number (<b>F</b> / <b>L</b> = First / Last " +
+                ["Files", "in the order of the RefLoader with their number (<b>F</b> / <b>L</b> = First / Last " +
                     "frame; files without number at the end, greyed), then the <b>Archives</b> frame."],
                 ["Thumbnail", "opens the <b>Preview</b>; Close, Escape or a click outside closes the window."],
             ]) +
@@ -272,7 +279,7 @@ const HELP_SECTIONS = [
                     "leaves."],
             ]) +
             hNote("this is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
-                "ignores the lists of the Reference Loader."),
+                "ignores the lists of the RefLoader."),
     },
     {
         id: "duplicates", title: "Duplicates in Archives", icon: DUP_ICON, color: BELL_ORANGE,
@@ -373,9 +380,9 @@ const HELP_SECTIONS = [
     },
     {
         id: "where", title: "Where projects go", icon: GEAR_ICON, color: VIOLET,
-        html: "<p>The projects are created in the <b>Root folder</b> of the Reference Loader.</p>" +
+        html: "<p>The projects are created in the <b>Root folder</b> of the RefLoader.</p>" +
             hCard("Projects folder", [
-                ["Wired", "the Root folder (" + iconBadge(GEAR_ICON, VIOLET) + " of the Reference Loader); change it " +
+                ["Wired", "the Root folder (" + iconBadge(GEAR_ICON, VIOLET) + " of the RefLoader); change it " +
                     "there and the list follows."],
                 ["Root folder empty", "the window of " + iconBadge(PLUS_ICON, PINK) + " proposes " +
                     "<b>ComfyUI/input/Projets</b>, or " + iconBadge(FOLDER_ICON, VIOLET) + " Browse."],
@@ -400,22 +407,31 @@ const HELP_SECTIONS = [
     {
         id: "save", title: "Load and Save", icon: SAVE_ICON, color: PINK,
         html: "<p>" + textBadge("Save") + " records the state of the project, " + textBadge("Load") + " puts it back. " +
-            "Both need a project picked and the Reference Loader wired.</p>" +
+            "Both need a project picked and the RefLoader wired.</p>" +
             "<p><b>Save: record the project</b> (it first shows what it will do and asks for a confirmation)</p>" +
             hSteps([
-                "<b>Copies the files of the Reference Loader into the project</b>; the Reference Loader then uses " +
+                "<b>Copies the files of the RefLoader into the project</b>; the RefLoader then uses " +
                 "these copies.",
                 "<b>Saves the workflow</b> (through the window of the bell when it has changed).",
                 "<b>Records the configuration</b> in <b>" + CONFIG_PATH + "</b>: the files of each folder, their number " +
-                "and their SHA256. The previous configuration goes to Archives, never overwritten.",
+                "and their SHA256. It also notes the model and, with LTX 2.x, the moment of each guide. The previous " +
+                "configuration goes to Archives, never overwritten.",
             ]) +
-            hCard("List of the Reference Loader → folder", [
+            hCard("List of the RefLoader → folder (MiniMax H3)", [
                 [folderBadge("08.Images"), "Images, First / Last frame → <b>08.Images</b>"],
                 [folderBadge("10.Son"), "Audio → <b>10.Son</b>"],
                 [folderBadge("12.Video"), "Video → <b>12.Video</b>"],
                 [folderBadge("14.Video-Audio"), "Video/Audio → <b>14.Video-Audio</b>"],
             ]) +
-            hNote("each file of 08, 10, 12 and 14 must be used by the Reference Loader; otherwise the configuration " +
+            hCard("List of the RefLoader → folder (LTX 2.x)", [
+                [folderBadge("08.Images"), "Guide images → <b>08.Images</b>"],
+                [folderBadge("10.Son"), "Soundtrack, Voice → <b>10.Son</b>"],
+                [folderBadge("12.Video"), "Guide video → <b>12.Video</b>"],
+                [folderBadge("14.Video-Audio"), "not used"],
+            ]) +
+            hNote("only the files of the model shown in the RefLoader are copied. The files of the other model are " +
+                "never archived.") +
+            hNote("each file of 08, 10, 12 and 14 must be used by the RefLoader (for the model shown); otherwise the configuration " +
                 "is not recorded and those files are listed.") +
             "<p><b>Load: put the project back</b></p>" +
             hSteps([
@@ -424,14 +440,14 @@ const HELP_SECTIONS = [
                 "The <b>Load the project</b> window shows each folder: <b style=\"color:" + GREEN + "\">✓</b> identical, " +
                 "<b style=\"color:#d32f2f\">✗</b> missing or different, <b>→ found in Archives</b> (" +
                 iconBadge(EYE_ICON, VIOLET) + " to see it). Uncheck what must not be loaded (00.Workflows, 08 to 14).",
-                "<b>Load</b> puts back the files found, fills the Reference Loader and loads the workflow.",
+                "<b>Load</b> puts back the files found, fills the RefLoader and loads the workflow.",
             ]) +
             hCard("The workflow when loading", [
                 ["Same structure", "replaces the workflow of this tab"],
                 ["Other structure, same project", "replaces the workflow of this tab"],
                 ["Other structure, other project", "new tab, then <b>OK</b> (stay here) or <b>Open the project</b>"],
                 ["Project of the same MultiProject", "<b>Whole workflow | Data only</b> switch"],
-                ["00.Workflows unchecked", "no workflow: only the checked folders go to the Reference Loader"],
+                ["00.Workflows unchecked", "no workflow: only the checked folders go to the RefLoader"],
             ]) +
             "<p>Replacing the workflow of the tab always asks first: the changes not saved are lost.</p>" +
             hCard("Data only", [
@@ -512,8 +528,8 @@ const HELP_SECTIONS = [
                 "Check the current and the new one, then confirm.",
             ]) +
             hCard("What follows", [
-                ["References", "the references of the Reference Loader that are in the project."],
-                ["Projects folder", "after a move, the Root folder of the Reference Loader."],
+                ["References", "the references of the RefLoader that are in the project."],
+                ["Projects folder", "after a move, the Root folder of the RefLoader."],
                 ["Runs", "their paths are relinked by themselves the next time the runs are read."],
             ]),
     },
@@ -523,7 +539,7 @@ const HELP_SECTIONS_FR = [
     {
         id: "start", title: "Démarrage rapide",
         html: hSteps([
-            "Reliez la sortie <b>project</b> du <b>MiniMax H3 Reference Loader</b> (sa dernière sortie) à l'entrée " +
+            "Reliez la sortie <b>project</b> du <b>MagicStudio RefLoader</b> (sa dernière sortie) à l'entrée " +
             "<b>project</b> de ce nœud.",
             "Cliquez sur " + iconBadge(PLUS_ICON, PINK) + ", tapez le nom du projet : <b>Simple</b> (un projet) ou " +
             "<b>MultiProject</b> (un dossier de projets), puis <b>Create</b>.",
@@ -543,21 +559,21 @@ const HELP_SECTIONS_FR = [
             [iconBadge(ARCHIVE_ICON, VIOLET), "Workflows archivés"],
         ]) +
         hWarn("<b>Reset</b> envoie <b>tous les fichiers du projet</b> dans la Corbeille (après un bilan et la saisie " +
-            "du nom du projet) ; les dossiers restent et la sélection du Reference Loader est vidée.", "Attention :"),
+            "du nom du projet) ; les dossiers restent et la sélection du RefLoader est vidée.", "Attention :"),
     },
     {
         id: "inputs", title: "Entrées",
         html: "<p>Le nœud a trois entrées : <b>project est obligatoire</b> (c'est tout l'intérêt de ce nœud), " +
             "<b>text_prompt</b> et <b>models_link</b> sont optionnelles et ajoutent chacune une fonction.</p>" +
             inputCard("project", "Obligatoire", [
-                ["Brancher", "la sortie <b>project</b> du <b>MiniMax H3 Reference Loader</b> : toujours sa dernière " +
+                ["Brancher", "la sortie <b>project</b> du <b>MagicStudio RefLoader</b> : toujours sa dernière " +
                     "sortie, dans les deux modes ; le lien reste quand vous basculez Ref2VA / F2VA-FL2VA."],
-                ["Apporte", "le dossier des projets (Root folder du Reference Loader) et le lien avec le Reference " +
-                    "Loader : indispensable pour <b>Save</b>, pour que <b>Load</b> remplisse le Reference Loader, et " +
+                ["Apporte", "le dossier des projets (Root folder du RefLoader) et le lien avec le MagicStudio " +
+                    "RefLoader : indispensable pour <b>Save</b>, pour que <b>Load</b> remplisse le RefLoader, et " +
                     "pour les cloches de 08 à 14. Elle ne donne que le Root folder : les références et les galeries ne " +
                     "changent pas."],
                 ["Sans elle", "le nœud est grisé (projets, dossiers, Load, Save, Purge) avec le message <b>Wire the " +
-                    "project output of the MiniMax H3 Reference Loader</b>, et ComfyUI refuse le Run (entrée " +
+                    "project output of the MagicStudio RefLoader</b>, et ComfyUI refuse le Run (entrée " +
                     "obligatoire manquante)."],
             ]) +
             inputCard("text_prompt", "Optionnelle", [
@@ -575,7 +591,7 @@ const HELP_SECTIONS_FR = [
                 ["Sans elle", "les modèles sont lus dans le graphe (position 0). Les LoRA sont toujours lues dans le " +
                     "graphe."],
             ]) +
-            hNote("sortie <b>final_cut</b> : reliez-la au nœud <b>MiniMax H3 Final Cut</b> (copies des Picture " +
+            hNote("sortie <b>final_cut</b> : reliez-la au nœud <b>MagicStudio Final Cut</b> (copies des Picture " +
                 "Lock pour MiniMax H3 Director).", "Remarque :"),
     },
     {
@@ -586,7 +602,7 @@ const HELP_SECTIONS_FR = [
                 [folderBadge("00.Workflows"), "<b>00.Workflows</b> : le workflow du projet et ses archives (voir <b>Workflow</b>)"],
                 [folderBadge("02.Models"), "<b>02.Models</b>, <b>06.LoRA</b> : les ensembles de modèles et de LoRA utilisés par les Runs (voir <b>Ensembles 02 / 06</b>)"],
                 [folderBadge("04.Prompt"), "<b>04.Prompt</b> : les Runs enregistrés (voir <b>Fenêtres des Runs</b>)"],
-                [folderBadge("08.Images"), "<b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b>, <b>14.Video-Audio</b> : les fichiers du Reference Loader (voir <b>Médias 08 à 14</b>)"],
+                [folderBadge("08.Images"), "<b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b>, <b>14.Video-Audio</b> : les fichiers du RefLoader (voir <b>Médias 08 à 14</b>)"],
                 [folderBadge("40.Rush Videos"), "<b>40.Rush Videos</b>, <b>60.Rush Images</b> : les sorties des Runs (voir <b>Fenêtres des Runs</b> et <b>Tri des rushs</b>)"],
             ]) +
             hCard("Bon à savoir", [
@@ -595,7 +611,7 @@ const HELP_SECTIONS_FR = [
                 ["Cachés", "<b>99.Project-Config</b> (configuration et ses Archives) et <b>98.Error</b> (Runs en " +
                     "erreur) sont dans le dossier du projet mais n'ont pas de ligne dans le nœud."],
                 ["70.Rush Audio", "mêmes quatre dossiers de tri que 40 et 60, pas encore de ligne ; son Picture Lock " +
-                    "alimente l'Audio de <b>MiniMax H3 Final Cut</b>."],
+                    "alimente l'Audio de <b>MagicStudio Final Cut</b>."],
             ]) +
             hTip("Un nom de projet ne peut pas contenir <b>&lt; &gt; : \" / \\ | ? *</b> ni finir par un point.",
                 "Astuce :"),
@@ -603,23 +619,30 @@ const HELP_SECTIONS_FR = [
     {
         id: "media", title: "Médias 08 à 14",
         html: "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> et <b>14.Video-Audio</b> suivent les listes du " +
-            "Reference Loader.</p>" +
+            "RefLoader.</p>" +
+            hCard("Quelle liste va où", [
+                ["MiniMax H3", "<b>08</b> Images, First / Last frame ; <b>10</b> Audio ; <b>12</b> Video ; " +
+                    "<b>14</b> Video/Audio."],
+                ["LTX 2.x", "<b>08</b> Guide images ; <b>10</b> Soundtrack et Voice ; <b>12</b> Guide video ; " +
+                    "<b>14</b> non utilisé."],
+            ]) +
             hCard("La ligne du dossier", [
-                ["Use: n/x", "fichiers utilisés sur le maximum permis (08 : 9 en Ref2VA, 2 en FL2VA ; 10, 12 et 14 : 3)."],
+                ["Use: n/x", "fichiers utilisés sur le maximum permis. Le maximum suit le modèle choisi dans le RefLoader " +
+                    "(et ses <b>Limits</b>). En LTX 2.x, 14.Video-Audio affiche <b>Not used</b>."],
                 ["Orphelins: m", "fichiers qu'aucune liste n'utilise plus, en orange."],
                 ["In Archives: y", "fichiers dans <b>&lt;dossier&gt;/Archives</b>."],
             ]) +
             "<p><b>Mettre le dossier à jour</b> (cloche orange)</p>" +
             hSteps([
-                "Une référence ajoutée ou retirée dans le Reference Loader passe la cloche " +
+                "Une référence ajoutée ou retirée dans le RefLoader passe la cloche " +
                 iconBadge(BELL_ICON, BELL_ORANGE) + " à l'orange, avec " + iconBadge(WARN_ICON, INACTIVE_BG) +
                 " à gauche du dossier.",
-                "Cliquez sur la cloche, puis <b>Update</b> : les nouveaux fichiers sont copiés (le Reference Loader " +
+                "Cliquez sur la cloche, puis <b>Update</b> : les nouveaux fichiers sont copiés (le RefLoader " +
                 "utilise ensuite les copies) et les fichiers inutilisés partent dans <b>&lt;dossier&gt;/Archives</b>.",
                 "La cloche redevient grise. Aucun fichier n'est effacé.",
             ]) +
             hCard("La fenêtre du dossier", [
-                ["Fichiers", "dans l'ordre du Reference Loader avec leur numéro (<b>F</b> / <b>L</b> = First / Last " +
+                ["Fichiers", "dans l'ordre du RefLoader avec leur numéro (<b>F</b> / <b>L</b> = First / Last " +
                     "frame ; sans numéro à la fin, grisés), puis le cadre <b>Archives</b>."],
                 ["Vignette", "ouvre l'aperçu (<b>Preview</b>) ; Close, Échap ou un clic à côté ferme la fenêtre."],
             ]) +
@@ -629,7 +652,7 @@ const HELP_SECTIONS_FR = [
                 ["Archives", "un fichier y est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> et reprend son nom en sortant."],
             ]) +
             hNote("ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
-                "00.Workflows ignore les listes du Reference Loader.", "Remarque :"),
+                "00.Workflows ignore les listes du RefLoader.", "Remarque :"),
     },
     {
         id: "duplicates", title: "Doublons d'Archives",
@@ -734,9 +757,9 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "where", title: "Où vont les projets",
-        html: "<p>Les projets sont créés dans le <b>Root folder</b> du Reference Loader.</p>" +
+        html: "<p>Les projets sont créés dans le <b>Root folder</b> du RefLoader.</p>" +
             hCard("Dossier des projets", [
-                ["Relié", "le Root folder (" + iconBadge(GEAR_ICON, VIOLET) + " du Reference Loader) ; changez-le là-bas " +
+                ["Relié", "le Root folder (" + iconBadge(GEAR_ICON, VIOLET) + " du RefLoader) ; changez-le là-bas " +
                     "et la liste suit."],
                 ["Root folder vide", "la fenêtre de " + iconBadge(PLUS_ICON, PINK) + " propose " +
                     "<b>ComfyUI/input/Projets</b>, ou " + iconBadge(FOLDER_ICON, VIOLET) + " Browse."],
@@ -762,22 +785,31 @@ const HELP_SECTIONS_FR = [
     {
         id: "save", title: "Load et Save",
         html: "<p>" + textBadge("Save") + " enregistre l'état du projet, " + textBadge("Load") + " le remet en place. " +
-            "Les deux demandent un projet choisi et le Reference Loader relié.</p>" +
+            "Les deux demandent un projet choisi et le RefLoader relié.</p>" +
             "<p><b>Save : enregistrer le projet</b> (il montre d'abord ce qu'il va faire et demande confirmation)</p>" +
             hSteps([
-                "<b>Copie les fichiers du Reference Loader dans le projet</b> ; le Reference Loader utilise ensuite " +
+                "<b>Copie les fichiers du RefLoader dans le projet</b> ; le RefLoader utilise ensuite " +
                 "ces copies.",
                 "<b>Sauvegarde le workflow</b> (par la fenêtre de la cloche s'il a changé).",
                 "<b>Enregistre la configuration</b> dans <b>" + CONFIG_PATH + "</b> : les fichiers de chaque dossier, " +
-                "leur numéro et leur SHA256. L'ancienne part dans Archives, jamais écrasée.",
+                "leur numéro et leur SHA256. Elle note aussi le modèle et, avec LTX 2.x, le moment de chaque guide. " +
+                "L'ancienne part dans Archives, jamais écrasée.",
             ]) +
-            hCard("Liste du Reference Loader → dossier", [
+            hCard("Liste du RefLoader → dossier (MiniMax H3)", [
                 [folderBadge("08.Images"), "Images, First / Last frame → <b>08.Images</b>"],
                 [folderBadge("10.Son"), "Audio → <b>10.Son</b>"],
                 [folderBadge("12.Video"), "Video → <b>12.Video</b>"],
                 [folderBadge("14.Video-Audio"), "Video/Audio → <b>14.Video-Audio</b>"],
             ]) +
-            hNote("chaque fichier de 08, 10, 12 et 14 doit être utilisé par le Reference Loader ; sinon la " +
+            hCard("Liste du RefLoader → dossier (LTX 2.x)", [
+                [folderBadge("08.Images"), "Guide images → <b>08.Images</b>"],
+                [folderBadge("10.Son"), "Soundtrack, Voice → <b>10.Son</b>"],
+                [folderBadge("12.Video"), "Guide video → <b>12.Video</b>"],
+                [folderBadge("14.Video-Audio"), "non utilisé"],
+            ]) +
+            hNote("seuls les fichiers du modèle affiché dans le RefLoader sont copiés. Les fichiers de l'autre " +
+                "modèle ne sont jamais archivés.", "Remarque :") +
+            hNote("chaque fichier de 08, 10, 12 et 14 doit être utilisé par le RefLoader (pour le modèle affiché) ; sinon la " +
                 "configuration n'est pas enregistrée et les fichiers en cause sont listés.", "Remarque :") +
             "<p><b>Load : remettre le projet en place</b></p>" +
             hSteps([
@@ -787,14 +819,14 @@ const HELP_SECTIONS_FR = [
                 "identique, <b style=\"color:#d32f2f\">✗</b> manquant ou différent, <b>→ found in Archives</b> (" +
                 iconBadge(EYE_ICON, VIOLET) + " pour le voir). Décochez ce qui ne doit pas être chargé (00.Workflows, " +
                 "08 à 14).",
-                "<b>Load</b> remet les fichiers retrouvés, remplit le Reference Loader et charge le workflow.",
+                "<b>Load</b> remet les fichiers retrouvés, remplit le RefLoader et charge le workflow.",
             ]) +
             hCard("Le workflow au chargement", [
                 ["Même structure", "remplace le workflow de cet onglet"],
                 ["Autre structure, même projet", "remplace le workflow de cet onglet"],
                 ["Autre structure, autre projet", "nouvel onglet, puis <b>OK</b> (rester ici) ou <b>Open the project</b>"],
                 ["Projet du même MultiProject", "interrupteur <b>Whole workflow | Data only</b>"],
-                ["00.Workflows décoché", "pas de workflow : seuls les dossiers cochés vont dans le Reference Loader"],
+                ["00.Workflows décoché", "pas de workflow : seuls les dossiers cochés vont dans le RefLoader"],
             ]) +
             "<p>Remplacer le workflow de l'onglet demande toujours confirmation : les modifications non " +
             "sauvegardées sont perdues.</p>" +
@@ -878,8 +910,8 @@ const HELP_SECTIONS_FR = [
                 "Vérifiez l'ancien et le nouveau, puis confirmez.",
             ]) +
             hCard("Ce qui suit", [
-                ["Références", "les références du Reference Loader qui sont dans le projet."],
-                ["Dossier des projets", "après un déplacement, le Root folder du Reference Loader."],
+                ["Références", "les références du RefLoader qui sont dans le projet."],
+                ["Dossier des projets", "après un déplacement, le Root folder du RefLoader."],
                 ["Runs", "leurs chemins sont recâblés d'eux-mêmes à la prochaine lecture des Runs."],
             ]),
     },

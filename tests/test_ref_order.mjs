@@ -46,3 +46,11 @@ test("pas d'avertissement : ajout a la fin, dernier retire, F2VA", () => {
     assert.deepEqual(orderChanges(before, st({ mode: "fl2va" })), []);
     assert.equal(orderWarningNeeded(null), false);
 });
+
+test("profil LTX 2.x : pas de balises <Picture N>, aucun avertissement d'ordre", () => {
+    const before = st({ images: ["a.png", "b.png"] });
+    const after = st({ images: ["b.png", "a.png"] });
+    assert.ok(orderChanges(before, after).length);
+    assert.deepEqual(orderChanges({ ...before, profile: "ltx2" }, { ...after, profile: "ltx2" }), []);
+    assert.deepEqual(orderChanges(before, { ...after, profile: "ltx2" }), []);
+});

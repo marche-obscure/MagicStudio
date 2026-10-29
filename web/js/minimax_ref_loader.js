@@ -303,18 +303,37 @@ const hCode = (t) =>
     '<pre style="background:#111;border:1px solid #2c2c2c;border-radius:6px;padding:8px;margin:6px 0 10px;' +
     'font-size:11px;white-space:pre-wrap;color:#cfe">' + t + "</pre>";
 
+/** Petite etiquette de titre (ex. « MiniMax H3 only »). */
+const hBadge = (t) =>
+    '<span style="display:inline-block;border-radius:999px;background:' + ORANGE + ';color:white;' +
+    'font-size:10px;font-weight:bold;padding:1px 8px;margin:0 0 6px">' + t + "</span>";
+const ONLY_EN = hBadge("MiniMax H3 only");
+const ONLY_FR = hBadge("MiniMax H3 uniquement");
+
+/** Petite etiquette de titre (ex. « MiniMax H3 only »). */
+const hBadge = (t) =>
+    '<span style="display:inline-block;border-radius:999px;background:' + ORANGE + ';color:white;' +
+    'font-size:10px;font-weight:bold;padding:1px 8px;margin:0 0 6px">' + t + "</span>";
+const ONLY_EN = hBadge("MiniMax H3 only");
+const ONLY_FR = hBadge("MiniMax H3 uniquement");
+
 // Rubriques de l'aide : menu a gauche, une rubrique affichee a la fois.
 const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Choose the mode with the switch at the top: <b>Ref2VA</b> (references for MiniMax H3 " +
-            "Reference to Video) or <b>F2VA / FL2VA</b> (frames for MiniMax H3 Image to Video).",
+            "Choose the model in the list at the top left: <b>MiniMax H3</b> (default) or <b>LTX 2.x</b>.",
+            "<b>MiniMax H3</b>: choose the mode with the switch, <b>Ref2VA</b> (references for MiniMax H3 " +
+            "Reference to Video) or <b>F2VA / FL2VA</b> (frames for MiniMax H3 Image to Video). " +
+            "<b>LTX 2.x</b>: there is no switch.",
             "Click a row button (" + iconBadge(IMAGE_ICON, VIOLET) + " Images, " + iconBadge(VIDEO_ICON, ORANGE) +
             " Video...) and click files in the gallery. Click order sets the number.",
-            "Wire the outputs in order to MiniMax: <b>ref_image_1</b> goes to <b>ref_image_0</b>, and so on.",
+            "Wire the outputs in order: for MiniMax, <b>ref_image_1</b> goes to <b>ref_image_0</b>, and so on. " +
+            "For LTX 2.x, see the <b>LTX 2.x</b> section.",
         ]) +
         hCard("Buttons of the node", [
+            ["Model", "the list at the top left: <b>MiniMax H3</b> or <b>LTX 2.x</b>"],
+            ["Limits", "the button next to the list: maximums of the model"],
             [iconBadge(EYE_ICON, VIOLET), "View, reorder, delete and trim the files of a row"],
             [iconBadge(TRASH_ICON, MARK_RED), "Clear all the files of a row"],
             [iconBadge(OVERVIEW_ICON, VIOLET), "Overview of the whole selection"],
@@ -322,11 +341,81 @@ const HELP_SECTIONS = [
             [iconBadge(DOWNLOAD_ICON, PINK), "Save the configuration (.json)"],
             [iconBadge(UPLOAD_ICON, PINK), "Load a configuration (.json)"],
         ]) +
-        hTip("<b>ref_image_1</b> is <b>&lt;Picture 1&gt;</b> in the prompt."),
+        hTip("With MiniMax H3, <b>ref_image_1</b> is <b>&lt;Picture 1&gt;</b> in the prompt."),
+    },
+    {
+        id: "models", title: "Models", icon: MODE_ICON, color: VIOLET,
+        html: "<p>The <b>Model</b> list at the top left says which video model the outputs are made for.</p>" +
+            hCard("The two models", [
+                ["MiniMax H3", "the default. Rows <b>Images</b>, <b>Video</b>, <b>Video/Audio</b>, <b>Audio</b>, " +
+                    "and the <b>Ref2VA</b> / <b>F2VA / FL2VA</b> switch."],
+                ["LTX 2.x", "rows <b>Guide images</b>, <b>Guide video</b>, <b>Soundtrack</b>, <b>Voice</b>. " +
+                    "The <b>Ref2VA</b> / <b>F2VA / FL2VA</b> switch is hidden."],
+            ]) +
+            hSteps([
+                "Click the <b>Model</b> list and pick the model.",
+                "The rows and the outputs change at once.",
+                "Pick the first model again: your files and your wires are back.",
+            ]) +
+            hCard("Limits button", [
+                ["Open", "click <b>Limits</b>, next to the <b>Model</b> list. The window shows the limits of the model " +
+                    "shown now."],
+                ["Fields", "<b>max per row</b> (number of files), <b>Max duration (s)</b>, <b>Max size</b> " +
+                    "(width × height), <b>Frames per second</b>."],
+                ["Reset", "puts back the values of the model (saved only when you click <b>OK</b>)."],
+                ["Cancel / OK", "<b>Cancel</b> closes without change; <b>OK</b> saves the values."],
+                ["Counters", "a counter shows <b>n / max</b>. It turns orange when there are more files than the " +
+                    "maximum. The files over the limit are not sent."],
+            ]) +
+            hCard("Good to know", [
+                ["Selection", "each model keeps its own selection of files."],
+                ["Wires", "each model keeps its own wires: they come back when you pick the model again."],
+                ["Limits", "each model keeps its own limits."],
+            ]) +
+            hTip("A limit can go down, never above the value of the model."),
+    },
+    {
+        id: "ltx", title: "LTX 2.x", icon: OUTPUT_ICON, color: GREEN,
+        html: "<p>With <b>LTX 2.x</b>, the node has four rows.</p>" +
+            hCard("The four rows", [
+                ["Guide images", "1 to 9 images. Outputs <b>guide_image_N</b> (IMAGE) and <b>guide_frame_N</b> (INT)."],
+                ["Guide video", "0 or 1 video. Outputs <b>guide_video</b> (IMAGE) and <b>guide_video_frame</b> (INT)."],
+                ["Soundtrack", "0 or 1 audio file. Output <b>soundtrack</b> (AUDIO)."],
+                ["Voice", "0 or 1 audio file of a voice, about 5 s. Output <b>voice</b> (AUDIO)."],
+            ]) +
+            "<p><b>Set the moment of a guide</b></p>" +
+            hSteps([
+                "Click " + iconBadge(EYE_ICON, VIOLET) + " of <b>Guide images</b> or <b>Guide video</b>.",
+                "Under the guide, type the time in the <b>Moment (s)</b> field, in seconds.",
+                "Or click <b>First</b> (the start, 0 s) or <b>Last</b> (the last frame of the video).",
+                "Read the <b>frame n</b> label: it is the frame number sent to the output.",
+            ]) +
+            hCard("Moments", [
+                ["Frame", "frame = round(seconds × frames per second)."],
+                ["Last", "always the last frame, whatever the length of the video."],
+                ["Guide video", "its frame is brought down to 1, 9, 17, 25… (8×k+1), or 0."],
+                ["Too long", "a moment above <b>Max duration (s)</b> is refused: <b>Max N s</b>."],
+                ["Same frame", "two guides on the same frame are shown in orange: <b>Same frame as guide N</b>."],
+                ["New guides", "the first new guide image gets <b>First</b>, the second <b>Last</b>, the next ones 0 s."],
+            ]) +
+            hNote("the moment must stay inside the length of the video set in the LTX workflow.") +
+            "<p><b>Wiring</b> (nodes of ComfyUI)</p>" +
+            hCard("Which node takes which output", [
+                ["Guide images", "<b>LTXVAddGuide</b>, one per image: <b>guide_image_N</b> to <b>image</b>, " +
+                    "<b>guide_frame_N</b> to <b>frame_idx</b>."],
+                ["Guide video", "load the IC-LoRA with <b>LoraLoaderModelOnly</b>, then <b>GetICLoRAParameters</b>, " +
+                    "then its output to the <b>iclora_parameters</b> input of <b>LTXVAddGuide</b>. " +
+                    "<b>guide_video</b> goes to <b>image</b>, <b>guide_video_frame</b> to <b>frame_idx</b>."],
+                ["Soundtrack", "<b>LTXVAudioVAEEncode</b>."],
+                ["Voice", "<b>LTXVReferenceAudio</b> with an ID-LoRA."],
+            ]) +
+            hNote("another way for the guide video: the nodes <b>LTXICLoRALoaderModelOnly</b> and " +
+                "<b>LTXAddVideoICLoRAGuide</b> of the ComfyUI-LTXVideo pack (to install)."),
     },
     {
         id: "modes", title: "Modes", icon: MODE_ICON, color: ORANGE,
-        html: "<p>The switch at the top of the node picks the kind of MiniMax video to feed.</p>" +
+        html: ONLY_EN + "<p>The switch at the top of the node picks the kind of MiniMax video to feed. " +
+            "It is hidden with the <b>LTX 2.x</b> model.</p>" +
             hCard("The two modes", [
                 ["Ref2VA", "four rows for MiniMax H3 Reference to Video: up to 9 images, 3 videos, 3 video " +
                     "soundtracks and 3 audio files."],
@@ -343,6 +432,8 @@ const HELP_SECTIONS = [
     {
         id: "pick", title: "Picking files", icon: IMAGE_ICON, color: VIOLET,
         html: "<p>Each row of the node opens a gallery of files.</p>" +
+            hNote("the four rows below are the rows of <b>MiniMax H3</b>. For <b>LTX 2.x</b>, see the " +
+                "<b>LTX 2.x</b> section.") +
             hCard("The four rows", [
                 [iconBadge(IMAGE_ICON, VIOLET), "<b>Images</b>: up to 9, on <b>ref_image_N</b>"],
                 [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b>: the video frames, on <b>ref_video_N</b>"],
@@ -364,7 +455,7 @@ const HELP_SECTIONS = [
                 ["Browse / Reload", "Windows folder dialog / back to the root folder."],
                 ["Subfolder", "the subfolders, with the number of files of the type after each name; the choice is " +
                     "kept per type."],
-                ["Project", "wired to a MiniMax H3 Project node: <b>All</b>, each " + iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) +
+                ["Project", "wired to a MagicStudio Project node: <b>All</b>, each " + iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) +
                     " Simple project and each " + iconBadge(TREE_ICON, MULTI_COLOR) + " MultiProject (then a " +
                     "<b>Sub-project</b> line). Subfolder then lists only the media folders 08 to 14."],
             ]) +
@@ -379,7 +470,7 @@ const HELP_SECTIONS = [
     },
     {
         id: "project", title: "Gallery with a project", icon: FOLDER_ICON, color: ORANGE,
-        html: "<p>When the <b>project</b> output is wired to a <b>MiniMax H3 Project</b> node with a project " +
+        html: "<p>When the <b>project</b> output is wired to a <b>MagicStudio Project</b> node with a project " +
             "picked, the gallery works with the folders of the project.</p>" +
             hCard("Two zones", [
                 ["Above", "the selected folder (Root folder / Subfolder), as usual"],
@@ -390,6 +481,9 @@ const HELP_SECTIONS = [
                 ["Video", "<b>12.Video</b>"],
                 ["Video/Audio", "<b>14.Video-Audio</b>"],
                 ["Audio", "<b>10.Son</b>"],
+                ["Guide images (LTX 2.x)", "<b>08.Images</b>"],
+                ["Guide video (LTX 2.x)", "<b>12.Video</b>"],
+                ["Soundtrack, Voice (LTX 2.x)", "<b>10.Son</b>"],
             ]) +
             hCard("Good to know", [
                 ["Number", "the orange badge gives the selection number; clicking a file of the project that is not " +
@@ -446,9 +540,11 @@ const HELP_SECTIONS = [
                 [iconBadge(TRASH_ICON, INACTIVE_BG), "marks a file (" + iconBadge(TRASH_ICON, MARK_RED) + "); " +
                     "<b>Delete</b> removes the marked files after a confirmation; the following files move up."],
             ]) +
-            hTip("In <b>Ref2VA</b>, a file that changes number also changes in the prompt (<b>&lt;Picture N&gt;</b>, " +
-                "<b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>): the window <b>Order of the references changed</b> " +
-                "lists the old and new numbers; update your prompt.") +
+            hTip("<b>MiniMax H3 only.</b> In <b>Ref2VA</b>, a file that changes number also changes in the prompt " +
+                "(<b>&lt;Picture N&gt;</b>, <b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>): the window " +
+                "<b>Order of the references changed</b> lists the old and new numbers; update your prompt.") +
+            hNote("with <b>LTX 2.x</b>, the window of <b>Guide images</b> and <b>Guide video</b> also has the " +
+                "moment of each guide. See the <b>LTX 2.x</b> section.") +
             hNote("the " + iconBadge(TRASH_ICON, MARK_RED) + " next to " + iconBadge(EYE_ICON, VIOLET) +
                 " on the node deletes <b>all</b> the files of its row, after a confirmation."),
     },
@@ -456,7 +552,7 @@ const HELP_SECTIONS = [
         id: "trim", title: "Trim", icon: SCISSORS_ICON, color: ORANGE,
         html: hSteps([
             "Open " + iconBadge(EYE_ICON, VIOLET) + " of <b>Video</b>, <b>Video/Audio</b> or <b>Audio</b> " +
-            "and click a thumbnail.",
+            "(with LTX 2.x: <b>Guide video</b>, <b>Soundtrack</b> or <b>Voice</b>) and click a thumbnail.",
             "In the preview window, set <b>Start</b> and <b>End</b>: type them, or use <b>Set start</b> / " +
             "<b>Set end</b> at the current playback position.",
             "Check with <b>Play trim</b>, or <b>Reset</b> to keep the whole file.",
@@ -465,7 +561,8 @@ const HELP_SECTIONS = [
             ["File", "never changed: only that part goes to the output (frames and sound)."],
             ["✂", "a trimmed file shows a ✂ badge; the trim is saved in the configuration " +
                 "(<code>\"trim\": [2.5, 8]</code>)."],
-            ["Warning", "when a video part is shorter than 2 s or a part is longer than 15 s."],
+            ["Warning", "when a video part is shorter than 2 s or a part is longer than the maximum duration " +
+                "(15 s with MiniMax H3, 20 s with LTX 2.x)."],
         ]),
     },
     {
@@ -482,23 +579,34 @@ const HELP_SECTIONS = [
         id: "config", title: "Save and load", icon: DOWNLOAD_ICON, color: PINK,
         html: hCard("Configuration files", [
             [iconBadge(DOWNLOAD_ICON, PINK), "Saves the mode shown in its own .json file: " +
-                "<b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b> or <b>FL2VA_...json</b>. Greyed out " +
+                "<b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b> or <b>FL2VA_...json</b> with MiniMax H3, " +
+                "<b>LTX2_magicstudio_config_yyyyMMdd-HHmmss.json</b> with LTX 2.x. Greyed out " +
                 "while the mode has no reference (the root folder alone does not count)."],
             [iconBadge(UPLOAD_ICON, PINK), "Loads a .json file of the mode shown and sets its outputs. " +
                 "It turns " + iconBadge(UPLOAD_ICON, ORANGE) + " when the mode already has references, " +
                 "and then asks a confirmation."],
         ]) +
         hCard("Good to know", [
-            ["Other mode", "a file of the other mode is refused with a warning; nothing is changed."],
+            ["Other mode or model", "a file of the other mode or of the other model is refused " +
+                "(<b>Wrong configuration file</b>); nothing is changed."],
+            ["Old files", "a file with <code>\"version\": 1</code> is read as a MiniMax H3 file."],
             ["Unchanged", "the other mode and the switch never change; the root folder is taken from the file."],
             ["Name", "the date and time in the name keep a new save from overwriting an older one."],
             ["Missing files", "still loaded and reported under the buttons."],
             ["Paths", "relative to the root folder; an empty group is <code>[]</code> or <code>null</code>."],
         ]) +
-        hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 1,\n  "mode": "REF2VA",\n' +
+        "<p><b>MiniMax H3</b></p>" +
+        hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 2,\n  "profile": "minimax_h3",\n' +
+            '  "mode": "REF2VA",\n' +
             '  "root": "F:\\\\Rushs\\\\Project",\n  "images": ["images\\\\a.png"],\n' +
             '  "videos": [{ "path": "rush\\\\shot.mp4", "trim": [5, 7] }],\n  "video_audios": [],\n' +
-            '  "audios": []\n}'),
+            '  "audios": []\n}') +
+        "<p><b>LTX 2.x</b></p>" +
+        hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 2,\n  "profile": "ltx2",\n' +
+            '  "root": "F:\\\\Rushs\\\\Project",\n' +
+            '  "guide_images": [{ "path": "images\\\\a.png", "seconds": 0 }],\n' +
+            '  "guide_video": { "path": "rush\\\\shot.mp4", "seconds": 2 },\n' +
+            '  "soundtrack": null,\n  "voice": null\n}'),
     },
     {
         id: "outputs", title: "Outputs", icon: OUTPUT_ICON, color: GREEN,
@@ -506,6 +614,8 @@ const HELP_SECTIONS = [
             hCard("Outputs", [
                 ["Rename", "double-click an output name (empty = default name), or use the right-click menu."],
                 ["Numbers", "MiniMax numbers its inputs from 0: <b>ref_image_1</b> goes to <b>ref_image_0</b>."],
+                ["LTX 2.x", "<b>guide_image_N</b>, <b>guide_frame_N</b>, <b>guide_video</b>, " +
+                    "<b>guide_video_frame</b>, <b>soundtrack</b>, <b>voice</b>: see the <b>LTX 2.x</b> section."],
                 ["Audio", "MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks first, then the audio " +
                     "files: with 2 soundtracks, <b>ref_audio_1</b> is <b>&lt;Audio 3&gt;</b>."],
                 ["Colours", "<b>ref_video_N</b> and <b>ref_video_audio_N</b> of a pair share a colour (1 orange, " +
@@ -517,9 +627,11 @@ const HELP_SECTIONS = [
     {
         id: "limits", title: "Limits", icon: INFO_ICON, color: TITLE_COLOR,
         html: hCard("Limits", [
-            ["Videos", "read at 24 fps, cut to 15 s, reduced to 768×1344 pixels at most (MiniMax would reduce them " +
-                "anyway)."],
-            ["Audio", "cut to 15 s."],
+            ["Change them", "the <b>Limits</b> button, next to the <b>Model</b> list (see <b>Models</b>)."],
+            ["MiniMax H3", "videos read at 24 fps, cut to 15 s, reduced to 768×1344 pixels at most (MiniMax would " +
+                "reduce them anyway); audio cut to 15 s."],
+            ["LTX 2.x", "videos read at 24 fps, cut to 20 s, reduced to 768×1344 pixels at most, with sides that " +
+                "are multiples of 32; audio cut to 20 s."],
             ["Browse", "Windows folder dialog; on other systems type or paste the folder path."],
             ["Nodes 2.0", "works with the classic node design and with <b>Modern Node Design (Nodes 2.0)</b>."],
             ["Windows", "drag them by their <b>title bar</b> (✥); they stay on the screen and open next to the node " +
@@ -536,14 +648,19 @@ const HELP_SECTIONS_FR = [
     {
         id: "start", title: "Démarrage rapide",
         html: hSteps([
-            "Choisissez le mode avec l'interrupteur en haut : <b>Ref2VA</b> (références pour MiniMax H3 " +
-            "Reference to Video) ou <b>F2VA / FL2VA</b> (images de début et de fin pour MiniMax H3 Image to Video).",
+            "Choisissez le modèle dans la liste en haut à gauche : <b>MiniMax H3</b> (par défaut) ou <b>LTX 2.x</b>.",
+            "<b>MiniMax H3</b> : choisissez le mode avec l'interrupteur, <b>Ref2VA</b> (références pour MiniMax H3 " +
+            "Reference to Video) ou <b>F2VA / FL2VA</b> (images de début et de fin pour MiniMax H3 Image to Video). " +
+            "<b>LTX 2.x</b> : il n'y a pas d'interrupteur.",
             "Cliquez sur le bouton d'une ligne (" + iconBadge(IMAGE_ICON, VIOLET) + " Images, " +
             iconBadge(VIDEO_ICON, ORANGE) + " Video...) puis sur des fichiers dans la galerie. L'ordre des " +
             "clics donne le numéro.",
-            "Branchez les sorties dans l'ordre sur MiniMax : <b>ref_image_1</b> va sur <b>ref_image_0</b>, etc.",
+            "Branchez les sorties dans l'ordre : pour MiniMax, <b>ref_image_1</b> va sur <b>ref_image_0</b>, etc. " +
+            "Pour LTX 2.x, voir la rubrique <b>LTX 2.x</b>.",
         ]) +
         hCard("Boutons du nœud", [
+            ["Model", "la liste en haut à gauche : <b>MiniMax H3</b> ou <b>LTX 2.x</b>"],
+            ["Limits", "le bouton à côté de la liste : maximums du modèle"],
             [iconBadge(EYE_ICON, VIOLET), "Voir, réordonner, supprimer et rogner les fichiers d'une ligne"],
             [iconBadge(TRASH_ICON, MARK_RED), "Vider tous les fichiers d'une ligne"],
             [iconBadge(OVERVIEW_ICON, VIOLET), "Vue d'ensemble de toute la sélection"],
@@ -551,11 +668,82 @@ const HELP_SECTIONS_FR = [
             [iconBadge(DOWNLOAD_ICON, PINK), "Sauvegarder la configuration (.json)"],
             [iconBadge(UPLOAD_ICON, PINK), "Charger une configuration (.json)"],
         ]) +
-        hTip("<b>ref_image_1</b> correspond à <b>&lt;Picture 1&gt;</b> dans le prompt.", TIP_FR),
+        hTip("Avec MiniMax H3, <b>ref_image_1</b> correspond à <b>&lt;Picture 1&gt;</b> dans le prompt.", TIP_FR),
+    },
+    {
+        id: "models", title: "Modèles",
+        html: "<p>La liste <b>Model</b> en haut à gauche indique pour quel modèle vidéo les sorties sont préparées.</p>" +
+            hCard("Les deux modèles", [
+                ["MiniMax H3", "le modèle par défaut. Lignes <b>Images</b>, <b>Video</b>, <b>Video/Audio</b>, " +
+                    "<b>Audio</b>, et l'interrupteur <b>Ref2VA</b> / <b>F2VA / FL2VA</b>."],
+                ["LTX 2.x", "lignes <b>Guide images</b>, <b>Guide video</b>, <b>Soundtrack</b>, <b>Voice</b>. " +
+                    "L'interrupteur <b>Ref2VA</b> / <b>F2VA / FL2VA</b> est caché."],
+            ]) +
+            hSteps([
+                "Cliquez sur la liste <b>Model</b> et choisissez le modèle.",
+                "Les lignes et les sorties changent aussitôt.",
+                "Choisissez de nouveau le premier modèle : vos fichiers et vos câbles sont revenus.",
+            ]) +
+            hCard("Bouton Limits", [
+                ["Ouvrir", "cliquez sur <b>Limits</b>, à côté de la liste <b>Model</b>. La fenêtre montre les limites " +
+                    "du modèle affiché."],
+                ["Champs", "<b>max par ligne</b> (nombre de fichiers), <b>Max duration (s)</b>, <b>Max size</b> " +
+                    "(largeur × hauteur), <b>Frames per second</b>."],
+                ["Reset", "remet les valeurs du modèle (enregistrées seulement quand vous cliquez sur <b>OK</b>)."],
+                ["Cancel / OK", "<b>Cancel</b> ferme sans rien changer ; <b>OK</b> enregistre les valeurs."],
+                ["Compteurs", "un compteur affiche <b>n / max</b>. Il devient orange quand il y a plus de fichiers que " +
+                    "le maximum. Les fichiers au-dessus de la limite ne sont pas envoyés."],
+            ]) +
+            hCard("Bon à savoir", [
+                ["Sélection", "chaque modèle garde sa propre sélection de fichiers."],
+                ["Câbles", "chaque modèle garde ses propres câbles : ils reviennent quand vous rechoisissez le modèle."],
+                ["Limites", "chaque modèle garde ses propres limites."],
+            ]) +
+            hTip("Une limite peut baisser, jamais dépasser la valeur du modèle.", TIP_FR),
+    },
+    {
+        id: "ltx", title: "LTX 2.x",
+        html: "<p>Avec <b>LTX 2.x</b>, le nœud a quatre lignes.</p>" +
+            hCard("Les quatre lignes", [
+                ["Guide images", "de 1 à 9 images. Sorties <b>guide_image_N</b> (IMAGE) et <b>guide_frame_N</b> (INT)."],
+                ["Guide video", "0 ou 1 vidéo. Sorties <b>guide_video</b> (IMAGE) et <b>guide_video_frame</b> (INT)."],
+                ["Soundtrack", "0 ou 1 fichier audio. Sortie <b>soundtrack</b> (AUDIO)."],
+                ["Voice", "0 ou 1 fichier audio d'une voix, environ 5 s. Sortie <b>voice</b> (AUDIO)."],
+            ]) +
+            "<p><b>Régler le moment d'un guide</b></p>" +
+            hSteps([
+                "Cliquez sur l'" + iconBadge(EYE_ICON, VIOLET) + " de <b>Guide images</b> ou de <b>Guide video</b>.",
+                "Sous le guide, tapez le temps dans le champ <b>Moment (s)</b>, en secondes.",
+                "Ou cliquez sur <b>First</b> (le début, 0 s) ou sur <b>Last</b> (la dernière image de la vidéo).",
+                "Lisez l'étiquette <b>frame n</b> : c'est le numéro d'image envoyé à la sortie.",
+            ]) +
+            hCard("Les moments", [
+                ["Numéro", "numéro = arrondi(secondes × images par seconde)."],
+                ["Last", "toujours la dernière image, quelle que soit la durée de la vidéo."],
+                ["Guide video", "son numéro est ramené à 1, 9, 17, 25… (8×k+1), ou à 0."],
+                ["Trop long", "un moment au-dessus de <b>Max duration (s)</b> est refusé : <b>Max N s</b>."],
+                ["Même image", "deux guides sur la même image sont en orange : <b>Same frame as guide N</b>."],
+                ["Nouveaux guides", "la première nouvelle image guide reçoit <b>First</b>, la deuxième <b>Last</b>, " +
+                    "les suivantes 0 s."],
+            ]) +
+            hNote("le moment doit rester dans la durée de la vidéo réglée dans le workflow LTX.", NOTE_FR) +
+            "<p><b>Branchements</b> (nœuds de ComfyUI)</p>" +
+            hCard("Quel nœud prend quelle sortie", [
+                ["Guide images", "<b>LTXVAddGuide</b>, un par image : <b>guide_image_N</b> sur <b>image</b>, " +
+                    "<b>guide_frame_N</b> sur <b>frame_idx</b>."],
+                ["Guide video", "chargez l'IC-LoRA avec <b>LoraLoaderModelOnly</b>, puis <b>GetICLoRAParameters</b>, " +
+                    "puis sa sortie sur l'entrée <b>iclora_parameters</b> de <b>LTXVAddGuide</b>. " +
+                    "<b>guide_video</b> va sur <b>image</b>, <b>guide_video_frame</b> sur <b>frame_idx</b>."],
+                ["Soundtrack", "<b>LTXVAudioVAEEncode</b>."],
+                ["Voice", "<b>LTXVReferenceAudio</b> avec un ID-LoRA."],
+            ]) +
+            hNote("autre possibilité pour la vidéo guide : les nœuds <b>LTXICLoRALoaderModelOnly</b> et " +
+                "<b>LTXAddVideoICLoRAGuide</b> du paquet ComfyUI-LTXVideo (à installer).", NOTE_FR),
     },
     {
         id: "modes", title: "Modes",
-        html: "<p>L'interrupteur en haut du nœud choisit le type de vidéo MiniMax à alimenter.</p>" +
+        html: ONLY_FR + "<p>L'interrupteur en haut du nœud choisit le type de vidéo MiniMax à alimenter. " +
+            "Il est caché avec le modèle <b>LTX 2.x</b>.</p>" +
             hCard("Les deux modes", [
                 ["Ref2VA", "quatre lignes pour MiniMax H3 Reference to Video : jusqu'à 9 images, 3 vidéos, 3 " +
                     "bandes-son de vidéo et 3 fichiers audio."],
@@ -572,6 +760,8 @@ const HELP_SECTIONS_FR = [
     {
         id: "pick", title: "Choisir les fichiers",
         html: "<p>Chaque ligne du nœud ouvre une galerie de fichiers.</p>" +
+            hNote("les quatre lignes ci-dessous sont celles de <b>MiniMax H3</b>. Pour <b>LTX 2.x</b>, voir la " +
+                "rubrique <b>LTX 2.x</b>.", NOTE_FR) +
             hCard("Les quatre lignes", [
                 [iconBadge(IMAGE_ICON, VIOLET), "<b>Images</b> : jusqu'à 9, sur <b>ref_image_N</b>"],
                 [iconBadge(VIDEO_ICON, ORANGE), "<b>Video</b> : les images de la vidéo, sur <b>ref_video_N</b>"],
@@ -593,7 +783,7 @@ const HELP_SECTIONS_FR = [
                 ["Browse / Reload", "fenêtre de dossiers de Windows / retour au dossier racine."],
                 ["Subfolder", "les sous-dossiers, avec le nombre de fichiers du type après chaque nom ; le choix est " +
                     "gardé par type."],
-                ["Project", "relié à un nœud MiniMax H3 Project : <b>All</b>, chaque projet " +
+                ["Project", "relié à un nœud MagicStudio Project : <b>All</b>, chaque projet " +
                     iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) + " Simple et chaque " + iconBadge(TREE_ICON, MULTI_COLOR) +
                     " MultiProject (puis une ligne <b>Sub-project</b>). Subfolder ne liste alors que les dossiers de " +
                     "médias 08 à 14."],
@@ -612,7 +802,7 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "project", title: "Galerie avec un projet",
-        html: "<p>Quand la sortie <b>project</b> est reliée à un nœud <b>MiniMax H3 Project</b> dont un projet " +
+        html: "<p>Quand la sortie <b>project</b> est reliée à un nœud <b>MagicStudio Project</b> dont un projet " +
             "est choisi, la galerie travaille avec les dossiers du projet.</p>" +
             hCard("Deux zones", [
                 ["En haut", "le dossier choisi (Root folder / Subfolder), comme d'habitude"],
@@ -623,6 +813,9 @@ const HELP_SECTIONS_FR = [
                 ["Video", "<b>12.Video</b>"],
                 ["Video/Audio", "<b>14.Video-Audio</b>"],
                 ["Audio", "<b>10.Son</b>"],
+                ["Guide images (LTX 2.x)", "<b>08.Images</b>"],
+                ["Guide video (LTX 2.x)", "<b>12.Video</b>"],
+                ["Soundtrack, Voice (LTX 2.x)", "<b>10.Son</b>"],
             ]) +
             hCard("Bon à savoir", [
                 ["Numéro", "la pastille orange donne le numéro dans la sélection ; cliquer sur un fichier du projet " +
@@ -682,17 +875,20 @@ const HELP_SECTIONS_FR = [
                 [iconBadge(TRASH_ICON, INACTIVE_BG), "marque un fichier (" + iconBadge(TRASH_ICON, MARK_RED) + ") ; " +
                     "<b>Delete</b> retire les fichiers marqués après confirmation ; les suivants remontent."],
             ]) +
-            hTip("En <b>Ref2VA</b>, un fichier qui change de numéro change aussi dans le prompt (<b>&lt;Picture " +
-                "N&gt;</b>, <b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>) : la fenêtre <b>Order of the references " +
-                "changed</b> liste les anciens et nouveaux numéros ; mettez votre prompt à jour.", TIP_FR) +
+            hTip("<b>MiniMax H3 uniquement.</b> En <b>Ref2VA</b>, un fichier qui change de numéro change aussi dans le " +
+                "prompt (<b>&lt;Picture N&gt;</b>, <b>&lt;Video N&gt;</b>, <b>&lt;Audio N&gt;</b>) : la fenêtre " +
+                "<b>Order of the references changed</b> liste les anciens et nouveaux numéros ; mettez votre prompt " +
+                "à jour.", TIP_FR) +
+            hNote("avec <b>LTX 2.x</b>, la fenêtre de <b>Guide images</b> et de <b>Guide video</b> contient aussi " +
+                "le moment de chaque guide. Voir la rubrique <b>LTX 2.x</b>.", NOTE_FR) +
             hNote("la " + iconBadge(TRASH_ICON, MARK_RED) + " à côté de " + iconBadge(EYE_ICON, VIOLET) +
                 " sur le nœud supprime <b>tous</b> les fichiers de sa ligne, après confirmation.", NOTE_FR),
     },
     {
         id: "trim", title: "Rognage",
         html: hSteps([
-            "Ouvrez " + iconBadge(EYE_ICON, VIOLET) + " de <b>Video</b>, <b>Video/Audio</b> ou <b>Audio</b> " +
-            "et cliquez sur une vignette.",
+            "Ouvrez l'" + iconBadge(EYE_ICON, VIOLET) + " de <b>Video</b>, <b>Video/Audio</b> ou <b>Audio</b> " +
+            "(avec LTX 2.x : <b>Guide video</b>, <b>Soundtrack</b> ou <b>Voice</b>) et cliquez sur une vignette.",
             "Dans la fenêtre de visualisation, réglez <b>Start</b> et <b>End</b> : tapez-les, ou utilisez " +
             "<b>Set start</b> / <b>Set end</b> à la position de lecture.",
             "Vérifiez avec <b>Play trim</b>, ou <b>Reset</b> pour garder tout le fichier.",
@@ -701,7 +897,8 @@ const HELP_SECTIONS_FR = [
             ["Fichier", "jamais modifié : seule cette partie va à la sortie (images et son)."],
             ["✂", "un fichier rogné porte un badge ✂ ; le rognage est enregistré dans la configuration " +
                 "(<code>\"trim\": [2.5, 8]</code>)."],
-            ["Avertissement", "si une partie de vidéo dure moins de 2 s, ou si une partie dépasse 15 s."],
+            ["Avertissement", "si une partie de vidéo dure moins de 2 s, ou si une partie dépasse la durée " +
+                "maximale (15 s avec MiniMax H3, 20 s avec LTX 2.x)."],
         ]),
     },
     {
@@ -718,23 +915,34 @@ const HELP_SECTIONS_FR = [
         id: "config", title: "Sauvegarder et charger",
         html: hCard("Fichiers de configuration", [
             [iconBadge(DOWNLOAD_ICON, PINK), "Sauvegarde le mode affiché dans son propre fichier .json : " +
-                "<b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b> ou <b>FL2VA_...json</b>. Grisé tant que " +
+                "<b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b> ou <b>FL2VA_...json</b> avec MiniMax H3, " +
+                "<b>LTX2_magicstudio_config_yyyyMMdd-HHmmss.json</b> avec LTX 2.x. Grisé tant que " +
                 "le mode n'a aucune référence (le dossier racine seul ne compte pas)."],
             [iconBadge(UPLOAD_ICON, PINK), "Charge un fichier .json du mode affiché et règle ses sorties. " +
                 "Il devient " + iconBadge(UPLOAD_ICON, ORANGE) + " quand le mode a déjà des références, " +
                 "et demande alors une confirmation."],
         ]) +
         hCard("Bon à savoir", [
-            ["Autre mode", "un fichier de l'autre mode est refusé avec un avertissement ; rien n'est modifié."],
+            ["Autre mode ou modèle", "un fichier de l'autre mode ou de l'autre modèle est refusé " +
+                "(<b>Wrong configuration file</b>) ; rien n'est modifié."],
+            ["Anciens fichiers", "un fichier avec <code>\"version\": 1</code> est lu comme un fichier MiniMax H3."],
             ["Inchangé", "l'autre mode et l'interrupteur ne changent jamais ; le dossier racine est repris du fichier."],
             ["Nom", "la date et l'heure dans le nom évitent d'écraser une sauvegarde précédente."],
             ["Fichiers absents", "quand même chargés et signalés sous les boutons."],
             ["Chemins", "relatifs au dossier racine ; un groupe vide vaut <code>[]</code> ou <code>null</code>."],
         ]) +
-        hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 1,\n  "mode": "REF2VA",\n' +
+        "<p><b>MiniMax H3</b></p>" +
+        hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 2,\n  "profile": "minimax_h3",\n' +
+            '  "mode": "REF2VA",\n' +
             '  "root": "F:\\\\Rushs\\\\Project",\n  "images": ["images\\\\a.png"],\n' +
             '  "videos": [{ "path": "rush\\\\shot.mp4", "trim": [5, 7] }],\n  "video_audios": [],\n' +
-            '  "audios": []\n}'),
+            '  "audios": []\n}') +
+        "<p><b>LTX 2.x</b></p>" +
+        hCode('{\n  "format": "MiniMax H3 Reference Loader",\n  "version": 2,\n  "profile": "ltx2",\n' +
+            '  "root": "F:\\\\Rushs\\\\Project",\n' +
+            '  "guide_images": [{ "path": "images\\\\a.png", "seconds": 0 }],\n' +
+            '  "guide_video": { "path": "rush\\\\shot.mp4", "seconds": 2 },\n' +
+            '  "soundtrack": null,\n  "voice": null\n}'),
     },
     {
         id: "outputs", title: "Sorties",
@@ -743,6 +951,8 @@ const HELP_SECTIONS_FR = [
                 ["Renommer", "double-cliquez sur le nom d'une sortie (vide = nom par défaut), ou utilisez le menu du " +
                     "clic droit."],
                 ["Numéros", "MiniMax numérote ses entrées à partir de 0 : <b>ref_image_1</b> va sur <b>ref_image_0</b>."],
+                ["LTX 2.x", "<b>guide_image_N</b>, <b>guide_frame_N</b>, <b>guide_video</b>, " +
+                    "<b>guide_video_frame</b>, <b>soundtrack</b>, <b>voice</b> : voir la rubrique <b>LTX 2.x</b>."],
                 ["Audio", "MiniMax numérote <b>&lt;Audio j&gt;</b> avec d'abord les bandes-son de vidéo, puis les " +
                     "fichiers audio : avec 2 bandes-son, <b>ref_audio_1</b> est <b>&lt;Audio 3&gt;</b>."],
                 ["Couleurs", "<b>ref_video_N</b> et <b>ref_video_audio_N</b> d'une même paire ont la même couleur " +
@@ -754,9 +964,11 @@ const HELP_SECTIONS_FR = [
     {
         id: "limits", title: "Limites",
         html: hCard("Limites", [
-            ["Vidéos", "lues à 24 i/s, coupées à 15 s, réduites à 768×1344 pixels au plus (MiniMax les réduirait " +
-                "de toute façon)."],
-            ["Audio", "coupé à 15 s."],
+            ["Les changer", "le bouton <b>Limits</b>, à côté de la liste <b>Model</b> (voir <b>Modèles</b>)."],
+            ["MiniMax H3", "vidéos lues à 24 i/s, coupées à 15 s, réduites à 768×1344 pixels au plus (MiniMax les " +
+                "réduirait de toute façon) ; audio coupé à 15 s."],
+            ["LTX 2.x", "vidéos lues à 24 i/s, coupées à 20 s, réduites à 768×1344 pixels au plus, avec des côtés " +
+                "multiples de 32 ; audio coupé à 20 s."],
             ["Browse", "fenêtre de dossiers de Windows ; sur un autre système, tapez ou collez le chemin du dossier."],
             ["Nodes 2.0", "fonctionne avec le design classique et avec <b>Modern Node Design (Nodes 2.0)</b>."],
             ["Fenêtres", "déplaçables par leur <b>barre de titre</b> (✥) ; elles restent dans l'écran et se " +

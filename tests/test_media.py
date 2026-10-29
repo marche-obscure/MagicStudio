@@ -620,5 +620,21 @@ class ProfileOutputTests(TmpDirTest):
         self.assertEqual(names[-1], "project")
 
 
+class SharedStateCasesTest(unittest.TestCase):
+    """Cas partages avec tests/test_profiles.mjs : parseState / stateLayout du JS donnent le meme resultat."""
+
+    def test_state_cases(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, "profile_cases.json"), encoding="utf-8") as f:
+            cases = json.load(f)["state_cases"]
+        self.assertTrue(cases)
+        for c in cases:
+            s = media.parse_state(json.dumps(c["state"]))
+            self.assertEqual(media.state_layout(s), c["layout"], c["state"])
+            for k, v in c["parsed"].items():
+                self.assertEqual(s[k], v, (k, c["state"]))
+
+
+
 if __name__ == "__main__":
     unittest.main()

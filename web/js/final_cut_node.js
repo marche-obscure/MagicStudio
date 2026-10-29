@@ -68,7 +68,7 @@ const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Wire the <b>final_cut</b> output of the <b>MiniMax H3 Project</b> node to the <b>final_cut</b> input " +
+            "Wire the <b>final_cut</b> output of the <b>MagicStudio Project</b> node to the <b>final_cut</b> input " +
             "of this node.",
             "The first time, the node creates the copies and the link in the input folder of ComfyUI.",
             "Click <b>Images</b>, <b>Video</b> or <b>Audio</b>: the window shows the copies; drag a file onto " +
@@ -142,7 +142,7 @@ const HELP_SECTIONS_FR = [
     {
         id: "start", title: "Démarrage rapide",
         html: hSteps([
-            "Reliez la sortie <b>final_cut</b> du nœud <b>MiniMax H3 Project</b> à l'entrée <b>final_cut</b> de ce nœud.",
+            "Reliez la sortie <b>final_cut</b> du nœud <b>MagicStudio Project</b> à l'entrée <b>final_cut</b> de ce nœud.",
             "La première fois, le nœud crée les copies et le lien dans le dossier input de ComfyUI.",
             "Cliquez sur <b>Images</b>, <b>Video</b> ou <b>Audio</b> : la fenêtre montre les copies ; glissez un " +
             "fichier sur <b>MiniMax H3 Director</b>.",
