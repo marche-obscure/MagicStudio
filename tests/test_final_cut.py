@@ -234,6 +234,44 @@ class FinalCutTest(unittest.TestCase):
         # Fini : une nouvelle synchronisation est de nouveau possible.
         self.assertEqual(fc.sync(p, self.trash, self.input)["count"], 0)
 
+    # --- images extraites (Picture Lock/Extract Frame) ---------------------------------
+
+    def _extract(self, project, *names):
+        for n in names:
+            write(os.path.join(project, *projects.EXTRACT_DIR, n), b"png")
+
+    def test_frames_by_project(self):
+        projects.create_project(self.root, "A", group="Multi", new_group=True)
+        time.sleep(0.05)
+        b = projects.create_project(self.root, "B", group="Multi")
+        self._extract(b, "FRAME_0048_x.png", "LAST_FRAME_x.png", "FRAME_0010_x.png", "FIRST_FRAME_x.png")
+        frames = fc.plan(b)["frames"]
+        num_b = fc.project_number(b)
+        self.assertEqual(num_b, "02")
+        self.assertEqual(list(frames), [num_b])
+        self.assertEqual([f["name"] for f in frames[num_b]],
+                         ["FIRST_FRAME_x.png", "LAST_FRAME_x.png", "FRAME_0010_x.png", "FRAME_0048_x.png"])
+        f0 = frames[num_b][0]
+        self.assertEqual(f0["path"], os.path.join(b, *projects.EXTRACT_DIR, "FIRST_FRAME_x.png"))
+        self.assertIsNone(f0["frame"])
+        self.assertIsInstance(f0["mtime"], float)
+
+    def test_frames_absent_without_extractions(self):
+        p = projects.create_project(self.root, "Solo")
+        self.assertEqual(fc.plan(p)["frames"], {})
+
+    def test_frames_skip_missing_project(self):
+        p = projects.create_project(self.root, "Solo")
+        shutil.rmtree(os.path.join(p, *projects.EXTRACT_DIR))
+        self.assertEqual(fc.plan(p)["frames"], {})
+
+    def test_frames_simple_project(self):
+        p = projects.create_project(self.root, "Solo")
+        self._extract(p, "FRAME_0003_x.png")
+        num = fc.target(p)[2][0][0]
+        self.assertEqual(num, "00")
+        self.assertEqual([f["name"] for f in fc.plan(p)["frames"][num]], ["FRAME_0003_x.png"])
+
 
 if __name__ == "__main__":
     unittest.main()

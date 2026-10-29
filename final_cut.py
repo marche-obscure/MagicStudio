@@ -19,6 +19,7 @@ Sans import ComfyUI (testable seul) : le dossier input est passe en parametre.
 
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -26,9 +27,11 @@ import time
 
 try:
     from . import projects
+    from . import extract_frame
     from .run_record import file_sha256
 except ImportError:  # tests : modules charges seuls
     import projects
+    import extract_frame
     from run_record import file_sha256
 
 RUSH_AUDIO = "70.Rush Audio"
@@ -170,6 +173,40 @@ def _same(a, b):
     return file_sha256(a) == file_sha256(b)
 
 
+def _frame_order(item):
+    """Tri des images extraites : FIRST, LAST, puis FRAME_NNNN_ par numero, le reste par nom."""
+    n = item["name"]
+    if n.startswith("FIRST_FRAME_"):
+        return (0, 0, n)
+    if n.startswith("LAST_FRAME_"):
+        return (1, 0, n)
+    m = re.match(r"FRAME_(\d+)_", n)
+    if m:
+        return (2, int(m.group(1)), n)
+    return (3, 0, n)
+
+
+def _frames(sources):
+    """{numero: [{name, frame, path, mtime}]} des images extraites ; jamais d'exception."""
+    out = {}
+    for num, src_project in sources:
+        try:
+            folder = extract_frame.extract_dir(src_project)
+            items = []
+            for it in extract_frame.listing(src_project):
+                path = os.path.join(folder, it["name"])
+                try:
+                    mtime = float(os.path.getmtime(path))
+                except OSError:
+                    continue
+                items.append({"name": it["name"], "frame": it["frame"], "path": path, "mtime": mtime})
+        except Exception:
+            continue
+        if items:
+            out[num] = sorted(items, key=_frame_order)
+    return out
+
+
 def plan(project):
     """
     Ce que la synchronisation ferait, sans toucher aux copies :
@@ -185,7 +222,9 @@ def plan(project):
     checked = {}  # signatures confirmees par ce plan
     out = {"folder": folder, "name": name, "kinds": {}, "count": 0, "last_sync": last_sync(folder),
            # Titres des groupes de la fenetre : numero -> nom du projet.
-           "projects": {num: os.path.basename(src) for num, src in sources}}
+           "projects": {num: os.path.basename(src) for num, src in sources},
+           # Images extraites (Picture Lock/Extract Frame) de chaque projet source.
+           "frames": _frames(sources)}
     for kind, rush in KINDS:
         expected = {}
         for num, src_project in sources:
