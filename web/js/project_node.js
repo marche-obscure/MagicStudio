@@ -5019,7 +5019,11 @@ app.registerExtension({
                 });
                 return b;
             });
-            bottom.append(bottomSpace, ...pickupBtns, copyBtn, resetBtn, purgeBtn, loadBtn, saveBtn, reloadBtn, helpBtn);
+            // Ordre (choix utilisateur 30/10/2026) : Reset, Purge, Copy a gauche ; icones Pick Up au
+            // milieu ; Load, Save, relecture et aide a droite.
+            const bottomSpace2 = bottomSpace.cloneNode();
+            bottom.append(resetBtn, purgeBtn, copyBtn, bottomSpace, ...pickupBtns, bottomSpace2,
+                loadBtn, saveBtn, reloadBtn, helpBtn);
 
             // Une ligne par sous-dossier : bouton (pastille coloree + nom) et
             // petite cloche. Pas encore d'action : leur role viendra plus tard.
