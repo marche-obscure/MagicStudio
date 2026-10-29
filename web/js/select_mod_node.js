@@ -1525,13 +1525,16 @@ const normKey = (p) => String(p || "").replace(/[\\/]+/g, "/").replace(/\/$/, ""
 
 function buildModelPicker(container, ctx) {
     const overlay = document.createElement("div");
-    Object.assign(overlay.style, { position: "fixed", inset: "0", zIndex: "10000", display: "none", background: "transparent" });
+    // Reste ouverte pendant le travail sur le noeud (choix utilisateur 29/10/2026) : le fond ne bloque
+    // aucun clic, seul le bouton Close (en bas a droite) ferme la fenetre.
+    Object.assign(overlay.style, { position: "fixed", inset: "0", zIndex: "10000", display: "none", background: "transparent",
+        pointerEvents: "none" });
     const card = document.createElement("div");
     Object.assign(card.style, {
         position: "fixed", width: "min(760px, 94vw)", height: "min(520px, 84vh)", background: "#161616",
         border: "1px solid " + TITLE_COLOR, borderRadius: "10px", boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
         display: "flex", flexDirection: "column", color: "#ddd", fontFamily: "sans-serif", fontSize: "12px",
-        overflow: "hidden",
+        overflow: "hidden", pointerEvents: "auto",
     });
     overlay.appendChild(card);
     document.body.appendChild(overlay);
@@ -1560,8 +1563,7 @@ function buildModelPicker(container, ctx) {
         return b;
     };
     const reloadBtn = mkBtn("↺", "Read the folders again");
-    const closeBtn = mkBtn("✕", "Close (Esc)");
-    head.append(title, search, reloadBtn, closeBtn);
+    head.append(title, search, reloadBtn);
 
     const body = document.createElement("div");
     Object.assign(body.style, { flex: "1", display: "flex", minHeight: "0" });
@@ -1576,12 +1578,23 @@ function buildModelPicker(container, ctx) {
     right.append(table, note);
     body.append(treeBox, right);
 
+    const footRow = document.createElement("div");
+    Object.assign(footRow.style, { display: "flex", alignItems: "center", gap: "10px", padding: "6px 10px", borderTop: "1px solid #2a2a2a" });
     const foot = document.createElement("div");
     Object.assign(foot.style, {
-        padding: "5px 10px", borderTop: "1px solid #2a2a2a", color: "#9fd6cf", fontFamily: "monospace", fontSize: "11px",
+        flex: "1", minWidth: "0", color: "#9fd6cf", fontFamily: "monospace", fontSize: "11px",
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minHeight: "14px",
     });
-    card.append(head, body, foot);
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.textContent = "Close";
+    closeBtn.title = "Close the window";
+    Object.assign(closeBtn.style, {
+        background: ORANGE, color: "#fff", border: "none", borderRadius: "6px", padding: "6px 22px",
+        fontSize: "13px", fontWeight: "bold", cursor: "pointer", flex: "0 0 auto",
+    });
+    footRow.append(foot, closeBtn);
+    card.append(head, body, footRow);
 
     let roots = [];
     let current = ""; // dossier choisi
@@ -1726,8 +1739,6 @@ function buildModelPicker(container, ctx) {
                 row.style.background = "transparent";
             });
             row.addEventListener("click", () => pick(f, false));
-            // Le double-clic envoie d'abord deux clics : le fichier est deja dans le champ, on ferme.
-            row.addEventListener("dblclick", () => close());
             table.appendChild(row);
         }
         if (!files.length) {
@@ -1808,11 +1819,7 @@ function buildModelPicker(container, ctx) {
 
     const onKey = (e) => {
         if (overlay.style.display === "none") return;
-        if (e.key === "Escape") {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        } else if (card.contains(e.target)) {
+        if (card.contains(e.target)) {
             e.stopImmediatePropagation(); // les touches ne vont pas au canvas
         }
     };
@@ -1820,9 +1827,6 @@ function buildModelPicker(container, ctx) {
         overlay.style.display = "none";
         window.removeEventListener("keydown", onKey, true);
     }
-    overlay.addEventListener("mousedown", (e) => {
-        if (e.target === overlay) close();
-    });
     closeBtn.addEventListener("click", close);
     let searchTimer = null;
     search.addEventListener("input", () => {
