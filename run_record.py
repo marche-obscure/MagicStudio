@@ -604,6 +604,65 @@ def _finish_run(run_file, files, status, output_dir, now=None, duration=None):
     return data
 
 
+def attach_post(run_file, index, level, src, params, workflow, warning=None, now=None):
+    with project_lock(_check_run_file(run_file)):
+        return _attach_post(run_file, index, level, src, params, workflow, warning, now)
+
+
+def _attach_post(run_file, index, level, src, params, workflow, warning=None, now=None):
+    """
+    Post-traitement (choix utilisateur 28/10/2026) : fichier src enregistre en aval d'un
+    MedLoad qui chargeait la sortie index du Run : ajoute a ce Run (post_of = index,
+    post_level = level + 1), jamais a un nouveau. Video -> 40.Rush Videos/Footage sous
+    <run>_postNN (reduite comme une sortie de Run), ou in_place si deja dans 40 ; image ->
+    citee seulement. Workflow -> 00.Workflows/Run/<run>_postNN.json. Prompt, modeles et
+    duree du Run inchanges. Fichier deja cite par le Run (source ou copie) -> None.
+    """
+    project = _check_run_file(run_file)
+    with open(run_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    outputs = data.setdefault("outputs", [])
+    key = os.path.normcase(os.path.abspath(src))
+    for o in outputs:
+        if isinstance(o, dict) and key in {os.path.normcase(x) for x in (o.get("source") or "", _abs_copy(project, o)) if x}:
+            return None
+    base = os.path.splitext(os.path.basename(run_file))[0]
+    rush = os.path.join(project, RUSH_VIDEOS, SORT_FOLDERS[DEFAULT_SORT])
+    n = sum(1 for o in outputs if isinstance(o, dict) and o.get("post_level")) + 1
+    name = "%s_post%02d" % (base, n)
+    while any(os.path.exists(p) for p in (os.path.join(rush, name + ".mp4"), os.path.join(rush, name + os.path.splitext(src)[1]),
+                                          run_workflow_path(project, name + ".json"))):
+        n += 1
+        name = "%s_post%02d" % (base, n)
+    ext = os.path.splitext(src)[1].lower()
+    out = {"source": os.path.abspath(src), "kind": "video" if ext in VIDEO_EXTS else "image", "copy": None}
+    if ext in VIDEO_EXTS:
+        size = video_size(src)
+        if size:
+            out["size"] = "%dx%d" % size
+        if sort_of(project, "video", src) is not None:
+            out.update({"copy": _rel(project, src), "in_place": True})
+        else:
+            out.update(_copy_video(src, rush, name, size))
+    t = time.time() if now is None else now
+    out.update({"post_of": index, "post_level": (level or 0) + 1,
+                "post_date": time.strftime(DATE_FORMAT, time.localtime(t)), "post_params": params or {}})
+    if warning:
+        out["post_warning"] = warning
+    if isinstance(workflow, dict):
+        wf = run_workflow_path(project, name + ".json")
+        try:
+            os.makedirs(os.path.dirname(wf), exist_ok=True)
+            with open(wf, "w", encoding="utf-8", newline="\n") as f:
+                f.write(json.dumps(workflow, ensure_ascii=False))
+            out["post_workflow"] = name + ".json"
+        except (OSError, TypeError, ValueError) as e:
+            out["workflow_error"] = str(e) or e.__class__.__name__
+    outputs.append(out)
+    _write(run_file, data)
+    return out
+
+
 def fit_size(width, height, box=None):
     """Taille dans la boite (ratio garde, dimensions paires), None si la video y tient deja."""
     bw, bh = box or MAX_VIDEO_SIZE
@@ -763,6 +822,13 @@ def list_runs(project):
                    # Sous-dossier du fichier montre (pastille et bouton grise) : original, sinon copie video.
                    "place": place if place is not None else sort_of(project, kind, copy)}
             out.update({k: o[k] for k in ("size", "copy_size", "in_place", "resize_error", "deleted") if o.get(k)})
+            if o.get("post_level"):
+                # Post-traitement (29/10/2026) : sortie source, niveau, date, reglages, workflow.
+                out.update({k: o.get(k) for k in ("post_of", "post_level", "post_date", "post_params")})
+                if o.get("post_warning"):
+                    out["post_warning"] = o["post_warning"]
+                pwf = run_workflow_path(project, o["post_workflow"]) if o.get("post_workflow") else ""
+                out["post_workflow"] = pwf if pwf and os.path.isfile(pwf) else None
             outs.append(out)
         if restored:
             try:

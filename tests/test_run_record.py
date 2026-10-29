@@ -1347,5 +1347,72 @@ class MediaReclaimTest(unittest.TestCase):
         os.utime(d, (now - 3600, now - 3600))
         self.assertEqual(rr.protected_files(self.p, [c, d]), [c])
 
+class AttachPostTest(unittest.TestCase):
+    """Post-traitements ajoutes au Run mere (29/10/2026)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.p = projects.create_project(self.root, "Clip")
+        self.a = os.path.join(self.p, "40.Rush Videos", "Footage", "20261029_100000_run.mp4")
+        make_video(self.a, 64, 48)
+        self.run = os.path.join(self.p, "04.Prompt", "20261029_100000_run.json")
+        rr._write(self.run, {"date": "2026-10-29 10:00:00", "prompt": "p", "duration": 12.5, "status": "done",
+                             "outputs": [{"source": self.a, "kind": "video", "copy": None, "in_place": True}]})
+        self.out = os.path.join(self.root, "output")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def read(self):
+        with open(self.run, encoding="utf-8") as f:
+            return json.load(f)
+
+    def video(self, name):
+        path = os.path.join(self.out, name)
+        make_video(path, 64, 48)
+        return path
+
+    def test_attach_post_video(self):
+        b = self.video("b.mp4")
+        o = rr.attach_post(self.run, 0, 0, b, {"nodes": []}, {"nodes": []})
+        self.assertEqual((o["post_of"], o["post_level"]), (0, 1))
+        self.assertEqual(o["copy"], "40.Rush Videos/Footage/20261029_100000_run_post01.mp4")
+        self.assertTrue(os.path.isfile(os.path.join(self.p, *o["copy"].split("/"))))
+        wf = rr.run_workflow_path(self.p, "20261029_100000_run_post01.json")
+        self.assertTrue(os.path.isfile(wf))
+        self.assertEqual(o["post_workflow"], "20261029_100000_run_post01.json")
+        data = self.read()
+        self.assertEqual((data["duration"], data["prompt"], data["status"]), (12.5, "p", "done"))
+        self.assertEqual(len(data["outputs"]), 2)
+
+    def test_attach_chain(self):
+        b = rr.attach_post(self.run, 0, 0, self.video("b.mp4"), {}, None)
+        c = rr.attach_post(self.run, 1, b["post_level"], self.video("c.mp4"), {}, None)
+        self.assertEqual((c["post_of"], c["post_level"]), (1, 2))
+        self.assertEqual(c["copy"], "40.Rush Videos/Footage/20261029_100000_run_post02.mp4")
+        self.assertNotIn("post_workflow", c)
+
+    def test_attach_twice_is_once(self):
+        b = self.video("b.mp4")
+        self.assertIsNotNone(rr.attach_post(self.run, 0, 0, b, {}, None))
+        self.assertIsNone(rr.attach_post(self.run, 0, 0, b, {}, None))
+        self.assertEqual(len(self.read()["outputs"]), 2)
+
+    def test_attach_image_no_copy(self):
+        img = os.path.join(self.out, "frame.png")
+        write(img, b"png")
+        o = rr.attach_post(self.run, 0, 0, img, {}, None, warning="other run")
+        self.assertEqual((o["kind"], o["copy"], o["post_warning"]), ("image", None, "other run"))
+
+    def test_list_runs_gives_post_fields(self):
+        rr.attach_post(self.run, 0, 0, self.video("b.mp4"), {"cfg": None, "nodes": [{"title": "Light"}]}, {"n": 1})
+        outs = rr.list_runs(self.p)[0]["outputs"]
+        self.assertNotIn("post_level", outs[0])
+        self.assertEqual((outs[1]["post_of"], outs[1]["post_level"]), (0, 1))
+        self.assertEqual(outs[1]["post_params"]["nodes"][0]["title"], "Light")
+        self.assertTrue(outs[1]["post_date"])
+        self.assertEqual(os.path.normcase(outs[1]["post_workflow"]),
+                         os.path.normcase(rr.run_workflow_path(self.p, "20261029_100000_run_post01.json")))
+
 if __name__ == "__main__":
     unittest.main()
