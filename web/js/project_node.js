@@ -14,7 +14,7 @@ import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath, sameGroup, mergeData,
     mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
-    unusedProjectFiles, orderedFolderFiles, folderUse,
+    unusedProjectFiles, orderedFolderFiles, folderUse, hiddenFolderItems,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     batchSortTargets, canDeleteRush, deletedText,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
@@ -5396,15 +5396,18 @@ app.registerExtension({
                 const refState = loader.mmGetState();
                 const ch = folderChanges(refState, f, s.path, snapshotOf(s, f));
                 const unused = unusedOf(f, refState);
+                // Copies : profil actif seulement ; verification des fichiers manquants : les deux
+                // profils (references du profil cache ajoutees apres, jamais copiees).
                 const items = saveItems(refState).filter((i) => i.folder === f);
+                const checked = items.concat(hiddenFolderItems(refState, f));
                 let plan = [];
                 try {
-                    if (items.length) plan = (await apiPost("/mmproject/save_plan", { project: s.path, items })).plan;
+                    if (checked.length) plan = (await apiPost("/mmproject/save_plan", { project: s.path, items: checked })).plan;
                 } catch (e) {
                     say(e.message);
                     return;
                 }
-                const copies = plan.filter((x) => x.action === "copy");
+                const copies = plan.slice(0, items.length).filter((x) => x.action === "copy");
                 const missing = plan.filter((x) => x.action === "missing");
                 if (!ch.added.length && !ch.removed.length && !unused.length && !missing.length) return;
                 // References vers des fichiers introuvables (choix utilisateur, 19/10/2026) : on peut

@@ -134,6 +134,23 @@ function pathsOf(state, folder, lists) {
     return out;
 }
 
+/**
+ * References du profil cache qui vont dans ce dossier, [{path, folder}] sans celles
+ * deja dans le profil actif : la cloche les verifie aussi (une reference manquante
+ * du profil cache bloque l'archivage), sans jamais les copier.
+ */
+export function hiddenFolderItems(state, folder) {
+    const active = activeLists(state);
+    const seen = new Set(pathsOf(state, folder, active).map(normPath));
+    const out = [];
+    for (const p of pathsOf(state, folder, LISTS.filter((l) => !active.includes(l)))) {
+        if (seen.has(normPath(p))) continue;
+        seen.add(normPath(p));
+        out.push({ path: p, folder });
+    }
+    return out;
+}
+
 /** References du profil actif du Ref Loader qui vont dans ce dossier (ordre des listes, sans doublon). */
 export function folderPaths(state, folder) {
     return pathsOf(state, folder, activeLists(state));

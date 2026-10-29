@@ -12,7 +12,7 @@ import {
     sameGroup, mergeData,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
-    folderMax, activeLists,
+    folderMax, activeLists, hiddenFolderItems,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -710,4 +710,29 @@ test("configFileName et modeHasRefs en LTX 2.x", () => {
     assert.equal(configFileName(d, "ltx2"), "20261006-090503_LTX2_magicstudio_config.json");
     assert.equal(modeHasRefs({ voice: ["v"] }, "ltx2"), true);
     assert.equal(modeHasRefs({ images: ["i"] }, "ltx2"), false);
+});
+
+test("cloche : les references du profil cache sont aussi verifiees (manquantes = pas d'archivage)", () => {
+    // Projet deplace hors de ComfyUI : references MiniMax (profil cache) vers l'ancien chemin,
+    // listes LTX actives vides ou vers des fichiers presents.
+    const st = {
+        profile: "ltx2",
+        images: ["OLD/P/08.Images/a.png", "OLD/P/08.Images/b.png"], first_frame: ["OLD/P/08.Images/a.png"],
+        audios: ["OLD/P/10.Son/s.wav"], video_audios: ["OLD/P/14.Video-Audio/va.mp4"],
+        guide_images: ["NEW/P/08.Images/g.png", "new/p/08.images/B.PNG"], soundtrack: [],
+    };
+    // Copies : profil actif seulement ; verification : actif + cache (sans doublon).
+    const items = saveItems(st).filter((i) => i.folder === "08.Images");
+    assert.deepEqual(items.map((i) => i.path), ["NEW/P/08.Images/g.png", "new/p/08.images/B.PNG"]);
+    assert.deepEqual(hiddenFolderItems(st, "08.Images"),
+        [{ path: "OLD/P/08.Images/a.png", folder: "08.Images" }, { path: "OLD/P/08.Images/b.png", folder: "08.Images" }]);
+    assert.deepEqual(hiddenFolderItems(st, "10.Son"), [{ path: "OLD/P/10.Son/s.wav", folder: "10.Son" }]);
+    // 14.Video-Audio (non utilise en LTX) : les references MiniMax sont verifiees aussi.
+    assert.deepEqual(hiddenFolderItems(st, "14.Video-Audio").map((i) => i.path), ["OLD/P/14.Video-Audio/va.mp4"]);
+    // Une reference deja dans le profil actif n'est pas repetee.
+    const shared = Object.assign({}, st, { images: ["NEW/P/08.Images/g.png"], first_frame: [] });
+    assert.deepEqual(hiddenFolderItems(shared, "08.Images"), []);
+    // Profil MiniMax actif : les guides LTX sont verifies.
+    assert.deepEqual(hiddenFolderItems(Object.assign({}, st, { profile: "minimax_h3" }), "08.Images").map((i) => i.path),
+        ["NEW/P/08.Images/g.png", "new/p/08.images/B.PNG"]);
 });
