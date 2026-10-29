@@ -319,8 +319,8 @@ class TrimTests(TmpDirTest):
         }))
         self.assertEqual(state["selections"]["minimax_h3.ref2va"]["trims"]["audios"], {})
         pkg = media.build_package(state)
-        self.assertEqual(pkg["values"]["ref_video_1"].shape[0], 24)
-        self.assertLessEqual(pkg["values"]["ref_video_audio_1"]["waveform"].shape[2], 16000)
+        self.assertEqual(pkg["values"]["ref_video_0"].shape[0], 24)
+        self.assertLessEqual(pkg["values"]["ref_video_audio_0"]["waveform"].shape[2], 16000)
 
 
 class RootTests(unittest.TestCase):
@@ -350,25 +350,25 @@ class PackageTests(TmpDirTest):
                "folders": {"image": self.dir, "video": self.dir, "audio": self.dir}}
         pkg = media.build_package(media.parse_variant_state(json.dumps(raw)))
         self.assertEqual(pkg["variant"], "minimax_h3.ref2va")
-        self.assertEqual(pkg["layout"], ["ref_image_1", "ref_image_2", "ref_video_1", "ref_video_audio_1", "ref_audio_1"])
+        self.assertEqual(pkg["layout"], ["ref_image_0", "ref_image_1", "ref_video_0", "ref_video_audio_0", "ref_audio_0"])
         v = pkg["values"]
-        self.assertEqual(tuple(v["ref_image_1"].shape), (1, 8, 8, 3))
-        self.assertEqual(v["ref_video_1"].shape[0], 24)          # rognage 0,5-1,5 s a 24 i/s
-        self.assertIsNone(v["ref_video_audio_1"])               # aucune piste son choisie
-        self.assertIn("waveform", v["ref_audio_1"])
+        self.assertEqual(tuple(v["ref_image_0"].shape), (1, 8, 8, 3))
+        self.assertEqual(v["ref_video_0"].shape[0], 24)          # rognage 0,5-1,5 s a 24 i/s
+        self.assertIsNone(v["ref_video_audio_0"])               # aucune piste son choisie
+        self.assertIn("waveform", v["ref_audio_0"])
 
     def test_video_audio_outputs_only_the_soundtrack(self):
         make_video(self.p("v.mp4"), 1.0, 24, sr=16000)
         make_video(self.p("w.mp4"), 0.5, 24, with_audio=False)
         pkg = media.build_package(self.state({"video_audios": ["v.mp4"]}))
-        self.assertIsNone(pkg["values"]["ref_image_1"])
-        self.assertIsNone(pkg["values"]["ref_video_1"])
-        self.assertEqual(pkg["values"]["ref_video_audio_1"]["sample_rate"], 16000)
-        self.assertEqual(pkg["values"]["ref_video_audio_1"]["waveform"].ndim, 3)
+        self.assertIsNone(pkg["values"]["ref_image_0"])
+        self.assertIsNone(pkg["values"]["ref_video_0"])
+        self.assertEqual(pkg["values"]["ref_video_audio_0"]["sample_rate"], 16000)
+        self.assertEqual(pkg["values"]["ref_video_audio_0"]["waveform"].ndim, 3)
         # une video sans bande-son en Video/Audio : erreur explicite
         with self.assertRaises(ValueError) as ctx:
             media.build_package(self.state({"video_audios": ["w.mp4"]}))
-        self.assertIn("ref_video_audio_1", str(ctx.exception))
+        self.assertIn("ref_video_audio_0", str(ctx.exception))
 
     def test_video_in_audio_list_outputs_only_its_sound(self):
         # "Son seul" : une video choisie dans Audio sort sa bande-son sur ref_audio_N, rognage compris.
@@ -376,21 +376,21 @@ class PackageTests(TmpDirTest):
         make_video(self.p("w.mp4"), 0.5, 24, with_audio=False)
         v = self.p("v.mp4")
         pkg = media.build_package(self.state({"audios": [v], "trims": {"audio": {media.trim_key(v): [0.5, 1.5]}}}))
-        self.assertIsNone(pkg["values"]["ref_video_audio_1"])
-        self.assertEqual(pkg["values"]["ref_audio_1"]["sample_rate"], 16000)
-        self.assertAlmostEqual(pkg["values"]["ref_audio_1"]["waveform"].shape[2], 16000, delta=400)
+        self.assertIsNone(pkg["values"]["ref_video_audio_0"])
+        self.assertEqual(pkg["values"]["ref_audio_0"]["sample_rate"], 16000)
+        self.assertAlmostEqual(pkg["values"]["ref_audio_0"]["waveform"].shape[2], 16000, delta=400)
         with self.assertRaises(ValueError) as ctx:
             media.build_package(self.state({"audios": [self.p("w.mp4")]}))
-        self.assertIn("ref_audio_1", str(ctx.exception))
+        self.assertIn("ref_audio_0", str(ctx.exception))
 
     def test_absolute_paths_from_other_folders_are_used_as_is(self):
         # Le JS stocke des chemins complets : le dossier courant ne sert qu'a la navigation.
         Image.new("RGB", (8, 8)).save(self.p("a.png"))
         pkg = media.build_package(media.parse_variant_state(json.dumps({
             "folders": {"image": "Z:/elsewhere"}, "images": [self.p("a.png")]})))
-        self.assertEqual(tuple(pkg["values"]["ref_image_1"].shape), (1, 8, 8, 3))
+        self.assertEqual(tuple(pkg["values"]["ref_image_0"].shape), (1, 8, 8, 3))
         pkg = media.build_package(media.parse_variant_state(json.dumps({"images": [self.p("a.png")]})))
-        self.assertEqual(tuple(pkg["values"]["ref_image_1"].shape), (1, 8, 8, 3))   # sans "folders"
+        self.assertEqual(tuple(pkg["values"]["ref_image_0"].shape), (1, 8, 8, 3))   # sans "folders"
 
     def test_lowered_limit_cuts_the_rows(self):
         for n in "abc":
@@ -398,7 +398,7 @@ class PackageTests(TmpDirTest):
         s = self.state({"images": ["a.png", "b.png", "c.png"],
                         "limits": {"minimax_h3": {"image": 2}}})
         pkg = media.build_package(s)
-        self.assertEqual(pkg["layout"][:3], ["ref_image_1", "ref_image_2", "ref_video_1"])
+        self.assertEqual(pkg["layout"][:3], ["ref_image_0", "ref_image_1", "ref_video_0"])
 
     def test_ltx_moments_default_rule_and_voice_from_video(self):
         for n in "abc":
@@ -474,7 +474,7 @@ class PackageTests(TmpDirTest):
             media.load_image, media.load_video, media.load_audio = old_load, old_video, old_audio
         self.assertEqual(calls, [])
         self.assertIs(first[0], second[0])
-        self.assertIs(first[0], pkg["values"]["ref_image_1"])
+        self.assertIs(first[0], pkg["values"]["ref_image_0"])
 
     def test_container_pads_to_40(self):
         pkg = media.build_package(self.state({"mode": "fl2va"}))
@@ -484,7 +484,7 @@ class PackageTests(TmpDirTest):
         self.assertEqual(nodes_module().MagicStudioContainer().run(None), (None,) * 40)
 
     def test_missing_file_names_its_output(self):
-        with self.assertRaisesRegex(FileNotFoundError, "ref_image_1"):
+        with self.assertRaisesRegex(FileNotFoundError, "ref_image_0"):
             media.build_package(self.state({"images": ["nope.png"]}))
 
 

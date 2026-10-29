@@ -1,7 +1,7 @@
 {
   "layout": [
     {"state": {"variant": "minimax_h3.ref2va", "selections": {"minimax_h3.ref2va": {"rows": {"images": ["a.png", "b.png"]}}}},
-     "keys": ["ref_image_1", "ref_image_2", "ref_video_1", "ref_video_audio_1", "ref_audio_1"]},
+     "keys": ["ref_image_0", "ref_image_1", "ref_video_0", "ref_video_audio_0", "ref_audio_0"]},
     {"state": {"variant": "minimax_h3.fl2va"}, "keys": ["first_frame", "last_frame"]},
     {"state": {"variant": "ltx.2_3", "selections": {"ltx.2_3": {"rows": {"guide_images": ["a.png", "b.png"]}}}},
      "keys": ["fps", "width", "height", "length", "guide_image_1", "guide_frame_1", "guide_image_2", "guide_frame_2",
@@ -11,7 +11,7 @@
               "soundtrack", "voice"]},
     {"state": {"variant": "minimax_h3.ref2va", "limits": {"minimax_h3.ref2va": {"counts": {"images": 2}}},
                "selections": {"minimax_h3.ref2va": {"rows": {"images": ["1", "2", "3", "4", "5"]}}}},
-     "keys": ["ref_image_1", "ref_image_2", "ref_video_1", "ref_video_audio_1", "ref_audio_1"]}
+     "keys": ["ref_image_0", "ref_image_1", "ref_video_0", "ref_video_audio_0", "ref_audio_0"]}
   ],
   "settings": [
     {"state": {"variant": "ltx.2_3"}, "values": {"fps": 24, "width": 768, "height": 1344, "length": 481}},

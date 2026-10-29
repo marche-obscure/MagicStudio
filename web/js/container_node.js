@@ -5,7 +5,7 @@ import {
     buildHelpOverlay, vueMode, getVariantDesc, PAIR_COLORS, rememberLinks, restoreLinks, trackVueNode,
     untrackVueNode, scheduleVueSync, hitOutputLabel, openOutputLabelEditor, setOutputLabel, closeOutputEditor,
 } from "./minimax_ref_loader.js";
-import { variantOf, variantLayout, pairedOutputs } from "./profiles.js";
+import { variantOf, variantLayout, pairedOutputs, renumberOldName, renumberModeLinks } from "./profiles.js";
 import { traceSource, outputLinksOf, saveOutputLinks, restoreOutputLinks } from "./graph_links.js";
 
 // --------------------------------------------------------------------
@@ -84,7 +84,8 @@ const HELP_SECTIONS = [
         html: hSteps([
             "Add a <b>MagicStudio RefLoader</b> and pick its files.",
             "Wire its <b>package</b> output to the <b>package</b> input of this node.",
-            "Wire the outputs of this node to the video model (for example <b>ref_image_1</b> to <b>ref_image_0</b>).",
+            "Wire the outputs of this node to the video model: same numbers as its inputs (<b>ref_image_0</b> to " +
+            "<b>ref_image_0</b>, <b>ref_image_1</b> to <b>ref_image_1</b>...).",
         ]) +
         hTip("the outputs follow the model and the variant chosen in the RefLoader: change them there, " +
             "not here."),
@@ -128,7 +129,8 @@ const HELP_SECTIONS_FR = [
         html: hSteps([
             "Ajoutez un <b>MagicStudio RefLoader</b> et choisissez ses fichiers.",
             "Branchez sa sortie <b>package</b> sur l'entrée <b>package</b> de ce nœud.",
-            "Branchez les sorties de ce nœud sur le modèle vidéo (par exemple <b>ref_image_1</b> sur <b>ref_image_0</b>).",
+            "Branchez les sorties de ce nœud sur le modèle vidéo : mêmes numéros que ses entrées (<b>ref_image_0</b> sur " +
+            "<b>ref_image_0</b>, <b>ref_image_1</b> sur <b>ref_image_1</b>...).",
         ]) +
         hTip("les sorties suivent le modèle et la variante choisis dans le RefLoader : changez-les là-bas, " +
             "pas ici.", "Astuce :"),
@@ -230,6 +232,8 @@ app.registerExtension({
                 applyLayout(node, entries, state ? pairedOutputs(state, desc) : {}, relink);
                 if (switching) restoreOutputLinks(node, (node.properties.modeLinks || {})[v] || []);
                 if (v) node.properties.mmVariant = v;
+                // Noms numerotes comme les entrees du modele (MiniMax a partir de 0, 30/10/2026).
+                node.properties.mmNumbering = 1;
                 const label = v ? desc.variants[v].label : "";
                 status.textContent = state ? label + " · " + entries.length + " output" + (entries.length > 1 ? "s" : "")
                     : NO_LOADER;
@@ -273,8 +277,11 @@ app.registerExtension({
             // avant, remis dans onConfigure, et les sorties en trop (sans lien) retirees.
             let savedOutputs = null;
             const configure = node.configure;
+            let savedNumbering = false;
             node.configure = function (info) {
                 loading = true;
+                // Lu avant configure() : le noeud recoit mmNumbering des sa creation.
+                savedNumbering = !!(info && info.properties && info.properties.mmNumbering);
                 savedOutputs = info && Array.isArray(info.outputs)
                     ? info.outputs.map((o) => (o && typeof o.name === "string" ? { name: o.name, label: o.label } : null))
                     : null;
@@ -283,6 +290,15 @@ app.registerExtension({
             const onConfigure = node.onConfigure;
             node.onConfigure = function () {
                 const ret = onConfigure ? onConfigure.apply(this, arguments) : undefined;
+                // Container enregistre avant la numerotation a partir de 0 (pas de mmNumbering) :
+                // ref_image_1 = premiere image -> ref_image_0 ; ses liens par variante aussi.
+                const oldNumbers = !savedNumbering;
+                if (oldNumbers && node.properties.modeLinks) {
+                    node.properties.modeLinks = renumberModeLinks(node.properties.modeLinks, getVariantDesc());
+                }
+                if (savedOutputs && oldNumbers) {
+                    savedOutputs = savedOutputs.map((o) => (o ? Object.assign({}, o, { name: renumberOldName(o.name, getVariantDesc()) }) : o));
+                }
                 if (savedOutputs) {
                     savedOutputs.forEach((o, i) => {
                         const out = node.outputs && node.outputs[i];

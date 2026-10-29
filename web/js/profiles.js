@@ -89,6 +89,7 @@ export const FALLBACK_DESCRIPTION = /* FALLBACK_DESCRIPTION */ {
                 "frame_step": 1
             },
             "settings": [],
+            "first_index": 0,
             "rows": [
                 {
                     "id": "images",
@@ -167,6 +168,7 @@ export const FALLBACK_DESCRIPTION = /* FALLBACK_DESCRIPTION */ {
                 "frame_step": 1
             },
             "settings": [],
+            "first_index": 0,
             "rows": [
                 {
                     "id": "first_frame",
@@ -550,6 +552,48 @@ export function settingValue(name, limits) {
     throw new Error("Unknown setting: " + name);
 }
 
+/**
+ * Nom d'une sortie {n} pour le fichier d'index i0 (0 = premier) : numero a partir de
+ * first_index de la variante (0 pour MiniMax H3, comme ses entrees ref_image_0... ; 1 par defaut).
+ */
+export function outputKey(template, variantDesc, i0) {
+    const first = variantDesc && typeof variantDesc.first_index === "number" ? variantDesc.first_index : 1;
+    return String(template).replace("{n}", String(i0 + first));
+}
+
+/**
+ * Nom de sortie d'avant la numerotation a partir de 0 (anciens workflows, Containers enregistres
+ * avant le 30/10/2026 : ref_image_1 = premiere image) -> nom actuel (ref_image_0). Seulement pour
+ * les variantes dont first_index n'est pas 1 ; tout autre nom est rendu tel quel.
+ */
+export function renumberOldName(name, desc) {
+    const d = descOf(desc);
+    for (const vd of Object.values(d.variants)) {
+        const first = typeof vd.first_index === "number" ? vd.first_index : 1;
+        if (first === 1) continue;
+        for (const r of vd.rows) {
+            for (const [tpl] of r.outputs) {
+                if (!tpl.includes("{n}")) continue;
+                const [a, b] = tpl.split("{n}");
+                const m = String(name).match(new RegExp("^" + a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\d+)" +
+                    b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"));
+                if (m && Number(m[1]) >= 1) return a + (Number(m[1]) - 1 + first) + b;
+            }
+        }
+    }
+    return name;
+}
+
+/** modeLinks d'avant la numerotation a partir de 0 : cles des sorties renommees (renumberOldName). */
+export function renumberModeLinks(map, desc) {
+    const out = {};
+    for (const [v, entries] of Object.entries(map || {})) {
+        out[v] = Array.isArray(entries) ? entries.map((e) => (e && typeof e === "object"
+            ? Object.assign({}, e, { key: renumberOldName(e.key, desc) }) : e)) : entries;
+    }
+    return out;
+}
+
 export function variantLayout(state, desc) {
     const d = descOf(desc);
     const v = variantOf(state, d);
@@ -560,7 +604,7 @@ export function variantLayout(state, desc) {
         const n = Math.min(Math.max(1, rowList(state, r.id, v, d).length), lim.counts[r.id]);
         for (let i = 1; i <= n; i++) {
             for (const [name, type, value] of r.outputs) {
-                if (name.includes("{n}")) out.push({ key: name.replace("{n}", String(i)), type, value, row: r.id, index: i - 1 });
+                if (name.includes("{n}")) out.push({ key: outputKey(name, vd, i - 1), type, value, row: r.id, index: i - 1 });
                 else if (i === 1) out.push({ key: name, type, value, row: r.id, index: 0 });
             }
         }
@@ -825,8 +869,8 @@ export function pairedOutputs(state, desc) {
     const b = rowList(state, track.id, v, d);
     for (let i = 0; i < Math.min(a.length, b.length); i++) {
         if (!a[i] || !b[i]) continue;
-        out[video.outputs[0][0].replace("{n}", String(i + 1))] = i + 1;
-        out[track.outputs[0][0].replace("{n}", String(i + 1))] = i + 1;
+        out[outputKey(video.outputs[0][0], d.variants[v], i)] = i + 1;
+        out[outputKey(track.outputs[0][0], d.variants[v], i)] = i + 1;
     }
     return out;
 }

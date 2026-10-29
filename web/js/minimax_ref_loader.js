@@ -3,7 +3,8 @@ import { formatVariantConfig, parseVariantConfig, variantConfigPrefix, trimKey }
 import { LAST, secondsToFrame, guideMoments, checkMoment, sameFrameAs, stepFrame,
     FALLBACK_DESCRIPTION, routeDescription, variantOf, modelOf, variantsOfModel, rowsOf as variantRowsOf,
     variantLimits, parseVariantState, uiHeight as variantUiHeight, limitLabels, variantLimitOverrides,
-    pruneVariantMoments, variantLayoutKeys, variantModeLinks, isOldLoaderOutputs, rewirePlan } from "./profiles.js";
+    pruneVariantMoments, variantLayoutKeys, variantModeLinks, isOldLoaderOutputs, rewirePlan, outputKey,
+    renumberOldName, renumberModeLinks } from "./profiles.js";
 import { outputLinksOf } from "./graph_links.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
@@ -315,9 +316,9 @@ const HELP_SECTIONS = [
             "Click a row button (" + iconBadge(IMAGE_ICON, VIOLET) + " Images, " + iconBadge(VIDEO_ICON, ORANGE) +
             " Video...) and click files in the gallery. Click order sets the number.",
             "Wire the <b>package</b> output to a <b>MagicStudio Container</b>: it gives one output per file, " +
-            "with the names of the variant (<b>ref_image_1</b>, <b>guide_image_1</b>...).",
-            "Wire the outputs of the Container in order: for MiniMax, <b>ref_image_1</b> goes to <b>ref_image_0</b>, " +
-            "and so on. For LTX, see the <b>LTX 2.3 / 2.5</b> section.",
+            "with the names of the variant (<b>ref_image_0</b>, <b>guide_image_1</b>...).",
+            "Wire the outputs of the Container in order: for MiniMax, the numbers are those of its inputs " +
+            "(<b>ref_image_0</b> goes to <b>ref_image_0</b>). For LTX, see the <b>LTX 2.3 / 2.5</b> section.",
         ]) +
         hCard("Buttons of the node", [
             ["Model", "the list at the top left: <b>MiniMax H3</b> or <b>LTX</b>"],
@@ -330,7 +331,7 @@ const HELP_SECTIONS = [
             [iconBadge(DOWNLOAD_ICON, PINK), "Save the configuration (.json)"],
             [iconBadge(UPLOAD_ICON, PINK), "Load a configuration (.json)"],
         ]) +
-        hTip("With MiniMax H3 Ref2VA, <b>ref_image_1</b> is <b>&lt;Picture 1&gt;</b> in the prompt."),
+        hTip("With MiniMax H3 Ref2VA, <b>ref_image_0</b> is <b>&lt;Picture 1&gt;</b> in the prompt."),
     },
     {
         id: "models", title: "Models", icon: MODE_ICON, color: VIOLET,
@@ -540,7 +541,7 @@ const HELP_SECTIONS = [
             hCard("In the window", [
                 ["Thumbnail", "details (folder, size, duration) and the larger view on the right."],
                 [iconBadge(LEFT_ICON, INACTIVE_BG) + " " + iconBadge(RIGHT_ICON, INACTIVE_BG), "move a file one place; " +
-                    "the wires stay on the outputs (number 1 always goes out on <b>ref_image_1</b>)."],
+                    "the wires stay on the outputs (number 1 always goes out on <b>ref_image_0</b>)."],
                 [iconBadge(TRASH_ICON, INACTIVE_BG), "marks a file (" + iconBadge(TRASH_ICON, MARK_RED) + "); " +
                     "<b>Delete</b> removes the marked files after a confirmation; the following files move up."],
             ]) +
@@ -618,11 +619,12 @@ const HELP_SECTIONS = [
                     "(Ref2VA), <b>first_frame</b> / <b>last_frame</b> (F2VA / FL2VA), <b>guide_image_N</b>... (LTX)."],
                 ["Rename", "double-click an output name on the Container (empty = default name), or use the " +
                     "right-click menu."],
-                ["Numbers", "MiniMax numbers its inputs from 0: <b>ref_image_1</b> goes to <b>ref_image_0</b>."],
+                ["Numbers", "MiniMax outputs start at 0, like the inputs of MiniMax: <b>ref_image_0</b> goes to " +
+                    "<b>ref_image_0</b> and is <b>&lt;Picture 1&gt;</b> in the prompt. LTX outputs start at 1."],
                 ["Audio", "MiniMax numbers <b>&lt;Audio j&gt;</b> with the video soundtracks first, then the audio " +
-                    "files: with 2 soundtracks, <b>ref_audio_1</b> is <b>&lt;Audio 3&gt;</b>."],
-                ["Colours", "<b>ref_video_N</b> and <b>ref_video_audio_N</b> of a pair share a colour (1 orange, " +
-                    "2 pink, 3 green)."],
+                    "files: with 2 soundtracks, <b>ref_audio_0</b> is <b>&lt;Audio 3&gt;</b>."],
+                ["Colours", "<b>ref_video_N</b> and <b>ref_video_audio_N</b> of a pair share a colour (first pair orange, " +
+                    "second pink, third green)."],
             ]) +
             hNote("an old workflow (a RefLoader with one output per file) gets a <b>MagicStudio Container</b> next " +
                 "to its RefLoader when it opens, wired the same way: <b>A MagicStudio Container was added and " +
@@ -662,9 +664,9 @@ const HELP_SECTIONS_FR = [
             iconBadge(VIDEO_ICON, ORANGE) + " Video...) puis sur des fichiers dans la galerie. L'ordre des " +
             "clics donne le numéro.",
             "Branchez la sortie <b>package</b> sur un <b>MagicStudio Container</b> : il donne une sortie par " +
-            "fichier, avec les noms de la variante (<b>ref_image_1</b>, <b>guide_image_1</b>...).",
-            "Branchez les sorties du Container dans l'ordre : pour MiniMax, <b>ref_image_1</b> va sur " +
-            "<b>ref_image_0</b>, etc. Pour LTX, voir la rubrique <b>LTX 2.3 / 2.5</b>.",
+            "fichier, avec les noms de la variante (<b>ref_image_0</b>, <b>guide_image_1</b>...).",
+            "Branchez les sorties du Container dans l'ordre : pour MiniMax, les numéros sont ceux de ses entrées " +
+            "(<b>ref_image_0</b> va sur <b>ref_image_0</b>). Pour LTX, voir la rubrique <b>LTX 2.3 / 2.5</b>.",
         ]) +
         hCard("Boutons du nœud", [
             ["Model", "la liste en haut à gauche : <b>MiniMax H3</b> ou <b>LTX</b>"],
@@ -677,7 +679,7 @@ const HELP_SECTIONS_FR = [
             [iconBadge(DOWNLOAD_ICON, PINK), "Sauvegarder la configuration (.json)"],
             [iconBadge(UPLOAD_ICON, PINK), "Charger une configuration (.json)"],
         ]) +
-        hTip("Avec MiniMax H3 Ref2VA, <b>ref_image_1</b> correspond à <b>&lt;Picture 1&gt;</b> dans le prompt.", TIP_FR),
+        hTip("Avec MiniMax H3 Ref2VA, <b>ref_image_0</b> correspond à <b>&lt;Picture 1&gt;</b> dans le prompt.", TIP_FR),
     },
     {
         id: "models", title: "Modèles",
@@ -898,7 +900,7 @@ const HELP_SECTIONS_FR = [
             hCard("Dans la fenêtre", [
                 ["Vignette", "détails (dossier, taille, durée) et aperçu en grand à droite."],
                 [iconBadge(LEFT_ICON, INACTIVE_BG) + " " + iconBadge(RIGHT_ICON, INACTIVE_BG), "déplacent un fichier " +
-                    "d'une place ; les câbles restent sur les sorties (le numéro 1 sort toujours sur <b>ref_image_1</b>)."],
+                    "d'une place ; les câbles restent sur les sorties (le numéro 1 sort toujours sur <b>ref_image_0</b>)."],
                 [iconBadge(TRASH_ICON, INACTIVE_BG), "marque un fichier (" + iconBadge(TRASH_ICON, MARK_RED) + ") ; " +
                     "<b>Delete</b> retire les fichiers marqués après confirmation ; les suivants remontent."],
             ]) +
@@ -977,11 +979,12 @@ const HELP_SECTIONS_FR = [
                     "(Ref2VA), <b>first_frame</b> / <b>last_frame</b> (F2VA / FL2VA), <b>guide_image_N</b>... (LTX)."],
                 ["Renommer", "double-cliquez sur le nom d'une sortie du Container (vide = nom par défaut), ou utilisez " +
                     "le menu du clic droit."],
-                ["Numéros", "MiniMax numérote ses entrées à partir de 0 : <b>ref_image_1</b> va sur <b>ref_image_0</b>."],
+                ["Numéros", "les sorties MiniMax partent de 0, comme les entrées de MiniMax : <b>ref_image_0</b> va sur " +
+                    "<b>ref_image_0</b> et correspond à <b>&lt;Picture 1&gt;</b> dans le prompt. Les sorties LTX partent de 1."],
                 ["Audio", "MiniMax numérote <b>&lt;Audio j&gt;</b> avec d'abord les bandes-son de vidéo, puis les " +
-                    "fichiers audio : avec 2 bandes-son, <b>ref_audio_1</b> est <b>&lt;Audio 3&gt;</b>."],
+                    "fichiers audio : avec 2 bandes-son, <b>ref_audio_0</b> est <b>&lt;Audio 3&gt;</b>."],
                 ["Couleurs", "<b>ref_video_N</b> et <b>ref_video_audio_N</b> d'une même paire ont la même couleur " +
-                    "(1 orange, 2 rose, 3 vert)."],
+                    "(première paire orange, deuxième rose, troisième vert)."],
             ]) +
             hNote("un ancien workflow (un RefLoader avec une sortie par fichier) reçoit, à son ouverture, un " +
                 "<b>MagicStudio Container</b> à côté de son RefLoader, branché de la même façon : <b>A MagicStudio " +
@@ -1186,7 +1189,9 @@ function rewireOldLoader(node, names, state) {
     // Sorties du Container d'apres l'etat (memes noms que les anciennes sorties), sans lien.
     if (typeof container.mmLayoutFrom === "function") container.mmLayoutFrom(state);
     const keys = variantLayoutKeys(state, variantDesc);
-    const old = names.map((name, i) => ({ name, label: node.outputs[i] && node.outputs[i].label, links: outputLinksOf(node, i) }));
+    // Anciens noms numerotes a partir de 1 (ref_image_1 = premiere image) -> numeros des variantes (ref_image_0).
+    const old = names.map((name, i) => ({ name: renumberOldName(name, variantDesc), label: node.outputs[i] && node.outputs[i].label,
+        links: outputLinksOf(node, i) }));
     const plan = rewirePlan(old.map((o) => ({ name: o.name, links: o.links.map((l) => ({ targetId: l.target_id,
         targetSlot: l.target_slot })) })), keys);
     // Liens d'un nom inconnu du Container : defaits d'abord.
@@ -1226,7 +1231,8 @@ function rewireOldLoader(node, names, state) {
     node.connect(1, container, 0);
     // Liens memorises par mode / profil : passent au Container, par variante.
     container.properties = container.properties || {};
-    container.properties.modeLinks = variantModeLinks(node.properties && node.properties.modeLinks);
+    container.properties.modeLinks = renumberModeLinks(variantModeLinks(node.properties && node.properties.modeLinks), variantDesc);
+    container.properties.mmNumbering = 1;
     container.properties.mmVariant = variantOf(state, variantDesc);
     if (node.properties) delete node.properties.modeLinks;
     if (typeof container.__mmContainerRefresh === "function") container.__mmContainerRefresh();
@@ -3919,9 +3925,10 @@ function buildRootDialog(container, ctx) {
 // --------------------------------------------------------------------
 // Fenetre de la selection : ordre, reorganisation et infos d'un fichier
 // --------------------------------------------------------------------
-/** Nom de la sortie de l'element i (index 0) d'une ligne : premiere sortie de la ligne, {n} = numero. */
+/** Nom de la sortie de l'element i (index 0) d'une ligne : premiere sortie de la ligne, {n} = numero (first_index). */
 function outputName(rid, i) {
-    return rowInfo(rid).outputs[0][0].replace("{n}", String(i + 1));
+    const v = Object.values(variantDesc.variants).find((x) => x.rows.some((r) => r.id === rid));
+    return outputKey(rowInfo(rid).outputs[0][0], v, i);
 }
 
 function buildSelectionViewer(container, ctx) {

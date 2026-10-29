@@ -1,7 +1,8 @@
 // Tests du MagicStudio Container (sans ComfyUI) : node --test tests/test_container.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isOldLoaderOutputs, rewirePlan, pairedOutputs, migrateState, variantLayoutKeys } from "../web/js/profiles.js";
+import { isOldLoaderOutputs, rewirePlan, pairedOutputs, migrateState, variantLayoutKeys, renumberOldName,
+    renumberModeLinks, outputKey } from "../web/js/profiles.js";
 import { traceSource, outputLinksOf, saveOutputLinks, restoreOutputLinks } from "../web/js/graph_links.js";
 
 // ---- faux graphe (memes champs que LiteGraph : links Map, getNodeById, inputs[].link, connect) ----
@@ -70,9 +71,27 @@ test("rewirePlan drops unknown names", () => {
     assert.deepEqual(plan.toContainer, []);
 });
 
-test("old workflow : container keys of the migrated state match the old names", () => {
+test("old workflow : old names (from 1) become the container keys (from 0, like MiniMax)", () => {
     const s = migrateState({ mode: "ref2va", images: ["a.png", "b.png"], videos: ["v.mp4"] });
-    assert.deepEqual(variantLayoutKeys(s), ["ref_image_1", "ref_image_2", "ref_video_1", "ref_video_audio_1", "ref_audio_1"]);
+    const keys = variantLayoutKeys(s);
+    assert.deepEqual(keys, ["ref_image_0", "ref_image_1", "ref_video_0", "ref_video_audio_0", "ref_audio_0"]);
+    const old = ["ref_image_1", "ref_image_2", "ref_video_1", "ref_video_audio_1", "ref_audio_1", "project"];
+    assert.deepEqual(old.map((n) => renumberOldName(n)), keys.concat(["project"]));
+    // LTX garde sa numerotation a partir de 1 ; first_frame / last_frame inchanges
+    assert.deepEqual(variantLayoutKeys(migrateState({ variant: "ltx.2_3" })).slice(4, 6), ["guide_image_1", "guide_frame_1"]);
+    assert.equal(renumberOldName("guide_image_1"), "guide_image_1");
+    assert.equal(renumberOldName("first_frame"), "first_frame");
+    assert.equal(renumberOldName("ref_video_audio_3"), "ref_video_audio_2");
+    assert.equal(outputKey("ref_image_{n}", { first_index: 0 }, 0), "ref_image_0");
+    assert.equal(outputKey("guide_image_{n}", {}, 0), "guide_image_1");
+});
+
+test("modeLinks saved before the numbering from 0 are renamed", () => {
+    const m = renumberModeLinks({ "minimax_h3.ref2va": [{ key: "ref_image_1", label: "hero", links: [] }],
+        "ltx.2_3": [{ key: "guide_image_1", label: null, links: [] }] });
+    assert.equal(m["minimax_h3.ref2va"][0].key, "ref_image_0");
+    assert.equal(m["minimax_h3.ref2va"][0].label, "hero");
+    assert.equal(m["ltx.2_3"][0].key, "guide_image_1");
 });
 
 test("linked loader through Get/Set and Reroute", () => {
@@ -130,6 +149,6 @@ test("links saved per variant", () => {
 
 test("pair colors only for a video and its soundtrack of the same number", () => {
     const s = migrateState({ mode: "ref2va", videos: ["a.mp4", "b.mp4"], video_audios: ["a.mp4"] });
-    assert.deepEqual(pairedOutputs(s), { ref_video_1: 1, ref_video_audio_1: 1 });
+    assert.deepEqual(pairedOutputs(s), { ref_video_0: 1, ref_video_audio_0: 1 });
     assert.deepEqual(pairedOutputs(migrateState({ variant: "ltx.2_3" })), {});
 });

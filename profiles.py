@@ -89,7 +89,7 @@ def _ltx_rows():
 
 VARIANTS = {
     "minimax_h3.ref2va": {
-        "model": "minimax_h3", "label": "Ref2VA", "limits": dict(_MINIMAX_LIMITS), "settings": [],
+        "model": "minimax_h3", "label": "Ref2VA", "limits": dict(_MINIMAX_LIMITS), "settings": [], "first_index": 0,
         "rows": [
             {"id": "images", "label": "Images", "kind": "image", "max": 9, "folder": "08.Images", "tags": True,
              "outputs": [["ref_image_{n}", "IMAGE", "image"]]},
@@ -103,6 +103,7 @@ VARIANTS = {
     },
     "minimax_h3.fl2va": {
         "model": "minimax_h3", "label": "F2VA / FL2VA", "limits": dict(_MINIMAX_LIMITS), "settings": [],
+        "first_index": 0,
         "rows": [
             {"id": "first_frame", "label": "First frame", "kind": "image", "max": 1, "folder": "08.Images",
              "outputs": [["first_frame", "IMAGE", "image"]]},
@@ -231,11 +232,14 @@ def variant_layout(state):
     """
     Sorties de la variante de l'etat : reglages d'abord ({key, type, value, row: None,
     index: None}), puis chaque ligne : n = nombre de fichiers borne a [1, counts[ligne]],
-    pour i = 1..n les sorties de la ligne ({n} -> i ; sans {n} : une seule fois).
+    pour i = 1..n les sorties de la ligne ({n} -> numero du fichier a partir de first_index de
+    la variante : 0 pour MiniMax H3, comme ses entrees ref_image_0..., 1 par defaut ; sans {n} :
+    une seule fois).
     """
     v = variant_of(state)
     d = VARIANTS[v]
     lim = variant_limits(state, v)
+    first = d.get("first_index", 1)
     out = [{"key": name, "type": typ, "value": value, "row": None, "index": None}
            for name, typ, value in d["settings"]]
     for r in d["rows"]:
@@ -243,7 +247,7 @@ def variant_layout(state):
         for i in range(1, n + 1):
             for name, typ, value in r["outputs"]:
                 if "{n}" in name:
-                    out.append({"key": name.replace("{n}", str(i)), "type": typ, "value": value,
+                    out.append({"key": name.replace("{n}", str(i - 1 + first)), "type": typ, "value": value,
                                 "row": r["id"], "index": i - 1})
                 elif i == 1:
                     out.append({"key": name, "type": typ, "value": value, "row": r["id"], "index": 0})
