@@ -850,11 +850,15 @@ export const EXTRACT_FRAME_DIR = ["40.Rush Videos", "Picture Lock", "Extract Fra
 /** Choix de la liste Select: de la fenetre Extract Frame ([valeur envoyee, texte]). */
 export const EXTRACT_CHOICES = [["first", "First"], ["last", "Last"], ["fl", "FL-Frame"], ["n", "Frame-N"]];
 
-/** Numero de l'image affichee au temps t (s), a partir de 0, jamais hors de 0..total-1. */
+/**
+ * Numero de l'image affichee au temps t (s), a partir de 0, jamais hors de 0..total-1.
+ * Marge de 1/1000 d'image : requestVideoFrameCallback donne le debut de l'image arrondi
+ * a la microseconde (5/24 -> 0.208333 -> 4.999992 images), qui doit compter pour l'image 5.
+ */
 export function frameAt(time, fps, total) {
     const t = Number(time), f = Number(fps), tot = Math.floor(Number(total));
     if (!(t > 0) || !(f > 0) || !(tot > 0)) return 0;
-    return Math.max(0, Math.min(tot - 1, Math.floor(t * f + 1e-6)));
+    return Math.max(0, Math.min(tot - 1, Math.floor(t * f + 1e-3)));
 }
 
 /** Temps (s) du milieu de l'image n : un saut a ce temps affiche bien l'image n. */

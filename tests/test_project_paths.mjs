@@ -761,6 +761,14 @@ test("Extract Frame : numero d'image, temps, compteur, choix, galerie", () => {
     assert.ok(isMediaSubfolder("P/08.Images", "ref2va", "image"));
 });
 
+test("Extract Frame : mediaTime arrondi a la microseconde (debut de l'image)", () => {
+    assert.equal(frameAt(0.208333, 24, 97), 5);
+    for (let k = 0; k <= 96; k++) {
+        assert.equal(frameAt(Math.floor((k / 24) * 1e6) / 1e6, 24, 97), k, "debut arrondi de l'image " + k);
+        assert.equal(frameAt(timeOf(k, 24), 24, 97), k, "milieu de l'image " + k);
+    }
+});
+
 test("Extract Frame : bouton de l'en-tete de la fenetre 40", () => {
     assert.equal(extractHeaderState({}, {}), "hidden");
     assert.equal(extractHeaderState(null, null), "hidden");
