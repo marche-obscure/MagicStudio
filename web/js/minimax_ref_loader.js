@@ -310,13 +310,6 @@ const hBadge = (t) =>
 const ONLY_EN = hBadge("MiniMax H3 only");
 const ONLY_FR = hBadge("MiniMax H3 uniquement");
 
-/** Petite etiquette de titre (ex. « MiniMax H3 only »). */
-const hBadge = (t) =>
-    '<span style="display:inline-block;border-radius:999px;background:' + ORANGE + ';color:white;' +
-    'font-size:10px;font-weight:bold;padding:1px 8px;margin:0 0 6px">' + t + "</span>";
-const ONLY_EN = hBadge("MiniMax H3 only");
-const ONLY_FR = hBadge("MiniMax H3 uniquement");
-
 // Rubriques de l'aide : menu a gauche, une rubrique affichee a la fois.
 const HELP_SECTIONS = [
     {

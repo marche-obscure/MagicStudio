@@ -13,7 +13,7 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
     folderMax, activeLists, hiddenFolderItems,
-    frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState,
+    frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState, runSourcePaths, PICKUP_DIR, PICKUP_SUBS, pickupPath,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -781,4 +781,31 @@ test("Extract Frame : bouton de l'en-tete de la fenetre 40", () => {
     assert.equal(extractHeaderState({ video: ["still.png"] }, {}), "hidden");
     // Picture Lock des images (60) sans effet
     assert.equal(extractHeaderState({ video: ["a.mp4"], image: ["x.png", "y.png"] }, { image: 2 }), "enabled");
+});
+
+test("cloche : les fichiers d'un Run ne sont jamais orphelins (26/10/2026)", () => {
+    const runs = [{ outputs: [{ source: "G:\\P\\12.Video\\a.mp4" }, { source: "" }] }, { outputs: [] }, {}];
+    assert.deepEqual([...runSourcePaths(runs)], ["g:/p/12.video/a.mp4"]);
+    assert.deepEqual([...runSourcePaths(null)], []);
+    const paths = ["G:/P/12.Video/a.mp4", "G:/P/12.Video/b.mp4"];
+    assert.deepEqual(unusedProjectFiles(paths, {}, runSourcePaths(runs)), [paths[1]]);
+    assert.deepEqual(unusedProjectFiles(paths, {}), paths);
+});
+
+test("Pick Up : liste de la galerie et chemins (26/10/2026)", () => {
+    assert.equal(PICKUP_DIR, "90.Pick Up");
+    assert.deepEqual(PICKUP_SUBS, { image: "Image", audio: "Son", video: "Video" });
+    assert.ok(isMediaSubfolder("P/90.Pick Up/Image", "ref2va", "image"));
+    assert.ok(isMediaSubfolder("G/P/90.Pick Up/Son", "ref2va", "audio"));
+    assert.ok(isMediaSubfolder("P\\90.Pick Up\\Video", "ltx2", "video"));
+    assert.ok(isMediaSubfolder("P/90.Pick Up/Image", "fl2va", "image"));
+    assert.ok(isMediaSubfolder("P/90.Pick Up/Video", "ref2va"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up/Image", "ref2va", "video"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up/Son", "ref2va", "image"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up/Other", "ref2va"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up", "ref2va"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up/Video/Sub", "ref2va"));
+    assert.ok(!isMediaSubfolder("A/G/P/90.Pick Up/Image", "ref2va"));
+    assert.equal(pickupPath("G:\\X\\P", "audio"), "G:\\X\\P\\90.Pick Up\\Son");
+    assert.equal(pickupPath("G:\\X\\P\\", "image"), "G:\\X\\P\\90.Pick Up\\Image");
 });
