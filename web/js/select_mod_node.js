@@ -1637,7 +1637,7 @@ function buildModelPicker(container, ctx) {
         return row;
     }
 
-    async function renderTree() {
+    async function renderTree(showCurrent) {
         const scroll = treeBox.scrollTop;
         const out = [];
         async function walk(dirs, depth) {
@@ -1665,6 +1665,11 @@ function buildModelPicker(container, ctx) {
         treeBox.innerHTML = "";
         treeBox.append(...out);
         treeBox.scrollTop = scroll;
+        if (showCurrent) {
+            // Dossier choisi visible dans l'arbre (ouverture sur le dossier du champ, clic).
+            const row = out.find((r) => normKey(r.title) === normKey(current));
+            if (row) row.scrollIntoView({ block: "nearest" });
+        }
     }
 
     function header(label, col) {
@@ -1683,6 +1688,7 @@ function buildModelPicker(container, ctx) {
     const GRID = "minmax(0, 1fr) 80px 120px";
 
     function renderTable() {
+        title.textContent = "Field " + ctx.activeField(); // le champ actif peut changer fenetre ouverte
         table.innerHTML = "";
         const head2 = document.createElement("div");
         Object.assign(head2.style, {
@@ -1718,7 +1724,8 @@ function buildModelPicker(container, ctx) {
                 row.style.background = "transparent";
             });
             row.addEventListener("click", () => pick(f, false));
-            row.addEventListener("dblclick", () => pick(f, true));
+            // Le double-clic envoie d'abord deux clics : le fichier est deja dans le champ, on ferme.
+            row.addEventListener("dblclick", () => close());
             table.appendChild(row);
         }
         if (!files.length) {
@@ -1756,13 +1763,17 @@ function buildModelPicker(container, ctx) {
         current = path;
         currentRoot = rootOf(path);
         saveLastDir(path);
-        await renderTree();
+        await renderTree(true);
         await loadFiles();
     }
 
+    let lastPick = { path: "", at: 0 };
     async function pick(f, close_) {
         const root = rootOf(f.path) || currentRoot;
         if (!root) return;
+        // 2e clic du meme fichier aussitot (double-clic) : deja choisi.
+        if (lastPick.path === f.path && Date.now() - lastPick.at < 600) return;
+        lastPick = { path: f.path, at: Date.now() };
         const dir = f.path.slice(0, Math.max(f.path.lastIndexOf("\\"), f.path.lastIndexOf("/")));
         const rel = dir.length > root.path.length ? dir.slice(root.path.length).replace(/^[\\/]+/, "") : "";
         foot.textContent = f.path;
