@@ -286,15 +286,15 @@ const HELP_SECTIONS = [
         id: "media", title: "Media 08 to 14", icon: FOLDER_ICONS["08.Images"], color: FOLDER_COLORS["08.Images"],
         html: "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> and <b>14.Video-Audio</b> follow the lists of the " +
             "RefLoader.</p>" +
-            hCard("Which list goes where", [
-                ["MiniMax H3", "<b>08</b> Images, First / Last frame; <b>10</b> Audio; <b>12</b> Video; " +
-                    "<b>14</b> Video/Audio."],
-                ["LTX 2.x", "<b>08</b> Guide images; <b>10</b> Soundtrack and Voice; <b>12</b> Guide video; " +
+            hCard("Which row goes where", [
+                ["Ref2VA", "<b>08</b> Images; <b>10</b> Audio; <b>12</b> Video; <b>14</b> Video/Audio."],
+                ["F2VA / FL2VA", "<b>08</b> First / Last frame; 10, 12 and 14 not used."],
+                ["LTX 2.3 / 2.5", "<b>08</b> Guide images; <b>10</b> Soundtrack and Voice; <b>12</b> Guide video; " +
                     "<b>14</b> not used."],
             ]) +
             hCard("The row of the folder", [
-                ["Use: n/x", "files used out of the most allowed. The maximum follows the model chosen in the RefLoader " +
-                    "(and its <b>Limits</b>). In LTX 2.x, 14.Video-Audio shows <b>Not used</b>."],
+                ["Use: n/x", "files used out of the most allowed. The maximum follows the variant shown in the " +
+                    "RefLoader (and its <b>Limits</b>). A folder without a row in that variant shows <b>Not used</b>."],
                 ["Orphelins: m", "files no list uses anymore, in orange."],
                 ["In Archives: y", "files in <b>&lt;folder&gt;/Archives</b>."],
             ]) +
@@ -307,8 +307,9 @@ const HELP_SECTIONS = [
                 "The bell turns grey again. No file is deleted.",
             ]) +
             hCard("The window of the folder", [
-                ["Files", "in the order of the RefLoader with their number (<b>F</b> / <b>L</b> = First / Last " +
-                    "frame; files without number at the end, greyed), then the <b>Archives</b> frame."],
+                ["Files", "in the order of the RefLoader with their number (a row of one file shows its initial: " +
+                    "<b>F</b> / <b>L</b> = First / Last frame, <b>S</b> / <b>V</b> = Soundtrack / Voice; files without " +
+                    "number at the end, greyed), then the <b>Archives</b> frame."],
                 ["Thumbnail", "opens the <b>Preview</b>; Close, Escape or a click outside closes the window."],
             ]) +
             hCard("Special cases", [
@@ -532,26 +533,21 @@ const HELP_SECTIONS = [
                 "<b>Copies the files of the RefLoader into the project</b>; the RefLoader then uses " +
                 "these copies.",
                 "<b>Saves the workflow</b> (through the window of the bell when it has changed).",
-                "<b>Records the configuration</b> in <b>" + CONFIG_PATH + "</b>: the files of each folder, their number " +
-                "and their SHA256. It also notes the model and, with LTX 2.x, the moment of each guide. The previous " +
-                "configuration goes to Archives, never overwritten.",
+                "<b>Records the configuration</b> in <b>" + CONFIG_PATH + "</b>: <b>every variant</b> of the " +
+                "RefLoader and the one shown. Each file is written once, with its uses (variant, row, number, moment, " +
+                "trim) and its SHA256. The previous configuration goes to Archives, never overwritten.",
             ]) +
-            hCard("List of the RefLoader → folder (MiniMax H3)", [
-                [folderBadge("08.Images"), "Images, First / Last frame → <b>08.Images</b>"],
-                [folderBadge("10.Son"), "Audio → <b>10.Son</b>"],
-                [folderBadge("12.Video"), "Video → <b>12.Video</b>"],
-                [folderBadge("14.Video-Audio"), "Video/Audio → <b>14.Video-Audio</b>"],
+            hCard("Row of the RefLoader → folder", [
+                [folderBadge("08.Images"), "Images (Ref2VA), First / Last frame (F2VA / FL2VA), Guide images (LTX) → " +
+                    "<b>08.Images</b>"],
+                [folderBadge("10.Son"), "Audio (Ref2VA), Soundtrack, Voice (LTX) → <b>10.Son</b>"],
+                [folderBadge("12.Video"), "Video (Ref2VA), Guide video (LTX) → <b>12.Video</b>"],
+                [folderBadge("14.Video-Audio"), "Video/Audio (Ref2VA) → <b>14.Video-Audio</b>"],
             ]) +
-            hCard("List of the RefLoader → folder (LTX 2.x)", [
-                [folderBadge("08.Images"), "Guide images → <b>08.Images</b>"],
-                [folderBadge("10.Son"), "Soundtrack, Voice → <b>10.Son</b>"],
-                [folderBadge("12.Video"), "Guide video → <b>12.Video</b>"],
-                [folderBadge("14.Video-Audio"), "not used"],
-            ]) +
-            hNote("only the files of the model shown in the RefLoader are copied. The files of the other model are " +
-                "never archived.") +
-            hNote("each file of 08, 10, 12 and 14 must be used by the RefLoader (for the model shown); otherwise the configuration " +
-                "is not recorded and those files are listed.") +
+            hNote("only the files of the <b>variant shown</b> in the RefLoader are copied. A file used by any " +
+                "variant is never archived.") +
+            hNote("each file of 08, 10, 12 and 14 must be used by a variant of the RefLoader; otherwise the " +
+                "configuration is not recorded and those files are listed.") +
             "<p><b>Load: put the project back</b></p>" +
             hSteps([
                 "<b>Checks each file</b> against the configuration, without changing anything; a missing or different " +
@@ -559,7 +555,8 @@ const HELP_SECTIONS = [
                 "The <b>Load the project</b> window shows each folder: <b style=\"color:" + GREEN + "\">✓</b> identical, " +
                 "<b style=\"color:#d32f2f\">✗</b> missing or different, <b>→ found in Archives</b> (" +
                 iconBadge(EYE_ICON, VIOLET) + " to see it). Uncheck what must not be loaded (00.Workflows, 08 to 14).",
-                "<b>Load</b> puts back the files found, fills the RefLoader and loads the workflow.",
+                "<b>Load</b> puts back the files found, fills <b>every variant</b> of the RefLoader and loads the " +
+                "workflow. The variant shown does not change.",
             ]) +
             hCard("The workflow when loading", [
                 ["Same structure", "replaces the workflow of this tab"],
@@ -747,15 +744,15 @@ const HELP_SECTIONS_FR = [
         id: "media", title: "Médias 08 à 14",
         html: "<p><b>08.Images</b>, <b>10.Son</b>, <b>12.Video</b> et <b>14.Video-Audio</b> suivent les listes du " +
             "RefLoader.</p>" +
-            hCard("Quelle liste va où", [
-                ["MiniMax H3", "<b>08</b> Images, First / Last frame ; <b>10</b> Audio ; <b>12</b> Video ; " +
-                    "<b>14</b> Video/Audio."],
-                ["LTX 2.x", "<b>08</b> Guide images ; <b>10</b> Soundtrack et Voice ; <b>12</b> Guide video ; " +
+            hCard("Quelle ligne va où", [
+                ["Ref2VA", "<b>08</b> Images ; <b>10</b> Audio ; <b>12</b> Video ; <b>14</b> Video/Audio."],
+                ["F2VA / FL2VA", "<b>08</b> First / Last frame ; 10, 12 et 14 non utilisés."],
+                ["LTX 2.3 / 2.5", "<b>08</b> Guide images ; <b>10</b> Soundtrack et Voice ; <b>12</b> Guide video ; " +
                     "<b>14</b> non utilisé."],
             ]) +
             hCard("La ligne du dossier", [
-                ["Use: n/x", "fichiers utilisés sur le maximum permis. Le maximum suit le modèle choisi dans le RefLoader " +
-                    "(et ses <b>Limits</b>). En LTX 2.x, 14.Video-Audio affiche <b>Not used</b>."],
+                ["Use: n/x", "fichiers utilisés sur le maximum permis. Le maximum suit la variante affichée dans le " +
+                    "RefLoader (et ses <b>Limits</b>). Un dossier sans ligne dans cette variante affiche <b>Not used</b>."],
                 ["Orphelins: m", "fichiers qu'aucune liste n'utilise plus, en orange."],
                 ["In Archives: y", "fichiers dans <b>&lt;dossier&gt;/Archives</b>."],
             ]) +
@@ -1000,25 +997,20 @@ const HELP_SECTIONS_FR = [
                 "<b>Copie les fichiers du RefLoader dans le projet</b> ; le RefLoader utilise ensuite " +
                 "ces copies.",
                 "<b>Sauvegarde le workflow</b> (par la fenêtre de la cloche s'il a changé).",
-                "<b>Enregistre la configuration</b> dans <b>" + CONFIG_PATH + "</b> : les fichiers de chaque dossier, " +
-                "leur numéro et leur SHA256. Elle note aussi le modèle et, avec LTX 2.x, le moment de chaque guide. " +
-                "L'ancienne part dans Archives, jamais écrasée.",
+                "<b>Enregistre la configuration</b> dans <b>" + CONFIG_PATH + "</b> : <b>toutes les variantes</b> du " +
+                "RefLoader et celle affichée. Chaque fichier est écrit une fois, avec ses utilisations (variante, ligne, " +
+                "numéro, moment, rognage) et son SHA256. L'ancienne part dans Archives, jamais écrasée.",
             ]) +
-            hCard("Liste du RefLoader → dossier (MiniMax H3)", [
-                [folderBadge("08.Images"), "Images, First / Last frame → <b>08.Images</b>"],
-                [folderBadge("10.Son"), "Audio → <b>10.Son</b>"],
-                [folderBadge("12.Video"), "Video → <b>12.Video</b>"],
-                [folderBadge("14.Video-Audio"), "Video/Audio → <b>14.Video-Audio</b>"],
+            hCard("Ligne du RefLoader → dossier", [
+                [folderBadge("08.Images"), "Images (Ref2VA), First / Last frame (F2VA / FL2VA), Guide images (LTX) → " +
+                    "<b>08.Images</b>"],
+                [folderBadge("10.Son"), "Audio (Ref2VA), Soundtrack, Voice (LTX) → <b>10.Son</b>"],
+                [folderBadge("12.Video"), "Video (Ref2VA), Guide video (LTX) → <b>12.Video</b>"],
+                [folderBadge("14.Video-Audio"), "Video/Audio (Ref2VA) → <b>14.Video-Audio</b>"],
             ]) +
-            hCard("Liste du RefLoader → dossier (LTX 2.x)", [
-                [folderBadge("08.Images"), "Guide images → <b>08.Images</b>"],
-                [folderBadge("10.Son"), "Soundtrack, Voice → <b>10.Son</b>"],
-                [folderBadge("12.Video"), "Guide video → <b>12.Video</b>"],
-                [folderBadge("14.Video-Audio"), "non utilisé"],
-            ]) +
-            hNote("seuls les fichiers du modèle affiché dans le RefLoader sont copiés. Les fichiers de l'autre " +
-                "modèle ne sont jamais archivés.", "Remarque :") +
-            hNote("chaque fichier de 08, 10, 12 et 14 doit être utilisé par le RefLoader (pour le modèle affiché) ; sinon la " +
+            hNote("seuls les fichiers de la <b>variante affichée</b> dans le RefLoader sont copiés. Un fichier utilisé " +
+                "par n'importe quelle variante n'est jamais archivé.", "Remarque :") +
+            hNote("chaque fichier de 08, 10, 12 et 14 doit être utilisé par une variante du RefLoader ; sinon la " +
                 "configuration n'est pas enregistrée et les fichiers en cause sont listés.", "Remarque :") +
             "<p><b>Load : remettre le projet en place</b></p>" +
             hSteps([
@@ -1028,7 +1020,8 @@ const HELP_SECTIONS_FR = [
                 "identique, <b style=\"color:#d32f2f\">✗</b> manquant ou différent, <b>→ found in Archives</b> (" +
                 iconBadge(EYE_ICON, VIOLET) + " pour le voir). Décochez ce qui ne doit pas être chargé (00.Workflows, " +
                 "08 à 14).",
-                "<b>Load</b> remet les fichiers retrouvés, remplit le RefLoader et charge le workflow.",
+                "<b>Load</b> remet les fichiers retrouvés, remplit <b>toutes les variantes</b> du RefLoader et charge " +
+                "le workflow. La variante affichée ne change pas.",
             ]) +
             hCard("Le workflow au chargement", [
                 ["Même structure", "remplace le workflow de cet onglet"],

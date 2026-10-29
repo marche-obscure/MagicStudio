@@ -56,7 +56,7 @@ test("langue : choix memorise, puis ComfyUI, puis navigateur, sinon anglais", ()
 });
 
 // --- Aide EN / FR : memes rubriques dans le meme ordre ---
-// Les fichiers du noeud importent scripts/app.js (impossible sous true 
+// Les fichiers du noeud importent scripts/app.js (impossible sous Node) :
 // on les lit comme du texte et on extrait les id des deux tableaux.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -72,7 +72,8 @@ function helpIds(file, name) {
     return [...body.matchAll(/^ {8}id: "([a-z0-9_]+)"/gm)].map((m) => m[1]);
 }
 
-const HELP_FILES = ["minimax_ref_loader.js", "project_node.js", "final_cut_node.js", "load_media_node.js"];
+const HELP_FILES = ["minimax_ref_loader.js", "project_node.js", "final_cut_node.js", "load_media_node.js",
+    "container_node.js"];
 
 for (const file of HELP_FILES) {
     test("help sections have the same ids in EN and FR: " + file, () => {
@@ -116,4 +117,30 @@ test("project help has an extract section after rushsort", () => {
         assert.equal(ids[i + 1], "extract");
     }
     assert.equal(en.indexOf("extract"), fr.indexOf("extract"));
+});
+
+// --- Variantes (plan des variantes, Task 8) ---
+/** Texte d'un tableau d'aide (chaines recollees), pour chercher des mots. */
+function helpText(file, name) {
+    const src = readFileSync(fileURLToPath(new URL("../web/js/" + file, import.meta.url)), "utf8");
+    const start = src.indexOf("const " + name + " = [");
+    const end = src.indexOf("\n];", start);
+    return src.slice(start, end).replace(/"\s*\+\s*"/g, "").replace(/\s+/g, " ");
+}
+
+test("help mentions every variant label", () => {
+    for (const name of ["HELP_SECTIONS", "HELP_SECTIONS_FR"]) {
+        const text = helpText("minimax_ref_loader.js", name);
+        for (const label of ["Ref2VA", "F2VA / FL2VA", "LTX 2.3", "LTX 2.5"]) {
+            assert.ok(text.includes(label), name + " : « " + label + " » absent");
+        }
+        assert.ok(text.includes("package"), name + " : package absent");
+        assert.ok(text.includes("MagicStudio Container"), name + " : Container absent");
+    }
+});
+
+test("container help EN and FR have the same ids", () => {
+    const en = helpIds("container_node.js", "HELP_SECTIONS");
+    assert.deepEqual(en, ["start", "inputs", "outputs", "variants"]);
+    assert.deepEqual(helpIds("container_node.js", "HELP_SECTIONS_FR"), en);
 });
