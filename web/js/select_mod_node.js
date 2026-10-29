@@ -189,12 +189,11 @@ const HELP_SECTIONS = [
         html: hSteps([
             "Choose the active field (" + B_FIELD(1) + " to " + B_FIELD(5) + ") and <b>Absolute</b> or <b>Relative</b>.",
             "Click " + B_FOLDER + ": the window of the models folders opens next to the node.",
-            "Click a file: its path goes into the active field and out on its output. A double-click also closes the window.",
+            "Click a file: its path goes into the active field and out on its output. The window stays open: change the " +
+                "field on the node and click the next file. <b>Close</b> (bottom right) closes it.",
         ]) +
         hCard("Buttons of the node", [
             [B_FOLDER, "Open the window of the models folders (tree and files)"],
-            [B_DIRS, "List the subfolders of the origin directory"],
-            [B_FILES, "List the files of the selected directory"],
             [B_DOWNLOAD, "Export the filled fields (.json)"],
             [B_UPLOAD, "Import a fields file (SelectMod or MultiFiles Select)"],
             [B_GEAR, "Choose the save folder of the exports"],
@@ -228,9 +227,9 @@ const HELP_SECTIONS = [
             "<b>Left</b>: the folders of <b>models</b> and <b>Models (Linker)</b>; ▸ opens a folder, the number is its model files.",
             "<b>Right</b>: the files of the chosen folder, with size and date. A click on a column title sorts it.",
             "<b>Search</b> (top): files of the folder and of its subfolders whose name holds every word.",
-            "<b>One click</b> fills the active field and keeps the window open; <b>double-click</b> fills and closes.",
+            "<b>One click</b> fills the active field. The window stays open: change the field on the node, then click the next file.",
             "<b>↺</b> reads the folders again. The bottom line shows the full path of the file under the mouse.",
-            "Close, Escape or a click outside closes the window.",
+            "Only the orange <b>Close</b> button (bottom right) closes the window.",
         ]) +
         hTip("the window opens on the folder of the active field, otherwise on the last folder used."),
     },
@@ -285,12 +284,11 @@ const HELP_SECTIONS_FR = [
         html: hSteps([
             "Choisissez le champ actif (" + B_FIELD(1) + " à " + B_FIELD(5) + ") et <b>Absolute</b> ou <b>Relative</b>.",
             "Cliquez sur " + B_FOLDER + " : la fenêtre des dossiers de modèles s'ouvre à côté du nœud.",
-            "Cliquez sur un fichier : son chemin va dans le champ actif et sort sur sa sortie. Un double-clic ferme aussi la fenêtre.",
+            "Cliquez sur un fichier : son chemin va dans le champ actif et sort sur sa sortie. La fenêtre reste ouverte : " +
+                "changez de champ sur le nœud et cliquez sur le fichier suivant. <b>Close</b> (en bas à droite) la ferme.",
         ]) +
         hCard("Boutons du nœud", [
             [B_FOLDER, "Ouvrir la fenêtre des dossiers de modèles (arbre et fichiers)"],
-            [B_DIRS, "Lister les sous-dossiers du répertoire d'origine"],
-            [B_FILES, "Lister les fichiers du répertoire sélectionné"],
             [B_DOWNLOAD, "Exporter les champs remplis (.json)"],
             [B_UPLOAD, "Importer un fichier de champs (SelectMod ou MultiFiles Select)"],
             [B_GEAR, "Choisir le dossier de sauvegarde des exports"],
@@ -324,9 +322,9 @@ const HELP_SECTIONS_FR = [
             "<b>À gauche</b> : les dossiers de <b>models</b> et <b>Models (Linker)</b> ; ▸ ouvre un dossier, le nombre est celui de ses fichiers de modèles.",
             "<b>À droite</b> : les fichiers du dossier choisi, avec taille et date. Un clic sur le titre d'une colonne la trie.",
             "<b>Recherche</b> (en haut) : fichiers du dossier et de ses sous-dossiers dont le nom contient tous les mots.",
-            "<b>Un clic</b> remplit le champ actif et garde la fenêtre ouverte ; <b>double-clic</b> remplit et ferme.",
+            "<b>Un clic</b> remplit le champ actif. La fenêtre reste ouverte : changez de champ sur le nœud, puis cliquez sur le fichier suivant.",
             "<b>↺</b> relit les dossiers. La ligne du bas montre le chemin complet du fichier sous la souris.",
-            "Close, Échap ou un clic à côté ferme la fenêtre.",
+            "Seul le bouton orange <b>Close</b> (en bas à droite) ferme la fenêtre.",
         ]) +
         hTip("la fenêtre s'ouvre sur le dossier du champ actif, sinon sur le dernier dossier utilisé.", TIP_FR),
     },
@@ -1499,8 +1497,8 @@ function makeTextInput(placeholder, readOnly) {
 // Fenetre de choix (bouton dossier, choix utilisateur 28/10/2026) : a cote du
 // noeud, sans fond assombri ; arbre des dossiers (models, Models (Linker)) a
 // gauche, fichiers a droite (nom, taille, date, tri par en-tete), recherche,
-// ↺ ; clic = remplit le champ actif (fenetre gardee), double-clic = remplit et
-// ferme ; pied = chemin du fichier survole. Close, Echap, clic a cote ferment.
+// ↺ ; clic = remplit le champ actif ; pied = chemin du fichier survole. Fenetre
+// gardee ouverte, seul le bouton Close (en bas a droite) la ferme (29/10/2026).
 // ----------------------------------------------------------------------
 const LAST_DIR_KEY = "mmselectmod.lastDir";
 
@@ -1867,7 +1865,10 @@ function buildModelPicker(container, ctx) {
             if (!(start && rootOf(start) && (await reveal(start).catch(() => false)))) {
                 await reveal(roots[0].path);
             }
-            setTimeout(() => search.focus(), 0);
+            // Placee de nouveau une fois remplie (a la 1re ouverture, la carte vide etait parfois mal placee).
+            positionCardNextToNode(card, container, 760);
+            // Pas de curseur mis dans la recherche : la fenetre reste ouverte et un clic sur le
+            // noeud (changer de champ) ne doit pas d'abord servir a quitter la recherche.
         },
     };
 }
@@ -2000,6 +2001,8 @@ app.registerExtension({
             originRow.appendChild(originInput);
             originRow.appendChild(originBrowseBtn);
             originRow.appendChild(originBtn);
+            // Noeud allege (choix utilisateur 29/10/2026) : la fenetre de choix remplace les loupes et la liste.
+            originBtn.style.display = "none";
             container.appendChild(originRow);
 
             function setQuickPlaceholder(text) {
@@ -2063,6 +2066,7 @@ app.registerExtension({
             selectedDirRow.appendChild(selectedDirInput);
             selectedDirRow.appendChild(selectedDirBtn);
             container.appendChild(selectedDirRow);
+            selectedDirRow.style.display = "none";
 
             // Filtre par extension. Desactive automatiquement s'il n'y a
             // 0 ou 1 seul type d'extension dans le dossier (rien a
@@ -2096,6 +2100,7 @@ app.registerExtension({
             extRow.appendChild(extSelect);
             extRow.appendChild(extArrow);
             container.appendChild(extRow);
+            extRow.style.display = "none";
 
             // Ligne de statut (sous le selecteur d'extension, deplace
             // suite a un retour explicite)
@@ -2104,8 +2109,22 @@ app.registerExtension({
             status.style.color = "#bfe9e3";
             status.style.padding = "0 2px";
             status.style.minHeight = "13px";
-            status.textContent = "Click the purple magnifier to start.";
+            status.style.height = "13px";
+            status.style.whiteSpace = "nowrap";
+            status.style.overflow = "hidden";
+            status.style.textOverflow = "ellipsis";
             container.appendChild(status);
+            // Ligne des messages : place gardee (les boutons ne bougent pas), texte visible seulement quand il y a un message,
+            // effacee apres 6 s.
+            status.style.visibility = "hidden";
+            let statusTimer = null;
+            new MutationObserver(() => {
+                const text = status.textContent.trim();
+                status.style.visibility = text ? "visible" : "hidden";
+                status.title = text; // message coupe : texte entier en infobulle
+                clearTimeout(statusTimer);
+                if (text) statusTimer = setTimeout(() => { status.textContent = ""; }, 6000);
+            }).observe(status, { childList: true, characterData: true, subtree: true });
 
             // Fenetre de liste
             const listBox = document.createElement("div");
@@ -2119,6 +2138,7 @@ app.registerExtension({
             listBox.style.color = "#ddd";
             listBox.style.boxSizing = "border-box";
             container.appendChild(listBox);
+            listBox.style.display = "none";
 
             // --------------------------------------------------------
             // Boutons carres 1-5 : choix du champ actif
@@ -3007,7 +3027,7 @@ app.registerExtension({
             // Widget DOM englobant + taille du noeud
             // --------------------------------------------------------
             const MIN_WIDTH = 340;
-            const MIN_HEIGHT = 460;
+            const MIN_HEIGHT = 445;
 
             node.addDOMWidget("mmselectmod_ui", "mmselectmod", container, {
                 serialize: false,
@@ -3072,7 +3092,8 @@ app.registerExtension({
             vueNodes.add(node);
             watchVueNodes();
             scheduleVueSync();
-            node.setSize([Math.max(node.size[0], MIN_WIDTH), Math.max(node.size[1], minHeight())]);
+            // Noeud allege (29/10/2026) : nouveau noeud a la hauteur utile (un workflow ouvert garde la sienne).
+            node.setSize([Math.max(node.size[0], MIN_WIDTH), minHeight()]);
             node.setDirtyCanvas(true, true);
 
             return r;
