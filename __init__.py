@@ -473,8 +473,9 @@ try:
             project = request.rel_url.query.get("project", "").strip()
             runs = await _in_executor(run_record.list_runs, project)
             sets = await _in_executor(run_record.registry_sets, project)
-            # Picture Lock (choix utilisateur, 22/10/2026) : un seul fichier dans un projet de MultiProject.
+            # Picture Lock (choix utilisateur, 26/10/2026) : un seul fichier, tous projets ; overfull = dossiers qui en tiennent plus.
             single = run_record.single_lock(project)
+            overfull = run_record.lock_overfull(project)
             locked = {k: [os.path.basename(p) for p in run_record.lock_files(project, k)] for k in ("video", "image")}
             # Fichiers sur le disque par dossier de tri et fichiers deposes a la main (22/10/2026).
             counts = await _in_executor(run_record.sort_counts, project)
@@ -482,7 +483,7 @@ try:
         except Exception as e:
             return _project_error(e)
         return web.json_response({"runs": runs, "registries": sets, "single_lock": single, "locked": locked,
-                                  "counts": counts, "orphans": orphans})
+                                  "overfull": overfull, "counts": counts, "orphans": orphans})
 
     @routes.get("/mmproject/run_workflow")
     async def mmproject_run_workflow(request):

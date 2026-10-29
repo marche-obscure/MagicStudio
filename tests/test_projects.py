@@ -212,6 +212,15 @@ class ProjectFoldersTest(unittest.TestCase):
         for rush in ("40.Rush Videos", "60.Rush Images"):
             self.assertEqual(sorted(os.listdir(os.path.join(path, rush))), ["Footage", "No Good", "Picture Lock", "Rough Cut"])
 
+    def test_ensure_project_creates_extract_dir(self):
+        self.assertEqual(projects.EXTRACT_DIR, ("40.Rush Videos", "Picture Lock", "Extract Frame"))
+        path = projects.create_project(self.root, "Clip")
+        extract = os.path.join(path, *projects.EXTRACT_DIR)
+        self.assertTrue(os.path.isdir(extract))
+        shutil.rmtree(extract)
+        projects.ensure_project(path)
+        self.assertTrue(os.path.isdir(extract))
+
     def test_ensure_missing_project_raises(self):
         with self.assertRaises(FileNotFoundError):
             projects.ensure_project(os.path.join(self.root, "nope"))

@@ -13,6 +13,9 @@ import hashlib
 import re
 import time
 
+# Images extraites d'une video du Picture Lock (Extract Frame, 26/10/2026).
+EXTRACT_DIR = ("40.Rush Videos", "Picture Lock", "Extract Frame")
+
 # Sous-dossiers de chaque projet (meme liste que web/js/project_paths.js).
 SUBFOLDERS = ("00.Workflows", "02.Models", "04.Prompt", "06.LoRA", "08.Images", "10.Son",
               "12.Video", "14.Video-Audio", "40.Rush Videos", "60.Rush Images")
@@ -207,6 +210,8 @@ def ensure_project(path):
     for rush in ("40.Rush Videos", "60.Rush Images", "70.Rush Audio"):
         for sub in ("Picture Lock", "Rough Cut", "Footage", "No Good"):
             os.makedirs(os.path.join(path, rush, sub), exist_ok=True)
+    # Images extraites d'une video du Picture Lock (Extract Frame, 26/10/2026) : jamais comptees ni synchronisees.
+    os.makedirs(os.path.join(path, *EXTRACT_DIR), exist_ok=True)
     # Workflows des Runs (run_record.RUN_WORKFLOW_FOLDER), a cote de Archives :
     # jamais listes comme workflows du projet (lectures non recursives).
     os.makedirs(os.path.join(path, CONFIG_FOLDER, "Run"), exist_ok=True)

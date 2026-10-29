@@ -949,8 +949,8 @@ def _relink_output(project, o):
 
 
 def single_lock(project):
-    """Picture Lock a un seul fichier : projet d'un MultiProject (dossier parent marque)."""
-    return projects.is_group(os.path.dirname(os.path.abspath(project)))
+    """Picture Lock a un seul fichier : tous les projets (choix utilisateur, 26/10/2026, Extract Frame)."""
+    return True
 
 
 def _folder_files(folder):
@@ -964,6 +964,20 @@ def _folder_files(folder):
 def lock_files(project, kind):
     """Fichiers du dossier Picture Lock de 40 (video) ou 60 (image)."""
     return _folder_files(os.path.join(_rush_dir(project, kind), SORT_FOLDERS[LOCK]))
+
+
+def lock_overfull(project):
+    """
+    Picture Lock qui tient plus d'un fichier (projet cree avant la regle du fichier unique) :
+    {kind: nombre} pour video (40), image (60), audio (70) ; {} si tout va bien.
+    Le sous-dossier Extract Frame n'est pas un fichier : il n'est jamais compte.
+    """
+    out = {}
+    for kind, rush in (("video", RUSH_VIDEOS), ("image", RUSH_IMAGES), ("audio", "70.Rush Audio")):
+        n = len(_folder_files(os.path.join(project, rush, SORT_FOLDERS[LOCK])))
+        if n > 1:
+            out[kind] = n
+    return out
 
 
 def sort_counts(project):
@@ -1189,7 +1203,7 @@ def sort_output(project, run_name, index, target, swap=False):
     - fichier deja dans 40 / 60 (original, ou copie video dont l'original a
       disparu) : simple renommage d'un sous-dossier a l'autre.
     Nom deja pris : "_02"... Le JSON recoit source / copy (et moved_from).
-    Picture Lock d'un projet de MultiProject (choix utilisateur, 22/10/2026) :
+    Picture Lock de tous les projets (choix utilisateur, 22/10 puis 26/10/2026) :
     un seul fichier ; occupe, refus sans swap, sinon son fichier part d'abord
     dans le dossier du fichier entrant (Rough Cut s'il vient d'ailleurs).
     """
@@ -1201,7 +1215,7 @@ def sort_output(project, run_name, index, target, swap=False):
         mine = _project_file(project, o, kind)
         held = [p for p in lock_files(project, kind) if not (mine and _same_dir(p, mine))]
         if len(held) > 1:
-            raise ValueError("Picture Lock holds %d files: only one is allowed in a project of a MultiProject"
+            raise ValueError("Picture Lock holds %d files: only one is allowed"
                              % len(held))
         if held:
             if not swap:

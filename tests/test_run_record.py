@@ -757,12 +757,56 @@ class RunFileTest(unittest.TestCase):
             self.when += 1
         return out
 
-    def test_picture_lock_is_free_in_a_simple_project(self):
-        self.assertFalse(rr.single_lock(self.p))
-        (a, _), (b, _) = self._lock_runs("60.Rush Images", [("Footage", "a.png"), ("No Good", "b.png")])
-        rr.sort_output(self.p, a, 0, "picture_lock")
-        rr.sort_output(self.p, b, 0, "picture_lock")
-        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Picture Lock")), ["a.png", "b.png"])
+    def _lock_runs_kind(self, kind_dir, kind, files):
+        """Comme _lock_runs, pour une video ou une image : [(nom du JSON, chemin)]."""
+        out = []
+        for sub, n in files:
+            path = os.path.join(self.p, kind_dir, sub, n)
+            write(path, n.encode())
+            name = self._run_with([{"source": path, "kind": kind, "copy": None}])
+            out.append((name, path))
+            self.when += 1
+        return out
+
+    def test_single_lock_everywhere(self):
+        # Un seul fichier dans Picture Lock, projet simple compris (Extract Frame, 26/10/2026).
+        self.assertTrue(rr.single_lock(self.p))
+        for rush, kind, ext in (("60.Rush Images", "image", "png"), ("40.Rush Videos", "video", "mp4")):
+            lock = os.path.join(self.p, rush, "Picture Lock")
+            a, b = "a." + ext, "b." + ext
+            (ra, _), (rb, pb) = self._lock_runs_kind(rush, kind, [("Footage", a), ("No Good", b)])
+            rr.sort_output(self.p, ra, 0, "picture_lock")
+            with self.assertRaises(ValueError):          # occupe : refus sans swap
+                rr.sort_output(self.p, rb, 0, "picture_lock")
+            self.assertTrue(os.path.isfile(pb))
+            res = rr.sort_output(self.p, rb, 0, "picture_lock", swap=True)
+            self.assertEqual(res["swapped"]["place"], "rejected")
+            self.assertEqual(files_in(lock), [b])
+            self.assertEqual(files_in(os.path.join(self.p, rush, "No Good")), [a])
+
+    def test_lock_overfull(self):
+        self.assertEqual(rr.lock_overfull(self.p), {})
+        vlock = os.path.join(self.p, "40.Rush Videos", "Picture Lock")
+        write(os.path.join(vlock, "a.mp4"))
+        self.assertEqual(rr.lock_overfull(self.p), {})
+        write(os.path.join(vlock, "b.mp4"))
+        write(os.path.join(vlock, "c.mp4.part"))          # copie en cours : ignoree
+        self.assertEqual(rr.lock_overfull(self.p), {"video": 2})
+        write(os.path.join(self.p, "70.Rush Audio", "Picture Lock", "a.wav"))
+        write(os.path.join(self.p, "70.Rush Audio", "Picture Lock", "b.wav"))
+        write(os.path.join(self.p, "60.Rush Images", "Picture Lock", "a.png"))
+        self.assertEqual(rr.lock_overfull(self.p), {"video": 2, "audio": 2})
+
+    def test_extract_dir_not_counted(self):
+        # Extract Frame (dans Picture Lock) n'est ni compte, ni orphelin, ni vu par le Final Cut.
+        import final_cut
+        before = (rr.sort_counts(self.p), rr.rush_orphans(self.p), rr.lock_overfull(self.p))
+        plan_before = final_cut.plan(self.p)["count"]
+        write(os.path.join(self.p, *projects.EXTRACT_DIR, "frame_001.png"))
+        write(os.path.join(self.p, *projects.EXTRACT_DIR, "frame_002.png"))
+        self.assertEqual((rr.sort_counts(self.p), rr.rush_orphans(self.p), rr.lock_overfull(self.p)), before)
+        self.assertEqual(final_cut.plan(self.p)["count"], plan_before)
+        self.assertEqual(rr.lock_files(self.p, "video"), [])
 
     def test_picture_lock_holds_one_file_in_a_multiproject(self):
         self.p = projects.create_project(self.root, "Shot", group="Film", new_group=True)
