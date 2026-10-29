@@ -102,7 +102,9 @@ const HELP_SECTIONS = [
         hNote("an output that does not match the file is empty: the optional inputs of the native nodes " +
             "ignore it.") +
         hTip("<b>video_frames</b> holds every frame in memory: for a long or large video, prefer <b>video</b>.") +
-        hTip("the file is loaded again only when the path changes or when the file is modified."),
+        hTip("the file is loaded again only when the path changes or when the file is modified.") +
+        hNote("a file saved after this node, when it loads a file of a run, is added to that run as " +
+            "<b>Post 1</b>, <b>Post 2</b>… (help of the Project node, <b>Post-processing</b>)."),
     },
     {
         id: "files", title: "Accepted files", icon: FOLDER_ICON, color: VIOLET,
@@ -144,7 +146,9 @@ const HELP_SECTIONS_FR = [
             "natifs l'ignorent.", "Remarque :") +
         hTip("<b>video_frames</b> garde toutes les images en mémoire : pour une vidéo longue ou grande, " +
             "préférez <b>video</b>.", "Astuce :") +
-        hTip("le fichier n'est rechargé que si le chemin change ou si le fichier est modifié.", "Astuce :"),
+        hTip("le fichier n'est rechargé que si le chemin change ou si le fichier est modifié.", "Astuce :") +
+        hNote("un fichier enregistré après ce nœud, quand il charge un fichier d'un Run, est ajouté à ce Run " +
+            "comme <b>Post 1</b>, <b>Post 2</b>… (aide du nœud Project, <b>Post-traitements</b>).", "Remarque :"),
     },
     {
         id: "files", title: "Fichiers acceptés",

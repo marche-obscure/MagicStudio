@@ -360,6 +360,27 @@ const HELP_SECTIONS = [
                 "<b>98.Error</b> (their files stay in place)."),
     },
     {
+        id: "post", title: "Post-processing", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
+        html: "<p>A file saved <b>after a MagicStudio MedLoad</b> that loads a file of a run is added to " +
+            "<b>that run</b> (the original run), not to a new run.</p>" +
+            hSteps([
+                "Load a video (or an image) of a run in <b>MagicStudio MedLoad</b>, for example from the Final Cut window.",
+                "Wire it to your retouch nodes, then to a save node, in the same workflow.",
+                "Run the workflow, or only this branch: the saved file becomes <b>Post 1</b> of the original run.",
+            ]) +
+            hList([
+                "Retouch a Post 1 again: the new file is <b>Post 2</b> of the <b>same run</b>.",
+                "<b>40 / 60</b>: the post-processing shows next to its original, with a <b>Post n</b> badge; it is " +
+                    "sorted, checked and deleted like any file of a run.",
+                "<b>04, 02, 06</b>: ‹ › go from the original to Post 1, Post 2…; the configuration shows the " +
+                    "settings of the retouch nodes, and <b>Retrieve the workflow</b> opens its own workflow.",
+            ]) +
+            hNote("a file loaded from outside any run is not attached, and no run is made for it.") +
+            hNote("the Project node is not needed: the server attaches the file at the end of the run.") +
+            hTip("several MedLoad upstream: the nearest one decides; a warning is shown when another one loads a " +
+                "file of another run."),
+    },
+    {
         id: "rushsort", title: "Sorting the rushes", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
         html: "<p><b>40.Rush Videos</b> and <b>60.Rush Images</b> each have four folders; the new rushes arrive in " +
             "<b>Footage</b>.</p>" +
@@ -801,6 +822,27 @@ const HELP_SECTIONS_FR = [
                 "<b>06.LoRA</b>.", "Remarque :") +
             hNote(textBadge("Purge", PURGE_RED) + " supprime les Runs restés « running » et range les Runs en erreur " +
                 "dans <b>98.Error</b> (leurs fichiers restent en place).", "Remarque :"),
+    },
+    {
+        id: "post", title: "Post-traitements",
+        html: "<p>Un fichier enregistré <b>après un MagicStudio MedLoad</b> qui charge un fichier d'un Run est " +
+            "ajouté à <b>ce Run</b> (le Run d'origine), pas à un nouveau Run.</p>" +
+            hSteps([
+                "Chargez une vidéo (ou une image) d'un Run dans <b>MagicStudio MedLoad</b>, par exemple depuis la fenêtre du Final Cut.",
+                "Branchez-la sur vos nœuds de retouche, puis sur un nœud d'enregistrement, dans le même workflow.",
+                "Lancez le workflow, ou seulement cette branche : le fichier enregistré devient <b>Post 1</b> du Run d'origine.",
+            ]) +
+            hList([
+                "Retouchez un Post 1 : le nouveau fichier est <b>Post 2</b> du <b>même Run</b>.",
+                "<b>40 / 60</b> : le post-traitement s'affiche à côté de son original, avec un badge <b>Post n</b> ; il " +
+                    "se trie, se coche et se supprime comme un fichier de Run.",
+                "<b>04, 02, 06</b> : ‹ › passent de l'original à Post 1, Post 2… ; la configuration montre les " +
+                    "réglages des nœuds de retouche, et <b>Retrieve the workflow</b> rouvre son propre workflow.",
+            ]) +
+            hNote("un fichier chargé hors de tout Run n'est pas rattaché, et aucun Run n'est créé pour lui.", "Remarque :") +
+            hNote("le nœud Project n'est pas nécessaire : le serveur rattache le fichier à la fin du Run.", "Remarque :") +
+            hTip("plusieurs MedLoad en amont : le plus proche décide ; un avertissement s'affiche quand un autre charge " +
+                "un fichier d'un autre Run.", "Astuce :"),
     },
     {
         id: "rushsort", title: "Tri des rushs",
