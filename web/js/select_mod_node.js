@@ -1539,9 +1539,15 @@ function buildModelPicker(container, ctx) {
 
     // En-tete : champ actif, recherche, relire, fermer.
     const head = document.createElement("div");
-    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", borderBottom: "1px solid #2a2a2a" });
+    // En-tete (choix utilisateur 29/10/2026) : « Search file : » devant la recherche, le champ actif dessous.
+    Object.assign(head.style, { display: "flex", flexDirection: "column", gap: "6px", padding: "8px 10px", borderBottom: "1px solid #2a2a2a" });
+    const searchRow = document.createElement("div");
+    Object.assign(searchRow.style, { display: "flex", alignItems: "center", gap: "8px" });
+    const searchLabel = document.createElement("div");
+    searchLabel.textContent = "Search file :";
+    Object.assign(searchLabel.style, { fontWeight: "bold", color: TITLE_COLOR, flex: "0 0 auto" });
     const title = document.createElement("div");
-    Object.assign(title.style, { fontWeight: "bold", color: TITLE_COLOR, flex: "0 0 auto" });
+    Object.assign(title.style, { fontWeight: "bold", color: TITLE_COLOR });
     const search = document.createElement("input");
     search.type = "text";
     search.placeholder = "Search in this folder...";
@@ -1561,7 +1567,8 @@ function buildModelPicker(container, ctx) {
         return b;
     };
     const reloadBtn = mkBtn("↺", "Read the folders again");
-    head.append(title, search, reloadBtn);
+    searchRow.append(searchLabel, search, reloadBtn);
+    head.append(searchRow, title);
 
     const body = document.createElement("div");
     Object.assign(body.style, { flex: "1", display: "flex", minHeight: "0" });
