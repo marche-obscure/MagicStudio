@@ -1,12 +1,10 @@
 """
-Noeud MiniMaxH3RefLoader : charge des images, videos (avec ou sans leur
-bande-son) et audios de reference, a brancher sur MiniMaxH3ReferenceToVideo.
-
-La selection est faite dans l'interface JS (web/js/minimax_ref_loader.js)
-et transmise en JSON dans le widget cache "state". Le noeud declare toutes
-les sorties possibles (23) en type joker ; le JS n'affiche que celles qui
-servent, dans l'ordre de media.state_layout() selon le profil (MiniMax H3 ou
-LTX 2.x), et leur donne leur vrai type (IMAGE, AUDIO, INT) pour les branchements.
+Noeud MiniMaxH3RefLoader (MagicStudio RefLoader) : charge les images, videos et
+sons de reference de la variante affichee (MiniMax H3 Ref2VA / F2VA / FL2VA, LTX
+2.3 / 2.5). La selection est faite dans l'interface JS (web/js/minimax_ref_loader.js)
+et transmise en JSON dans le widget cache "state". Deux sorties fixes : project
+(Root folder) et package (fichiers charges), redonnes par le noeud MagicStudio
+Container avec les noms et types de la variante (profiles.VARIANTS).
 """
 
 import json

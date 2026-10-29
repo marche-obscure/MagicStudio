@@ -79,111 +79,6 @@ class TmpDirTest(unittest.TestCase):
         return os.path.join(self.dir, name)
 
 
-class LayoutTests(unittest.TestCase):
-    def test_empty_selection_gives_four_base_outputs(self):
-        self.assertEqual(
-            media.layout_keys(0, 0, 0, 0),
-            ["ref_image_1", "ref_video_1", "ref_video_audio_1", "ref_audio_1"],
-        )
-
-    def test_each_group_grows_independently(self):
-        # ref_video_audio a sa propre liste (pistes son), independante des videos.
-        self.assertEqual(
-            media.layout_keys(3, 1, 2, 1),
-            ["ref_image_1", "ref_image_2", "ref_image_3",
-             "ref_video_1",
-             "ref_video_audio_1", "ref_video_audio_2",
-             "ref_audio_1"],
-        )
-
-    def test_counts_are_clamped_to_minimax_limits(self):
-        keys = media.layout_keys(20, 9, 9, 9)
-        self.assertEqual(len(keys), 18)
-        self.assertEqual(media.TOTAL_OUTPUTS, 22)  # plus grande disposition (LTX 2.x, 9 images guides)
-        self.assertIn("ref_image_9", keys)
-        self.assertNotIn("ref_image_10", keys)
-        self.assertIn("ref_audio_3", keys)
-
-
-class StateTests(unittest.TestCase):
-    def test_bad_json_gives_empty_state(self):
-        s = media.parse_state("not json")
-        self.assertEqual(s["images"], [])
-        self.assertEqual(s["videos"], [])
-        self.assertEqual(s["video_audios"], [])
-        self.assertEqual(s["audios"], [])
-
-    def test_state_is_normalized_and_clamped(self):
-        raw = json.dumps({
-            "folders": {"image": "C:/img", "video": "C:/vid", "audio": 5},
-            "images": ["a.png"] * 12 + [3, ""],
-            "videos": ["v.mp4", "w.mp4", "", 4, "x.mp4", "y.mp4"],
-            "video_audios": ["v.mp4", "z.mp4"],
-            "audios": ["x.wav"],
-        })
-        s = media.parse_state(raw)
-        self.assertEqual(len(s["images"]), 9)
-        self.assertEqual(s["folders"]["audio"], "")
-        self.assertEqual(s["videos"], ["v.mp4", "w.mp4", "x.mp4"])
-        self.assertEqual(s["video_audios"], ["v.mp4", "z.mp4"])
-        self.assertEqual(s["audios"], ["x.wav"])
-
-    def test_old_sound_switch_is_converted(self):
-        # Ancien etat : video {"file", "sound": true} -> reste en video ET
-        # devient une piste son ref_video_audio.
-        raw = json.dumps({"videos": [{"file": "a.mp4", "sound": True}, {"file": "b.mp4", "sound": False}]})
-        s = media.parse_state(raw)
-        self.assertEqual(s["videos"], ["a.mp4", "b.mp4"])
-        self.assertEqual(s["video_audios"], ["a.mp4"])
-
-
-class ModeTests(TmpDirTest):
-    def test_default_mode_is_ref2va(self):
-        s = media.parse_state("{}")
-        self.assertEqual(s["mode"], "ref2va")
-        self.assertEqual(s["first_frame"], [])
-        self.assertEqual(s["last_frame"], [])
-        self.assertEqual(media.state_layout(s)[0], "ref_image_1")
-
-    def test_fl2va_layout_has_two_frame_outputs(self):
-        s = media.parse_state(json.dumps({"mode": "fl2va", "images": ["a.png"]}))
-        self.assertEqual(media.state_layout(s), ["first_frame", "last_frame"])
-
-    def test_frames_accept_string_or_list_and_keep_one(self):
-        s = media.parse_state(json.dumps({"mode": "fl2va", "first_frame": "a.png",
-                                          "last_frame": ["b.png", "c.png"]}))
-        self.assertEqual(s["first_frame"], ["a.png"])
-        self.assertEqual(s["last_frame"], ["b.png"])
-
-    def test_unknown_mode_falls_back_to_ref2va(self):
-        self.assertEqual(media.parse_state(json.dumps({"mode": "xyz"}))["mode"], "ref2va")
-
-    def test_fl2va_outputs_first_and_last_frames(self):
-        Image.new("RGB", (16, 8)).save(self.p("debut.png"))
-        state = media.parse_state(json.dumps({
-            "mode": "fl2va", "folders": {"image": self.dir}, "first_frame": ["debut.png"],
-            "images": ["absent_mais_ignore.png"],
-        }))
-        out = media.build_outputs(state)
-        self.assertEqual(len(out), media.TOTAL_OUTPUTS)
-        self.assertEqual(tuple(out[0].shape), (1, 8, 16, 3))
-        self.assertIsNone(out[1])  # pas de last_frame : F2VA
-        self.assertTrue(all(v is None for v in out[2:]))
-
-    def test_fl2va_missing_frame_raises_clear_error(self):
-        state = media.parse_state(json.dumps({
-            "mode": "fl2va", "folders": {"image": self.dir}, "last_frame": ["gone.png"]}))
-        with self.assertRaises(FileNotFoundError) as ctx:
-            media.build_outputs(state)
-        self.assertIn("last_frame", str(ctx.exception))
-
-    def test_signature_follows_the_active_mode(self):
-        Image.new("RGB", (8, 8)).save(self.p("f.png"))
-        a = media.state_signature(media.parse_state(json.dumps({"mode": "fl2va", "folders": {"image": self.dir}, "first_frame": ["f.png"]})))
-        b = media.state_signature(media.parse_state(json.dumps({"mode": "ref2va", "folders": {"image": self.dir}, "first_frame": ["f.png"]})))
-        self.assertNotEqual(a, b)
-
-
 class ListFolderTests(TmpDirTest):
     def test_lists_only_files_of_the_requested_kind_sorted(self):
         Image.new("RGB", (8, 8)).save(self.p("b.png"))
@@ -414,7 +309,7 @@ class TrimTests(TmpDirTest):
     def test_trims_in_state_are_normalized_and_applied(self):
         make_video(self.p("v.mp4"), 3.0, 24, sr=16000)
         path = self.p("v.mp4")
-        state = media.parse_state(json.dumps({
+        state = media.parse_variant_state(json.dumps({
             "videos": [path], "video_audios": [path],
             "trims": {
                 "video": {path.replace("\\", "/").upper(): [0.5, 1.5]},
@@ -422,218 +317,17 @@ class TrimTests(TmpDirTest):
                 "audio": {"x": [3, 1], "y": "bad"},
             },
         }))
-        self.assertEqual(state["trims"]["audio"], {})
-        out = media.build_outputs(state)
-        # ref_image_1, ref_video_1, ref_video_audio_1, ref_audio_1
-        self.assertEqual(out[1].shape[0], 24)
-        self.assertLessEqual(out[2]["waveform"].shape[2], 16000)
+        self.assertEqual(state["selections"]["minimax_h3.ref2va"]["trims"]["audios"], {})
+        pkg = media.build_package(state)
+        self.assertEqual(pkg["values"]["ref_video_1"].shape[0], 24)
+        self.assertLessEqual(pkg["values"]["ref_video_audio_1"]["waveform"].shape[2], 16000)
 
 
-class ProjectOutputTests(unittest.TestCase):
-    """La sortie project (Root folder) est toujours la derniere sortie affichee."""
-
+class RootTests(unittest.TestCase):
     def test_parse_root(self):
         self.assertEqual(media.parse_root(json.dumps({"root": "F:\\Rushs"})), "F:\\Rushs")
         for raw in ["", "{", "[]", json.dumps({"root": 3})]:
             self.assertEqual(media.parse_root(raw), "")
-
-    def test_project_after_visible_outputs(self):
-        for raw, n in [({}, 4), ({"images": ["a.png", "b.png"]}, 5), ({"mode": "fl2va"}, 2)]:
-            state = media.parse_state(json.dumps(raw))
-            outs = tuple("v%d" % i for i in range(media.TOTAL_OUTPUTS))
-            res = media.outputs_with_project(state, outs, "R")
-            self.assertEqual(len(res), media.TOTAL_OUTPUTS + 1)
-            self.assertEqual(res[n], "R")
-            self.assertEqual(res[:n], outs[:n])
-            self.assertEqual(res[n + 1:], outs[n:])
-
-    def test_project_key_last_in_output_names(self):
-        self.assertEqual(media.output_names(media.parse_state("{}"))[-1], "project")
-        self.assertEqual(media.output_names(media.parse_state('{"mode": "fl2va"}')),
-                         ["first_frame", "last_frame", "project"])
-
-
-class BuildOutputsTests(TmpDirTest):
-    def test_outputs_follow_layout_and_are_padded(self):
-        Image.new("RGB", (8, 8)).save(self.p("a.png"))
-        Image.new("RGB", (8, 8)).save(self.p("b.png"))
-        make_video(self.p("v.mp4"), 0.5, 24)
-        make_audio(self.p("s.wav"), 0.5)
-        state = media.parse_state(json.dumps({
-            "folders": {"image": self.dir, "video": self.dir, "audio": self.dir},
-            "images": ["b.png", "a.png"],
-            "videos": ["v.mp4"],
-            "audios": ["s.wav"],
-        }))
-        out = media.build_outputs(state)
-        self.assertEqual(len(out), media.TOTAL_OUTPUTS)
-        # ref_image_1, ref_image_2, ref_video_1, ref_video_audio_1, ref_audio_1
-        self.assertEqual(out[0].shape[0], 1)
-        self.assertEqual(out[2].shape[0], 12)
-        self.assertIsNone(out[3])  # aucune piste son choisie
-        self.assertIn("waveform", out[4])
-        self.assertTrue(all(v is None for v in out[5:]))
-
-    def test_video_audio_outputs_only_the_soundtrack(self):
-        make_video(self.p("v.mp4"), 1.0, 24, sr=16000)
-        make_video(self.p("w.mp4"), 0.5, 24, with_audio=False)
-        state = media.parse_state(json.dumps({
-            "folders": {"video": self.dir}, "video_audios": ["v.mp4"],
-        }))
-        out = media.build_outputs(state)
-        # ref_image_1, ref_video_1, ref_video_audio_1, ref_audio_1
-        self.assertIsNone(out[0])
-        self.assertIsNone(out[1])
-        self.assertEqual(out[2]["sample_rate"], 16000)
-        self.assertEqual(out[2]["waveform"].ndim, 3)
-        # une video sans bande-son en Video/Audio : erreur explicite
-        state = media.parse_state(json.dumps({"folders": {"video": self.dir}, "video_audios": ["w.mp4"]}))
-        with self.assertRaises(ValueError) as ctx:
-            media.build_outputs(state)
-        self.assertIn("ref_video_audio_1", str(ctx.exception))
-
-    def test_video_in_audio_list_outputs_only_its_sound(self):
-        # Option "son seul" : une video choisie dans Audio sort sa bande-son
-        # sur ref_audio_N, rognage compris.
-        make_video(self.p("v.mp4"), 2.0, 24, sr=16000)
-        make_video(self.p("w.mp4"), 0.5, 24, with_audio=False)
-        v = self.p("v.mp4")
-        state = media.parse_state(json.dumps({
-            "audios": [v], "trims": {"audio": {media.trim_key(v): [0.5, 1.5]}},
-        }))
-        out = media.build_outputs(state)
-        # ref_image_1, ref_video_1, ref_video_audio_1, ref_audio_1
-        self.assertIsNone(out[2])
-        self.assertEqual(out[3]["sample_rate"], 16000)
-        self.assertAlmostEqual(out[3]["waveform"].shape[2], 16000, delta=400)
-        # une video sans bande-son : erreur explicite qui nomme la sortie
-        state = media.parse_state(json.dumps({"audios": [self.p("w.mp4")]}))
-        with self.assertRaises(ValueError) as ctx:
-            media.build_outputs(state)
-        self.assertIn("ref_audio_1", str(ctx.exception))
-
-    def test_absolute_paths_from_other_folders_are_used_as_is(self):
-        # Le JS stocke des chemins complets : une selection peut venir de
-        # plusieurs dossiers, le dossier courant ne sert qu'a la navigation.
-        Image.new("RGB", (8, 8)).save(self.p("a.png"))
-        state = media.parse_state(json.dumps({
-            "folders": {"image": "Z:/elsewhere"}, "images": [self.p("a.png")],
-        }))
-        out = media.build_outputs(state)
-        self.assertEqual(tuple(out[0].shape), (1, 8, 8, 3))
-
-    def test_missing_file_raises_clear_error(self):
-        state = media.parse_state(json.dumps({
-            "folders": {"image": self.dir}, "images": ["gone.png"],
-        }))
-        with self.assertRaises(FileNotFoundError) as ctx:
-            media.build_outputs(state)
-        self.assertIn("gone.png", str(ctx.exception))
-
-
-class ProfileOutputTests(TmpDirTest):
-    def ltx(self, **extra):
-        d = {"profile": "ltx2", "folders": {"image": self.dir, "video": self.dir, "audio": self.dir}}
-        d.update(extra)
-        return media.parse_state(json.dumps(d))
-
-    def test_state_without_profile_is_minimax(self):
-        s = media.parse_state('{"images": ["a.png"]}')
-        self.assertEqual(s["profile"], "minimax_h3")
-        self.assertEqual(media.state_layout(s), media.layout_keys(1, 0, 0, 0))
-
-    def test_ltx_layout_and_outputs(self):
-        Image.new("RGB", (8, 8)).save(self.p("a.png"))
-        Image.new("RGB", (8, 8)).save(self.p("b.png"))
-        make_audio(self.p("s.wav"), 0.5)
-        a, b = self.p("a.png"), self.p("b.png")
-        s = self.ltx(guide_images=[a, b], soundtrack=["s.wav"],
-                     moments={"guide_images": {media.trim_key(a): 0, media.trim_key(b): -1}})
-        self.assertEqual(media.state_layout(s), [
-            "guide_image_1", "guide_frame_1", "guide_image_2", "guide_frame_2",
-            "guide_video", "guide_video_frame", "soundtrack", "voice"])
-        out = media.build_outputs(s)
-        self.assertEqual(len(out), 22)
-        self.assertEqual(tuple(out[0].shape), (1, 8, 8, 3))
-        self.assertEqual(out[1], 0)
-        self.assertEqual(tuple(out[2].shape), (1, 8, 8, 3))
-        self.assertEqual(out[3], -1)
-        self.assertIsNone(out[4])
-        self.assertIn("waveform", out[6])
-        self.assertIsNone(out[7])
-        self.assertEqual(media.outputs_with_project(s, out, "R")[8], "R")
-
-    def test_ltx_missing_moment_uses_default_rule(self):
-        for n in "abc":
-            Image.new("RGB", (8, 8)).save(self.p(n + ".png"))
-        paths = [self.p(n + ".png") for n in "abc"]
-        s = self.ltx(guide_images=paths, moments={"guide_images": {media.trim_key(paths[2]): 0}})
-        out = media.build_outputs(s)
-        # c a 0 stocke ; a -> Last (First pris), b -> First (les deux pris)
-        self.assertEqual([out[1], out[3], out[5]], [-1, 0, 0])
-
-    def test_ltx_guide_video_8n1_and_32(self):
-        make_video(self.p("g.mp4"), 100 / 24.0, 24, width=100, height=60, with_audio=False)
-        g = self.p("g.mp4")
-        s = self.ltx(guide_video=[g], moments={"guide_video": {media.trim_key(g): 2}})
-        out = media.build_outputs(s)
-        # guide_image_1, guide_frame_1, guide_video, guide_video_frame
-        self.assertEqual(out[2].shape[0] % 8, 1)
-        self.assertEqual(out[2].shape[0], 97)
-        self.assertEqual(out[2].shape[1] % 32, 0)
-        self.assertEqual(out[2].shape[2] % 32, 0)
-        self.assertEqual(out[3], 41)
-
-    def test_ltx_fps_resample(self):
-        make_video(self.p("g.mp4"), 2.0, 24, with_audio=False)
-        s = self.ltx(guide_video=[self.p("g.mp4")], limits={"ltx2": {"fps": 12}})
-        out = media.build_outputs(s)
-        self.assertEqual(out[2].shape[0], 17)   # 24 images a 12 i/s, coupees a 8n+1
-
-    def test_ltx_voice_from_video_file(self):
-        make_video(self.p("v.mp4"), 1.0, 24, sr=16000)
-        s = self.ltx(voice=["v.mp4"])
-        out = media.build_outputs(s)
-        # guide_image_1, guide_frame_1, guide_video, guide_video_frame, soundtrack, voice
-        self.assertIsNone(out[4])
-        self.assertEqual(out[5]["sample_rate"], 16000)
-
-    def test_ltx_selected_paths_and_signature(self):
-        s = self.ltx(guide_images=["a.png"], guide_video=["g.mp4"], soundtrack=["s.wav"], voice=["v.wav"])
-        names = [os.path.basename(p) for p in media.selected_paths(s)]
-        self.assertEqual(names, ["a.png", "g.mp4", "s.wav", "v.wav"])
-
-    def test_build_outputs_respects_lowered_limit(self):
-        for n in "abc":
-            Image.new("RGB", (8, 8)).save(self.p(n + ".png"))
-        s = media.parse_state(json.dumps({
-            "folders": {"image": self.dir}, "images": ["a.png", "b.png", "c.png"],
-            "limits": {"minimax_h3": {"image": 2}}}))
-        out = media.build_outputs(s)
-        self.assertEqual(sum(1 for v in out[:3] if v is not None), 2)
-        self.assertEqual(len(media.state_layout(s)), 5)  # 2 images + 1 video + 1 piste son + 1 audio
-
-    def test_declared_names_keep_old_order(self):
-        names = media.declared_output_names()
-        self.assertEqual(len(names), 23)
-        self.assertEqual(names[:18], media.layout_keys(9, 3, 3, 3))
-        self.assertEqual(names[-1], "project")
-
-
-class SharedStateCasesTest(unittest.TestCase):
-    """Cas partages avec tests/test_profiles.mjs : parseState / stateLayout du JS donnent le meme resultat."""
-
-    def test_state_cases(self):
-        here = os.path.dirname(os.path.abspath(__file__))
-        with open(os.path.join(here, "profile_cases.json"), encoding="utf-8") as f:
-            cases = json.load(f)["state_cases"]
-        self.assertTrue(cases)
-        for c in cases:
-            s = media.parse_state(json.dumps(c["state"]))
-            self.assertEqual(media.state_layout(s), c["layout"], c["state"])
-            for k, v in c["parsed"].items():
-                self.assertEqual(s[k], v, (k, c["state"]))
-
 
 
 class PackageTests(TmpDirTest):
@@ -650,21 +344,89 @@ class PackageTests(TmpDirTest):
         Image.new("RGB", (8, 8)).save(self.p("b.png"))
         make_video(self.p("v.mp4"), 2, 24)
         make_audio(self.p("s.wav"), 1)
-        raw = {"mode": "ref2va", "images": ["a.png", "b.png"], "videos": ["v.mp4"], "audios": ["s.wav"],
+        # Le noeud enregistre des chemins complets (cle du rognage = chemin complet).
+        raw = {"mode": "ref2va", "images": ["a.png", "b.png"], "videos": [self.p("v.mp4")], "audios": ["s.wav"],
                "trims": {"video": {media.trim_key(self.p("v.mp4")): [0.5, 1.5]}},
                "folders": {"image": self.dir, "video": self.dir, "audio": self.dir}}
-        old = media.build_outputs(media.parse_state(json.dumps(raw)))
         pkg = media.build_package(media.parse_variant_state(json.dumps(raw)))
         self.assertEqual(pkg["variant"], "minimax_h3.ref2va")
         self.assertEqual(pkg["layout"], ["ref_image_1", "ref_image_2", "ref_video_1", "ref_video_audio_1", "ref_audio_1"])
-        for i, key in enumerate(pkg["layout"]):
-            new = pkg["values"][key]
-            if old[i] is None:
-                self.assertIsNone(new, key)
-            elif hasattr(old[i], "shape"):
-                self.assertEqual(tuple(new.shape), tuple(old[i].shape), key)
-            else:
-                self.assertEqual(tuple(new["waveform"].shape), tuple(old[i]["waveform"].shape), key)
+        v = pkg["values"]
+        self.assertEqual(tuple(v["ref_image_1"].shape), (1, 8, 8, 3))
+        self.assertEqual(v["ref_video_1"].shape[0], 24)          # rognage 0,5-1,5 s a 24 i/s
+        self.assertIsNone(v["ref_video_audio_1"])               # aucune piste son choisie
+        self.assertIn("waveform", v["ref_audio_1"])
+
+    def test_video_audio_outputs_only_the_soundtrack(self):
+        make_video(self.p("v.mp4"), 1.0, 24, sr=16000)
+        make_video(self.p("w.mp4"), 0.5, 24, with_audio=False)
+        pkg = media.build_package(self.state({"video_audios": ["v.mp4"]}))
+        self.assertIsNone(pkg["values"]["ref_image_1"])
+        self.assertIsNone(pkg["values"]["ref_video_1"])
+        self.assertEqual(pkg["values"]["ref_video_audio_1"]["sample_rate"], 16000)
+        self.assertEqual(pkg["values"]["ref_video_audio_1"]["waveform"].ndim, 3)
+        # une video sans bande-son en Video/Audio : erreur explicite
+        with self.assertRaises(ValueError) as ctx:
+            media.build_package(self.state({"video_audios": ["w.mp4"]}))
+        self.assertIn("ref_video_audio_1", str(ctx.exception))
+
+    def test_video_in_audio_list_outputs_only_its_sound(self):
+        # "Son seul" : une video choisie dans Audio sort sa bande-son sur ref_audio_N, rognage compris.
+        make_video(self.p("v.mp4"), 2.0, 24, sr=16000)
+        make_video(self.p("w.mp4"), 0.5, 24, with_audio=False)
+        v = self.p("v.mp4")
+        pkg = media.build_package(self.state({"audios": [v], "trims": {"audio": {media.trim_key(v): [0.5, 1.5]}}}))
+        self.assertIsNone(pkg["values"]["ref_video_audio_1"])
+        self.assertEqual(pkg["values"]["ref_audio_1"]["sample_rate"], 16000)
+        self.assertAlmostEqual(pkg["values"]["ref_audio_1"]["waveform"].shape[2], 16000, delta=400)
+        with self.assertRaises(ValueError) as ctx:
+            media.build_package(self.state({"audios": [self.p("w.mp4")]}))
+        self.assertIn("ref_audio_1", str(ctx.exception))
+
+    def test_absolute_paths_from_other_folders_are_used_as_is(self):
+        # Le JS stocke des chemins complets : le dossier courant ne sert qu'a la navigation.
+        Image.new("RGB", (8, 8)).save(self.p("a.png"))
+        pkg = media.build_package(media.parse_variant_state(json.dumps({
+            "folders": {"image": "Z:/elsewhere"}, "images": [self.p("a.png")]})))
+        self.assertEqual(tuple(pkg["values"]["ref_image_1"].shape), (1, 8, 8, 3))
+        pkg = media.build_package(media.parse_variant_state(json.dumps({"images": [self.p("a.png")]})))
+        self.assertEqual(tuple(pkg["values"]["ref_image_1"].shape), (1, 8, 8, 3))   # sans "folders"
+
+    def test_lowered_limit_cuts_the_rows(self):
+        for n in "abc":
+            Image.new("RGB", (8, 8)).save(self.p(n + ".png"))
+        s = self.state({"images": ["a.png", "b.png", "c.png"],
+                        "limits": {"minimax_h3": {"image": 2}}})
+        pkg = media.build_package(s)
+        self.assertEqual(pkg["layout"][:3], ["ref_image_1", "ref_image_2", "ref_video_1"])
+
+    def test_ltx_moments_default_rule_and_voice_from_video(self):
+        for n in "abc":
+            Image.new("RGB", (8, 8)).save(self.p(n + ".png"))
+        make_video(self.p("v.mp4"), 1.0, 24, sr=16000)
+        paths = [self.p(n + ".png") for n in "abc"]
+        s = self.state({"variant": "ltx.2_3", "selections": {"ltx.2_3": {
+            "rows": {"guide_images": paths, "voice": [self.p("v.mp4")]},
+            "moments": {"guide_images": {media.trim_key(paths[2]): 0}}}}})
+        v = media.build_package(s)["values"]
+        # c a 0 stocke ; a -> Last (First pris), b -> First (les deux pris)
+        self.assertEqual([v["guide_frame_1"], v["guide_frame_2"], v["guide_frame_3"]], [-1, 0, 0])
+        self.assertIsNone(v["soundtrack"])
+        self.assertEqual(v["voice"]["sample_rate"], 16000)
+
+    def test_ltx_fps_from_limits(self):
+        make_video(self.p("g.mp4"), 2.0, 24, with_audio=False)
+        s = self.state({"variant": "ltx.2_3", "selections": {"ltx.2_3": {"rows": {"guide_video": [self.p("g.mp4")]}}},
+                        "limits": {"ltx.2_3": {"fps": 12}}})
+        self.assertEqual(media.build_package(s)["values"]["guide_video"].shape[0], 17)   # 24 images a 12 i/s, 8n+1
+
+    def test_variant_signature_follows_the_shown_variant(self):
+        Image.new("RGB", (8, 8)).save(self.p("a.png"))
+        s = self.state({"variant": "ltx.2_5", "selections": {"ltx.2_5": {"rows": {"guide_images": [self.p("a.png")]}}}})
+        names = [os.path.basename(x) for x in media.variant_selected_paths(s)]
+        self.assertEqual(names, ["a.png"])
+        s["variant"] = "minimax_h3.ref2va"
+        self.assertEqual(media.variant_selected_paths(s), [])
 
     def test_old_fl2va_state(self):
         Image.new("RGB", (8, 8)).save(self.p("f.png"))

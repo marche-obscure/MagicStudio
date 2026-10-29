@@ -7,14 +7,14 @@ import {
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode,
     FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker, THUMB_REVALIDATE,
-    profileLimitDefaults,
+    getVariantDesc,
 } from "./minimax_ref_loader.js";
-import { profileOf, LABELS as PROFILE_LABELS } from "./profiles.js";
 import {
     PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState, saveItems, remapState, mapBySequence,
     mapByPrefix, UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, anchoredSubs, projectNameOfPath, sameGroup, mergeData,
-    mapFolderBySequence, withoutMedia, MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
-    unusedProjectFiles, runSourcePaths, orderedFolderFiles, folderUse, hiddenFolderItems,
+    mapFolderBySequence, withoutMedia, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems,
+    unusedProjectFiles, runSourcePaths, orderedFolderFiles, folderUse, hiddenFolderItems, withoutFolderPaths,
+    withoutReferences,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     batchSortTargets, canDeleteRush, deletedText,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
@@ -23,6 +23,9 @@ import {
     PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
+
+/** Description des variantes du RefLoader (route lue par son setup, sinon la copie de secours). */
+const desc = () => getVariantDesc();
 
 // Noeud "MiniMax H3 Project" : cree ou choisit un dossier de projet dans le
 // Root folder recu du MiniMax H3 Reference Loader (entree "project"), ou
@@ -4776,8 +4779,8 @@ function buildLoadDialog(container) {
             lastReport = report;
             modePill.style.display = dataGroup ? "flex" : "none";
             paintMode();
-            sub.textContent = "Saved on " + (report.datemodifi || "?") + (report.profile === "ltx2"
-                ? " · " + PROFILE_LABELS.ltx2 : " · mode " + (report.mode || "?"));
+            const saved = desc().variants[report.variant];
+            sub.textContent = "Saved on " + (report.datemodifi || "?") + " · " + (saved ? saved.label : "?");
             body.innerHTML = "";
             boxes = [];
             let promptWarn = null;
@@ -5460,7 +5463,7 @@ app.registerExtension({
                 const s = getState();
                 if (!loader || !s.name) return "error";
                 const refState = loader.mmGetState();
-                const items = saveItems(refState);
+                const items = saveItems(refState, desc());
                 if (!items.length) {
                     if (!first) say("Nothing to save: the MagicStudio RefLoader has no reference.");
                     return "none";
@@ -5496,9 +5499,9 @@ app.registerExtension({
                     const data = await apiPost("/mmproject/save", { project: s.path, items, configs: [] });
                     // Le Reference Loader a pu changer pendant la confirmation : on repart de son etat.
                     const latest = loader.mmGetState();
-                    const same = JSON.stringify(saveItems(latest)) === JSON.stringify(items);
-                    if (same) loader.mmSetState(remapState(latest, mapBySequence(data.dsts, latest)));
-                    setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: getState().path });
+                    const same = JSON.stringify(saveItems(latest, desc())) === JSON.stringify(items);
+                    if (same) loader.mmSetState(remapState(latest, mapBySequence(data.dsts, latest, desc()), desc()));
+                    setState({ snap: folderSnapshot(loader.mmGetState(), desc()), snapPath: getState().path });
                     paintFolders();
                     say("Saved: " + count("copy") + " file(s) copied.", true);
                     loadFolderFiles();
@@ -5528,7 +5531,7 @@ app.registerExtension({
                     // Contenu des listes du Ref Loader : suivi par les cloches des dossiers (choix utilisateur).
                     if (n && n.type === REF_LOADER_NAME && Array.isArray(n.widgets_values)) {
                         try {
-                            const st = withoutMedia(JSON.parse(n.widgets_values[0] || "{}"));
+                            const st = withoutMedia(JSON.parse(n.widgets_values[0] || "{}"), desc());
                             return Object.assign({}, n, { widgets_values: [JSON.stringify(st)].concat(n.widgets_values.slice(1)) });
                         } catch (e) {
                             return n;
@@ -6098,14 +6101,9 @@ app.registerExtension({
                     const data = await apiPost("/mmproject/reset", { project: s.path });
                     const loader = linkedLoader(node);
                     if (loader) {
-                        const st = loader.mmGetState();
-                        // Les deux profils : tous leurs fichiers etaient dans le projet.
-                        for (const k of ["images", "videos", "video_audios", "audios", "first_frame", "last_frame",
-                            "guide_images", "guide_video", "soundtrack", "voice"]) st[k] = [];
-                        st.trims = { video: {}, video_audio: {}, audio: {}, guide_video: {}, soundtrack: {}, voice: {} };
-                        st.moments = { guide_images: {}, guide_video: {} };
-                        loader.mmSetState(st);
-                        setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: s.path });
+                        // Toutes les variantes : tous leurs fichiers etaient dans le projet.
+                        loader.mmSetState(withoutReferences(loader.mmGetState(), desc()));
+                        setState({ snap: folderSnapshot(loader.mmGetState(), desc()), snapPath: s.path });
                     }
                     await loadWorkflowInfo();
                     await loadFolderFiles();
@@ -6145,9 +6143,8 @@ app.registerExtension({
                     const loader = linkedLoader(node);
                     let filled = "";
                     if (loader && data.report) {
-                        const media = Object.keys(MEDIA_FOLDERS);
-                        loader.mmSetState(loadedState(loader.mmGetState(), data.report, s.path, media));
-                        setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: s.path });
+                        loader.mmSetState(loadedState(loader.mmGetState(), data.report, s.path, UPDATE_FOLDERS, desc()));
+                        setState({ snap: folderSnapshot(loader.mmGetState(), desc()), snapPath: s.path });
                         filled = "; the MagicStudio RefLoader follows its configuration";
                     }
                     await loadFolderFiles();
@@ -6167,7 +6164,7 @@ app.registerExtension({
                     const data = await apiGet("/mmproject/folder_files?project=" + encodeURIComponent(s.path) +
                         "&folders=" + encodeURIComponent(f) + "&archives=1&dates=1");
                     const loader = linkedLoader(node);
-                    const rootFiles = orderedFolderFiles(data.files[f] || [], loader ? loader.mmGetState() : null, f);
+                    const rootFiles = orderedFolderFiles(data.files[f] || [], loader ? loader.mmGetState() : null, f, desc());
                     folderViewer.open(f, shortName(s.name), rootFiles, (data.archives || {})[f] || [], data.mtimes);
                 } catch (e) {
                     say(e.message);
@@ -6221,7 +6218,7 @@ app.registerExtension({
                 const refState = loader ? loader.mmGetState() : null;
                 // Premier passage sur ce projet : l'etat actuel sert de reference pour les suppressions.
                 if (refState && s.snapPath !== s.path) {
-                    setState({ snap: folderSnapshot(refState), snapPath: s.path });
+                    setState({ snap: folderSnapshot(refState, desc()), snapPath: s.path });
                     return paintFolders();
                 }
                 for (const f of folderRows) {
@@ -6238,7 +6235,7 @@ app.registerExtension({
                         f.last.style.color = "#9fd6cf";
                     }
                     if (!UPDATE_FOLDERS.includes(f.name)) continue;
-                    const ch = refState ? folderChanges(refState, f.name, s.path, snapshotOf(s, f.name)) : null;
+                    const ch = refState ? folderChanges(refState, f.name, s.path, snapshotOf(s, f.name), desc()) : null;
                     const unused = unusedOf(f.name, refState);
                     const changed = !!ch && (ch.added.length > 0 || ch.removed.length > 0 || unused.length > 0);
                     const tip = !changed ? "" : [
@@ -6264,7 +6261,7 @@ app.registerExtension({
                     const inArch = (archiveFiles[f.name] || []).length;
                     // "Use: x/y" (choix utilisateur) : x utilises, y = maximum du dossier pour le profil et le mode
                     // (max 0 = dossier non utilise par le profil : "Not used", 14.Video-Audio en LTX 2.x).
-                    const use = refState ? folderUse(files, refState, f.name, profileLimitDefaults()) : null;
+                    const use = refState ? folderUse(files, refState, f.name, desc()) : null;
                     const parts = !use ? ["Files: " + files.length] : use.max ? ["Use: " + use.used + "/" + use.max]
                         : ["Not used"];
                     if (unused.length) parts.push("Orphelins: " + unused.length);
@@ -6296,12 +6293,12 @@ app.registerExtension({
                 if (!loader || !inProject(s.name)) return;
                 await loadFolderFiles();
                 const refState = loader.mmGetState();
-                const ch = folderChanges(refState, f, s.path, snapshotOf(s, f));
+                const ch = folderChanges(refState, f, s.path, snapshotOf(s, f), desc());
                 const unused = unusedOf(f, refState);
-                // Copies : profil actif seulement ; verification des fichiers manquants : les deux
-                // profils (references du profil cache ajoutees apres, jamais copiees).
-                const items = saveItems(refState).filter((i) => i.folder === f);
-                const checked = items.concat(hiddenFolderItems(refState, f));
+                // Copies : variante affichee seulement ; verification des fichiers manquants : toutes les
+                // variantes (references des autres variantes ajoutees apres, jamais copiees).
+                const items = saveItems(refState, desc()).filter((i) => i.folder === f);
+                const checked = items.concat(hiddenFolderItems(refState, f, desc()));
                 let plan = [];
                 try {
                     if (checked.length) plan = (await apiPost("/mmproject/save_plan", { project: s.path, items: checked })).plan;
@@ -6328,9 +6325,7 @@ app.registerExtension({
                     });
                     if (!ok) return;
                     const gone = missing.map((x) => x.src);
-                    const st = loader.mmGetState();
-                    for (const list of MEDIA_FOLDERS[f] || []) st[list] = withoutPaths(st[list], gone);
-                    loader.mmSetState(remapState(st, (p) => p));
+                    loader.mmSetState(withoutFolderPaths(loader.mmGetState(), f, gone, desc()));
                     say(gone.length + " missing reference(s) removed from the MagicStudio RefLoader; click the bell of " + f +
                         " again to update it.", true);
                     await loadFolderFiles();
@@ -6361,12 +6356,12 @@ app.registerExtension({
                         const data = await apiPost("/mmproject/save", { project: s.path, items, configs: [] });
                         // Le Reference Loader a pu changer pendant la confirmation : on repart de son etat.
                         const latest = loader.mmGetState();
-                        const same = JSON.stringify(saveItems(latest).filter((i) => i.folder === f)) === JSON.stringify(items);
-                        if (same) loader.mmSetState(remapState(latest, mapFolderBySequence(f, data.dsts, latest)));
+                        const same = JSON.stringify(saveItems(latest, desc()).filter((i) => i.folder === f)) === JSON.stringify(items);
+                        if (same) loader.mmSetState(remapState(latest, mapFolderBySequence(f, data.dsts, latest, desc()), desc()));
                     }
                     const now = getState();
                     const snap = Object.assign({}, now.snapPath === now.path ? now.snap : {});
-                    snap[f] = folderPaths(loader.mmGetState(), f);
+                    snap[f] = folderPaths(loader.mmGetState(), f, desc());
                     setState({ snap, snapPath: now.path });
                     const archived = unused.length - kept.length;
                     say(f + " updated: " + copies.length + " file(s) copied" +
@@ -6702,7 +6697,7 @@ app.registerExtension({
                     snapPath: s.snapPath === s.path ? data.path : "",
                 });
                 if (loader) {
-                    const st = remapState(loader.mmGetState(), mapByPrefix(s.path, data.path));
+                    const st = remapState(loader.mmGetState(), mapByPrefix(s.path, data.path), desc());
                     if (moved) st.root = data.root;
                     loader.mmSetState(st); // previent ce noeud si le Root folder change
                 }
@@ -6765,8 +6760,7 @@ app.registerExtension({
                     res = await fetch("/mmproject/config/save", {
                         method: "POST", headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            project: s.path, refs: configRefs(st), trims: st.trims || {}, mode: st.mode || "ref2va",
-                            profile: profileOf(st), moments: st.moments || {},
+                            project: s.path, ...configRefs(st, desc()),
                             workflow: wfInfo.current ? wfInfo.current.name : "",
                         }),
                     });
@@ -6844,7 +6838,7 @@ app.registerExtension({
                     const items = restoreItems(report, checked);
                     if (items.length) await apiPost("/mmproject/config/restore", { project: s.path, items });
                     const restored = items.length ? " " + items.length + " file(s) put back from Archives." : "";
-                    const media = checked.filter((f) => MEDIA_FOLDERS[f]);
+                    const media = checked.filter((f) => UPDATE_FOLDERS.includes(f));
                     const wf = report.workflow;
                     if (checked.includes(WORKFLOWS) && wf && wf.source) {
                         const res = await fetch("/mmproject/workflow?project=" + encodeURIComponent(s.path) +
@@ -6859,7 +6853,7 @@ app.registerExtension({
                             } catch (e) {
                                 st = {};
                             }
-                            ln.widgets_values[0] = JSON.stringify(loadedState(st, report, s.path, media));
+                            ln.widgets_values[0] = JSON.stringify(loadedState(st, report, s.path, media, desc()));
                         }
                         if (checked.dataOnly) {
                             // Data only (choix utilisateur, 22/10/2026) : le workflow de l'onglet reste,
@@ -6926,8 +6920,8 @@ app.registerExtension({
                             say("Wire the project output of the MagicStudio RefLoader to load its files." + restored);
                             return;
                         }
-                        loader.mmSetState(loadedState(loader.mmGetState(), report, s.path, media));
-                        setState({ snap: folderSnapshot(loader.mmGetState()), snapPath: s.path });
+                        loader.mmSetState(loadedState(loader.mmGetState(), report, s.path, media, desc()));
+                        setState({ snap: folderSnapshot(loader.mmGetState(), desc()), snapPath: s.path });
                     }
                     loadFolderFiles();
                     say("Project loaded." + restored, true);
@@ -6978,7 +6972,7 @@ app.registerExtension({
                 const now = getState();
                 if (!loader || !UPDATE_FOLDERS.includes(f)) return;
                 const snap = Object.assign({}, now.snapPath === now.path ? now.snap : {});
-                snap[f] = folderPaths(loader.mmGetState(), f);
+                snap[f] = folderPaths(loader.mmGetState(), f, desc());
                 setState({ snap, snapPath: now.path });
                 loadFolderFiles();
             };

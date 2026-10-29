@@ -19,8 +19,9 @@ import threading
 import time
 
 try:
-    from . import projects
+    from . import profiles, projects
 except ImportError:  # tests : module charge seul
+    import profiles
     import projects
 
 PROMPT_FOLDER = "04.Prompt"
@@ -412,7 +413,11 @@ def run_models(prompt):
 
 
 def run_mode(prompt):
-    """REF2VA / FL2VA du Reference Loader du Run (etat JSON de son entree state), sinon None."""
+    """
+    Libelle de la variante du RefLoader du Run (Ref2VA, F2VA / FL2VA, LTX 2.3, LTX 2.5), lu
+    dans l'etat JSON de son entree state (ancien etat converti), sinon None. Les anciens JSON
+    de Runs gardent leur "REF2VA" / "FL2VA".
+    """
     if not isinstance(prompt, dict):
         return None
     for node_id in sorted(prompt, key=_sort_key):
@@ -423,7 +428,9 @@ def run_mode(prompt):
             state = json.loads((node.get("inputs") or {}).get("state") or "{}")
         except (TypeError, ValueError):
             continue
-        return "FL2VA" if state.get("mode") == "fl2va" else "REF2VA"
+        if not isinstance(state, dict):
+            state = {}
+        return profiles.VARIANTS[profiles.variant_of(state)]["label"]
     return None
 
 

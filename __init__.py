@@ -172,19 +172,8 @@ try:
 
     @routes.get("/mmrefloader/profiles")
     async def mmrefloader_profiles(request):
-        """Profils de modele : {"profiles": [{"id", "label", "limits", "bounds"}], "default": id}.
-        limits = limites par defaut du profil ; bounds = LIMIT_BOUNDS (seconds, fps, max_side)
-        plus, pour chaque cle de nombre du profil, [1, valeur par defaut]."""
-        items = []
-        for pid in profiles.PROFILES:
-            lim = profiles.DEFAULT_LIMITS[pid]
-            bounds = {k: list(v) for k, v in profiles.LIMIT_BOUNDS.items()}
-            for k in profiles.COUNT_KEYS[pid]:
-                bounds[k] = [1, lim[k]]
-            items.append({"id": pid, "label": profiles.LABELS[pid], "limits": lim, "bounds": bounds})
-        # Description des variantes (29/10/2026) sous sa propre cle : "default" garde son ancien sens.
-        return web.json_response({"profiles": items, "default": profiles.DEFAULT_PROFILE,
-                                  "description": profiles.description()})
+        """Description des variantes (modeles, lignes, sorties, limites) : {"description": ...}."""
+        return web.json_response({"description": profiles.description()})
 
     @routes.get("/mmrefloader/subfolders")
     async def mmrefloader_subfolders(request):
@@ -811,15 +800,10 @@ try:
         try:
             body = await request.json()
             projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
-            if isinstance(body.get("selections"), dict):
-                selections, variant = body["selections"], body.get("variant") or ""
-            else:
-                # Ancien envoi du noeud Project (listes, rognages, mode, profil) jusqu'a son passage aux variantes.
-                selections, variant = project_config.selections_from_old(
-                    body.get("refs") or {}, body.get("trims") or {}, body.get("mode", ""),
-                    body.get("profile") or "minimax_h3", body.get("moments") or {})
-            info = await _in_executor(project_config.save_config, body.get("project", ""), selections, variant,
-                                      body.get("workflow", ""))
+            # Toutes les variantes du RefLoader (selections) et celle affichee (variant).
+            selections = body.get("selections") if isinstance(body.get("selections"), dict) else {}
+            info = await _in_executor(project_config.save_config, body.get("project", ""), selections,
+                                      body.get("variant") or "", body.get("workflow", ""))
         except project_config.ConfigError as e:
             return web.json_response({"error": str(e), "errors": e.errors}, status=400)
         except Exception as e:

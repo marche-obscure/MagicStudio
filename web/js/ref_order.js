@@ -4,9 +4,7 @@
 // d'ordre change ces jetons : le noeud previent. Module sans dependance a
 // ComfyUI, teste par tests/test_ref_order.mjs.
 
-import { profileOf, variantOf, rowsOf } from "./profiles.js";
-
-const LISTS = [["images", "Picture"], ["videos", "Video"], ["video_audios", "Audio"], ["audios", "Audio"]];
+import { variantOf, rowsOf, migrateState } from "./profiles.js";
 
 /** Jetons du prompt de la selection Ref2VA : [{list, path, token}] ; rien en F2VA/FL2VA. */
 // Mot du jeton selon la valeur de la premiere sortie d'une ligne (etat des variantes).
@@ -36,19 +34,8 @@ function variantTokens(state) {
 }
 
 export function refTokens(state) {
-    const out = [];
-    if (state && state.selections) return variantTokens(state);
-    // Seulement MiniMax Ref2VA : ni F2VA/FL2VA, ni LTX 2.x (pas de balises).
-    if (!state || state.mode === "fl2va" || profileOf(state) !== "minimax_h3") return out;
-    const soundtracks = (state.video_audios || []).filter(Boolean).length;
-    for (const [list, word] of LISTS) {
-        (state[list] || []).forEach((path, i) => {
-            if (!path) return;
-            const n = list === "audios" ? soundtracks + i + 1 : i + 1;
-            out.push({ list, path, token: "<" + word + " " + n + ">" });
-        });
-    }
-    return out;
+    if (!state || typeof state !== "object") return [];
+    return variantTokens(state.selections ? state : migrateState(state));
 }
 
 /**
@@ -59,13 +46,10 @@ export function refTokens(state) {
  */
 export function orderChanges(before, after) {
     if (!before || !after) return [];
-    if (before.selections || after.selections) {
-        // Etat des variantes : meme variante des deux cotes (sinon rien a comparer).
-        if (!before.selections || !after.selections || variantOf(before) !== variantOf(after)) return [];
-    } else {
-        if (before.mode === "fl2va" || after.mode === "fl2va") return [];
-        if (profileOf(before) !== "minimax_h3" || profileOf(after) !== "minimax_h3") return [];
-    }
+    // Meme variante des deux cotes (sinon rien a comparer) ; ancien etat converti.
+    if (!before.selections) before = migrateState(before);
+    if (!after.selections) after = migrateState(after);
+    if (variantOf(before) !== variantOf(after)) return [];
     const key = (t, seen) => {
         const k = t.list + "|" + t.path;
         const n = seen.get(k) || 0;

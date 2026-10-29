@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { formatVariantConfig, parseVariantConfig, variantConfigPrefix, trimKey } from "./config_format.js";
-import { routeDefaults, LAST, secondsToFrame, guideMoments, checkMoment, sameFrameAs, stepFrame,
+import { LAST, secondsToFrame, guideMoments, checkMoment, sameFrameAs, stepFrame,
     FALLBACK_DESCRIPTION, routeDescription, variantOf, modelOf, variantsOfModel, rowsOf as variantRowsOf,
     variantLimits, parseVariantState, uiHeight as variantUiHeight, limitLabels, variantLimitOverrides,
     pruneVariantMoments, variantLayoutKeys, variantModeLinks, isOldLoaderOutputs, rewirePlan } from "./profiles.js";
@@ -26,10 +26,6 @@ const MARK_RED = "#d32f2f";
 const INACTIVE_BG = "#2a2a2a";
 const INACTIVE_FG = "#888";
 
-// Defauts des anciens profils (compteurs "Use: n/x" du noeud Project jusqu'a son passage
-// aux variantes) ; null tant que la route n'a pas repondu = FALLBACK_LIMITS.
-let profileDefaults = null;
-const profileLimitDefaults = () => profileDefaults;
 // Description des variantes (modeles, lignes, limites) : lue une fois sur la route
 // /mmrefloader/profiles (setup de l'extension) ; d'ici la, la copie de secours.
 let variantDesc = FALLBACK_DESCRIPTION;
@@ -173,8 +169,6 @@ function rowColor(s, rid) {
     const i = ids.indexOf(rid);
     return i === ids.length - 1 ? TITLE_COLOR : ROW_COLORS[i % ROW_COLORS.length] || VIOLET;
 }
-/** Dossiers de medias des lignes de la variante (sous-dossiers proposes par la galerie avec un projet). */
-const galleryFolders = (s) => [...new Set(rowsOfState(s).map((r) => r.folder).filter(Boolean))];
 /** Titre des fenetres d'une ligne : "Guide images (LTX 2.3)". */
 const rowTitle = (s, rid) => rowInfo(rid).label + " (" + variantDesc.variants[variantOfState(s)].label + ")";
 
@@ -1049,7 +1043,7 @@ async function relinkToRoot(getState, setState, root) {
         }
     }
     if (!map.size) return 0;
-    setState(remapState(getState(), (p) => map.get(p) || p));
+    setState(remapState(getState(), (p) => map.get(p) || p, variantDesc));
     return map.size;
 }
 
@@ -2658,7 +2652,7 @@ function buildGallery(container, ctx) {
     /** Sous-dossier propose : dans le projet du filtre et, sur le dossier des projets, un dossier de medias. */
     function allowedSub(path) {
         if (!inProjectFilter(path, projFilter)) return false;
-        return projRow.style.display === "none" || isMediaSubfolder(path, galleryFolders(ctx.getState()), fileKind(kind));
+        return projRow.style.display === "none" || isMediaSubfolder(path, variantOfState(ctx.getState()), fileKind(kind), variantDesc);
     }
 
     const addOption = (select, value, text, multi) => {
@@ -3555,16 +3549,17 @@ function buildGallery(container, ctx) {
             // Projet associe (choix utilisateur) : tous les fichiers de la liste vont dans son dossier
             // (copies, deplaces depuis Archives, "_02" si le nom est pris) ; les rognages suivent.
             const listKey = kind;
+            const shown = variantOfState(s);
             const inDir = (p) => samePath(p.replace(/[\\/][^\\/]*$/, ""), projDir);
             const outside = list(s).filter((p) => !inDir(p));
             if (outside.length) {
                 const data = await apiPost("/mmproject/import_files", { project: project.path, folder: projFolder,
                     paths: outside });
-                s = remapState(s, (p, l) => {
-                    if (l !== listKey) return p;
+                s = remapState(s, (p, l, v) => {
+                    if (l !== listKey || v !== shown) return p;
                     const k = outside.findIndex((o) => samePath(o, p));
                     return k >= 0 ? data.dsts[k] : p;
-                });
+                }, variantDesc);
             }
             ctx.setState(s);
             if (ctx.resnapProject) ctx.resnapProject(projFolder);
@@ -3645,7 +3640,7 @@ function buildGallery(container, ctx) {
             projRow.style.display = "none"; // paintProjRow reprend le projet choisi
             projPicker.close();
             if (projList && projList.names.length && base && samePath(base, projList.root) && sub &&
-                !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, galleryFolders(st), fileKind(kind)))) {
+                !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, variantOfState(st), fileKind(kind), variantDesc))) {
                 sub = "";
                 saveNav();
             }
@@ -4818,7 +4813,6 @@ app.registerExtension({
             if (!res.ok) return;
             const json = await res.json();
             variantDesc = routeDescription(json);
-            profileDefaults = routeDefaults(json);
             vueNodes.forEach((n) => typeof n.__mmrefRefresh === "function" && n.__mmrefRefresh());
         } catch (e) {
             console.warn("[MagicStudio RefLoader] profiles", e);
@@ -5468,7 +5462,6 @@ export {
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
     escapeHtml, buildHelpOverlay, vueMode, PROJECT_TYPE,
     FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker, THUMB_REVALIDATE,
-    profileLimitDefaults,
     // MagicStudio Container (web/js/container_node.js)
     getVariantDesc, PAIR_COLORS, rememberLinks, restoreLinks, trackVueNode, untrackVueNode, scheduleVueSync,
     hitOutputLabel, openOutputLabelEditor, setOutputLabel, closeOutputEditor,

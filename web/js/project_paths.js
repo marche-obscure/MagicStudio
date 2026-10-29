@@ -1,7 +1,7 @@
 // Regles des dossiers de projet, sans dependance a ComfyUI (testees par
 // node --test tests/test_project_paths.mjs).
 import { trimKey } from "./config_format.js";
-import { profileOf, limitsOf, LABELS } from "./profiles.js";
+import { FALLBACK_DESCRIPTION, variantOf, rowsOf, variantLimits, migrateState } from "./profiles.js";
 
 // Sous-dossiers de chaque projet (meme liste que projects.SUBFOLDERS en Python).
 export const PROJECT_SUBFOLDERS = [
@@ -25,48 +25,43 @@ export const FOLDER_COLORS = {
     "60.Rush Images": "#8e7fe0",
 };
 
-// Save : sous-dossier ou va chaque liste du Ref Loader (les deux modes).
-export const LIST_FOLDERS = {
-    images: "08.Images", videos: "12.Video", video_audios: "14.Video-Audio", audios: "10.Son",
-    first_frame: "08.Images", last_frame: "08.Images",
-    // Profil LTX 2.x
-    guide_images: "08.Images", guide_video: "12.Video", soundtrack: "10.Son", voice: "10.Son",
-};
-const LISTS = Object.keys(LIST_FOLDERS);
-// Liste -> type de rognage (cle de state.trims).
-const TRIM_OF_LIST = {
-    videos: "video", video_audios: "video_audio", audios: "audio",
-    guide_video: "guide_video", soundtrack: "soundtrack", voice: "voice",
-};
-// Liste -> moments des guides LTX 2.x (cle de state.moments).
-const MOMENT_LISTS = ["guide_images", "guide_video"];
-// Listes de chaque profil (l'etat garde les deux jeux ; seul le profil actif sert).
-const PROFILE_LISTS = {
-    minimax_h3: ["images", "videos", "video_audios", "audios", "first_frame", "last_frame"],
-    ltx2: ["guide_images", "guide_video", "soundtrack", "voice"],
-};
+// ---- Etat du RefLoader (variantes, 29/10/2026) : selections de chaque variante, lignes et
+// dossiers lus dans la description (profiles.js). Toutes ces fonctions recoivent desc en
+// dernier (absent : FALLBACK_DESCRIPTION).
+const descOf = (desc) => (desc && desc.variants ? desc : FALLBACK_DESCRIPTION);
 
-/**
- * Listes du profil actif, dans l'ordre des listes : Save, cloches, compteurs et
- * configuration du projet. L'archivage (unusedProjectFiles) regarde les deux profils.
- */
-export function activeLists(state) {
-    return PROFILE_LISTS[profileOf(state)];
+/** Dossier du projet d'une ligne d'une variante (description : folder), "" si aucun. */
+export function rowFolder(desc, variant, rowId) {
+    const r = rowsOf(descOf(desc), variant).find((x) => x.id === rowId);
+    return (r && r.folder) || "";
 }
 
-/** Fichiers a copier par Save : [{path, folder}] dans l'ordre des listes du profil actif. */
-export function saveItems(state) {
+const rowsIn = (state, v) => (((state && state.selections) || {})[v] || {}).rows || {};
+
+/** Lignes de la variante affichee : [{variant, row}] dans l'ordre de la description. */
+function shownRows(state, desc) {
+    const d = descOf(desc);
+    const v = variantOf(state, d);
+    return rowsOf(d, v).map((row) => ({ variant: v, row }));
+}
+
+/** Lignes de toutes les variantes, la variante affichee d'abord. */
+function everyRow(state, desc) {
+    const d = descOf(desc);
+    const v = variantOf(state, d);
+    return [v].concat(Object.keys(d.variants).filter((x) => x !== v))
+        .flatMap((x) => rowsOf(d, x).map((row) => ({ variant: x, row })));
+}
+
+/** Fichiers a copier par Save : [{path, folder}], lignes de la variante affichee dans leur ordre. */
+export function saveItems(state, desc) {
     const items = [];
-    for (const list of activeLists(state)) {
-        for (const path of state[list] || []) items.push({ path, folder: LIST_FOLDERS[list] });
+    for (const { variant, row } of shownRows(state, desc)) {
+        for (const path of rowsIn(state, variant)[row.id] || []) items.push({ path, folder: row.folder });
     }
     return items;
 }
 
-/**
- * Copie de l'etat du Ref Loader avec chaque chemin des listes remplace par
- * fn(chemin, liste) ; les cles de rognage et de moment suivent leur fichier.
- */
 /** Deplace la cle d'un fichier renomme dans une table {cle du chemin: valeur} (src lu, dst ecrit). */
 function followKeys(src, dst, old, now) {
     old.forEach((p, i) => {
@@ -78,54 +73,41 @@ function followKeys(src, dst, old, now) {
     });
 }
 
-export function remapState(state, fn) {
-    const s = JSON.parse(JSON.stringify(state));
-    // Etat des variantes (29/10/2026) : toutes les selections, fn(chemin, ligne).
-    if (state && state.selections && typeof state.selections === "object") {
-        for (const [v, sel] of Object.entries(state.selections)) {
-            const out = s.selections[v];
-            for (const [rid, old] of Object.entries((sel && sel.rows) || {})) {
-                out.rows[rid] = (old || []).map((p) => fn(p, rid));
-                for (const table of ["trims", "moments"]) {
-                    if (sel[table] && sel[table][rid]) followKeys(sel[table][rid], out[table][rid], old, out.rows[rid]);
-                }
+/**
+ * Copie de l'etat du RefLoader avec chaque chemin de chaque variante remplace par
+ * fn(chemin, ligne, variante) ; les cles de rognage et de moment suivent leur fichier.
+ * Lignes de chaque variante dans l'ordre de la description (= ordre de saveItems).
+ */
+export function remapState(state, fn, desc) {
+    const d = descOf(desc);
+    const s = JSON.parse(JSON.stringify(state || {}));
+    for (const [v, sel] of Object.entries((state && state.selections) || {})) {
+        const out = s.selections[v];
+        const rows = (sel && sel.rows) || {};
+        const ids = d.variants[v] ? rowsOf(d, v).map((r) => r.id).filter((id) => id in rows) : [];
+        for (const rid of Object.keys(rows)) if (!ids.includes(rid)) ids.push(rid);
+        for (const rid of ids) {
+            const old = rows[rid] || [];
+            out.rows[rid] = old.map((p) => fn(p, rid, v));
+            for (const table of ["trims", "moments"]) {
+                if (sel[table] && sel[table][rid]) followKeys(sel[table][rid], out[table][rid], old, out.rows[rid]);
             }
-        }
-        return s;
-    }
-    // Deplace la cle d'un fichier renomme dans une table {cle du chemin: valeur}.
-    const follow = (src, dst, old, now) => {
-        old.forEach((p, i) => {
-            const before = trimKey(p);
-            const after = trimKey(now[i]);
-            if (before === after || !(before in src)) return;
-            dst[after] = src[before];
-            delete dst[before];
-        });
-    };
-    for (const list of LISTS) {
-        const old = state[list] || [];
-        s[list] = old.map((p) => fn(p, list));
-        const kind = TRIM_OF_LIST[list];
-        if (kind && state.trims && state.trims[kind]) follow(state.trims[kind], s.trims[kind], old, s[list]);
-        if (MOMENT_LISTS.includes(list) && state.moments && state.moments[list]) {
-            follow(state.moments[list], s.moments[list], old, s[list]);
         }
     }
     return s;
 }
 
 /**
- * fn pour remapState apres Save : destinations dans l'ordre de saveItems()
- * ("" = fichier manquant, chemin garde). Par position et non par chemin :
- * une meme video peut aller dans 12.Video et dans 14.Video-Audio.
- * state : seules les listes de son profil actif recoivent une destination.
+ * fn pour remapState apres Save : dsts = destinations par position dans l'ordre de
+ * saveItems ("" = fichier manquant, chemin garde). Par position et non par chemin : une
+ * meme video peut aller dans 12.Video et dans 14.Video-Audio. Seule la variante affichee
+ * recoit des destinations.
  */
-export function mapBySequence(dsts, state) {
-    const lists = state ? activeLists(state) : null;
+export function mapBySequence(dsts, state, desc) {
+    const v = variantOf(state, descOf(desc));
     let i = 0;
-    return (p, list) => {
-        if (lists && !lists.includes(list)) return p;
+    return (p, rid, variant) => {
+        if (variant !== v) return p;
         const d = dsts[i++];
         return d || p;
     };
@@ -149,80 +131,101 @@ export const UPDATE_FOLDERS = ["08.Images", "10.Son", "12.Video", "14.Video-Audi
 const normPath = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 const dirOf = (p) => normPath(p).replace(/\/[^/]*$/, "");
 
-function pathsOf(state, folder, lists) {
+/** Chemins (sans doublon, dans l'ordre) des lignes donnees qui vont dans ce dossier. */
+function pathsOf(state, folder, pairs) {
     const out = [];
-    for (const list of lists) {
-        if (LIST_FOLDERS[list] !== folder) continue;
-        for (const p of state[list] || []) if (!out.includes(p)) out.push(p);
+    const seen = new Set();
+    for (const { variant, row } of pairs) {
+        if (row.folder !== folder) continue;
+        for (const p of rowsIn(state, variant)[row.id] || []) {
+            if (seen.has(normPath(p))) continue;
+            seen.add(normPath(p));
+            out.push(p);
+        }
     }
     return out;
 }
 
 /**
- * References du profil cache qui vont dans ce dossier, [{path, folder}] sans celles
- * deja dans le profil actif : la cloche les verifie aussi (une reference manquante
- * du profil cache bloque l'archivage), sans jamais les copier.
+ * References des autres variantes qui vont dans ce dossier, [{path, folder}] sans celles
+ * deja dans la variante affichee : la cloche les verifie aussi (une reference manquante
+ * d'une autre variante bloque l'archivage), sans jamais les copier.
  */
-export function hiddenFolderItems(state, folder) {
-    const active = activeLists(state);
-    const seen = new Set(pathsOf(state, folder, active).map(normPath));
-    const out = [];
-    for (const p of pathsOf(state, folder, LISTS.filter((l) => !active.includes(l)))) {
-        if (seen.has(normPath(p))) continue;
-        seen.add(normPath(p));
-        out.push({ path: p, folder });
-    }
-    return out;
+export function hiddenFolderItems(state, folder, desc) {
+    const v = variantOf(state, descOf(desc));
+    const seen = new Set(folderPaths(state, folder, desc).map(normPath));
+    return pathsOf(state, folder, everyRow(state, desc).filter((x) => x.variant !== v))
+        .filter((p) => !seen.has(normPath(p))).map((path) => ({ path, folder }));
 }
 
-/** References du profil actif du Ref Loader qui vont dans ce dossier (ordre des listes, sans doublon). */
-export function folderPaths(state, folder) {
-    return pathsOf(state, folder, activeLists(state));
+/** References de la variante affichee qui vont dans ce dossier (ordre des lignes, sans doublon). */
+export function folderPaths(state, folder, desc) {
+    return pathsOf(state, folder, shownRows(state, desc));
 }
 
 /** Instantane des dossiers suivis : {dossier: [chemins]} (Save, mise a jour). */
-export function folderSnapshot(state) {
+export function folderSnapshot(state, desc) {
     const snap = {};
-    for (const f of UPDATE_FOLDERS) snap[f] = folderPaths(state, f);
+    for (const f of UPDATE_FOLDERS) snap[f] = folderPaths(state, f, desc);
     return snap;
 }
 
 /**
- * Changements d'un dossier suivi : added = references pas encore dans
- * <projet>/<dossier> ; removed = references de l'instantane retirees du Ref
- * Loader (sans instantane, aucune). Les fichiers ne sont jamais effaces.
+ * Changements d'un dossier suivi : added = references de la variante affichee pas encore
+ * dans <projet>/<dossier> ; removed = references de l'instantane qu'aucune variante
+ * n'utilise plus (sans instantane, aucune). Les fichiers ne sont jamais effaces.
  */
-export function folderChanges(state, folder, projectPath, snapshot) {
-    const current = folderPaths(state, folder);
+export function folderChanges(state, folder, projectPath, snapshot, desc) {
+    const current = folderPaths(state, folder, desc);
     const dir = normPath(projectPath + "/" + folder);
     const added = current.filter((p) => dirOf(p) !== dir);
-    // Retiree = plus dans aucune liste (un fichier du profil cache n'est pas retire).
-    const now = new Set(pathsOf(state, folder, LISTS).map(normPath));
+    const now = new Set(pathsOf(state, folder, everyRow(state, desc)).map(normPath));
     const removed = Array.isArray(snapshot) ? snapshot.filter((p) => !now.has(normPath(p))) : [];
     return { added, removed };
 }
 
-/** fn pour remapState apres la mise a jour d'un dossier : seules ses listes (du profil actif de state) changent. */
-export function mapFolderBySequence(folder, dsts, state) {
-    const lists = state ? activeLists(state) : null;
+/** fn pour remapState apres la mise a jour d'un dossier : seules les lignes de la variante affichee de ce dossier changent. */
+export function mapFolderBySequence(folder, dsts, state, desc) {
+    const d = descOf(desc);
+    const v = variantOf(state, d);
     let i = 0;
-    return (p, list) => {
-        if (LIST_FOLDERS[list] !== folder || (lists && !lists.includes(list))) return p;
-        const d = dsts[i++];
-        return d || p;
+    return (p, rid, variant) => {
+        if (variant !== v || rowFolder(d, v, rid) !== folder) return p;
+        const dst = dsts[i++];
+        return dst || p;
     };
 }
 
+/** Etat sans les references gone dans les lignes (toutes variantes) rangees dans ce dossier. */
+export function withoutFolderPaths(state, folder, gone, desc) {
+    const s = JSON.parse(JSON.stringify(state || {}));
+    for (const { variant, row } of everyRow(state, desc)) {
+        const rows = rowsIn(s, variant);
+        if (row.folder === folder && Array.isArray(rows[row.id])) rows[row.id] = withoutPaths(rows[row.id], gone);
+    }
+    return s;
+}
+
+/** Etat sans aucune reference (Reset du projet) : lignes, rognages et moments vides dans toutes les variantes. */
+export function withoutReferences(state, desc) {
+    const s = migrateState(JSON.parse(JSON.stringify(state || {})), descOf(desc));
+    for (const sel of Object.values(s.selections)) {
+        for (const rid of Object.keys(sel.rows)) sel.rows[rid] = [];
+        for (const rid of Object.keys(sel.trims)) sel.trims[rid] = {};
+        for (const rid of Object.keys(sel.moments)) sel.moments[rid] = {};
+    }
+    return s;
+}
+
 /**
- * Etat du Ref Loader sans ses listes, rognages ni moments : le contenu des dossiers
- * est suivi par leurs cloches, ce n'est pas une modification du workflow
- * (profil et limites restent : ils changent les sorties).
+ * Etat du RefLoader sans ses selections (fichiers, rognages, moments) : le contenu des
+ * dossiers est suivi par leurs cloches, ce n'est pas une modification du workflow
+ * (variante et limites restent : elles changent les sorties). Un ancien etat est d'abord
+ * converti, pour comparer deux etats de la meme facon.
  */
-export function withoutMedia(state) {
-    const s = Object.assign({}, state);
-    for (const list of LISTS) delete s[list];
-    delete s.trims;
-    delete s.moments;
+export function withoutMedia(state, desc) {
+    const s = migrateState(JSON.parse(JSON.stringify(state || {})), descOf(desc));
+    delete s.selections;
     return s;
 }
 
@@ -246,15 +249,13 @@ export function replaceSelection(initial, final) {
 }
 
 /**
- * Fichiers du dossier du projet que plus aucune liste du Ref Loader
- * n'utilise (toutes les listes des deux profils : une video peut servir de
- * son seul, un fichier du profil cache reste) : ils partent dans Archives.
+ * Fichiers du dossier du projet qu'aucune ligne du RefLoader n'utilise, dans aucune
+ * variante (une video peut servir de son seul, un fichier d'une autre variante reste) :
+ * ils partent dans Archives.
  * cited = runSourcePaths(...) : les fichiers d'un Run ne sont jamais orphelins (26/10/2026).
  */
 export function unusedProjectFiles(paths, state, cited = new Set()) {
     const used = new Set();
-    for (const list of LISTS) for (const p of state[list] || []) used.add(normPath(p));
-    // Etat des variantes : un fichier utilise par n'importe quelle variante reste.
     for (const sel of Object.values((state && state.selections) || {})) {
         for (const list of Object.values((sel && sel.rows) || {})) for (const p of list || []) used.add(normPath(p));
     }
@@ -269,47 +270,31 @@ export function runSourcePaths(runs) {
 }
 
 /**
- * Maximum du Reference Loader par dossier, lu dans ses limites (limitsOf : defauts
- * du profil + reglages du noeud). MiniMax : 08 = Images (Ref2VA) ou premiere +
- * derniere image (FL2VA), 10 / 12 / 14 = sons / videos / videos avec son.
- * LTX 2.x : 08 = images guides, 10 = bande-son + voix, 12 = video guide, 14 = 0.
+ * Maximum du RefLoader par dossier : somme des plafonds (variantLimits : description +
+ * reglages du noeud) des lignes de la variante affichee rangees dans ce dossier ; 0 =
+ * dossier sans ligne ("Not used").
  */
-export function folderMax(state, defaults) {
-    const lim = limitsOf(state, defaults);
-    if (profileOf(state) === "ltx2") {
-        return { "08.Images": lim.guide_image, "10.Son": lim.soundtrack + lim.voice, "12.Video": lim.guide_video,
-            "14.Video-Audio": 0 };
-    }
-    const fl = !!state && state.mode === "fl2va";
-    return { "08.Images": fl ? lim.first_frame + lim.last_frame : lim.image, "10.Son": lim.audio,
-        "12.Video": lim.video, "14.Video-Audio": lim.video_audio };
+export function folderMax(state, desc) {
+    const d = descOf(desc);
+    const lim = variantLimits(state, d);
+    const out = {};
+    for (const f of UPDATE_FOLDERS) out[f] = 0;
+    for (const { row } of shownRows(state, d)) if (row.folder in out) out[row.folder] += lim.counts[row.id] || 0;
+    return out;
 }
 
-// Listes comptees par "Use: x/y" : [mode ou profil][dossier].
-const USE_LISTS = {
-    ref2va: { "08.Images": ["images"], "10.Son": ["audios"], "12.Video": ["videos"], "14.Video-Audio": ["video_audios"] },
-    fl2va: { "08.Images": ["first_frame", "last_frame"], "10.Son": ["audios"], "12.Video": ["videos"],
-        "14.Video-Audio": ["video_audios"] },
-    ltx2: { "08.Images": ["guide_images"], "10.Son": ["soundtrack", "voice"], "12.Video": ["guide_video"],
-        "14.Video-Audio": [] },
-};
-
 /**
- * "Use: x/y" d'un dossier (choix utilisateur) : x = fichiers du dossier
- * utilises par les listes du profil et du mode actuels, y = maximum du dossier
- * (folderMax ; 0 = dossier non utilise : 14.Video-Audio en LTX 2.x).
- * mode = "Ref2VA", "FL2VA" ou "LTX 2.x".
+ * "Use: x/y" d'un dossier (choix utilisateur) : x = fichiers du dossier utilises par les
+ * lignes de la variante affichee, y = maximum du dossier (folderMax ; 0 = "Not used").
+ * mode = libelle de la variante (Ref2VA, F2VA / FL2VA, LTX 2.3...).
  */
-export function folderUse(paths, state, folder, defaults) {
-    const ltx = profileOf(state) === "ltx2";
-    const fl = !!state && state.mode === "fl2va";
-    const key = ltx ? "ltx2" : fl ? "fl2va" : "ref2va";
-    const refs = new Set();
-    for (const list of USE_LISTS[key][folder] || []) for (const p of (state && state[list]) || []) refs.add(normPath(p));
+export function folderUse(paths, state, folder, desc) {
+    const d = descOf(desc);
+    const refs = new Set(folderPaths(state, folder, d).map(normPath));
     return {
         used: (paths || []).filter((p) => refs.has(normPath(p))).length,
-        max: folderMax(state, defaults)[folder] || 0,
-        mode: ltx ? LABELS.ltx2 : fl ? "FL2VA" : "Ref2VA",
+        max: folderMax(state, d)[folder] || 0,
+        mode: d.variants[variantOf(state, d)].label,
     };
 }
 
@@ -341,26 +326,6 @@ export function duplicateColors(paths, hashes) {
         for (const p of members) out[p] = color;
     }
     return out;
-}
-
-/** Le mode (ou "ltx2") a-t-il au moins une reference (une configuration a sauvegarder) ? */
-export function modeHasRefs(state, mode) {
-    const n = (k) => (state[k] || []).length;
-    if (mode === "ltx2") return PROFILE_LISTS.ltx2.some((k) => n(k) > 0);
-    return mode === "fl2va" ? n("first_frame") + n("last_frame") > 0
-        : n("images") + n("videos") + n("video_audios") + n("audios") > 0;
-}
-
-/**
- * Nom d'une configuration enregistree par Save : yyyyMMdd-HHmmss_MODE_minimax_config.json
- * (mode "ltx2" : yyyyMMdd-HHmmss_LTX2_magicstudio_config.json).
- */
-export function configFileName(date, mode) {
-    const p = (n) => String(n).padStart(2, "0");
-    const stamp = date.getFullYear() + p(date.getMonth() + 1) + p(date.getDate()) + "-" +
-        p(date.getHours()) + p(date.getMinutes()) + p(date.getSeconds());
-    if (mode === "ltx2") return stamp + "_LTX2_magicstudio_config.json";
-    return stamp + "_" + (mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config.json";
 }
 
 const MAX_NAME_LENGTH = 100;
@@ -423,25 +388,13 @@ export function parseProjectState(raw) {
 
 // ---- Configuration du projet (99.Project-Config) : Load / Save ----
 
-// Dossiers des listes du Ref Loader, deux profils (meme table que project_config.MEDIA en Python).
-export const MEDIA_FOLDERS = {
-    "08.Images": ["images", "first_frame", "last_frame", "guide_images"],
-    "10.Son": ["audios", "soundtrack", "voice"],
-    "12.Video": ["videos", "guide_video"],
-    "14.Video-Audio": ["video_audios"],
-};
 // Dossiers chargeables (une case chacun dans la fenetre Load).
 export const LOADABLE_FOLDERS = ["00.Workflows", "08.Images", "10.Son", "12.Video", "14.Video-Audio"];
 
-/**
- * Listes du Ref Loader envoyees a Save (chemins des fichiers du projet), des deux
- * profils : build_config indexe celles du profil actif, les fichiers de l'autre
- * profil restent sans indice (pas une erreur).
- */
-export function configRefs(state) {
-    const out = {};
-    for (const lists of Object.values(MEDIA_FOLDERS)) for (const list of lists) out[list] = (state[list] || []).slice();
-    return out;
+/** Ce que Save envoie pour la configuration du projet : toutes les variantes et celle affichee. */
+export function configRefs(state, desc) {
+    return { selections: JSON.parse(JSON.stringify((state && state.selections) || {})),
+        variant: variantOf(state, descOf(desc)) };
 }
 
 function joinPath(dir, ...parts) {
@@ -450,44 +403,59 @@ function joinPath(dir, ...parts) {
 }
 
 /**
- * Load : etat du Ref Loader avec les listes des dossiers coches remplacees
- * par la configuration (ordre des indices, rognages et moments repris). Un
- * fichier manquant et introuvable dans Archives est saute. Seules les listes
- * du profil de la configuration changent (sans profile : MiniMax H3) ; le
- * profil et le mode suivent la configuration des qu'un dossier de medias est coche.
+ * Load : etat du RefLoader avec, pour chaque dossier de medias coche, les lignes de toutes
+ * les variantes rangees dans ce dossier remplacees par la configuration (Utilisations :
+ * ordre des Indice, rognages et moments repris). Un fichier manquant et introuvable dans
+ * Archives est saute. La variante affichee ne change pas (choix utilisateur).
  */
-export function loadedState(base, report, projectPath, checked) {
-    const s = JSON.parse(JSON.stringify(base || {}));
-    s.trims = s.trims || {};
-    const prof = report.profile === "ltx2" ? "ltx2" : "minimax_h3";
-    let any = false;
+export function loadedState(base, report, projectPath, checked, desc) {
+    const d = descOf(desc);
+    const s = migrateState(JSON.parse(JSON.stringify(base || {})), d);
+    const rowOfVariant = (v, rid) => (d.variants[v] ? rowsOf(d, v).find((r) => r.id === rid) : null);
     for (const f of report.folders || []) {
-        const lists = MEDIA_FOLDERS[f.folder];
-        if (!lists || !checked.includes(f.folder)) continue;
-        any = true;
-        for (const list of lists.filter((l) => PROFILE_LISTS[prof].includes(l))) {
-            const kind = TRIM_OF_LIST[list];
-            if (kind && s.trims[kind]) for (const p of s[list] || []) delete s.trims[kind][trimKey(p)];
-            const moments = MOMENT_LISTS.includes(list);
-            if (moments && s.moments && s.moments[list]) for (const p of s[list] || []) delete s.moments[list][trimKey(p)];
-            const items = (f.files || []).filter((x) => x.Liste === list && (x.status !== "missing" || x.archive))
-                .sort((a, b) => a.Indice - b.Indice);
-            s[list] = items.map((x) => joinPath(projectPath, f.folder, x.nom));
-            items.forEach((x, i) => {
-                if (kind && Array.isArray(x.trim) && x.trim.length === 2) {
-                    s.trims[kind] = s.trims[kind] || {};
-                    s.trims[kind][trimKey(s[list][i])] = [x.trim[0], x.trim[1]];
+        if (!UPDATE_FOLDERS.includes(f.folder) || !checked.includes(f.folder)) continue;
+        for (const v of Object.keys(d.variants)) {
+            const sel = s.selections[v];
+            for (const r of rowsOf(d, v)) {
+                if (r.folder !== f.folder) continue;
+                for (const p of sel.rows[r.id] || []) {
+                    if (sel.trims[r.id]) delete sel.trims[r.id][trimKey(p)];
+                    if (sel.moments[r.id]) delete sel.moments[r.id][trimKey(p)];
                 }
-                if (moments && typeof x.moment === "number") {
-                    s.moments = s.moments || {};
-                    s.moments[list] = s.moments[list] || {};
-                    s.moments[list][trimKey(s[list][i])] = x.moment;
+                sel.rows[r.id] = [];
+            }
+        }
+        const filled = new Map(); // "variante|ligne" -> [{i, path, u}]
+        for (const x of f.files || []) {
+            if (x.status === "missing" && !x.archive) continue;
+            const path = joinPath(projectPath, f.folder, x.nom);
+            for (const u of x.Utilisations || []) {
+                const r = rowOfVariant(u.variante, u.ligne);
+                if (!r || r.folder !== f.folder) continue;
+                const key = u.variante + "|" + u.ligne;
+                if (!filled.has(key)) filled.set(key, []);
+                filled.get(key).push({ i: Number(u.Indice) || 0, path, u });
+            }
+        }
+        for (const [key, items] of filled) {
+            const [v, rid] = key.split("|");
+            const r = rowOfVariant(v, rid);
+            const sel = s.selections[v];
+            items.sort((a, b) => a.i - b.i);
+            const kept = items.slice(0, r.max);
+            sel.rows[rid] = kept.map((x) => x.path);
+            for (const x of kept) {
+                if (r.trim && Array.isArray(x.u.trim) && x.u.trim.length === 2) {
+                    sel.trims[rid] = sel.trims[rid] || {};
+                    sel.trims[rid][trimKey(x.path)] = [x.u.trim[0], x.u.trim[1]];
                 }
-            });
+                if (r.moment && typeof x.u.moment === "number") {
+                    sel.moments[rid] = sel.moments[rid] || {};
+                    sel.moments[rid][trimKey(x.path)] = x.u.moment;
+                }
+            }
         }
     }
-    if (any) s.profile = prof;
-    if (any && prof === "minimax_h3" && report.mode) s.mode = report.mode === "FL2VA" ? "fl2va" : "ref2va";
     return s;
 }
 
@@ -508,25 +476,23 @@ export function restoreItems(report, checked) {
 }
 
 /**
- * Fenetre de visualisation d'un dossier : fichiers de sa racine dans l'ordre
- * du Reference Loader, [{path, badge}] ; numeros de la premiere liste
- * (Images, Audio...), puis F / L (First / Last frame), puis les fichiers
- * sans numero (badge "") par nom.
+ * Fenetre de visualisation d'un dossier : fichiers de sa racine dans l'ordre du RefLoader,
+ * [{path, badge}] ; lignes de la variante affichee rangees dans ce dossier : numero dans
+ * la ligne, ou initiale de la ligne pour une ligne d'un seul fichier (F / L, S / V...),
+ * puis les fichiers sans numero (badge "") par nom.
  */
-export function orderedFolderFiles(paths, refState, folder) {
-    // Listes du profil actif ; LTX 2.x : S / V = bande-son / voix.
-    const active = activeLists(refState);
-    const lists = (MEDIA_FOLDERS[folder] || []).filter((l) => active.includes(l));
-    const LETTERS = { first_frame: "F", last_frame: "L", soundtrack: "S", voice: "V" };
+export function orderedFolderFiles(paths, refState, folder, desc) {
     const rank = new Map();
-    lists.forEach((list, li) => {
-        ((refState && refState[list]) || []).forEach((p, i) => {
-            const key = normPath(p);
-            const badge = LETTERS[list] || String(i + 1);
-            if (!rank.has(key)) rank.set(key, { order: li * 1000 + i, badge });
-            else rank.get(key).badge += " · " + badge;
+    if (refState) {
+        shownRows(refState, desc).filter((x) => x.row.folder === folder).forEach(({ variant, row }, li) => {
+            (rowsIn(refState, variant)[row.id] || []).forEach((p, i) => {
+                const key = normPath(p);
+                const badge = row.max === 1 ? row.label.charAt(0).toUpperCase() : String(i + 1);
+                if (!rank.has(key)) rank.set(key, { order: li * 1000 + i, badge });
+                else rank.get(key).badge += " · " + badge;
+            });
         });
-    });
+    }
     const base = (p) => String(p).split(/[\\/]/).pop().toLowerCase();
     const items = paths.map((p) => Object.assign({ path: p }, rank.get(normPath(p)) || { order: Infinity, badge: "" }));
     items.sort((a, b) => (a.order === b.order ? 0 : a.order < b.order ? -1 : 1) || base(a.path).localeCompare(base(b.path)));
@@ -895,14 +861,14 @@ export function filterSubfolders(entries, project) {
 
 /**
  * Sous-dossier de la galerie quand elle montre le dossier des projets (choix
- * utilisateur, 19/10/2026) : seulement <projet>/08.Images ... 14.Video-Audio
- * en Ref2VA, seulement <projet>/08.Images en F2VA / FL2VA, 08.Images, 10.Son et
- * 12.Video en LTX 2.x (mode "ltx2") ; pas d'Archives : bouton View archives.
+ * utilisateur, 19/10/2026) : seulement les dossiers des lignes de la variante
+ * (description : Ref2VA 08 a 14, F2VA / FL2VA 08, LTX 08 / 10 / 12) ; pas
+ * d'Archives : bouton View archives.
  * Aussi <projet>/40.Rush Videos/Picture Lock/Extract Frame (26/10/2026) pour les
  * lignes d'images : kind = type de fichier de la ligne ("image"...), absent = accepte.
  * Et <projet>/90.Pick Up/Image | Son | Video (26/10/2026) : le sous-dossier du type de la ligne.
  */
-export function isMediaSubfolder(path, mode, kind) {
+export function isMediaSubfolder(path, variant, kind, desc) {
     const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
     const n = parts.length;
     if ((n === 4 || n === 5) && parts.slice(n - 3).join("/") === EXTRACT_FRAME_DIR.join("/")) {
@@ -911,9 +877,9 @@ export function isMediaSubfolder(path, mode, kind) {
     if ((n === 3 || n === 4) && parts[n - 2] === PICKUP_DIR) {
         return kind ? parts[n - 1] === PICKUP_SUBS[kind] : Object.values(PICKUP_SUBS).includes(parts[n - 1]);
     }
-    // mode peut etre la liste des dossiers des lignes de la variante (RefLoader des variantes).
-    const allowed = Array.isArray(mode) ? mode
-        : mode === "fl2va" ? ["08.Images"] : mode === "ltx2" ? ["08.Images", "10.Son", "12.Video"] : UPDATE_FOLDERS;
+    // Dossiers des lignes de la variante (description) ; sans variante : les quatre dossiers de medias.
+    const allowed = variant ? [...new Set(rowsOf(descOf(desc), variant).map((r) => r.folder).filter(Boolean))]
+        : UPDATE_FOLDERS;
     // Projet de la racine (P/08.Images) ou d'un dossier de projets (G/P/08.Images, 22/10/2026).
     return (n === 2 || n === 3) && allowed.includes(parts[n - 1]);
 }

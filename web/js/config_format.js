@@ -1,12 +1,8 @@
-// Fichiers de configuration (.json) du noeud MiniMax H3 Reference Loader :
-// sauvegarde (Download) et chargement (Upload). Module sans dependance a
-// ComfyUI, teste par tests/test_config_format.mjs et tests/test_config_json.mjs.
+// Fichiers de configuration (.json) du RefLoader : sauvegarde (Download) et chargement
+// (Upload), une variante par fichier (version 3) ; versions 1 et 2 toujours lues. Module
+// sans dependance a ComfyUI, teste par tests/test_config_format.mjs et tests/test_config_json.mjs.
 
-import { profileOf, variantOf, rowsOf, migrateState, variantTrimKey, FALLBACK_DESCRIPTION } from "./profiles.js";
-
-export const CONFIG_LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3 };
-// Plafonds du profil LTX 2.x (fichier de configuration).
-export const LTX_CONFIG_LIMITS = { guide_images: 9, guide_video: 1, soundtrack: 1, voice: 1 };
+import { variantOf, rowsOf, migrateState, variantTrimKey, FALLBACK_DESCRIPTION } from "./profiles.js";
 
 /** Cle d'un chemin pour les rognages (identique a media.trim_key cote Python). */
 export function trimKey(path) {
@@ -37,87 +33,22 @@ export function toAbsolute(root, path) {
 }
 
 // --------------------------------------------------------------------
-// Format JSON : un objet par mode.
-//   { "format": "MiniMax H3 Reference Loader", "version": 1, "mode": "REF2VA",
-//     "root": "...", "images": ["a.png"], "videos": [{"path": "v.mp4", "trim": [5, 7]}],
-//     "video_audios": [...], "audios": [...] }
-//   { ..., "mode": "FL2VA", "root": ..., "first_frame": "a.png", "last_frame": null }
+// Versions 1 et 2 (lues seulement, converties par migrateState) :
+//   v1 / v2 MiniMax : { "format", "version", "mode": "REF2VA"|"FL2VA", "root", "images": ["a.png"],
+//     "videos": [{"path", "trim"}], "video_audios", "audios" } ou "first_frame" / "last_frame" ;
+//   v2 LTX 2.x : { ..., "profile": "ltx2", "guide_images": [{path, seconds}], "guide_video": {...} | null,
+//     "soundtrack", "voice" }.
 // Chemins relatifs au dossier racine quand ils sont dessous ; root null si absent.
 // --------------------------------------------------------------------
 export const JSON_FORMAT = "MiniMax H3 Reference Loader";
 
-/** Debut du nom du fichier telecharge (suivi de yyyyMMdd-HHmmss.json). */
-export function configFilePrefix(state) {
-    if (profileOf(state) === "ltx2") return "LTX2_magicstudio_config_";
-    return (state.mode === "fl2va" ? "FL2VA" : "REF2VA") + "_minimax_config_";
-}
-
-// Profil LTX 2.x : { format, version: 2, profile: "ltx2", root, guide_images: [{path, seconds}],
-//   guide_video: {path, seconds, trim?} | null, soundtrack: {path, trim?} | null, voice: {...} | null }
-function formatLtx(state) {
-    const root = state.root || "";
-    const rel = (p) => toRelative(root, p);
-    const trims = state.trims || {};
-    const moments = state.moments || {};
-    const withTrim = (kind, p, obj) => {
-        const t = (trims[kind] || {})[trimKey(p)];
-        if (t) obj.trim = [t[0], t[1]];
-        return obj;
-    };
-    const withSeconds = (kind, p, obj) => {
-        const m = (moments[kind] || {})[trimKey(p)];
-        if (typeof m === "number" && Number.isFinite(m)) obj.seconds = m;
-        return obj;
-    };
-    const one = (kind, arr, seconds) => {
-        const p = (arr || [])[0];
-        if (!p) return null;
-        const o = { path: rel(p) };
-        if (seconds) withSeconds(kind, p, o);
-        return withTrim(kind, p, o);
-    };
-    return JSON.stringify({
-        format: JSON_FORMAT,
-        version: 2,
-        profile: "ltx2",
-        root: root || null,
-        guide_images: (state.guide_images || []).map((p) => withSeconds("guide_images", p, { path: rel(p) })),
-        guide_video: one("guide_video", state.guide_video, true),
-        soundtrack: one("soundtrack", state.soundtrack, false),
-        voice: one("voice", state.voice, false),
-    }, null, 2) + "\n";
-}
-
-/** Etat du noeud -> texte JSON de la configuration du profil / mode actif. */
-export function formatConfigJson(state) {
-    if (profileOf(state) === "ltx2") return formatLtx(state);
-    const root = state.root || "";
-    const rel = (p) => toRelative(root, p);
-    const fl = state.mode === "fl2va";
-    const obj = { format: JSON_FORMAT, version: 2, profile: "minimax_h3", mode: fl ? "FL2VA" : "REF2VA", root: root || null };
-    if (fl) {
-        obj.first_frame = (state.first_frame || [])[0] ? rel(state.first_frame[0]) : null;
-        obj.last_frame = (state.last_frame || [])[0] ? rel(state.last_frame[0]) : null;
-        return JSON.stringify(obj, null, 2) + "\n";
-    }
-    const trims = state.trims || {};
-    // Element rognable : {path, trim?} ; image : simple chemin.
-    const items = (kind, paths) => (paths || []).map((p) => {
-        const t = (trims[kind] || {})[trimKey(p)];
-        return t ? { path: rel(p), trim: [t[0], t[1]] } : { path: rel(p) };
-    });
-    obj.images = (state.images || []).map(rel);
-    obj.videos = items("video", state.videos);
-    obj.video_audios = items("video_audio", state.video_audios);
-    obj.audios = items("audio", state.audios);
-    return JSON.stringify(obj, null, 2) + "\n";
-}
-
 /**
- * Texte JSON -> { mode, header, root, images, videos, video_audios, audios,
- * trims, first_frame, last_frame } (chemins absolus). Tolerant :
- * elements en chaine ou en objet {path, trim}, rognage invalide ignore,
- * plafonds MiniMax. Erreur claire si le JSON est invalide ou d'un autre format.
+ * Ancien fichier (version 1 ou 2) -> etat d'avant les variantes { profile, mode, header,
+ * root, images, videos, video_audios, audios, trims, first_frame, last_frame } ou, pour
+ * LTX 2.x, { profile, header, root, guide_images, guide_video, soundtrack, voice, moments,
+ * trims } (chemins absolus). Tolerant : elements en chaine ou en objet {path, trim},
+ * rognage invalide ignore ; les plafonds sont ceux des lignes (migrateState). Erreur claire
+ * si le JSON est invalide ou d'un autre format.
  */
 export function parseConfigJson(text) {
     // Les anciennes sauvegardes .txt ne sont plus lues.
@@ -139,7 +70,7 @@ export function parseConfigJson(text) {
     if (Number(obj.version) >= 2 && obj.profile === "ltx2") return parseLtx(obj, root, abs);
     const trims = { video: {}, video_audio: {}, audio: {} };
     const str = (v) => (typeof v === "string" && v.trim() ? v.trim() : "");
-    const list = (kind, arr, max) => (Array.isArray(arr) ? arr : [])
+    const list = (kind, arr) => (Array.isArray(arr) ? arr : [])
         .map((it) => {
             const p = str(typeof it === "string" ? it : it && it.path);
             if (!p) return "";
@@ -151,18 +82,17 @@ export function parseConfigJson(text) {
             }
             return path;
         })
-        .filter(Boolean)
-        .slice(0, max);
+        .filter(Boolean);
     const frame = (v) => (str(v) ? [abs(str(v))] : []);
     return {
         profile: "minimax_h3",
         mode: /fl2va/i.test(String(obj.mode || "")) ? "fl2va" : "ref2va",
         header: true,
         root,
-        images: list("image", obj.images, CONFIG_LIMITS.image),
-        videos: list("video", obj.videos, CONFIG_LIMITS.video),
-        video_audios: list("video_audio", obj.video_audios, CONFIG_LIMITS.video_audio),
-        audios: list("audio", obj.audios, CONFIG_LIMITS.audio),
+        images: list("image", obj.images),
+        videos: list("video", obj.videos),
+        video_audios: list("video_audio", obj.video_audios),
+        audios: list("audio", obj.audios),
         trims,
         first_frame: frame(obj.first_frame),
         last_frame: frame(obj.last_frame),
@@ -174,7 +104,7 @@ function parseLtx(obj, root, abs) {
     const str = (v) => (typeof v === "string" && v.trim() ? v.trim() : "");
     const trims = { guide_video: {}, soundtrack: {}, voice: {} };
     const moments = { guide_images: {}, guide_video: {} };
-    const read = (kind, it, max, withMoment) => {
+    const read = (kind, it, withMoment) => {
         const items = Array.isArray(it) ? it : (it ? [it] : []);
         return items.map((x) => {
             const p = str(typeof x === "string" ? x : x && x.path);
@@ -190,16 +120,16 @@ function parseLtx(obj, root, abs) {
                 }
             }
             return path;
-        }).filter(Boolean).slice(0, max);
+        }).filter(Boolean);
     };
     return {
         profile: "ltx2",
         header: true,
         root,
-        guide_images: read("guide_images", obj.guide_images, LTX_CONFIG_LIMITS.guide_images, true),
-        guide_video: read("guide_video", obj.guide_video, LTX_CONFIG_LIMITS.guide_video, true),
-        soundtrack: read("soundtrack", obj.soundtrack, LTX_CONFIG_LIMITS.soundtrack, false),
-        voice: read("voice", obj.voice, LTX_CONFIG_LIMITS.voice, false),
+        guide_images: read("guide_images", obj.guide_images, true),
+        guide_video: read("guide_video", obj.guide_video, true),
+        soundtrack: read("soundtrack", obj.soundtrack, false),
+        voice: read("voice", obj.voice, false),
         moments,
         trims,
     };
@@ -209,8 +139,8 @@ function parseLtx(obj, root, abs) {
 // Version 3 (plan des variantes, 29/10/2026) : une variante par fichier.
 //   { "format": "MiniMax H3 Reference Loader", "version": 3, "variant": "ltx.2_5", "root": "...",
 //     "rows": { "guide_images": [{"path": "a.png", "seconds": 0}], "soundtrack": [{"path": "s.wav", "trim": [0, 4]}] } }
-// Lignes, plafonds, rognages et moments lus dans la description (profiles.js). Les fonctions
-// d'avant (formatConfigJson / parseConfigJson) restent le temps que le RefLoader passe aux variantes.
+// Lignes, plafonds, rognages et moments lus dans la description (profiles.js) ; un ancien
+// fichier (version 1 ou 2) est lu par parseConfigJson puis converti par migrateState.
 // --------------------------------------------------------------------
 const VARIANT_PREFIX = {
     "minimax_h3.ref2va": "REF2VA_minimax_config_",

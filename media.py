@@ -1,8 +1,8 @@
 """
-Chargement des medias de reference pour MiniMax H3 (sans dependance a
-ComfyUI, pour pouvoir etre teste seul) : liste des fichiers d'un dossier,
-miniatures, chargement image / video (24 ips) / audio, et disposition des
-sorties du noeud.
+Chargement des medias de reference du RefLoader (sans dependance a ComfyUI,
+pour pouvoir etre teste seul) : liste des fichiers d'un dossier, miniatures,
+chargement image / video / audio, et package de la variante affichee (lignes
+et sorties lues dans profiles.VARIANTS).
 
 Formats produits (ceux qu'attend MiniMaxH3ReferenceToVideo) :
 - IMAGE : tenseur float32 [B, H, W, 3] entre 0 et 1
@@ -32,24 +32,6 @@ MAX_SECONDS = 15.0
 # inutile de garder plus en memoire (360 images en pleine HD = plusieurs Go).
 MAX_PIXELS = 768 * 1344
 
-# Plafonds des entrees du noeud MiniMaxH3ReferenceToVideo (valeurs par defaut du profil).
-_MM = profiles.DEFAULT_LIMITS["minimax_h3"]
-MAX_IMAGES = _MM["image"]
-MAX_VIDEOS = _MM["video"]
-MAX_VIDEO_AUDIOS = _MM["video_audio"]
-MAX_AUDIOS = _MM["audio"]
-_LTX = profiles.DEFAULT_LIMITS["ltx2"]
-# Plus grande disposition : LTX 2.x avec 9 images guides (paires) + video, bande-son, voix.
-TOTAL_OUTPUTS = max(MAX_IMAGES + MAX_VIDEOS + MAX_VIDEO_AUDIOS + MAX_AUDIOS,
-                    len(profiles.ltx_layout_keys(_LTX["guide_image"], _LTX)))
-
-# Modes du noeud : Ref2VA (MiniMax H3 Reference to Video) ou F2VA/FL2VA
-# (MiniMax H3 Image to Video : premiere image, et derniere en option).
-MODES = ("ref2va", "fl2va")
-FRAME_KEYS = ["first_frame", "last_frame"]
-# Listes dont les fichiers peuvent etre rognes.
-TRIM_KINDS = ("video", "video_audio", "audio", "guide_video", "soundtrack", "voice")
-
 KIND_EXTS = {
     "image": (".png", ".jpg", ".jpeg", ".webp", ".bmp"),
     "video": (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"),
@@ -58,165 +40,11 @@ KIND_EXTS = {
 
 
 # ----------------------------------------------------------------------
-# Disposition des sorties
-# ----------------------------------------------------------------------
-def layout_keys(n_images, n_videos, n_video_audios, n_audios):
-    """
-    Noms des sorties visibles, dans l'ordre : images, videos, pistes son
-    extraites de videos (ref_video_audio), audios. Chaque groupe a sa
-    propre liste et garde au moins une sortie. Doit rester identique a
-    layoutKeys() du JS.
-    """
-    ni = min(max(1, n_images), MAX_IMAGES)
-    nv = min(max(1, n_videos), MAX_VIDEOS)
-    nva = min(max(1, n_video_audios), MAX_VIDEO_AUDIOS)
-    na = min(max(1, n_audios), MAX_AUDIOS)
-    keys = ["ref_image_%d" % i for i in range(1, ni + 1)]
-    keys += ["ref_video_%d" % i for i in range(1, nv + 1)]
-    keys += ["ref_video_audio_%d" % i for i in range(1, nva + 1)]
-    keys += ["ref_audio_%d" % i for i in range(1, na + 1)]
-    return keys
-
-
-def declared_output_names():
-    """Sorties declarees par le noeud : les 18 de MiniMax (ordre inchange, anciens workflows),
-    des sorties de reserve (LTX 2.x en demande davantage), puis project."""
-    return (layout_keys(MAX_IMAGES, MAX_VIDEOS, MAX_VIDEO_AUDIOS, MAX_AUDIOS)
-            + ["spare_%d" % i for i in range(1, 5)] + [PROJECT_KEY])
-
-
-# ----------------------------------------------------------------------
 # Etat du noeud (JSON stocke dans un widget cache)
 # ----------------------------------------------------------------------
-def _clean_name(value):
-    return value.strip() if isinstance(value, str) else ""
-
-
-def parse_state(raw):
-    """Lit l'etat JSON du noeud en le normalisant (valeurs invalides ignorees)."""
-    try:
-        data = json.loads(raw) if isinstance(raw, str) else {}
-    except (ValueError, TypeError):
-        data = {}
-    if not isinstance(data, dict):
-        data = {}
-
-    folders_in = data.get("folders") if isinstance(data.get("folders"), dict) else {}
-    folders = {kind: _clean_name(folders_in.get(kind)) for kind in KIND_EXTS}
-
-    images = [n for n in (_clean_name(v) for v in _as_list(data.get("images"))) if n]
-    audios = [n for n in (_clean_name(v) for v in _as_list(data.get("audios"))) if n]
-
-    # Videos : chemins simples. Ancien format {"file", "sound"} : la video
-    # reste une video et, si "sound", devient aussi une piste ref_video_audio.
-    videos = []
-    old_sounds = []
-    for v in _as_list(data.get("videos")):
-        if isinstance(v, dict):
-            name = _clean_name(v.get("file"))
-            if name and v.get("sound"):
-                old_sounds.append(name)
-        else:
-            name = _clean_name(v)
-        if name:
-            videos.append(name)
-    video_audios = [n for n in (_clean_name(v) for v in _as_list(data.get("video_audios"))) if n]
-    if not video_audios:
-        video_audios = old_sounds
-
-    mode = data.get("mode") if data.get("mode") in MODES else "ref2va"
-
-    # Rognages {liste: {cle du chemin: [debut, fin]}} (secondes, fin > debut).
-    trims_in = data.get("trims") if isinstance(data.get("trims"), dict) else {}
-    trims = {}
-    for kind in TRIM_KINDS:
-        entries = trims_in.get(kind) if isinstance(trims_in.get(kind), dict) else {}
-        trims[kind] = {}
-        for k, v in entries.items():
-            try:
-                a, b = float(v[0]), float(v[1])
-            except (TypeError, ValueError, IndexError, KeyError):
-                continue
-            if isinstance(k, str) and 0 <= a < b:
-                trims[kind][trim_key(k)] = [a, b]
-
-    def names(key):
-        return [n for n in (_clean_name(v) for v in _as_list(data.get(key))) if n]
-
-    # Moments (secondes, -1 = Last) des images guides et de la video guide, par cle de chemin.
-    moments_in = data.get("moments") if isinstance(data.get("moments"), dict) else {}
-    moments = {}
-    for kind in ("guide_images", "guide_video"):
-        entries = moments_in.get(kind) if isinstance(moments_in.get(kind), dict) else {}
-        moments[kind] = {}
-        for k, v in entries.items():
-            if isinstance(k, str) and profiles._num(v) is not None:
-                moments[kind][trim_key(k)] = float(v)
-
-    ltx = profiles.DEFAULT_LIMITS["ltx2"]
-    return {
-        "profile": profiles.profile_of(data),
-        # limites reglees : gardees telles quelles (le JS les relit), bornees a l'usage par limits_of
-        "limits": data.get("limits") if isinstance(data.get("limits"), dict) else {},
-        "guide_images": names("guide_images")[:ltx["guide_image"]],
-        "guide_video": names("guide_video")[:ltx["guide_video"]],
-        "soundtrack": names("soundtrack")[:ltx["soundtrack"]],
-        "voice": names("voice")[:ltx["voice"]],
-        "moments": moments,
-        "mode": mode,
-        "trims": trims,
-        "first_frame": _frame(data.get("first_frame")),
-        "last_frame": _frame(data.get("last_frame")),
-        "folders": folders,
-        "images": images[:MAX_IMAGES],
-        "videos": videos[:MAX_VIDEOS],
-        "video_audios": video_audios[:MAX_VIDEO_AUDIOS],
-        "audios": audios[:MAX_AUDIOS],
-    }
-
-
 def trim_key(path):
     """Cle d'un chemin pour les rognages (identique a trimKey() du JS)."""
     return path.replace("\\", "/").lower()
-
-
-def _trim(state, kind, name):
-    """(debut, fin) du rognage d'un fichier d'une liste, ou (0, None)."""
-    t = state.get("trims", {}).get(kind, {}).get(trim_key(name))
-    return (t[0], t[1]) if t else (0.0, None)
-
-
-def _as_list(value):
-    return value if isinstance(value, list) else []
-
-
-def _frame(value):
-    """Image de debut / de fin : chaine ou liste, une seule image gardee."""
-    items = value if isinstance(value, list) else [value]
-    names = [n for n in (_clean_name(v) for v in items) if n]
-    return names[:1]
-
-
-def state_layout(state):
-    """Sorties visibles selon le profil et le mode (doit rester identique au JS)."""
-    lim = profiles.limits_of(state)
-    if profiles.profile_of(state) == "ltx2":
-        return profiles.ltx_layout_keys(len(state["guide_images"]), lim)
-    if state["mode"] == "fl2va":
-        return list(FRAME_KEYS)
-    return layout_keys(min(len(state["images"]), lim["image"]), min(len(state["videos"]), lim["video"]),
-                       min(len(state["video_audios"]), lim["video_audio"]),
-                       min(len(state["audios"]), lim["audio"]))
-
-
-# Derniere sortie (apres celles de state_layout) : le Root folder, pour le
-# noeud MagicStudio Project. Doit rester identique a PROJECT_KEY du JS.
-PROJECT_KEY = "project"
-
-
-def output_names(state):
-    """Sorties affichees : celles du mode puis project (identique au JS)."""
-    return state_layout(state) + [PROJECT_KEY]
 
 
 def parse_root(raw):
@@ -229,41 +57,9 @@ def parse_root(raw):
     return root if isinstance(root, str) else ""
 
 
-def outputs_with_project(state, outputs, root):
-    """Insere le Root folder juste apres les sorties affichees du mode."""
-    n = len(state_layout(state))
-    out = list(outputs)
-    return tuple(out[:n] + [root] + out[n:])
-
-
 def _resolve(state, kind, name):
-    return os.path.join(state["folders"].get(kind, ""), name)
-
-
-def selected_paths(state):
-    """Chemins complets des fichiers selectionnes du profil et du mode actifs."""
-    if profiles.profile_of(state) == "ltx2":
-        paths = [_resolve(state, "image", n) for n in state["guide_images"]]
-        paths += [_resolve(state, "video", n) for n in state["guide_video"]]
-        paths += [_resolve(state, "audio", n) for n in state["soundtrack"] + state["voice"]]
-        return paths
-    if state["mode"] == "fl2va":
-        return [_resolve(state, "image", n) for n in state["first_frame"] + state["last_frame"]]
-    paths = [_resolve(state, "image", n) for n in state["images"]]
-    paths += [_resolve(state, "video", n) for n in state["videos"] + state["video_audios"]]
-    paths += [_resolve(state, "audio", n) for n in state["audios"]]
-    return paths
-
-
-def state_signature(state):
-    """Empreinte de l'etat + dates de modification (pour IS_CHANGED)."""
-    stamps = []
-    for p in selected_paths(state):
-        try:
-            stamps.append(os.path.getmtime(p))
-        except OSError:
-            stamps.append(None)
-    return json.dumps([state, stamps], sort_keys=True)
+    """Chemin complet d'un fichier (l'etat garde des chemins complets ; sinon dossier du type)."""
+    return os.path.join((state.get("folders") or {}).get(kind, ""), name)
 
 
 # ----------------------------------------------------------------------
@@ -590,107 +386,10 @@ def _checked(state, kind, name, key):
     return path
 
 
-def _build_ltx_outputs(state):
-    """Sorties LTX 2.x : paires image guide / moment, video guide, bande-son, voix."""
-    lim = profiles.limits_of(state)
-    fps, seconds = lim["fps"], lim["seconds"]
-    values = {}
-    stored = state["moments"]["guide_images"]
-    images = state["guide_images"][:lim["guide_image"]]
-    # Moment non choisi : First s'il est libre, sinon Last (moments memorises d'abord).
-    used = [stored[trim_key(n)] for n in images if trim_key(n) in stored]
-    for i, name in enumerate(images, 1):
-        key = "guide_image_%d" % i
-        values[key] = load_image(_checked(state, "image", name, key))
-        moment = stored.get(trim_key(name))
-        if moment is None:
-            moment = profiles.default_moment(used)
-            used.append(moment)
-        values["guide_frame_%d" % i] = profiles.seconds_to_frame(moment, fps, seconds)
-
-    for name in state["guide_video"][:lim["guide_video"]]:
-        start, end = _trim(state, "guide_video", name)
-        frames, _ = load_video(_checked(state, "video", name, "guide_video"), max_seconds=seconds,
-                               max_pixels=lim["max_size"][0] * lim["max_size"][1],
-                               start=start, end=end, fps=fps, multiple=lim["multiple"])
-        values["guide_video"] = frames[:profiles.frames_8n1(frames.shape[0])]
-        moment = state["moments"]["guide_video"].get(trim_key(name), 0.0)
-        values["guide_video_frame"] = profiles.video_guide_frame(
-            profiles.seconds_to_frame(moment, fps, seconds))
-
-    # Bande-son et voix : fichiers audio, ou videos dont seul le son est pris.
-    for key in ("soundtrack", "voice"):
-        for name in state[key][:lim[key]]:
-            path = _checked(state, "audio", name, key)
-            start, end = _trim(state, key, name)
-            try:
-                values[key] = load_audio(path, max_seconds=seconds, start=start, end=end)
-            except ValueError:
-                raise ValueError("%s: no soundtrack in %s" % (key, path))
-
-    out = [values.get(k) for k in state_layout(state)]
-    return tuple(out + [None] * (TOTAL_OUTPUTS - len(out)))
-
-
-def build_outputs(state):
-    """
-    Charge les fichiers selectionnes et renvoie un tuple de TOTAL_OUTPUTS
-    valeurs : d'abord celles des sorties visibles (ordre de state_layout),
-    puis None pour les sorties inutilisees.
-    """
-    if profiles.profile_of(state) == "ltx2":
-        return _build_ltx_outputs(state)
-    lim = profiles.limits_of(state)
-    seconds = lim["seconds"]
-    pixels = lim["max_size"][0] * lim["max_size"][1]
-    fps = lim["fps"]
-    values = {}
-    if state["mode"] == "fl2va":
-        # F2VA / FL2VA : premiere image, et derniere en option (None sinon).
-        for key in FRAME_KEYS:
-            if state[key]:
-                values[key] = load_image(_checked(state, "image", state[key][0], key))
-        out = [values.get(k) for k in FRAME_KEYS]
-        return tuple(out + [None] * (TOTAL_OUTPUTS - len(out)))
-
-    for i, name in enumerate(state["images"][:lim["image"]], 1):
-        key = "ref_image_%d" % i
-        values[key] = load_image(_checked(state, "image", name, key))
-    for i, name in enumerate(state["videos"][:lim["video"]], 1):
-        key = "ref_video_%d" % i
-        start, end = _trim(state, "video", name)
-        frames, _ = load_video(_checked(state, "video", name, key), max_seconds=seconds,
-                               max_pixels=pixels, start=start, end=end, fps=fps)
-        values[key] = frames
-    # ref_video_audio : seulement la bande-son de la video (une piste audio).
-    for i, name in enumerate(state["video_audios"][:lim["video_audio"]], 1):
-        key = "ref_video_audio_%d" % i
-        path = _checked(state, "video", name, key)
-        start, end = _trim(state, "video_audio", name)
-        try:
-            values[key] = load_audio(path, max_seconds=seconds, start=start, end=end)
-        except ValueError:
-            raise ValueError("%s: no soundtrack in %s" % (key, path))
-    # ref_audio : fichiers audio, ou videos dont seul le son est pris ("son seul").
-    for i, name in enumerate(state["audios"][:lim["audio"]], 1):
-        key = "ref_audio_%d" % i
-        path = _checked(state, "audio", name, key)
-        start, end = _trim(state, "audio", name)
-        try:
-            values[key] = load_audio(path, max_seconds=seconds, start=start, end=end)
-        except ValueError:
-            raise ValueError("%s: no soundtrack in %s" % (key, path))
-
-    out = [values.get(k) for k in state_layout(state)]
-    out += [None] * (TOTAL_OUTPUTS - len(out))
-    return tuple(out)
-
-
 # ----------------------------------------------------------------------
 # Variantes (plan des variantes, 29/10/2026) : package du RefLoader
 # Un seul chemin de calcul pour toutes les variantes, lu dans la description
-# (profiles.VARIANTS). Les fonctions d'avant (parse_state, build_outputs...)
-# restent le temps que tous les fichiers passent aux variantes.
+# (profiles.VARIANTS).
 # ----------------------------------------------------------------------
 def parse_variant_state(raw):
     """Etat JSON du widget -> etat au format des variantes (anciens etats convertis)."""

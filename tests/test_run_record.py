@@ -78,7 +78,17 @@ PROMPT = {
 class RunParamsTest(unittest.TestCase):
     def test_ksampler_and_primitive_link(self):
         self.assertEqual(rr.run_params(PROMPT), {"cfg": 7.5, "steps": 30, "seed": 44})
-        self.assertEqual(rr.run_mode(PROMPT), "FL2VA")
+        # Ancien etat (mode fl2va) : libelle de la variante (plan des variantes, 29/10/2026).
+        self.assertEqual(rr.run_mode(PROMPT), "F2VA / FL2VA")
+
+    def test_run_mode_from_variant(self):
+        def prompt(state):
+            return {"1": {"class_type": "MiniMaxH3RefLoader", "inputs": {"state": json.dumps(state)}}}
+        self.assertEqual(rr.run_mode(prompt({"variant": "ltx.2_3"})), "LTX 2.3")
+        self.assertEqual(rr.run_mode(prompt({"variant": "ltx.2_5", "selections": {}})), "LTX 2.5")
+        self.assertEqual(rr.run_mode(prompt({"profile": "ltx2"})), "LTX 2.3")
+        self.assertEqual(rr.run_mode(prompt({})), "Ref2VA")
+        self.assertIsNone(rr.run_mode({"1": {"class_type": "KSampler", "inputs": {}}}))
 
     def test_custom_sampler_nodes(self):
         prompt = {
@@ -308,7 +318,7 @@ class RunFileTest(unittest.TestCase):
         path = rr.start_run(self.p, "a red car", PROMPT, self.when)
         self.assertEqual(path, os.path.join(self.p, "04.Prompt", "20261017_153000_run.json"))
         data = read_json(path)
-        self.assertEqual(data, {"date": "2026-10-17 15:30:00", "project": "Clip", "mode": "FL2VA",
+        self.assertEqual(data, {"date": "2026-10-17 15:30:00", "project": "Clip", "mode": "F2VA / FL2VA",
                                 "prompt": "a red car", "cfg": 7.5, "steps": 30, "seed": 44,
                                 "models": {"diffusion_model": [], "text_encoder": [], "vae": [], "loras": []},
                                 "status": "running", "outputs": []})

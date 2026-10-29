@@ -2,17 +2,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-    PROJECT_SUBFOLDERS, FOLDER_COLORS, LIST_FOLDERS, projectNameError, parseProjectState,
-    saveItems, remapState, mapBySequence, mapByPrefix, configFileName, modeHasRefs,
+    PROJECT_SUBFOLDERS, FOLDER_COLORS, projectNameError, parseProjectState,
+    saveItems, remapState, mapBySequence, mapByPrefix, 
     UPDATE_FOLDERS, folderPaths, folderSnapshot, folderChanges, mapFolderBySequence, withoutMedia,
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
-    MEDIA_FOLDERS, LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
+    LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     batchSortTargets, canDeleteRush, deletedText, anchoredSubs, projectNameOfPath, subfolderLabel,
     sameGroup, mergeData,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
-    folderMax, activeLists, hiddenFolderItems,
+    folderMax, hiddenFolderItems, rowFolder, withoutFolderPaths, withoutReferences,
     frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState, runSourcePaths, PICKUP_DIR, PICKUP_SUBS, pickupPath,
     orderOutputs, postLabel,
 } from "../web/js/project_paths.js";
@@ -40,17 +40,6 @@ test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
     assert.equal(setSummary(registries, runs, "06.LoRA"), "Sets: 2 | Last run: 18/10/2026 13:48:47");
     assert.equal(setSummary({ models: [] }, runs, "02.Models"), "");
     assert.equal(runTabName("20261018_134847_run.json"), "20261018_134847_run");
-});
-
-test("Use: x/y : utilises par le mode actuel / maximum du dossier", () => {
-    const st = { mode: "ref2va", images: ["P/08.Images/a.png", "P/08.Images/b.png"], first_frame: ["P/08.Images/c.png"],
-        last_frame: [], audios: ["P/10.Son/s.wav"], videos: [], video_audios: [] };
-    const imgs = ["P/08.Images/a.png", "P/08.Images/b.png", "P/08.Images/c.png", "P/08.Images/d.png"];
-    assert.deepEqual(folderUse(imgs, st, "08.Images"), { used: 2, max: 9, mode: "Ref2VA" });
-    assert.deepEqual(folderUse(imgs, Object.assign({}, st, { mode: "fl2va" }), "08.Images"), { used: 1, max: 2, mode: "FL2VA" });
-    assert.equal(folderUse(["p/10.son/S.wav"], st, "10.Son").used, 1);   // casse et separateurs ignores
-    assert.equal(folderUse([], st, "12.Video").max, 3);
-    assert.equal(folderUse([], st, "14.Video-Audio").max, 3);
 });
 
 const RUNS = [
@@ -178,17 +167,6 @@ test("galerie : filtre Project des sous-dossiers", () => {
     assert.deepEqual(filterSubfolders(null, "x"), []);
 });
 
-test("galerie : sous-dossiers de medias seulement (08 a 14, 08 en FL2VA)", () => {
-    for (const f of ["08.Images", "10.Son", "12.Video", "14.Video-Audio"]) assert.ok(isMediaSubfolder("P/" + f, "ref2va"));
-    for (const f of ["00.Workflows", "40.Rush Videos", "99.Project-Config"]) assert.ok(!isMediaSubfolder("P/" + f, "ref2va"));
-    assert.ok(!isMediaSubfolder("P", "ref2va"));
-    assert.ok(!isMediaSubfolder("P/08.Images/Archives", "ref2va"));
-    assert.ok(isMediaSubfolder("G/P/10.Son", "ref2va"));
-    assert.ok(!isMediaSubfolder("G/P/08.Images/Archives", "ref2va"));
-    assert.ok(isMediaSubfolder("P\\08.Images", "fl2va"));
-    assert.ok(!isMediaSubfolder("P/12.Video", "fl2va"));
-});
-
 test("duree du Run : s, min s, h min s ; vide si absente", () => {
     assert.equal(durationText(45.4), "45 s");
     assert.equal(durationText(0), "0 s");
@@ -208,48 +186,6 @@ test("galerie : Add / Replace demande seulement pour un ajout pur", () => {
     // Casse et separateurs ignores.
     assert.deepEqual(gallerySession(["C:\\P\\a.png"], ["c:/p/A.png"]).added, []);
     assert.deepEqual(replaceSelection(["a", "b"], ["a", "c", "b", "d"]), ["c", "d"]);
-});
-
-test("galerie : fichiers du projet plus utilises par aucune liste", () => {
-    const state = { images: ["P\\08.Images\\a.png"], first_frame: ["P/08.Images/f.png"], audios: ["P\\12.Video\\v.mp4"] };
-    assert.deepEqual(unusedProjectFiles(["P\\08.Images\\a.png", "P\\08.Images\\b.png", "P\\08.Images\\f.png"], state),
-        ["P\\08.Images\\b.png"]);
-    assert.deepEqual(unusedProjectFiles(["P\\12.Video\\v.mp4"], state), []);
-});
-
-test("dossiers suivis : ajouts hors du dossier, suppressions depuis l'instantane", () => {
-    assert.deepEqual(UPDATE_FOLDERS, ["08.Images", "10.Son", "12.Video", "14.Video-Audio"]);
-    const proj = "C:\\P\\Clip";
-    const state = {
-        images: ["C:\\P\\Clip\\08.Images\\a.png", "D:\\x\\b.png"], first_frame: ["D:\\x\\b.png"],
-        last_frame: ["D:\\x\\c.png"], videos: ["C:\\P\\Clip\\12.Video\\v.mp4"], audios: [],
-    };
-    assert.deepEqual(folderPaths(state, "08.Images"), ["C:\\P\\Clip\\08.Images\\a.png", "D:\\x\\b.png", "D:\\x\\c.png"]);
-    assert.deepEqual(folderChanges(state, "08.Images", proj, null), { added: ["D:\\x\\b.png", "D:\\x\\c.png"], removed: [] });
-    // Casse et separateurs ignores ; une reference retiree est signalee, sans effacer.
-    const snap = ["c:/p/clip/12.video/v.mp4", "C:\\P\\Clip\\12.Video\\old.mp4"];
-    assert.deepEqual(folderChanges(state, "12.Video", proj, snap), { added: [], removed: ["C:\\P\\Clip\\12.Video\\old.mp4"] });
-    assert.deepEqual(folderChanges(state, "10.Son", proj, []), { added: [], removed: [] });
-    // Dossier d'un autre projet ou sous-dossier : a copier.
-    assert.deepEqual(folderChanges({ audios: ["C:\\P\\Clip\\10.Son\\sub\\s.wav"] }, "10.Son", proj, null).added.length, 1);
-    assert.deepEqual(Object.keys(folderSnapshot(state)), UPDATE_FOLDERS);
-    assert.deepEqual(folderSnapshot(state)["10.Son"], []);
-});
-
-test("mise a jour d'un dossier : seules ses listes sont repointees", () => {
-    const state = { images: ["a", "b"], first_frame: ["b"], videos: ["v"], trims: {} };
-    const items = saveItems(state).filter((i) => i.folder === "08.Images");
-    assert.deepEqual(items.map((i) => i.path), ["a", "b", "b"]);
-    const out = remapState(state, mapFolderBySequence("08.Images", ["A", "", "B"]));
-    assert.deepEqual(out.images, ["A", "b"]);
-    assert.deepEqual(out.first_frame, ["B"]);
-    assert.deepEqual(out.videos, ["v"]);
-});
-
-test("etat du Ref Loader sans medias pour comparer le workflow", () => {
-    const s = { mode: "ref2va", root: "R", images: ["a"], videos: [], trims: { video: {} }, audios: ["s"] };
-    assert.deepEqual(withoutMedia(s), { mode: "ref2va", root: "R" });
-    assert.deepEqual(s.images, ["a"]);
 });
 
 test("instantane des dossiers dans l'etat du noeud Projet", () => {
@@ -277,72 +213,12 @@ test("une couleur par sous-dossier", () => {
     assert.equal(new Set(Object.values(FOLDER_COLORS)).size, PROJECT_SUBFOLDERS.length);
 });
 
-test("chaque liste du Ref Loader va dans un sous-dossier", () => {
-    assert.deepEqual(LIST_FOLDERS, {
-        images: "08.Images", first_frame: "08.Images", last_frame: "08.Images",
-        videos: "12.Video", video_audios: "14.Video-Audio", audios: "10.Son",
-        guide_images: "08.Images", guide_video: "12.Video", soundtrack: "10.Son", voice: "10.Son",
-    });
-    for (const f of Object.values(LIST_FOLDERS)) assert.ok(PROJECT_SUBFOLDERS.includes(f));
-});
-
-const STATE = {
-    root: "F:\\R", mode: "ref2va",
-    images: ["F:\\R\\a.png", "F:\\R\\b.png"], videos: ["F:\\R\\v.mp4"], video_audios: ["F:\\R\\v.mp4"],
-    audios: ["F:\\R\\s.wav"], first_frame: ["F:\\R\\f.png"], last_frame: [],
-    trims: { video: { "f:/r/v.mp4": [1, 2] }, video_audio: {}, audio: { "f:/r/s.wav": [0, 3] } },
-    folders: { image: "", video: "", audio: "" }, subs: { image: "", video: "", audio: "" },
-};
-
-test("saveItems : les deux modes, dans l'ordre des listes", () => {
-    assert.deepEqual(saveItems(STATE), [
-        { path: "F:\\R\\a.png", folder: "08.Images" },
-        { path: "F:\\R\\b.png", folder: "08.Images" },
-        { path: "F:\\R\\v.mp4", folder: "12.Video" },
-        { path: "F:\\R\\v.mp4", folder: "14.Video-Audio" },
-        { path: "F:\\R\\s.wav", folder: "10.Son" },
-        { path: "F:\\R\\f.png", folder: "08.Images" },
-    ]);
-});
-
-test("remapState + mapBySequence : chemins, cles de rognage, ordre de saveItems", () => {
-    const dsts = ["F:\\P\\08.Images\\a.png", "", "F:\\P\\12.Video\\v.mp4", "F:\\P\\14.Video-Audio\\v.mp4",
-        "F:\\P\\10.Son\\s.wav", "F:\\P\\08.Images\\f.png"];
-    const s = remapState(STATE, mapBySequence(dsts));
-    assert.deepEqual(s.images, ["F:\\P\\08.Images\\a.png", "F:\\R\\b.png"]); // "" = manquant, garde
-    assert.deepEqual(s.videos, ["F:\\P\\12.Video\\v.mp4"]);
-    assert.deepEqual(s.video_audios, ["F:\\P\\14.Video-Audio\\v.mp4"]);
-    assert.deepEqual(s.first_frame, ["F:\\P\\08.Images\\f.png"]);
-    assert.deepEqual(s.trims.video, { "f:/p/12.video/v.mp4": [1, 2] });
-    assert.deepEqual(s.trims.audio, { "f:/p/10.son/s.wav": [0, 3] });
-    assert.deepEqual(STATE.videos, ["F:\\R\\v.mp4"]); // etat d'origine intact
-});
-
-test("remapState : table par liste (une video copiee dans deux dossiers)", () => {
-    const s = remapState(STATE, (p, list) => (list === "video_audios" ? "F:\\P\\14.Video-Audio\\v.mp4" : p));
-    assert.deepEqual(s.videos, ["F:\\R\\v.mp4"]);
-    assert.deepEqual(s.video_audios, ["F:\\P\\14.Video-Audio\\v.mp4"]);
-});
-
 test("mapByPrefix : seulement sous l'ancien dossier, sans casse ni sens des barres", () => {
     const f = mapByPrefix("F:\\Projets\\Clip", "G:\\Ailleurs\\Clip v2");
     assert.equal(f("F:\\Projets\\Clip\\08.Images\\a.png"), "G:\\Ailleurs\\Clip v2\\08.Images\\a.png");
     assert.equal(f("f:/projets/clip/10.Son/s.wav"), "G:\\Ailleurs\\Clip v2\\10.Son\\s.wav");
     assert.equal(f("F:\\Projets\\Clip2\\a.png"), "F:\\Projets\\Clip2\\a.png");
     assert.equal(f("F:\\Other\\a.png"), "F:\\Other\\a.png");
-});
-
-test("configFileName : prefixe yyyyMMdd-HHmmss puis mode", () => {
-    const d = new Date(2026, 9, 6, 9, 5, 3);
-    assert.equal(configFileName(d, "ref2va"), "20261006-090503_REF2VA_minimax_config.json");
-    assert.equal(configFileName(d, "fl2va"), "20261006-090503_FL2VA_minimax_config.json");
-});
-
-test("modeHasRefs", () => {
-    assert.equal(modeHasRefs(STATE, "ref2va"), true);
-    assert.equal(modeHasRefs(STATE, "fl2va"), true);
-    assert.equal(modeHasRefs({ ...STATE, first_frame: [], last_frame: [] }, "fl2va"), false);
-    assert.equal(modeHasRefs({ images: [], videos: [], video_audios: [], audios: [] }, "ref2va"), false);
 });
 
 test("noms valides", () => {
@@ -380,47 +256,6 @@ test("duplicateColors: one colour per group, in order, pool and project together
     assert.deepEqual(duplicateColors(["P\\a.png", "p/a.png"], { "P\\a.png": "1", "p/a.png": "1" }), {});
 });
 
-test("configuration : listes envoyees a Save", () => {
-    const st = { images: ["a"], videos: ["v"], first_frame: [], other: 1 };
-    // Listes des deux profils (build_config indexe celles du profil actif, les autres gardent leurs fichiers).
-    assert.deepEqual(configRefs(st), {
-        images: ["a"], videos: ["v"], video_audios: [], audios: [], first_frame: [], last_frame: [],
-        guide_images: [], guide_video: [], soundtrack: [], voice: [],
-    });
-});
-
-test("Load : listes des dossiers coches, ordre des indices, rognages, fichiers perdus sautes", () => {
-    const report = {
-        mode: "FL2VA",
-        folders: [
-            { folder: "08.Images", kind: "media", files: [
-                { nom: "b.png", Liste: "images", Indice: 2, status: "ok" },
-                { nom: "a.png", Liste: "images", Indice: 1, status: "changed", archive: null },
-                { nom: "lost.png", Liste: "images", Indice: 3, status: "missing", archive: null },
-                { nom: "a.png", Liste: "first_frame", Indice: 1, status: "missing", archive: "a.png" },
-            ] },
-            { folder: "12.Video", kind: "media", files: [
-                { nom: "s.mp4", Liste: "videos", Indice: 1, status: "ok", trim: [5, 7] },
-            ] },
-            { folder: "10.Son", kind: "media", files: [{ nom: "x.wav", Liste: "audios", Indice: 1, status: "ok" }] },
-        ],
-    };
-    const base = { mode: "ref2va", images: ["old.png"], audios: ["keep.wav"], videos: ["C:\\o.mp4"],
-        trims: { video: { "c:/o.mp4": [1, 2] } }, root: "R" };
-    const s = loadedState(base, report, "C:\\P", ["08.Images", "12.Video"]);
-    assert.deepEqual(s.images, ["C:\\P\\08.Images\\a.png", "C:\\P\\08.Images\\b.png"]);
-    assert.deepEqual(s.first_frame, ["C:\\P\\08.Images\\a.png"]);
-    assert.deepEqual(s.last_frame, []);
-    assert.deepEqual(s.videos, ["C:\\P\\12.Video\\s.mp4"]);
-    assert.deepEqual(s.trims.video, { "c:/p/12.video/s.mp4": [5, 7] });
-    assert.deepEqual(s.audios, ["keep.wav"]);   // 10.Son non coche
-    assert.equal(s.mode, "fl2va");
-    assert.equal(s.root, "R");
-    assert.deepEqual(base.images, ["old.png"]);  // copie
-    // Aucun dossier de medias coche : mode inchange.
-    assert.equal(loadedState(base, report, "C:\\P", ["00.Workflows"]).mode, "ref2va");
-});
-
 test("Load : fichiers a remettre en place depuis Archives", () => {
     const report = { folders: [
         { folder: "00.Workflows", kind: "workflow", files: [{ nom: "C.json", status: "changed", archive: "2026_C.json" }] },
@@ -440,24 +275,8 @@ test("Load : fichiers a remettre en place depuis Archives", () => {
     assert.equal(copyTabName("Clip.json"), "Clip-copie");
 });
 
-test("dossiers chargeables et dossiers des medias", () => {
+test("dossiers chargeables", () => {
     assert.deepEqual(LOADABLE_FOLDERS, ["00.Workflows", "08.Images", "10.Son", "12.Video", "14.Video-Audio"]);
-    for (const f of Object.keys(MEDIA_FOLDERS)) assert.ok(PROJECT_SUBFOLDERS.includes(f));
-});
-
-test("visualisation : ordre du Ref Loader, F / L, puis sans numero par nom", () => {
-    const D = "C:\\P\\08.Images\\";
-    const files = [D + "z.png", D + "b.png", D + "a.png", D + "f.png", D + "y.png"];
-    const st = { images: [D + "b.png", "c:/p/08.images/A.png"], first_frame: [D + "f.png"], last_frame: [D + "b.png"] };
-    assert.deepEqual(orderedFolderFiles(files, st, "08.Images"), [
-        { path: D + "b.png", badge: "1 · L" },
-        { path: D + "a.png", badge: "2" },
-        { path: D + "f.png", badge: "F" },
-        { path: D + "y.png", badge: "" },
-        { path: D + "z.png", badge: "" },
-    ]);
-    // Sans Reference Loader : tout par nom, sans numero.
-    assert.deepEqual(orderedFolderFiles([D + "b.png", D + "a.png"], null, "10.Son").map((x) => x.badge), ["", ""]);
 });
 
 test("Switch MultiIN-OUT : entree du groupe actif qui alimente une sortie", () => {
@@ -532,213 +351,6 @@ test("Load data only: same MultiProject, values of the common nodes", () => {
 });
 
 // ---- Task 6 : listes LTX 2.x et moments ----
-test("remapState moves moment keys", () => {
-    const state = {
-        guide_images: ["C:\\R\\a.png", "C:\\R\\b.png"], guide_video: ["C:\\R\\v.mp4"], soundtrack: ["C:\\R\\s.wav"],
-        moments: { guide_images: { "c:/r/a.png": 2, "c:/r/b.png": -1 }, guide_video: { "c:/r/v.mp4": 1.5 } },
-        trims: { guide_video: { "c:/r/v.mp4": [1, 3] }, soundtrack: { "c:/r/s.wav": [0, 2] } },
-    };
-    const out = remapState(state, (p) => p.replace("C:\\R", "P:\\08"));
-    assert.deepEqual(out.guide_images, ["P:\\08\\a.png", "P:\\08\\b.png"]);
-    assert.deepEqual(out.moments.guide_images, { "p:/08/a.png": 2, "p:/08/b.png": -1 });
-    assert.deepEqual(out.moments.guide_video, { "p:/08/v.mp4": 1.5 });
-    assert.deepEqual(out.trims.guide_video, { "p:/08/v.mp4": [1, 3] });
-    assert.deepEqual(out.trims.soundtrack, { "p:/08/s.wav": [0, 2] });
-    // l'etat d'origine n'est pas touche
-    assert.deepEqual(state.moments.guide_images, { "c:/r/a.png": 2, "c:/r/b.png": -1 });
-    // etat sans moments : rien ne casse
-    assert.deepEqual(remapState({ images: ["a"] }, (p) => p + "x").images, ["ax"]);
-});
-
-test("Save : listes LTX 2.x dans leurs dossiers, etat MiniMax inchange", () => {
-    assert.equal(LIST_FOLDERS.guide_images, "08.Images");
-    assert.equal(LIST_FOLDERS.guide_video, "12.Video");
-    assert.equal(LIST_FOLDERS.soundtrack, "10.Son");
-    assert.equal(LIST_FOLDERS.voice, "10.Son");
-    assert.deepEqual(saveItems({ profile: "ltx2", guide_images: ["g"], voice: ["v"] }),
-        [{ path: "g", folder: "08.Images" }, { path: "v", folder: "10.Son" }]);
-    // configRefs : listes des dossiers de medias des deux profils (Task 7)
-    assert.deepEqual(configRefs({ guide_images: ["g"] }).guide_images, ["g"]);
-});
-
-// ---- Task 7 : noeud Project selon le profil du RefLoader ----
-const LTX_STATE = {
-    profile: "ltx2", mode: "ref2va",
-    // Listes MiniMax gardees dans l'etat (profil cache)
-    images: ["P/08.Images/m.png"], videos: ["P/12.Video/mv.mp4"], video_audios: ["P/14.Video-Audio/va.mp4"],
-    audios: ["P/10.Son/ma.wav"], first_frame: [], last_frame: [],
-    guide_images: ["P/08.Images/g1.png", "P/08.Images/g2.png"], guide_video: ["P/12.Video/gv.mp4"],
-    soundtrack: ["P/10.Son/st.wav"], voice: ["P/10.Son/vo.wav"],
-    moments: { guide_images: { "p/08.images/g1.png": 0 }, guide_video: {} },
-    trims: {},
-};
-
-test("activeLists : listes du profil actif, dans l'ordre des listes", () => {
-    assert.deepEqual(activeLists({}), ["images", "videos", "video_audios", "audios", "first_frame", "last_frame"]);
-    assert.deepEqual(activeLists(LTX_STATE), ["guide_images", "guide_video", "soundtrack", "voice"]);
-});
-
-test("folderUse in ltx2", () => {
-    const imgs = ["P/08.Images/g1.png", "P/08.Images/g2.png", "P/08.Images/m.png", "P/08.Images/x.png"];
-    assert.deepEqual(folderUse(imgs, LTX_STATE, "08.Images"), { used: 2, max: 9, mode: "LTX 2.x" });
-    const son = ["P/10.Son/st.wav", "P/10.Son/vo.wav", "P/10.Son/ma.wav"];
-    assert.deepEqual(folderUse(son, LTX_STATE, "10.Son"), { used: 2, max: 2, mode: "LTX 2.x" });
-    assert.deepEqual(folderUse(["P/12.Video/gv.mp4", "P/12.Video/mv.mp4"], LTX_STATE, "12.Video"),
-        { used: 1, max: 1, mode: "LTX 2.x" });
-    assert.deepEqual(folderUse(["P/14.Video-Audio/va.mp4"], LTX_STATE, "14.Video-Audio"),
-        { used: 0, max: 0, mode: "LTX 2.x" });
-    // Limites reglees dans le RefLoader (state.limits) et defauts de la route
-    const lim = Object.assign({}, LTX_STATE, { limits: { ltx2: { guide_image: 4 } } });
-    assert.equal(folderUse(imgs, lim, "08.Images").max, 4);
-    const defaults = { ltx2: { guide_image: 5, guide_video: 1, soundtrack: 1, voice: 1, seconds: 20,
-        max_size: [768, 1344], fps: 24, multiple: 32 } };
-    assert.equal(folderUse(imgs, LTX_STATE, "08.Images", defaults).max, 5);
-});
-
-test("folderUse keeps minimax counts", () => {
-    const st = { mode: "ref2va", images: ["P/08.Images/a.png"], first_frame: [], last_frame: [], audios: [],
-        videos: [], video_audios: [], guide_images: ["P/08.Images/g.png"] };
-    const imgs = ["P/08.Images/a.png", "P/08.Images/g.png"];
-    assert.deepEqual(folderUse(imgs, st, "08.Images"), { used: 1, max: 9, mode: "Ref2VA" });
-    assert.deepEqual(folderMax(st), { "08.Images": 9, "10.Son": 3, "12.Video": 3, "14.Video-Audio": 3 });
-    assert.deepEqual(folderMax({ mode: "fl2va" }), { "08.Images": 2, "10.Son": 3, "12.Video": 3, "14.Video-Audio": 3 });
-    assert.deepEqual(folderMax(LTX_STATE), { "08.Images": 9, "10.Son": 2, "12.Video": 1, "14.Video-Audio": 0 });
-    // Limites MiniMax reglees : lues dans limitsOf
-    assert.equal(folderUse(imgs, Object.assign({}, st, { limits: { minimax_h3: { image: 4 } } }), "08.Images").max, 4);
-});
-
-test("Save : seulement les listes du profil actif ; destinations par position", () => {
-    assert.deepEqual(saveItems(LTX_STATE).map((i) => [i.path, i.folder]), [
-        ["P/08.Images/g1.png", "08.Images"], ["P/08.Images/g2.png", "08.Images"], ["P/12.Video/gv.mp4", "12.Video"],
-        ["P/10.Son/st.wav", "10.Son"], ["P/10.Son/vo.wav", "10.Son"]]);
-    const mm = Object.assign({}, LTX_STATE, { profile: "minimax_h3" });
-    assert.deepEqual(saveItems(mm).map((i) => i.path),
-        ["P/08.Images/m.png", "P/12.Video/mv.mp4", "P/14.Video-Audio/va.mp4", "P/10.Son/ma.wav"]);
-    // Les destinations ne vont qu'aux listes du profil actif (les listes cachees ne bougent pas)
-    const out = remapState(LTX_STATE, mapBySequence(["A", "B", "C", "D", "E"], LTX_STATE));
-    assert.deepEqual([out.guide_images, out.guide_video, out.soundtrack, out.voice], [["A", "B"], ["C"], ["D"], ["E"]]);
-    assert.deepEqual(out.images, ["P/08.Images/m.png"]);
-    assert.deepEqual(out.moments.guide_images, { "a": 0 });
-    const f = remapState(LTX_STATE, mapFolderBySequence("08.Images", ["X", ""], LTX_STATE));
-    assert.deepEqual(f.guide_images, ["X", "P/08.Images/g2.png"]);
-    assert.deepEqual(f.images, ["P/08.Images/m.png"]);
-});
-
-test("cloches : listes du profil actif ; une reference du profil cache n'est pas retiree", () => {
-    assert.deepEqual(folderPaths(LTX_STATE, "10.Son"), ["P/10.Son/st.wav", "P/10.Son/vo.wav"]);
-    assert.deepEqual(folderPaths(LTX_STATE, "14.Video-Audio"), []);
-    const mm = Object.assign({}, LTX_STATE, { profile: "minimax_h3" });
-    assert.deepEqual(folderPaths(mm, "10.Son"), ["P/10.Son/ma.wav"]);
-    // Instantane pris en MiniMax, puis passage en LTX : ma.wav reste utilise par le profil cache
-    const snap = ["P/10.Son/ma.wav", "P/10.Son/gone.wav"];
-    assert.deepEqual(folderChanges(LTX_STATE, "10.Son", "P", snap), { added: [], removed: ["P/10.Son/gone.wav"] });
-    assert.deepEqual(folderChanges(LTX_STATE, "10.Son", "Q", []).added, ["P/10.Son/st.wav", "P/10.Son/vo.wav"]);
-});
-
-test("archives : les fichiers des deux profils sont utilises", () => {
-    const files = ["P/08.Images/m.png", "P/08.Images/g1.png", "P/08.Images/x.png"];
-    assert.deepEqual(unusedProjectFiles(files, LTX_STATE), ["P/08.Images/x.png"]);
-    assert.deepEqual(unusedProjectFiles(files, Object.assign({}, LTX_STATE, { profile: "minimax_h3" })),
-        ["P/08.Images/x.png"]);
-});
-
-test("withoutMedia : moments retires, profil et limites gardes", () => {
-    const s = withoutMedia(Object.assign({}, LTX_STATE, { limits: { ltx2: { fps: 25 } } }));
-    assert.equal(s.moments, undefined);
-    assert.equal(s.trims, undefined);
-    assert.equal(s.guide_images, undefined);
-    assert.equal(s.profile, "ltx2");
-    assert.deepEqual(s.limits, { ltx2: { fps: 25 } });
-});
-
-test("galerie reliee a un projet : dossiers LTX 2.x", () => {
-    for (const f of ["08.Images", "10.Son", "12.Video"]) assert.ok(isMediaSubfolder("P/" + f, "ltx2"));
-    assert.ok(!isMediaSubfolder("P/14.Video-Audio", "ltx2"));
-    assert.ok(isMediaSubfolder("G/P/12.Video", "ltx2"));
-});
-
-test("MEDIA_FOLDERS : listes LTX 2.x dans leurs dossiers", () => {
-    assert.deepEqual(MEDIA_FOLDERS, {
-        "08.Images": ["images", "first_frame", "last_frame", "guide_images"],
-        "10.Son": ["audios", "soundtrack", "voice"],
-        "12.Video": ["videos", "guide_video"],
-        "14.Video-Audio": ["video_audios"],
-    });
-});
-
-test("Load d'une configuration LTX 2.x : listes LTX remplacees, listes MiniMax gardees, moments repris", () => {
-    const report = { mode: null, profile: "ltx2", folders: [
-        { folder: "08.Images", kind: "media", files: [
-            { nom: "b.png", Liste: "guide_images", Indice: 2, status: "ok", moment: -1 },
-            { nom: "a.png", Liste: "guide_images", Indice: 1, status: "ok", moment: 2.5 },
-        ] },
-        { folder: "10.Son", kind: "media", files: [{ nom: "v.wav", Liste: "voice", Indice: 1, status: "ok", trim: [1, 4] }] },
-    ] };
-    const base = { profile: "minimax_h3", mode: "fl2va", images: ["keep.png"], first_frame: ["f.png"], audios: ["a.wav"],
-        guide_images: ["old.png"], voice: [], soundtrack: ["old.wav"], moments: { guide_images: { "old.png": 1 } }, trims: {} };
-    const s = loadedState(base, report, "C:\\P", ["08.Images", "10.Son"]);
-    assert.equal(s.profile, "ltx2");
-    assert.equal(s.mode, "fl2va");   // mode MiniMax inchange
-    assert.deepEqual(s.images, ["keep.png"]);
-    assert.deepEqual(s.first_frame, ["f.png"]);
-    assert.deepEqual(s.audios, ["a.wav"]);
-    assert.deepEqual(s.guide_images, ["C:\\P\\08.Images\\a.png", "C:\\P\\08.Images\\b.png"]);
-    assert.deepEqual(s.moments.guide_images, { "c:/p/08.images/a.png": 2.5, "c:/p/08.images/b.png": -1 });
-    assert.deepEqual(s.voice, ["C:\\P\\10.Son\\v.wav"]);
-    assert.deepEqual(s.soundtrack, []);
-    assert.deepEqual(s.trims.voice, { "c:/p/10.son/v.wav": [1, 4] });
-    // Configuration MiniMax (sans profile) : listes LTX gardees, profil MiniMax
-    const mm = loadedState(Object.assign({}, base, { profile: "ltx2" }), { mode: "REF2VA", folders: [
-        { folder: "08.Images", kind: "media", files: [{ nom: "i.png", Liste: "images", Indice: 1, status: "ok" }] }] },
-    "C:\\P", ["08.Images"]);
-    assert.equal(mm.profile, "minimax_h3");
-    assert.equal(mm.mode, "ref2va");
-    assert.deepEqual(mm.guide_images, ["old.png"]);
-    assert.deepEqual(mm.images, ["C:\\P\\08.Images\\i.png"]);
-});
-
-test("visualisation d'un dossier en LTX 2.x : numeros des guides, S / V pour le son", () => {
-    const D = "C:\\P\\10.Son\\";
-    const st = { profile: "ltx2", audios: [D + "m.wav"], soundtrack: [D + "s.wav"], voice: [D + "v.wav"] };
-    assert.deepEqual(orderedFolderFiles([D + "m.wav", D + "v.wav", D + "s.wav"], st, "10.Son"), [
-        { path: D + "s.wav", badge: "S" }, { path: D + "v.wav", badge: "V" }, { path: D + "m.wav", badge: "" }]);
-    const I = "C:\\P\\08.Images\\";
-    assert.deepEqual(orderedFolderFiles([I + "g.png"], { profile: "ltx2", guide_images: [I + "g.png"] }, "08.Images"),
-        [{ path: I + "g.png", badge: "1" }]);
-});
-
-test("configFileName et modeHasRefs en LTX 2.x", () => {
-    const d = new Date(2026, 9, 6, 9, 5, 3);
-    assert.equal(configFileName(d, "ltx2"), "20261006-090503_LTX2_magicstudio_config.json");
-    assert.equal(modeHasRefs({ voice: ["v"] }, "ltx2"), true);
-    assert.equal(modeHasRefs({ images: ["i"] }, "ltx2"), false);
-});
-
-test("cloche : les references du profil cache sont aussi verifiees (manquantes = pas d'archivage)", () => {
-    // Projet deplace hors de ComfyUI : references MiniMax (profil cache) vers l'ancien chemin,
-    // listes LTX actives vides ou vers des fichiers presents.
-    const st = {
-        profile: "ltx2",
-        images: ["OLD/P/08.Images/a.png", "OLD/P/08.Images/b.png"], first_frame: ["OLD/P/08.Images/a.png"],
-        audios: ["OLD/P/10.Son/s.wav"], video_audios: ["OLD/P/14.Video-Audio/va.mp4"],
-        guide_images: ["NEW/P/08.Images/g.png", "new/p/08.images/B.PNG"], soundtrack: [],
-    };
-    // Copies : profil actif seulement ; verification : actif + cache (sans doublon).
-    const items = saveItems(st).filter((i) => i.folder === "08.Images");
-    assert.deepEqual(items.map((i) => i.path), ["NEW/P/08.Images/g.png", "new/p/08.images/B.PNG"]);
-    assert.deepEqual(hiddenFolderItems(st, "08.Images"),
-        [{ path: "OLD/P/08.Images/a.png", folder: "08.Images" }, { path: "OLD/P/08.Images/b.png", folder: "08.Images" }]);
-    assert.deepEqual(hiddenFolderItems(st, "10.Son"), [{ path: "OLD/P/10.Son/s.wav", folder: "10.Son" }]);
-    // 14.Video-Audio (non utilise en LTX) : les references MiniMax sont verifiees aussi.
-    assert.deepEqual(hiddenFolderItems(st, "14.Video-Audio").map((i) => i.path), ["OLD/P/14.Video-Audio/va.mp4"]);
-    // Une reference deja dans le profil actif n'est pas repetee.
-    const shared = Object.assign({}, st, { images: ["NEW/P/08.Images/g.png"], first_frame: [] });
-    assert.deepEqual(hiddenFolderItems(shared, "08.Images"), []);
-    // Profil MiniMax actif : les guides LTX sont verifies.
-    assert.deepEqual(hiddenFolderItems(Object.assign({}, st, { profile: "minimax_h3" }), "08.Images").map((i) => i.path),
-        ["NEW/P/08.Images/g.png", "new/p/08.images/B.PNG"]);
-});
-
 test("Extract Frame : numero d'image, temps, compteur, choix, galerie", () => {
     assert.equal(frameAt(0, 24, 97), 0);
     assert.equal(frameAt(1.0, 24, 97), 24);
@@ -751,15 +363,15 @@ test("Extract Frame : numero d'image, temps, compteur, choix, galerie", () => {
     assert.equal(frameAt(timeOf(96, 30), 30, 97), 96);
     assert.equal(frameText(0, 97), "Frame 0 / 97");
     assert.deepEqual(EXTRACT_CHOICES, [["first", "First"], ["last", "Last"], ["fl", "FL-Frame"], ["n", "Frame-N"]]);
-    assert.ok(isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", "ref2va"));
-    assert.ok(isMediaSubfolder("G/P/40.Rush Videos/Picture Lock/Extract Frame", "fl2va"));
-    assert.ok(isMediaSubfolder("P\\40.Rush Videos\\Picture Lock\\Extract Frame", "ltx2", "image"));
-    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", "ref2va", "video"));
-    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Picture Lock", "ref2va"));
-    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Footage/Extract Frame", "ref2va"));
-    assert.ok(!isMediaSubfolder("A/G/P/40.Rush Videos/Picture Lock/Extract Frame", "ref2va"));
+    assert.ok(isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", "minimax_h3.ref2va"));
+    assert.ok(isMediaSubfolder("G/P/40.Rush Videos/Picture Lock/Extract Frame", "minimax_h3.fl2va"));
+    assert.ok(isMediaSubfolder("P\\40.Rush Videos\\Picture Lock\\Extract Frame", "ltx.2_3", "image"));
+    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", "minimax_h3.ref2va", "video"));
+    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Picture Lock", "minimax_h3.ref2va"));
+    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Footage/Extract Frame", "minimax_h3.ref2va"));
+    assert.ok(!isMediaSubfolder("A/G/P/40.Rush Videos/Picture Lock/Extract Frame", "minimax_h3.ref2va"));
     // Lignes de medias inchangees avec le type de la ligne
-    assert.ok(isMediaSubfolder("P/08.Images", "ref2va", "image"));
+    assert.ok(isMediaSubfolder("P/08.Images", "minimax_h3.ref2va", "image"));
 });
 
 test("Extract Frame : mediaTime arrondi a la microseconde (debut de l'image)", () => {
@@ -796,17 +408,17 @@ test("cloche : les fichiers d'un Run ne sont jamais orphelins (26/10/2026)", () 
 test("Pick Up : liste de la galerie et chemins (26/10/2026)", () => {
     assert.equal(PICKUP_DIR, "90.Pick Up");
     assert.deepEqual(PICKUP_SUBS, { image: "Image", audio: "Son", video: "Video" });
-    assert.ok(isMediaSubfolder("P/90.Pick Up/Image", "ref2va", "image"));
-    assert.ok(isMediaSubfolder("G/P/90.Pick Up/Son", "ref2va", "audio"));
-    assert.ok(isMediaSubfolder("P\\90.Pick Up\\Video", "ltx2", "video"));
-    assert.ok(isMediaSubfolder("P/90.Pick Up/Image", "fl2va", "image"));
-    assert.ok(isMediaSubfolder("P/90.Pick Up/Video", "ref2va"));
-    assert.ok(!isMediaSubfolder("P/90.Pick Up/Image", "ref2va", "video"));
-    assert.ok(!isMediaSubfolder("P/90.Pick Up/Son", "ref2va", "image"));
-    assert.ok(!isMediaSubfolder("P/90.Pick Up/Other", "ref2va"));
-    assert.ok(!isMediaSubfolder("P/90.Pick Up", "ref2va"));
-    assert.ok(!isMediaSubfolder("P/90.Pick Up/Video/Sub", "ref2va"));
-    assert.ok(!isMediaSubfolder("A/G/P/90.Pick Up/Image", "ref2va"));
+    assert.ok(isMediaSubfolder("P/90.Pick Up/Image", "minimax_h3.ref2va", "image"));
+    assert.ok(isMediaSubfolder("G/P/90.Pick Up/Son", "minimax_h3.ref2va", "audio"));
+    assert.ok(isMediaSubfolder("P\\90.Pick Up\\Video", "ltx.2_3", "video"));
+    assert.ok(isMediaSubfolder("P/90.Pick Up/Image", "minimax_h3.fl2va", "image"));
+    assert.ok(isMediaSubfolder("P/90.Pick Up/Video", "minimax_h3.ref2va"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up/Image", "minimax_h3.ref2va", "video"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up/Son", "minimax_h3.ref2va", "image"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up/Other", "minimax_h3.ref2va"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up", "minimax_h3.ref2va"));
+    assert.ok(!isMediaSubfolder("P/90.Pick Up/Video/Sub", "minimax_h3.ref2va"));
+    assert.ok(!isMediaSubfolder("A/G/P/90.Pick Up/Image", "minimax_h3.ref2va"));
     assert.equal(pickupPath("G:\\X\\P", "audio"), "G:\\X\\P\\90.Pick Up\\Son");
     assert.equal(pickupPath("G:\\X\\P\\", "image"), "G:\\X\\P\\90.Pick Up\\Image");
 });
@@ -831,23 +443,214 @@ test("Post-traitements : original suivi de ses posts, badge Post n (29/10/2026)"
     assert.deepEqual(rushItems(runs, "40.Rush Videos").map((x) => x.output.index), [0, 1, 2]);
 });
 
-// ---- Etat des variantes (Task 4 : utilise par la galerie du RefLoader) ----
-import { migrateState as msv } from "../web/js/profiles.js";
+// ---- Etat du RefLoader au format des variantes (plan des variantes, Task 7) ----
+import { migrateState } from "../web/js/profiles.js";
 
-test("remapState and unusedProjectFiles read every variant", () => {
-    const s = msv({ variant: "minimax_h3.ref2va" });
-    s.selections["ltx.2_5"].rows.guide_video = ["D:/P/12.Video/a.mp4"];
-    s.selections["ltx.2_5"].trims.guide_video = { "d:/p/12.video/a.mp4": [1, 2] };
-    s.selections["minimax_h3.ref2va"].rows.videos = ["D:/P/12.Video/b.mp4"];
-    const r = remapState(s, (p, rid) => (rid === "guide_video" ? p.replace("a.mp4", "c.mp4") : p));
-    assert.deepEqual(r.selections["ltx.2_5"].rows.guide_video, ["D:/P/12.Video/c.mp4"]);
-    assert.deepEqual(r.selections["ltx.2_5"].trims.guide_video, { "d:/p/12.video/c.mp4": [1, 2] });
-    assert.deepEqual(r.selections["minimax_h3.ref2va"].rows.videos, ["D:/P/12.Video/b.mp4"]);
-    const files = ["D:/P/12.Video/a.mp4", "D:/P/12.Video/b.mp4", "D:/P/12.Video/z.mp4"];
-    assert.deepEqual(unusedProjectFiles(files, s), ["D:/P/12.Video/z.mp4"]);
+/** Etat de test : variante affichee + lignes {variante: {ligne: [chemins]}} (+ rognages / moments). */
+function vstate(variant, rows, extra = {}) {
+    const s = migrateState({ variant });
+    for (const [v, r] of Object.entries(rows)) Object.assign(s.selections[v].rows, r);
+    for (const [v, x] of Object.entries(extra)) {
+        for (const [table, t] of Object.entries(x)) Object.assign(s.selections[v][table], t);
+    }
+    return s;
+}
+const R2 = "minimax_h3.ref2va";
+const FL = "minimax_h3.fl2va";
+const L3 = "ltx.2_3";
+const L5 = "ltx.2_5";
+
+test("rowFolder : dossier de chaque ligne (description)", () => {
+    assert.equal(rowFolder(null, R2, "video_audios"), "14.Video-Audio");
+    assert.equal(rowFolder(null, FL, "last_frame"), "08.Images");
+    assert.equal(rowFolder(null, L5, "voice"), "10.Son");
+    assert.equal(rowFolder(null, L5, "nope"), "");
 });
 
-test("isMediaSubfolder accepts the folders of the variant rows", () => {
-    assert.equal(isMediaSubfolder("P/10.Son", ["08.Images", "10.Son"], "audio"), true);
-    assert.equal(isMediaSubfolder("P/14.Video-Audio", ["08.Images", "10.Son"], "video"), false);
+test("saveItems only the shown variant", () => {
+    const s = vstate(L5, { [R2]: { images: ["P/08.Images/m.png"] },
+        [L5]: { guide_images: ["g1", "g2"], guide_video: ["gv"], voice: ["vo"] } });
+    assert.deepEqual(saveItems(s).map((i) => [i.path, i.folder]), [
+        ["g1", "08.Images"], ["g2", "08.Images"], ["gv", "12.Video"], ["vo", "10.Son"]]);
+    // une meme video dans Video et Video/Audio : deux copies (par position)
+    const r = vstate(R2, { [R2]: { videos: ["v"], video_audios: ["v"] } });
+    assert.deepEqual(saveItems(r).map((i) => i.folder), ["12.Video", "14.Video-Audio"]);
+});
+
+test("remapState + mapBySequence : variante affichee seulement, rognages et moments suivent", () => {
+    const s = vstate(L3, { [L3]: { guide_images: ["C:\\R\\a.png", "C:\\R\\b.png"], guide_video: ["C:\\R\\v.mp4"] },
+        [L5]: { guide_images: ["C:\\R\\a.png"] } },
+    { [L3]: { moments: { guide_images: { "c:/r/a.png": 2 } }, trims: { guide_video: { "c:/r/v.mp4": [1, 3] } } } });
+    const out = remapState(s, mapBySequence(["P\\a.png", "", "P\\v.mp4"], s));
+    assert.deepEqual(out.selections[L3].rows.guide_images, ["P\\a.png", "C:\\R\\b.png"]); // "" = manquant, garde
+    assert.deepEqual(out.selections[L3].rows.guide_video, ["P\\v.mp4"]);
+    assert.deepEqual(out.selections[L3].moments.guide_images, { "p/a.png": 2 });
+    assert.deepEqual(out.selections[L3].trims.guide_video, { "p/v.mp4": [1, 3] });
+    assert.deepEqual(out.selections[L5].rows.guide_images, ["C:\\R\\a.png"]);   // autre variante : inchangee
+    assert.deepEqual(s.selections[L3].rows.guide_video, ["C:\\R\\v.mp4"]);       // etat d'origine intact
+    // fn(chemin, ligne, variante) : toutes les variantes
+    const all = remapState(s, (p) => p.replace("C:\\R", "Q"));
+    assert.deepEqual(all.selections[L5].rows.guide_images, ["Q\\a.png"]);
+});
+
+test("hiddenFolderItems covers other variants", () => {
+    const s = vstate(L3, { [R2]: { images: ["OLD/a.png", "OLD/b.png"], audios: ["OLD/s.wav"], video_audios: ["OLD/va.mp4"] },
+        [FL]: { first_frame: ["OLD/a.png"] }, [L3]: { guide_images: ["NEW/g.png", "OLD/b.png"] },
+        [L5]: { guide_images: ["NEW/g5.png"] } });
+    // Ordre de la description (Ref2VA, FL2VA, LTX 2.5), sans doublon ni chemin de la variante affichee.
+    assert.deepEqual(hiddenFolderItems(s, "08.Images").map((i) => i.path), ["OLD/a.png", "NEW/g5.png"]);
+    assert.deepEqual(hiddenFolderItems(s, "10.Son"), [{ path: "OLD/s.wav", folder: "10.Son" }]);
+    assert.deepEqual(hiddenFolderItems(s, "14.Video-Audio").map((i) => i.path), ["OLD/va.mp4"]);
+});
+
+test("dossiers suivis : variante affichee, retrait seulement si aucune variante ne l'utilise", () => {
+    assert.deepEqual(UPDATE_FOLDERS, ["08.Images", "10.Son", "12.Video", "14.Video-Audio"]);
+    const proj = "C:\\P\\Clip";
+    const s = vstate(R2, { [R2]: { images: ["C:\\P\\Clip\\08.Images\\a.png", "D:\\x\\b.png"],
+        videos: ["C:\\P\\Clip\\12.Video\\v.mp4"] }, [L5]: { soundtrack: ["C:\\P\\Clip\\10.Son\\s.wav"] } });
+    assert.deepEqual(folderPaths(s, "08.Images"), ["C:\\P\\Clip\\08.Images\\a.png", "D:\\x\\b.png"]);
+    assert.deepEqual(folderChanges(s, "08.Images", proj, null), { added: ["D:\\x\\b.png"], removed: [] });
+    const snap = ["c:/p/clip/12.video/v.mp4", "C:\\P\\Clip\\12.Video\\old.mp4"];
+    assert.deepEqual(folderChanges(s, "12.Video", proj, snap), { added: [], removed: ["C:\\P\\Clip\\12.Video\\old.mp4"] });
+    // s.wav : seulement dans LTX 2.5 (variante cachee) -> pas retire
+    assert.deepEqual(folderChanges(s, "10.Son", proj, ["C:\\P\\Clip\\10.Son\\s.wav"]), { added: [], removed: [] });
+    assert.deepEqual(Object.keys(folderSnapshot(s)), UPDATE_FOLDERS);
+    assert.deepEqual(folderSnapshot(s)["10.Son"], []);
+});
+
+test("mise a jour d'un dossier : seules les lignes de la variante affichee de ce dossier sont repointees", () => {
+    const s = vstate(R2, { [R2]: { images: ["a", "b"], videos: ["v"] }, [FL]: { first_frame: ["b"] } });
+    const items = saveItems(s).filter((i) => i.folder === "08.Images");
+    assert.deepEqual(items.map((i) => i.path), ["a", "b"]);
+    const out = remapState(s, mapFolderBySequence("08.Images", ["A", ""], s));
+    assert.deepEqual(out.selections[R2].rows.images, ["A", "b"]);
+    assert.deepEqual(out.selections[R2].rows.videos, ["v"]);
+    assert.deepEqual(out.selections[FL].rows.first_frame, ["b"]);
+});
+
+test("references manquantes retirees d'un dossier, Reset", () => {
+    const s = vstate(R2, { [R2]: { images: ["a", "gone"], videos: ["gone"] }, [L5]: { guide_images: ["gone", "c"] } },
+        { [L5]: { moments: { guide_images: { c: 1 } } } });
+    const out = withoutFolderPaths(s, "08.Images", ["GONE"]);
+    assert.deepEqual(out.selections[R2].rows.images, ["a"]);
+    assert.deepEqual(out.selections[L5].rows.guide_images, ["c"]);
+    assert.deepEqual(out.selections[R2].rows.videos, ["gone"]);   // autre dossier
+    const r = withoutReferences(s);
+    assert.deepEqual(r.selections[L5].rows.guide_images, []);
+    assert.deepEqual(r.selections[L5].moments.guide_images, {});
+    assert.equal(r.variant, R2);
+});
+
+test("etat du RefLoader sans medias pour comparer le workflow", () => {
+    const s = vstate(L5, { [L5]: { guide_images: ["a"] } });
+    s.root = "R";
+    s.limits = { [L5]: { fps: 25 } };
+    const w = withoutMedia(s);
+    assert.equal(w.selections, undefined);
+    assert.equal(w.root, "R");
+    assert.equal(w.variant, L5);
+    assert.deepEqual(w.limits, { [L5]: { fps: 25 } });
+    // ancien etat : converti puis compare de la meme facon
+    assert.deepEqual(withoutMedia({ mode: "fl2va", images: ["a"], root: "R" }).variant, FL);
+    assert.deepEqual(s.selections[L5].rows.guide_images, ["a"]);
+});
+
+test("unusedProjectFiles counts every variant", () => {
+    const s = vstate(R2, { [L5]: { guide_video: ["P/12.Video/only25.mp4"] }, [R2]: { videos: ["P/12.Video/b.mp4"] } });
+    const files = ["P/12.Video/only25.mp4", "P/12.Video/b.mp4", "P/12.Video/x.mp4"];
+    assert.deepEqual(unusedProjectFiles(files, s), ["P/12.Video/x.mp4"]);
+    assert.deepEqual(unusedProjectFiles(["p\\12.video\\B.MP4"], s), []);   // casse et separateurs ignores
+});
+
+test("folderUse LTX 2.5 14 is Not used", () => {
+    const s = vstate(L5, { [L5]: { guide_images: ["P/08.Images/g1.png", "P/08.Images/g2.png"], soundtrack: ["P/10.Son/st.wav"],
+        voice: ["P/10.Son/vo.wav"], guide_video: ["P/12.Video/gv.mp4"] }, [R2]: { images: ["P/08.Images/m.png"] } });
+    const imgs = ["P/08.Images/g1.png", "P/08.Images/g2.png", "P/08.Images/m.png", "P/08.Images/x.png"];
+    assert.deepEqual(folderUse(imgs, s, "08.Images"), { used: 2, max: 9, mode: "LTX 2.5" });
+    assert.deepEqual(folderUse(["P/10.Son/st.wav", "P/10.Son/vo.wav"], s, "10.Son"), { used: 2, max: 2, mode: "LTX 2.5" });
+    assert.deepEqual(folderUse(["P/14.Video-Audio/va.mp4"], s, "14.Video-Audio"), { used: 0, max: 0, mode: "LTX 2.5" });
+    assert.deepEqual(folderMax(s), { "08.Images": 9, "10.Son": 2, "12.Video": 1, "14.Video-Audio": 0 });
+    // Limits du RefLoader
+    s.limits = { [L5]: { counts: { guide_images: 4 } } };
+    assert.equal(folderUse(imgs, s, "08.Images").max, 4);
+    // MiniMax : Ref2VA 9 images, FL2VA 2 frames
+    assert.deepEqual(folderMax(vstate(R2, {})), { "08.Images": 9, "10.Son": 3, "12.Video": 3, "14.Video-Audio": 3 });
+    assert.deepEqual(folderMax(vstate(FL, {})), { "08.Images": 2, "10.Son": 0, "12.Video": 0, "14.Video-Audio": 0 });
+    assert.equal(folderUse([], vstate(FL, {}), "08.Images").mode, "F2VA / FL2VA");
+});
+
+test("configRefs : toutes les variantes et celle affichee", () => {
+    const s = vstate(L3, { [L3]: { guide_images: ["g"] } });
+    const c = configRefs(s);
+    assert.equal(c.variant, L3);
+    assert.deepEqual(c.selections[L3].rows.guide_images, ["g"]);
+    c.selections[L3].rows.guide_images.push("x");
+    assert.deepEqual(s.selections[L3].rows.guide_images, ["g"]);   // copie
+});
+
+test("loadedState keeps the shown variant", () => {
+    // Exemple de l'utilisateur : Ref2VA -> Save -> LTX 2.3 -> Save -> Ref2VA -> Load = reste en Ref2VA.
+    const report = { variant: L3, folders: [
+        { folder: "08.Images", kind: "media", files: [
+            { nom: "b.png", status: "ok", Utilisations: [{ variante: R2, ligne: "images", Indice: 2 }] },
+            { nom: "a.png", status: "changed", archive: null, Utilisations: [
+                { variante: R2, ligne: "images", Indice: 1 }, { variante: L3, ligne: "guide_images", Indice: 1, moment: -1 }] },
+            { nom: "lost.png", status: "missing", archive: null, Utilisations: [{ variante: R2, ligne: "images", Indice: 3 }] },
+            { nom: "f.png", status: "missing", archive: "f.png", Utilisations: [{ variante: FL, ligne: "first_frame", Indice: 1 }] },
+        ] },
+        { folder: "12.Video", kind: "media", files: [
+            { nom: "s.mp4", status: "ok", Utilisations: [{ variante: R2, ligne: "videos", Indice: 1, trim: [5, 7] }] }] },
+        { folder: "10.Son", kind: "media", files: [
+            { nom: "x.wav", status: "ok", Utilisations: [{ variante: R2, ligne: "audios", Indice: 1 }] }] },
+    ] };
+    const base = vstate(R2, { [R2]: { images: ["old.png"], audios: ["keep.wav"], videos: ["C:\\o.mp4"] },
+        [L3]: { guide_images: ["oldg.png"] } }, { [R2]: { trims: { videos: { "c:/o.mp4": [1, 2] } } } });
+    base.root = "R";
+    const s = loadedState(base, report, "C:\\P", ["08.Images", "12.Video"]);
+    assert.equal(s.variant, R2);
+    assert.equal(s.root, "R");
+    assert.deepEqual(s.selections[R2].rows.images, ["C:\\P\\08.Images\\a.png", "C:\\P\\08.Images\\b.png"]);
+    assert.deepEqual(s.selections[FL].rows.first_frame, ["C:\\P\\08.Images\\f.png"]);
+    assert.deepEqual(s.selections[L3].rows.guide_images, ["C:\\P\\08.Images\\a.png"]);
+    assert.deepEqual(s.selections[L3].moments.guide_images, { "c:/p/08.images/a.png": -1 });
+    assert.deepEqual(s.selections[R2].rows.videos, ["C:\\P\\12.Video\\s.mp4"]);
+    assert.deepEqual(s.selections[R2].trims.videos, { "c:/p/12.video/s.mp4": [5, 7] });
+    assert.deepEqual(s.selections[R2].rows.audios, ["keep.wav"]);   // 10.Son non coche
+    assert.deepEqual(base.selections[R2].rows.images, ["old.png"]);   // copie
+    // ancien etat du workflow (sans selections) : converti
+    const old = loadedState({ mode: "ref2va", images: ["z.png"] }, report, "C:\\P", ["10.Son"]);
+    assert.deepEqual(old.selections[R2].rows.images, ["z.png"]);
+    assert.deepEqual(old.selections[R2].rows.audios, ["C:\\P\\10.Son\\x.wav"]);
+});
+
+test("visualisation : ordre du RefLoader, initiale pour une ligne d'un seul fichier, puis par nom", () => {
+    const D = "C:\\P\\08.Images\\";
+    const files = [D + "z.png", D + "b.png", D + "a.png", D + "f.png", D + "y.png"];
+    const st = vstate(FL, { [FL]: { first_frame: [D + "f.png"], last_frame: [D + "b.png"] },
+        [R2]: { images: [D + "b.png", "c:/p/08.images/A.png"] } });
+    assert.deepEqual(orderedFolderFiles(files, st, "08.Images"), [
+        { path: D + "f.png", badge: "F" }, { path: D + "b.png", badge: "L" },
+        { path: D + "a.png", badge: "" }, { path: D + "y.png", badge: "" }, { path: D + "z.png", badge: "" }]);
+    st.variant = R2;
+    assert.deepEqual(orderedFolderFiles(files, st, "08.Images").slice(0, 2),
+        [{ path: D + "b.png", badge: "1" }, { path: D + "a.png", badge: "2" }]);
+    const S = "C:\\P\\10.Son\\";
+    const lt = vstate(L5, { [L5]: { soundtrack: [S + "s.wav"], voice: [S + "v.wav"] } });
+    assert.deepEqual(orderedFolderFiles([S + "v.wav", S + "s.wav"], lt, "10.Son").map((x) => x.badge), ["S", "V"]);
+    assert.deepEqual(orderedFolderFiles([D + "b.png", D + "a.png"], null, "10.Son").map((x) => x.badge), ["", ""]);
+});
+
+test("isMediaSubfolder keeps Extract Frame for image rows", () => {
+    for (const f of ["08.Images", "10.Son", "12.Video", "14.Video-Audio"]) assert.ok(isMediaSubfolder("P/" + f, R2));
+    for (const f of ["00.Workflows", "40.Rush Videos", "99.Project-Config"]) assert.ok(!isMediaSubfolder("P/" + f, R2));
+    assert.ok(!isMediaSubfolder("P", R2));
+    assert.ok(!isMediaSubfolder("P/08.Images/Archives", R2));
+    assert.ok(isMediaSubfolder("G/P/10.Son", R2));
+    assert.ok(isMediaSubfolder("P\\08.Images", FL));
+    assert.ok(!isMediaSubfolder("P/12.Video", FL));
+    for (const f of ["08.Images", "10.Son", "12.Video"]) assert.ok(isMediaSubfolder("P/" + f, L5));
+    assert.ok(!isMediaSubfolder("P/14.Video-Audio", L5));
+    assert.ok(isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", L5, "image"));
+    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", L5, "video"));
+    assert.ok(isMediaSubfolder("P/14.Video-Audio"));   // sans variante : les quatre dossiers
 });
