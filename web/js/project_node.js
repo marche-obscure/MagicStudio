@@ -350,9 +350,13 @@ const HELP_SECTIONS = [
                     "on; it stays checked with a red ✕."],
             ]) +
             hCard("Picture Lock", [
-                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "<b>Simple</b> project: any number of files."],
-                [iconBadge(TREE_ICON, MULTI_COLOR), "Project of a <b>MultiProject</b>: <b>one file</b>, the final rush; " +
-                    "when it is taken, <b>Swap</b> exchanges them (the old one goes to the folder of the new one)."],
+                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "Every project (<b>Simple</b> or from a <b>MultiProject</b>): " +
+                    "<b>one file</b> in each Picture Lock (40, 60 and 70), the final rush."],
+                [iconBadge(TREE_ICON, MULTI_COLOR), "When the Picture Lock is taken, <b>Swap</b> exchanges the two files " +
+                    "(the old one goes to the folder of the new one). To keep several versions, use a <b>MultiProject</b>."],
+                ["Old project", "A project with several files in a Picture Lock: nothing is moved. An orange " +
+                    "<b>Picture Lock: keep one file</b> warns you, and <b>Extract Frame</b> is greyed. Move the extra " +
+                    "files to another folder to go on."],
             ]) +
             hCard("Delete (No Good only)", [
                 [iconBadge(TRASH_ICON, INACTIVE_BG), "Check the files, then <b>Delete</b>: Recycle Bin, or delete " +
@@ -367,6 +371,58 @@ const HELP_SECTIONS = [
             hCard("Display", [
                 ["Order", "Thumbnails grouped by dot, then by date (Date ↓ / ↑)."],
                 ["Filter", "Click dots to show only those colours."],
+            ]),
+    },
+    {
+        id: "extract", title: "Extract Frame", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
+        html: "<p><b>Extract Frame</b> saves images (PNG) taken from the video of the <b>Picture Lock</b> of " +
+            "<b>40.Rush Videos</b>, for example the first or last frame to start the next shot.</p>" +
+            hCard("Where is the button", [
+                ["Under the thumbnail", "the thumbnail of the Picture Lock video, when a Run made it."],
+                ["At the top of the window", "whenever the Picture Lock holds one video, even one you placed by hand."],
+            ]) +
+            "<p><b>Extract a frame</b></p>" +
+            hSteps([
+                "Open the <b>40.Rush Videos</b> window and sort one video into <b>Picture Lock</b>.",
+                "Click <b>Extract Frame</b>. A side window opens with the video.",
+                "Under <b>Select:</b>, click <b>First</b>, <b>Last</b>, <b>FL-Frame</b> or <b>Frame-N</b>.",
+                "For <b>Frame-N</b>, move with ◀ ▶ (one frame back / forward) or type the number.",
+                "Click <b>Extract</b>. The image appears in the thumbnails at the bottom.",
+            ]) +
+            hCard("The four choices", [
+                ["First", "the first frame (number 0)."],
+                ["Last", "the last frame."],
+                ["FL-Frame", "the first and the last frame, in one click."],
+                ["Frame-N", "the frame shown now. The display reads <b>Frame n / total</b>, counted from 0."],
+            ]) +
+            hCard("Names of the images", [
+                ["First", "<b>FIRST_FRAME_&lt;project&gt;.png</b>"],
+                ["Last", "<b>LAST_FRAME_&lt;project&gt;.png</b>"],
+                ["Frame-N", "<b>FRAME_0048_&lt;project&gt;.png</b> (4 digits)"],
+                ["&lt;project&gt;", "the name of the project, or of the sub-project in a MultiProject."],
+                ["Folder", "<b>40.Rush Videos/Picture Lock/Extract Frame</b>, in every project. The images are full size, " +
+                    "taken from the original video."],
+            ]) +
+            hNote("if the same name already exists, a question <b>Replace &lt;name&gt;?</b> appears: <b>Replace</b> " +
+                "or <b>Cancel</b>.") +
+            hCard("Close the side window", [
+                ["Close", "the button, the <b>Esc</b> key, or a click outside the window."],
+            ]) +
+            hCard("When the Picture Lock video changes", [
+                ["Checked", "at each reload of the Runs and after each sort."],
+                ["Video removed, none instead", "the Extract Frame folder is emptied. Message: <b>Extract Frame emptied: " +
+                    "the Picture Lock video was removed</b>."],
+                ["Video replaced, folder empty", "nothing happens."],
+                ["Video replaced, FIRST / LAST images", "a question: <b>The Picture Lock video changed. Replace " +
+                    "FIRST_FRAME / LAST_FRAME with frames of the new video?</b> Click <b>Replace</b> or <b>Keep</b> " +
+                    "(<b>Esc</b> = Keep)."],
+                ["Video replaced, FRAME_ images", "they are removed."],
+                ["Recycle Bin", "every removed image goes to the Windows Recycle Bin, never deleted for good."],
+            ]) +
+            hWarn("while this question waits for your answer, a new extraction is refused. Answer it first.", "Warning:") +
+            hCard("In the gallery of the RefLoader", [
+                ["Project wired", "<b>Extract Frame</b> appears for the image rows. A picked image is copied into " +
+                    "<b>08.Images</b> at <b>Save</b>."],
             ]),
     },
     {
@@ -726,9 +782,13 @@ const HELP_SECTIONS_FR = [
                     "continuent ; il reste coché avec un ✕ rouge."],
             ]) +
             hCard("Picture Lock", [
-                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "Projet <b>Simple</b> : autant de fichiers que voulu."],
-                [iconBadge(TREE_ICON, MULTI_COLOR), "Projet d'un <b>MultiProject</b> : <b>un seul fichier</b>, le rush " +
-                    "final ; s'il est occupé, <b>Swap</b> échange les deux (l'ancien part dans le dossier du nouveau)."],
+                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "Tous les projets (<b>Simple</b> ou d'un <b>MultiProject</b>) : " +
+                    "<b>un seul fichier</b> dans chaque Picture Lock (40, 60 et 70), le rush final."],
+                [iconBadge(TREE_ICON, MULTI_COLOR), "Si le Picture Lock est occupé, <b>Swap</b> échange les deux fichiers " +
+                    "(l'ancien part dans le dossier du nouveau). Pour garder plusieurs versions, utilisez un <b>MultiProject</b>."],
+                ["Ancien projet", "Un projet qui a plusieurs fichiers dans un Picture Lock : rien n'est déplacé. Un " +
+                    "avertissement orange <b>Picture Lock: keep one file</b> s'affiche et <b>Extract Frame</b> est grisé. " +
+                    "Déplacez les fichiers en trop vers un autre dossier pour continuer."],
             ]) +
             hCard("Supprimer (No Good seulement)", [
                 [iconBadge(TRASH_ICON, INACTIVE_BG), "Cochez les fichiers, puis <b>Delete</b> : Corbeille, ou " +
@@ -743,6 +803,59 @@ const HELP_SECTIONS_FR = [
             hCard("Affichage", [
                 ["Ordre", "Vignettes groupées par pastille, puis par date (Date ↓ / ↑)."],
                 ["Filter", "Cliquez sur des pastilles pour n'afficher que ces couleurs."],
+            ]),
+    },
+    {
+        id: "extract", title: "Extract Frame",
+        html: "<p><b>Extract Frame</b> enregistre des images (PNG) prises dans la vidéo du <b>Picture Lock</b> de " +
+            "<b>40.Rush Videos</b>, par exemple la première ou la dernière image pour lancer le plan suivant.</p>" +
+            hCard("Où est le bouton", [
+                ["Sous la vignette", "la vignette de la vidéo du Picture Lock, quand un Run l'a produite."],
+                ["En haut de la fenêtre", "dès que le Picture Lock contient une vidéo, même posée à la main."],
+            ]) +
+            "<p><b>Extraire une image</b></p>" +
+            hSteps([
+                "Ouvrez la fenêtre <b>40.Rush Videos</b> et rangez une vidéo dans <b>Picture Lock</b>.",
+                "Cliquez sur <b>Extract Frame</b>. Une fenêtre latérale s'ouvre avec la vidéo.",
+                "Sous <b>Select:</b>, cliquez sur <b>First</b>, <b>Last</b>, <b>FL-Frame</b> ou <b>Frame-N</b>.",
+                "Pour <b>Frame-N</b>, avancez avec ◀ ▶ (une image en arrière / en avant) ou tapez le numéro.",
+                "Cliquez sur <b>Extract</b>. L'image apparaît dans les vignettes en bas.",
+            ]) +
+            hCard("Les quatre choix", [
+                ["First", "la première image (numéro 0)."],
+                ["Last", "la dernière image."],
+                ["FL-Frame", "la première et la dernière image, en un clic."],
+                ["Frame-N", "l'image affichée maintenant. L'affichage indique <b>Frame n / total</b>, compté à partir de 0."],
+            ]) +
+            hCard("Noms des images", [
+                ["First", "<b>FIRST_FRAME_&lt;projet&gt;.png</b>"],
+                ["Last", "<b>LAST_FRAME_&lt;projet&gt;.png</b>"],
+                ["Frame-N", "<b>FRAME_0048_&lt;projet&gt;.png</b> (4 chiffres)"],
+                ["&lt;projet&gt;", "le nom du projet, ou du sous-projet dans un MultiProject."],
+                ["Dossier", "<b>40.Rush Videos/Picture Lock/Extract Frame</b>, dans tous les projets. Les images sont en " +
+                    "pleine taille, prises dans la vidéo d'origine."],
+            ]) +
+            hNote("si le même nom existe déjà, une question <b>Replace &lt;nom&gt;?</b> s'affiche : <b>Replace</b> " +
+                "ou <b>Cancel</b>.") +
+            hCard("Fermer la fenêtre latérale", [
+                ["Close", "le bouton, la touche <b>Échap</b>, ou un clic à l'extérieur de la fenêtre."],
+            ]) +
+            hCard("Quand la vidéo du Picture Lock change", [
+                ["Contrôle", "à chaque rechargement des Runs et après chaque rangement."],
+                ["Vidéo retirée, aucune à la place", "le dossier Extract Frame est vidé. Message : <b>Extract Frame emptied: " +
+                    "the Picture Lock video was removed</b>."],
+                ["Vidéo remplacée, dossier vide", "rien ne se passe."],
+                ["Vidéo remplacée, images FIRST / LAST", "une question : <b>The Picture Lock video changed. Replace " +
+                    "FIRST_FRAME / LAST_FRAME with frames of the new video?</b> Cliquez sur <b>Replace</b> ou <b>Keep</b> " +
+                    "(<b>Échap</b> = Keep)."],
+                ["Vidéo remplacée, images FRAME_", "elles sont retirées."],
+                ["Corbeille", "toute image retirée va dans la Corbeille de Windows, jamais effacée pour de bon."],
+            ]) +
+            hWarn("tant que cette question attend votre réponse, une nouvelle extraction est refusée. Répondez d'abord.",
+                "Attention :") +
+            hCard("Dans la galerie du RefLoader", [
+                ["Projet relié", "<b>Extract Frame</b> apparaît pour les lignes d'images. Une image choisie est copiée dans " +
+                    "<b>08.Images</b> au <b>Save</b>."],
             ]),
     },
     {

@@ -105,3 +105,15 @@ test("help arrays contain no old node names", () => {
         }
     }
 });
+
+// --- Aide Project : rubrique extract juste apres rushsort, EN et FR ---
+test("project help has an extract section after rushsort", () => {
+    const en = helpIds("project_node.js", "HELP_SECTIONS");
+    const fr = helpIds("project_node.js", "HELP_SECTIONS_FR");
+    for (const ids of [en, fr]) {
+        const i = ids.indexOf("rushsort");
+        assert.ok(i >= 0, "rushsort introuvable");
+        assert.equal(ids[i + 1], "extract");
+    }
+    assert.equal(en.indexOf("extract"), fr.indexOf("extract"));
+});

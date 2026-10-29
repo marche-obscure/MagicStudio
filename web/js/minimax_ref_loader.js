@@ -492,6 +492,8 @@ const HELP_SECTIONS = [
                     "instead of the selected folder; click again to go back."],
                 ["Clear", "greyed out: check the files to replace instead (see <b>Replace a file of the project</b>)."],
                 ["Full", "a message above the line asks to check below the file to replace, then to pick the new one above."],
+                ["Extract Frame", "appears for the image rows when a project is wired. A picked image is copied into " +
+                    "<b>08.Images</b> at <b>Save</b> (see the help of <b>MagicStudio Project</b>)."],
             ]),
     },
     {
@@ -825,6 +827,8 @@ const HELP_SECTIONS_FR = [
                 ["Clear", "grisé : cochez plutôt les fichiers à remplacer (voir <b>Remplacer un fichier du projet</b>)."],
                 ["Sélection pleine", "un message au-dessus du trait invite à cocher en bas le fichier à remplacer, " +
                     "puis à choisir le nouveau en haut."],
+                ["Extract Frame", "apparaît pour les lignes d'images quand un projet est relié. Une image choisie est " +
+                    "copiée dans <b>08.Images</b> au <b>Save</b> (voir l'aide de <b>MagicStudio Project</b>)."],
             ]),
     },
     {
