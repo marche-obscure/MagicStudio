@@ -48,11 +48,17 @@ function outputLinksOf(node, slot) {
  * reecrit nom / type / etiquette position par position (ne jamais assigner output.links).
  */
 function migrateOutputs(node) {
-    const names = (node.outputs || []).map((o) => o.name);
+    // Noms enregistres, releves avant que configure() ne renomme les sorties par position
+    // (frontend recent, 29/10/2026) ; sinon les noms actuels.
+    const saved0 = node.__mmSavedOutputNames;
+    delete node.__mmSavedOutputNames;
+    // Sorties ajoutees par le frontend apres les sorties enregistrees : sans lien, nom ignore
+    // (elles reprennent les noms actuels, ex. une 2e "image" qui ecraserait l'ancienne).
+    const names = (node.outputs || []).map((o, i) => (saved0 ? saved0[i] || "" : o.name));
     if (names.length === OUTPUTS.length && OUTPUTS.every(([n], i) => names[i] === n)) return;
     const saved = {};
     names.forEach((name, i) => {
-        saved[name] = { label: node.outputs[i].label, links: outputLinksOf(node, i) };
+        if (name && !saved[name]) saved[name] = { label: node.outputs[i].label, links: outputLinksOf(node, i) };
     });
     OUTPUTS.forEach(([name], i) => (saved[name] ? saved[name].links : []).forEach((l) => (l.origin_slot = i)));
     while (node.outputs.length < OUTPUTS.length) node.addOutput("tmp", "*");
@@ -341,6 +347,15 @@ app.registerExtension({
                 render();
             }, 0);
             return r;
+        };
+
+        // Le frontend recent renomme les sorties par position pendant configure() : les noms
+        // enregistres sont releves avant, pour que migrateOutputs suive les liens par nom.
+        const configure = nodeType.prototype.configure;
+        nodeType.prototype.configure = function (info) {
+            this.__mmSavedOutputNames = Array.isArray(info && info.outputs)
+                ? info.outputs.map((o) => (o && typeof o.name === "string" ? o.name : "")) : null;
+            return configure.apply(this, arguments);
         };
 
         // Workflow ouvert : la valeur de "file" arrive apres la creation du noeud.
