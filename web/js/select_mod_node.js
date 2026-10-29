@@ -187,120 +187,89 @@ const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Fill <b>Origin directory</b>: pick a folder in <b>Models folder shortcut...</b>, paste a path, " +
-            "or browse with " + B_FOLDER + ".",
-            "Click " + B_DIRS + " and choose a folder in the list, then click " + B_FILES + " to list its files.",
-            "Choose the active field (" + B_FIELD(1) + " to " + B_FIELD(5) + "), <b>Absolute</b> or " +
-            "<b>Relative</b>, then click a file: its path goes into that field and out on its output.",
+            "Choose the active field (" + B_FIELD(1) + " to " + B_FIELD(5) + ") and <b>Absolute</b> or <b>Relative</b>.",
+            "Click " + B_FOLDER + ": the window of the models folders opens next to the node.",
+            "Click a file: its path goes into the active field and out on its output. A double-click also closes the window.",
         ]) +
         hCard("Buttons of the node", [
-            [B_FOLDER, "Pick the origin directory with the Windows folder browser"],
+            [B_FOLDER, "Open the window of the models folders (tree and files)"],
             [B_DIRS, "List the subfolders of the origin directory"],
             [B_FILES, "List the files of the selected directory"],
             [B_DOWNLOAD, "Export the filled fields (.json)"],
-            [B_UPLOAD, "Import a fields file (.json, or an old .txt)"],
+            [B_UPLOAD, "Import a fields file (SelectMod or MultiFiles Select)"],
             [B_GEAR, "Choose the save folder of the exports"],
             [B_TRASH, "Clear a field and its Type"],
             [B_PLUS + " " + B_MINUS, "Add / remove the optional fields 6 and 7"],
             [B_C, "Turn the overwrite confirmation back on"],
             [B_HELP, "This help"],
         ]) +
-        hTip("Each output takes the <b>Type</b> of its row as name, e.g. <b>diffusion_models</b>."),
+        hNote("SelectMod only reads the models folders: <b>models</b> of ComfyUI and <b>Models (Linker)</b>."),
     },
     {
-        id: "folders", title: "Choosing folders", icon: FOLDER_ICON, color: VIOLET,
-        html: hList([
-            "<b>Models folder shortcut...</b> fills <b>Origin directory</b> with a folder of your " +
-            "installation: root, models, output, input, temp, user, custom_nodes.",
-            "<b>Models (Linker)</b> is added when an <b>extra_model_paths.yaml</b> file exists at the ComfyUI root.",
-            B_FOLDER + " opens the Windows folder browser; you can also paste the path by hand.",
-            B_DIRS + " lists the subfolders that directly contain at least one file.",
-            "A click on a folder puts it in <b>Selected directory</b>; " + B_FILES + " then lists its files.",
-            "The extension menu filters the files. It is greyed out when the folder holds a single extension.",
-        ]) +
-        hNote("<b>.json</b>, <b>.info</b>, <b>.md</b> and <b>.sha*</b> files are never listed."),
-    },
-    {
-        id: "fields", title: "Numbered fields", icon: FIELDS_ICON, color: PINK,
+        id: "fields", title: "Fields", icon: FIELDS_ICON, color: PINK,
         html: hList([
             "The square buttons choose the field that receives the next file. Only one is active at a time.",
-            "<b>Absolute</b> / <b>Relative</b> sets the format of the path written at the click.",
-            "A filled field keeps its format, even if you switch the mode to fill another one.",
-            "The fields can also be typed or edited by hand.",
-            B_TRASH + " clears the field and its <b>Type</b> at once, without confirmation.",
+            "The small <b>Type</b> field fills in with the folder that follows <b>models</b>, e.g. <b>vae</b>.",
+            "A field can be typed or edited by hand.",
+            B_TRASH + " clears the field and its <b>Type</b> at once.",
+            B_PLUS + " adds field 6 (<b>Option 1</b>), then field 7 (<b>Option 2</b>); " + B_MINUS + " removes the last one.",
+            "Outputs: <b>unused 1</b> to <b>unused 5</b> (fields 1 to 5), <b>model_link</b> (the save folder), " +
+                "<b>Option 1</b> / <b>Option 2</b>. A double-click on an output name renames it.",
         ]) +
         hCard("Overwriting a filled field", [
             ["⚠️", "A confirmation is asked before a file replaces a value."],
-            ["☑️", "<b>Don't ask again</b> turns the confirmation off for this node."],
+            ["☑️", "<b>Don't ask again</b> turns it off for this node."],
             [B_C, "Shown while it is off: click it to turn the confirmation back on."],
         ]),
     },
     {
-        id: "type", title: "Type field", icon: TAG_ICON, color: ORANGE,
+        id: "window", title: "The folder window", icon: FOLDER_ICON, color: VIOLET,
         html: hList([
-            "The small <b>Type</b> field in front of each field fills in when a file is picked.",
-            "It takes the folder that follows <b>models</b> in the path, e.g. <b>.../models/loras</b> gives " +
-            "<b>loras</b>.",
-            "Without a <b>models</b> folder it takes the last folder of the path.",
-            "It can be edited by hand. It has no output of its own.",
+            "<b>Left</b>: the folders of <b>models</b> and <b>Models (Linker)</b>; ▸ opens a folder, the number is its model files.",
+            "<b>Right</b>: the files of the chosen folder, with size and date. A click on a column title sorts it.",
+            "<b>Search</b> (top): files of the folder and of its subfolders whose name holds every word.",
+            "<b>One click</b> fills the active field and keeps the window open; <b>double-click</b> fills and closes.",
+            "<b>↺</b> reads the folders again. The bottom line shows the full path of the file under the mouse.",
+            "Close, Escape or a click outside closes the window.",
         ]) +
-        hTip("The Type also names the output of its row: see <b>Outputs</b>."),
+        hTip("the window opens on the folder of the active field, otherwise on the last folder used."),
     },
     {
-        id: "options", title: "Optional fields", icon: PLUS_ICON, color: PINK,
-        html: hSteps([
-            B_PLUS + " under the fields adds field <b>6</b> with the <b>Option 1</b> output.",
-            "A second click adds field <b>7</b> with the <b>Option 2</b> output. The button then disappears.",
-            B_MINUS + " removes the last added field, with its content and its output.",
+        id: "mode", title: "Absolute / Relative", icon: TAG_ICON, color: ORANGE,
+        html: hCard("Format of the path written at the click", [
+            ["<b>Absolute</b>", "the full path, e.g. <b>G:\\GenerateurIA\\models\\vae\\v.safetensors</b>"],
+            ["<b>Relative</b>", "the path from the models folder, e.g. <b>vae/v.safetensors</b>"],
         ]) +
         hList([
-            "One field at a time, only when you ask for it.",
-            "If the output to remove is connected, a confirmation is asked before the link(s) are deleted.",
-            "The number of added fields is saved with the workflow.",
+            "A filled field keeps its format, even if you switch the mode to fill another one.",
+            "At run time, a path outside the models folders is refused with a message.",
         ]),
     },
     {
-        id: "outputs", title: "Outputs", icon: OUTPUT_ICON, color: GREEN,
-        html: hList([
-            "<b>unused 1</b> to <b>unused 5</b>: the path of fields 1 to 5 (the number matches the field).",
-            "<b>model_link</b>: the save folder chosen with the gear icon (empty if none).",
-            "<b>Option 1</b> / <b>Option 2</b>: fields 6 and 7, when they are added.",
-            "Wildcard outputs: they connect to any input, but the value passed is always a text string.",
-        ]) +
-        hCard("Output names", [
-            ["🏷️", "<b>Automatic</b>: each output takes the <b>Type</b> of its row and follows it."],
-            ["🔢", "Identical Types are numbered in output order: <b>loras (1)</b>, <b>loras (2)</b>."],
-            ["✏️", "<b>Double-click</b> a name to rename it (Enter or a click elsewhere validates, Esc cancels)."],
-            ["📌", "A name typed by hand is kept. Clear it to go back to the automatic name."],
-        ]) +
-        hNote("only the displayed name changes; the right-click menu <b>Rename output \"...\"</b> does the same."),
-    },
-    {
-        id: "txt", title: "Export and import", icon: DOWNLOAD_ICON, color: PINK,
+        id: "export", title: "Export / Import", icon: DOWNLOAD_ICON, color: PINK,
         html: hCard("Fields file (.json)", [
             [B_DOWNLOAD, "Exports the filled fields to <b>yyyyMMdd-HHmmss_selectmod_fields.json</b>."],
-            [B_GEAR, "Sets the <b>save folder</b>: the export is written there. Without a save folder, " +
-                "the browser downloads it."],
-            [B_UPLOAD, "Imports a .json file (or an old .txt) and fills the fields, without confirmation."],
+            [B_GEAR, "Sets the <b>save folder</b>: the export is written there; without it, the browser downloads it."],
+            [B_UPLOAD, "Imports a SelectMod file, or a file exported by <b>MultiFiles Select</b> (.json or old .txt)."],
         ]) +
-        hCode('{\n  "format": "MultiFiles Select",\n  "version": 1,\n  "fields": [\n' +
-            '    { "field": 1, "type": "diffusion_models", "path": "MyFolder\\\\model.safetensors" }\n  ]\n}') +
-        hList([
-            "The date and time in the name keep a new export from overwriting an older one.",
-            "A field missing from the file, or an empty value, clears that field.",
-            "A filled field 6 or 7 adds the optional field automatically.",
-            "The save folder is kept with the node (saved in the workflow) and shown when hovering " + B_GEAR + ".",
-        ]),
+        hTip("to move from MultiFiles Select to SelectMod: export from MultiFiles Select, import in SelectMod."),
     },
     {
-        id: "limits", title: "Good to know", icon: INFO_ICON, color: TITLE_COLOR,
+        id: "project", title: "Link to the Project node", icon: OUTPUT_ICON, color: GREEN,
+        html: hSteps([
+            "Wire the <b>model_link</b> output to the <b>models_link</b> input of <b>MagicStudio Project</b>.",
+            "Without a save folder, the Project node sets it to <b>02.Models</b> of the project.",
+            "Each run then records the models of the fields (window <b>02.Models</b> of the Project node).",
+        ]) +
+        hNote("it works like MultiFiles Select: old workflows with MultiFiles Select keep working."),
+    },
+    {
+        id: "good", title: "Good to know", icon: INFO_ICON, color: TITLE_COLOR,
         html: hList([
-            "Works with the classic node design and with <b>Modern Node Design (Nodes 2.0)</b>: in both, " +
-            "output names can be renamed by double-click (or the right-click menu).",
-            B_FOLDER + " and <b>Browse</b> use the Windows folder dialog; on other systems paste the path.",
-            "A node saved before an update keeps its old output names until it is recreated.",
-            "The value of an output is a text string: a node waiting for an image or a model will refuse it " +
-            "at run time.",
+            "<b>.json</b>, <b>.info</b>, <b>.md</b> and <b>.sha*</b> files are never listed.",
+            "A folder typed by hand outside the models folders is refused; the old value is kept.",
+            "Works with the classic node design and with <b>Nodes 2.0</b>.",
+            "The value of an output is a text string: a node waiting for an image or a model refuses it at run time.",
         ]),
     },
 ];
@@ -313,132 +282,93 @@ const HELP_SECTIONS_FR = [
     {
         id: "start", title: "Démarrage rapide",
         html: hSteps([
-            "Remplissez <b>Origin directory</b> : choisissez un dossier dans <b>Models folder shortcut...</b>, " +
-            "collez un chemin, ou parcourez avec " + B_FOLDER + ".",
-            "Cliquez sur " + B_DIRS + " et choisissez un dossier dans la liste, puis cliquez sur " + B_FILES +
-            " pour lister ses fichiers.",
-            "Choisissez le champ actif (" + B_FIELD(1) + " à " + B_FIELD(5) + "), <b>Absolute</b> ou " +
-            "<b>Relative</b>, puis cliquez sur un fichier : son chemin va dans ce champ et sort sur sa sortie.",
+            "Choisissez le champ actif (" + B_FIELD(1) + " à " + B_FIELD(5) + ") et <b>Absolute</b> ou <b>Relative</b>.",
+            "Cliquez sur " + B_FOLDER + " : la fenêtre des dossiers de modèles s'ouvre à côté du nœud.",
+            "Cliquez sur un fichier : son chemin va dans le champ actif et sort sur sa sortie. Un double-clic ferme aussi la fenêtre.",
         ]) +
-        hCard("Boutons du noeud", [
-            [B_FOLDER, "Choisir le répertoire d'origine avec l'explorateur Windows"],
+        hCard("Boutons du nœud", [
+            [B_FOLDER, "Ouvrir la fenêtre des dossiers de modèles (arbre et fichiers)"],
             [B_DIRS, "Lister les sous-dossiers du répertoire d'origine"],
             [B_FILES, "Lister les fichiers du répertoire sélectionné"],
             [B_DOWNLOAD, "Exporter les champs remplis (.json)"],
-            [B_UPLOAD, "Importer un fichier de champs (.json, ou un ancien .txt)"],
+            [B_UPLOAD, "Importer un fichier de champs (SelectMod ou MultiFiles Select)"],
             [B_GEAR, "Choisir le dossier de sauvegarde des exports"],
             [B_TRASH, "Vider un champ et son Type"],
             [B_PLUS + " " + B_MINUS, "Ajouter / retirer les champs optionnels 6 et 7"],
             [B_C, "Réactiver la confirmation avant écrasement"],
             [B_HELP, "Cette aide"],
         ]) +
-        hTip("Chaque sortie prend comme nom le <b>Type</b> de sa ligne, ex. <b>diffusion_models</b>.", TIP_FR),
+        hNote("SelectMod ne lit que les dossiers de modèles : <b>models</b> de ComfyUI et <b>Models (Linker)</b>.", NOTE_FR),
     },
     {
-        id: "folders", title: "Choisir les dossiers",
-        html: hList([
-            "<b>Models folder shortcut...</b> remplit <b>Origin directory</b> avec un dossier de votre " +
-            "installation : root, models, output, input, temp, user, custom_nodes.",
-            "<b>Models (Linker)</b> s'ajoute quand un fichier <b>extra_model_paths.yaml</b> existe à la racine " +
-            "de ComfyUI.",
-            B_FOLDER + " ouvre l'explorateur Windows ; vous pouvez aussi coller le chemin à la main.",
-            B_DIRS + " liste les sous-dossiers qui contiennent directement au moins un fichier.",
-            "Un clic sur un dossier le place dans <b>Selected directory</b> ; " + B_FILES +
-            " liste alors ses fichiers.",
-            "Le menu d'extension filtre les fichiers. Il est grisé quand le dossier n'a qu'une seule extension.",
-        ]) +
-        hNote("les fichiers <b>.json</b>, <b>.info</b>, <b>.md</b> et <b>.sha*</b> ne sont jamais listés.", NOTE_FR),
-    },
-    {
-        id: "fields", title: "Champs numérotés",
+        id: "fields", title: "Champs",
         html: hList([
             "Les boutons carrés choisissent le champ qui reçoit le prochain fichier. Un seul est actif à la fois.",
-            "<b>Absolute</b> / <b>Relative</b> fixe le format du chemin écrit au clic.",
-            "Un champ rempli garde son format, même si vous changez de mode pour en remplir un autre.",
-            "Les champs peuvent aussi être tapés ou modifiés à la main.",
-            B_TRASH + " vide le champ et son <b>Type</b> d'un coup, sans confirmation.",
+            "Le petit champ <b>Type</b> se remplit avec le dossier qui suit <b>models</b>, par ex. <b>vae</b>.",
+            "Un champ peut être tapé ou modifié à la main.",
+            B_TRASH + " vide le champ et son <b>Type</b> d'un coup.",
+            B_PLUS + " ajoute le champ 6 (<b>Option 1</b>), puis le champ 7 (<b>Option 2</b>) ; " + B_MINUS + " retire le dernier.",
+            "Sorties : <b>unused 1</b> à <b>unused 5</b> (champs 1 à 5), <b>model_link</b> (le dossier de sauvegarde), " +
+                "<b>Option 1</b> / <b>Option 2</b>. Un double-clic sur le nom d'une sortie la renomme.",
         ]) +
         hCard("Écraser un champ rempli", [
             ["⚠️", "Une confirmation est demandée avant qu'un fichier remplace une valeur."],
-            ["☑️", "<b>Don't ask again</b> désactive la confirmation pour ce noeud."],
+            ["☑️", "<b>Don't ask again</b> la désactive pour ce nœud."],
             [B_C, "Affiché tant qu'elle est désactivée : cliquez pour la réactiver."],
         ]),
     },
     {
-        id: "type", title: "Champ Type",
+        id: "window", title: "La fenêtre des dossiers",
         html: hList([
-            "Le petit champ <b>Type</b> devant chaque champ se remplit au choix d'un fichier.",
-            "Il prend le dossier qui suit <b>models</b> dans le chemin, ex. <b>.../models/loras</b> donne " +
-            "<b>loras</b>.",
-            "Sans dossier <b>models</b>, il prend le dernier dossier du chemin.",
-            "Il se modifie à la main. Il n'a pas de sortie propre.",
+            "<b>À gauche</b> : les dossiers de <b>models</b> et <b>Models (Linker)</b> ; ▸ ouvre un dossier, le nombre est celui de ses fichiers de modèles.",
+            "<b>À droite</b> : les fichiers du dossier choisi, avec taille et date. Un clic sur le titre d'une colonne la trie.",
+            "<b>Recherche</b> (en haut) : fichiers du dossier et de ses sous-dossiers dont le nom contient tous les mots.",
+            "<b>Un clic</b> remplit le champ actif et garde la fenêtre ouverte ; <b>double-clic</b> remplit et ferme.",
+            "<b>↺</b> relit les dossiers. La ligne du bas montre le chemin complet du fichier sous la souris.",
+            "Close, Échap ou un clic à côté ferme la fenêtre.",
         ]) +
-        hTip("Le Type donne aussi son nom à la sortie de sa ligne : voir <b>Sorties</b>.", TIP_FR),
+        hTip("la fenêtre s'ouvre sur le dossier du champ actif, sinon sur le dernier dossier utilisé.", TIP_FR),
     },
     {
-        id: "options", title: "Champs optionnels",
-        html: hSteps([
-            B_PLUS + " sous les champs ajoute le champ <b>6</b> avec la sortie <b>Option 1</b>.",
-            "Un deuxième clic ajoute le champ <b>7</b> avec la sortie <b>Option 2</b>. Le bouton disparaît alors.",
-            B_MINUS + " retire le dernier champ ajouté, avec son contenu et sa sortie.",
+        id: "mode", title: "Absolute / Relative",
+        html: hCard("Format du chemin écrit au clic", [
+            ["<b>Absolute</b>", "le chemin complet, par ex. <b>G:\\GenerateurIA\\models\\vae\\v.safetensors</b>"],
+            ["<b>Relative</b>", "le chemin depuis le dossier de modèles, par ex. <b>vae/v.safetensors</b>"],
         ]) +
         hList([
-            "Un champ à la fois, seulement à votre demande.",
-            "Si la sortie à retirer est connectée, une confirmation est demandée avant de supprimer le(s) lien(s).",
-            "Le nombre de champs ajoutés est sauvegardé avec le workflow.",
+            "Un champ rempli garde son format, même si vous changez de mode pour en remplir un autre.",
+            "Au Run, un chemin hors des dossiers de modèles est refusé avec un message.",
         ]),
     },
     {
-        id: "outputs", title: "Sorties",
-        html: hList([
-            "<b>unused 1</b> à <b>unused 5</b> : le chemin des champs 1 à 5 (le numéro correspond au champ).",
-            "<b>model_link</b> : le dossier de sauvegarde choisi avec la roue crantée (vide s'il n'y en a pas).",
-            "<b>Option 1</b> / <b>Option 2</b> : les champs 6 et 7, quand ils sont ajoutés.",
-            "Sorties « joker » : elles se branchent sur n'importe quelle entrée, mais la valeur transmise est " +
-            "toujours du texte.",
-        ]) +
-        hCard("Noms des sorties", [
-            ["🏷️", "<b>Automatique</b> : chaque sortie prend le <b>Type</b> de sa ligne et le suit."],
-            ["🔢", "Les Types identiques sont numérotés dans l'ordre : <b>loras (1)</b>, <b>loras (2)</b>."],
-            ["✏️", "<b>Double-clic</b> sur un nom pour le renommer (Entrée ou clic ailleurs valide, Échap annule)."],
-            ["📌", "Un nom saisi à la main est conservé. Videz-le pour revenir au nom automatique."],
-        ]) +
-        hNote("seul le nom affiché change ; le menu clic droit <b>Rename output \"...\"</b> fait la même chose.",
-            NOTE_FR),
-    },
-    {
-        id: "txt", title: "Export et import",
+        id: "export", title: "Export / Import",
         html: hCard("Fichier de champs (.json)", [
             [B_DOWNLOAD, "Exporte les champs remplis dans <b>yyyyMMdd-HHmmss_selectmod_fields.json</b>."],
-            [B_GEAR, "Choisit le <b>dossier de sauvegarde</b> : l'export y est écrit. Sans dossier de " +
-                "sauvegarde, le navigateur le télécharge."],
-            [B_UPLOAD, "Importe un fichier .json (ou un ancien .txt) et remplit les champs, sans confirmation."],
+            [B_GEAR, "Fixe le <b>dossier de sauvegarde</b> : l'export y est écrit ; sans lui, le navigateur le télécharge."],
+            [B_UPLOAD, "Importe un fichier SelectMod, ou un fichier exporté par <b>MultiFiles Select</b> (.json ou ancien .txt)."],
         ]) +
-        hCode('{\n  "format": "MultiFiles Select",\n  "version": 1,\n  "fields": [\n' +
-            '    { "field": 1, "type": "diffusion_models", "path": "MonDossier\\\\modele.safetensors" }\n  ]\n}') +
-        hList([
-            "La date et l'heure dans le nom évitent qu'un nouvel export écrase un ancien.",
-            "Un champ absent du fichier, ou une valeur vide, vide ce champ.",
-            "Un champ 6 ou 7 rempli ajoute automatiquement le champ optionnel.",
-            "Le dossier de sauvegarde est gardé avec le noeud (enregistré dans le workflow) et affiché au " +
-                "survol de " + B_GEAR + ".",
-        ]),
+        hTip("pour passer de MultiFiles Select à SelectMod : exportez depuis MultiFiles Select, importez dans SelectMod.", TIP_FR),
     },
     {
-        id: "limits", title: "Bon à savoir",
+        id: "project", title: "Lien avec le nœud Project",
+        html: hSteps([
+            "Branchez la sortie <b>model_link</b> sur l'entrée <b>models_link</b> de <b>MagicStudio Project</b>.",
+            "Sans dossier de sauvegarde, le nœud Project le règle sur <b>02.Models</b> du projet.",
+            "Chaque Run enregistre alors les modèles des champs (fenêtre <b>02.Models</b> du nœud Project).",
+        ]) +
+        hNote("cela marche comme MultiFiles Select : les anciens workflows avec MultiFiles Select continuent de marcher.", NOTE_FR),
+    },
+    {
+        id: "good", title: "Bon à savoir",
         html: hList([
-            "Fonctionne avec le design classique des nœuds et avec <b>Modern Node Design (Nodes 2.0)</b> : " +
-            "dans les deux, les noms de sortie se renomment par double-clic (ou par le menu clic droit).",
-            B_FOLDER + " et <b>Browse</b> utilisent l'explorateur Windows ; sur un autre système, collez " +
-            "le chemin.",
-            "Un noeud enregistré avant une mise à jour garde ses anciens noms de sortie tant qu'il n'est pas recréé.",
-            "La valeur d'une sortie est du texte : un noeud qui attend une image ou un modèle la refusera à " +
-            "l'exécution.",
+            "Les fichiers <b>.json</b>, <b>.info</b>, <b>.md</b> et <b>.sha*</b> ne sont jamais listés.",
+            "Un dossier tapé à la main hors des dossiers de modèles est refusé ; l'ancienne valeur est gardée.",
+            "Marche avec le design classique des nœuds et avec <b>Nodes 2.0</b>.",
+            "La valeur d'une sortie est un texte : un nœud qui attend une image ou un modèle la refuse au Run.",
         ]),
     },
 ];
 
-// Textes de la fenetre d'aide et du choix de langue.
 const HELP_UI = {
     en: {
         name: "English", title: "Help", search: "Search help...", close: "Close (Esc)", next: "Next: ",

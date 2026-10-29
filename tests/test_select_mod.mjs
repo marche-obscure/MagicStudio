@@ -54,3 +54,16 @@ test("SelectMod : recherche sans accents ni casse, tous les mots", () => {
     assert.ok(!matchesSearch("Wan2.2_T2V_fp8.safetensors", "wan bf16"));
     assert.ok(matchesSearch("x.safetensors", "  "));
 });
+
+test("SelectMod : aide EN / FR, memes rubriques dans le meme ordre", async () => {
+    const { readFileSync } = await import("node:fs");
+    const text = readFileSync(new URL("../web/js/select_mod_node.js", import.meta.url), "utf-8");
+    const block = (name) => {
+        const start = text.indexOf("const " + name + " = [");
+        const end = text.indexOf("\n];", start);
+        return [...text.slice(start, end).matchAll(/^ {8}id: "(\w+)"/gm)].map((m) => m[1]);
+    };
+    const order = ["start", "fields", "window", "mode", "export", "project", "good"];
+    assert.deepEqual(block("HELP_SECTIONS"), order);
+    assert.deepEqual(block("HELP_SECTIONS_FR"), order);
+});

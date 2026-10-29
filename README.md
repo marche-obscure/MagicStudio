@@ -264,6 +264,14 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 - A file dragged from the Windows Explorer gives no path to the browser: drag it from Final Cut, or type its path.
 - The **?** button opens its help (Quick start, Outputs, Accepted files), in English or French.
 
+## MagicStudio SelectMod node
+
+- Picks up to 7 model files (diffusion model, text encoder, VAE, LoRA...) **in the models folders only**: `models` of ComfyUI and **Models (Linker)** (the `models` folder of `extra_model_paths.yaml`). Any other path is refused, by the window and at run time.
+- The folder button opens a **MagicStudio window** next to the node: the folder tree on the left (with the number of model files), the files on the right (name, size, date, sorted by a click on a column title), a search, and the full path of the file under the mouse. One click fills the active field; a double-click fills it and closes the window.
+- Same fields and outputs as MultiFiles Select: 5 fields (`unused 1` to `unused 5`), `model_link` (save folder), `Option 1` / `Option 2`, Absolute / Relative paths, Type of each field, overwrite confirmation, export / import (it also reads the files exported by MultiFiles Select).
+- Wire `model_link` to the `models_link` input of **MagicStudio Project**: each run records the models of the fields, exactly as with MultiFiles Select.
+- The **?** button opens its help (Quick start, Fields, The folder window, Absolute / Relative, Export / Import, Link to the Project node, Good to know), in English or French.
+
 ## Post-processing
 
 - A file saved **after a MagicStudio MedLoad** that loads a file of a run is added to **that run** (the original run) as **Post 1**, not recorded as a new run. Retouch Post 1 again and you get **Post 2** of the same run.
