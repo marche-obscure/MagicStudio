@@ -100,6 +100,13 @@ const HELP_SECTIONS = [
                 ["Right", "plays the clicked file, with <b>File</b>, <b>Path</b> and <b>Source</b>"],
                 ["Cancel", "closes the window"],
             ]) +
+            hCard("Frames of a video (Video window)", [
+                ["Strip", "a scissors icon and small tiles <b>First</b>, <b>Last</b> and <b>N</b>, in List under the row, in Thumbnails to the right of the big thumbnail"],
+                ["Which videos", "every video whose project or sub-project has images in <b>Picture Lock/Extract Frame</b> (made with Extract Frame in the MagicStudio Project node). No Sync needed"],
+                ["N", "the <b>FRAME_</b> images in number order: use <b>◀</b> and <b>▶</b> to go through them"],
+                ["Drag", "drag a tile onto <b>MiniMax H3 Director</b> or onto <b>MagicStudio MedLoad</b>. MedLoad accepts only files inside the ComfyUI input folder: if the projects folder is elsewhere, MedLoad refuses the image, H3 Director still takes it"],
+                ["Click", "click a tile to see the image on the right; click the video to play it again"],
+            ]) +
             hNote("the window does not block the canvas: move it by its title to see MiniMax H3 Director, then drag."),
     },
     {
@@ -172,6 +179,13 @@ const HELP_SECTIONS_FR = [
                 ["Gauche", "les fichiers groupés par projet (<b>01. Nom</b>), les plus récents d'abord"],
                 ["Droite", "lecture du fichier cliqué, avec <b>File</b>, <b>Path</b> et <b>Source</b>"],
                 ["Cancel", "ferme la fenêtre"],
+            ]) +
+            hCard("Images d'une vidéo (fenêtre Video)", [
+                ["Bande", "une icône de ciseaux et de petites vignettes <b>First</b>, <b>Last</b> et <b>N</b>, en List sous la ligne, en Thumbnails à droite de la grande vignette"],
+                ["Quelles vidéos", "toute vidéo dont le projet ou le sous-projet a des images dans <b>Picture Lock/Extract Frame</b> (faites avec Extract Frame dans le nœud MagicStudio Project). Pas besoin de Sync"],
+                ["N", "les images <b>FRAME_</b> dans l'ordre des numéros : utilisez <b>◀</b> et <b>▶</b> pour les parcourir"],
+                ["Glisser", "glissez une vignette sur <b>MiniMax H3 Director</b> ou sur <b>MagicStudio MedLoad</b>. MedLoad n'accepte que les fichiers du dossier input de ComfyUI : si le dossier des projets est ailleurs, MedLoad refuse l'image, H3 Director la prend quand même"],
+                ["Clic", "cliquez une vignette pour voir l'image à droite ; cliquez la vidéo pour la relire"],
             ]) +
             hNote("la fenêtre ne bloque pas le canevas : déplacez-la par son titre pour voir MiniMax H3 Director, " +
                 "puis glissez.", "Remarque :"),
@@ -561,15 +575,15 @@ function buildFilesWindow(container, ctx) {
                     selected = frameKey(numbered[next]);
                     showStage(numbered[next], null, true);
                 }
-                tile.replaceWith(numberedTile(copyName, numbered, side));
+                // Tout redessiner (position gardee) : la meme image peut etre dans la bande d'une autre video.
+                renderFiles();
             });
             return b;
         };
         const text = document.createElement("span");
         text.textContent = numberedLabel(entry);
         row.append(arrow("◀", -1, "Previous frame"), text, arrow("▶", 1, "Next frame"));
-        const tile = frameTile(entry, row, side);
-        return tile;
+        return frameTile(entry, row, side);
     }
 
     /** Bande d'une video : ciseaux, First, Last, N (seulement les vignettes qui existent), sinon null. */
@@ -708,6 +722,7 @@ function buildFilesWindow(container, ctx) {
             selected = "";
             viewPill.paint(view);
             paintHead();
+            left.scrollTop = 0; // ouverture ou changement de type : on repart du haut
             renderFiles();
             showStage(null);
             say("Drag a file onto MiniMax H3 Director; click it to play it.", true);
