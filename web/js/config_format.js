@@ -2,7 +2,7 @@
 // sauvegarde (Download) et chargement (Upload). Module sans dependance a
 // ComfyUI, teste par tests/test_config_format.mjs et tests/test_config_json.mjs.
 
-import { profileOf } from "./profiles.js";
+import { profileOf, variantOf, rowsOf, migrateState, variantTrimKey, FALLBACK_DESCRIPTION } from "./profiles.js";
 
 export const CONFIG_LIMITS = { image: 9, video: 3, video_audio: 3, audio: 3 };
 // Plafonds du profil LTX 2.x (fichier de configuration).
@@ -203,4 +203,96 @@ function parseLtx(obj, root, abs) {
         moments,
         trims,
     };
+}
+
+// --------------------------------------------------------------------
+// Version 3 (plan des variantes, 29/10/2026) : une variante par fichier.
+//   { "format": "MiniMax H3 Reference Loader", "version": 3, "variant": "ltx.2_5", "root": "...",
+//     "rows": { "guide_images": [{"path": "a.png", "seconds": 0}], "soundtrack": [{"path": "s.wav", "trim": [0, 4]}] } }
+// Lignes, plafonds, rognages et moments lus dans la description (profiles.js). Les fonctions
+// d'avant (formatConfigJson / parseConfigJson) restent le temps que le RefLoader passe aux variantes.
+// --------------------------------------------------------------------
+const VARIANT_PREFIX = {
+    "minimax_h3.ref2va": "REF2VA_minimax_config_",
+    "minimax_h3.fl2va": "FL2VA_minimax_config_",
+    "ltx.2_3": "LTX23_magicstudio_config_",
+    "ltx.2_5": "LTX25_magicstudio_config_",
+};
+
+/** Debut du nom du fichier telecharge pour la variante affichee (suivi de yyyyMMdd-HHmmss.json). */
+export function variantConfigPrefix(state, desc) {
+    const v = variantOf(state, desc);
+    return VARIANT_PREFIX[v] || v.replace(/[^A-Za-z0-9]+/g, "").toUpperCase() + "_magicstudio_config_";
+}
+
+/** Etat au format des variantes -> texte JSON de la variante affichee. */
+export function formatVariantConfig(state, desc) {
+    const v = variantOf(state, desc);
+    const root = (state && state.root) || "";
+    const sel = ((state && state.selections) || {})[v] || {};
+    const rows = {};
+    for (const r of rowsOf(desc, v)) {
+        const trims = (sel.trims || {})[r.id] || {};
+        const moments = (sel.moments || {})[r.id] || {};
+        rows[r.id] = ((sel.rows || {})[r.id] || []).slice(0, r.max).map((p) => {
+            const o = { path: toRelative(root, p) };
+            const m = moments[variantTrimKey(p)];
+            if (r.moment && typeof m === "number" && Number.isFinite(m)) o.seconds = m;
+            const t = trims[variantTrimKey(p)];
+            if (r.trim && t) o.trim = [t[0], t[1]];
+            return o;
+        });
+    }
+    return JSON.stringify({ format: JSON_FORMAT, version: 3, variant: v, root: root || null, rows }, null, 2) + "\n";
+}
+
+/**
+ * Texte JSON -> { variant, header, root, rows, trims, moments } (chemins absolus, une variante).
+ * Versions 1 et 2 lues par parseConfigJson puis converties par migrateState. Tolerant :
+ * elements en chaine ou en objet, lignes inconnues ignorees, plafond de chaque ligne.
+ */
+export function parseVariantConfig(text, desc) {
+    const d = desc && desc.variants ? desc : FALLBACK_DESCRIPTION;
+    if (!String(text).trimStart().startsWith("{")) throw new Error("Only .json configuration files are supported.");
+    let obj;
+    try {
+        obj = JSON.parse(text);
+    } catch (e) {
+        throw new Error("This file is not valid JSON.");
+    }
+    if (!obj || typeof obj !== "object" || obj.format !== JSON_FORMAT) {
+        throw new Error("This file is not a MiniMax H3 Reference Loader configuration.");
+    }
+    if (Number(obj.version) < 3) {
+        const s = migrateState(parseConfigJson(text), d);
+        const sel = s.selections[s.variant];
+        return { variant: s.variant, header: true, root: s.root || "", rows: sel.rows, trims: sel.trims, moments: sel.moments };
+    }
+    const v = obj.variant;
+    if (!d.variants[v]) throw new Error("Unknown variant: " + v);
+    const root = typeof obj.root === "string" ? obj.root.trim() : "";
+    const str = (x) => (typeof x === "string" && x.trim() ? x.trim() : "");
+    const inRows = obj.rows && typeof obj.rows === "object" ? obj.rows : {};
+    const out = { variant: v, header: true, root, rows: {}, trims: {}, moments: {} };
+    for (const r of rowsOf(d, v)) {
+        const items = Array.isArray(inRows[r.id]) ? inRows[r.id] : [];
+        out.rows[r.id] = [];
+        if (r.trim) out.trims[r.id] = {};
+        if (r.moment) out.moments[r.id] = {};
+        for (const it of items) {
+            if (out.rows[r.id].length >= r.max) break;
+            const p = str(typeof it === "string" ? it : it && it.path);
+            if (!p) continue;
+            const path = toAbsolute(root, p);
+            out.rows[r.id].push(path);
+            if (!it || typeof it !== "object") continue;
+            const key = variantTrimKey(path);
+            if (r.moment && typeof it.seconds === "number" && Number.isFinite(it.seconds)) out.moments[r.id][key] = it.seconds;
+            const t = it.trim;
+            if (r.trim && Array.isArray(t) && t.length === 2 && Number(t[0]) >= 0 && Number(t[1]) > Number(t[0])) {
+                out.trims[r.id][key] = [Number(t[0]), Number(t[1])];
+            }
+        }
+    }
+    return out;
 }
