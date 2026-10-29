@@ -1,0 +1,40 @@
+{
+  "layout": [
+    {"state": {"variant": "minimax_h3.ref2va", "selections": {"minimax_h3.ref2va": {"rows": {"images": ["a.png", "b.png"]}}}},
+     "keys": ["ref_image_1", "ref_image_2", "ref_video_1", "ref_video_audio_1", "ref_audio_1"]},
+    {"state": {"variant": "minimax_h3.fl2va"}, "keys": ["first_frame", "last_frame"]},
+    {"state": {"variant": "ltx.2_3", "selections": {"ltx.2_3": {"rows": {"guide_images": ["a.png", "b.png"]}}}},
+     "keys": ["fps", "width", "height", "length", "guide_image_1", "guide_frame_1", "guide_image_2", "guide_frame_2",
+              "guide_video", "guide_video_frame", "soundtrack", "voice"]},
+    {"state": {"variant": "ltx.2_5", "selections": {"ltx.2_3": {"rows": {"guide_images": ["a.png", "b.png"]}}}},
+     "keys": ["fps", "width", "height", "length", "guide_image_1", "guide_frame_1", "guide_video", "guide_video_frame",
+              "soundtrack", "voice"]},
+    {"state": {"variant": "minimax_h3.ref2va", "limits": {"minimax_h3.ref2va": {"counts": {"images": 2}}},
+               "selections": {"minimax_h3.ref2va": {"rows": {"images": ["1", "2", "3", "4", "5"]}}}},
+     "keys": ["ref_image_1", "ref_image_2", "ref_video_1", "ref_video_audio_1", "ref_audio_1"]}
+  ],
+  "settings": [
+    {"state": {"variant": "ltx.2_3"}, "values": {"fps": 24, "width": 768, "height": 1344, "length": 481}},
+    {"state": {"variant": "ltx.2_3", "limits": {"ltx.2_3": {"seconds": 4}}}, "values": {"length": 97}},
+    {"state": {"variant": "ltx.2_3", "limits": {"ltx.2_3": {"seconds": 4.1}}}, "values": {"length": 97}},
+    {"state": {"variant": "ltx.2_5", "limits": {"ltx.2_5": {"max_size": [500, 900]}}}, "values": {"width": 480, "height": 896}}
+  ],
+  "step_frame": [[48, 8, 41], [49, 8, 49], [0, 8, 0], [-1, 8, -1], [10, 4, 9]],
+  "frames_step": [[100, 8, 97], [100, 4, 97], [8, 8, 1], [0, 8, 0]],
+  "migrate": [
+    {"state": {"mode": "ref2va", "images": ["a.png"], "videos": [{"file": "v.mp4", "sound": true}],
+               "trims": {"video": {"V.mp4": [1, 3]}}, "folders": {"image": "G:/i"}, "root": "G:/r"},
+     "variant": "minimax_h3.ref2va",
+     "rows": {"minimax_h3.ref2va": {"images": ["a.png"], "videos": ["v.mp4"], "video_audios": ["v.mp4"], "audios": []}},
+     "trims": {"minimax_h3.ref2va": {"videos": {"v.mp4": [1, 3]}}}, "keep": {"root": "G:/r", "folders": {"image": "G:/i"}}},
+    {"state": {"mode": "fl2va", "first_frame": "f.png", "last_frame": ["l.png"]},
+     "variant": "minimax_h3.fl2va", "rows": {"minimax_h3.fl2va": {"first_frame": ["f.png"], "last_frame": ["l.png"]}}},
+    {"state": {"profile": "ltx2", "guide_images": ["g.png"], "moments": {"guide_images": {"G.png": -1}},
+               "limits": {"ltx2": {"guide_image": 4, "seconds": 8}, "minimax_h3": {"image": 3}}},
+     "variant": "ltx.2_3", "rows": {"ltx.2_3": {"guide_images": ["g.png"]}},
+     "moments": {"ltx.2_3": {"guide_images": {"g.png": -1}}},
+     "limits": {"ltx.2_3": {"counts": {"guide_images": 4}, "seconds": 8},
+                "minimax_h3.ref2va": {"counts": {"images": 3}}}},
+    {"state": "not a dict", "variant": "minimax_h3.ref2va", "rows": {"minimax_h3.ref2va": {"images": []}}}
+  ]
+}

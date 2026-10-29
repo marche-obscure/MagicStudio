@@ -180,7 +180,9 @@ try:
             for k in profiles.COUNT_KEYS[pid]:
                 bounds[k] = [1, lim[k]]
             items.append({"id": pid, "label": profiles.LABELS[pid], "limits": lim, "bounds": bounds})
-        return web.json_response({"profiles": items, "default": profiles.DEFAULT_PROFILE})
+        # Description des variantes (29/10/2026) sous sa propre cle : "default" garde son ancien sens.
+        return web.json_response({"profiles": items, "default": profiles.DEFAULT_PROFILE,
+                                  "description": profiles.description()})
 
     @routes.get("/mmrefloader/subfolders")
     async def mmrefloader_subfolders(request):
