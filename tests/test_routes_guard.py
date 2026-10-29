@@ -80,6 +80,11 @@ class ExtractRoutesTest(unittest.TestCase):
         self.assertLess(helper.index("require_project("), helper.index("check_lock_change("))
         self.assertIn("[MagicStudio Project]", helper)
 
+    def test_sort_output_holds_the_extract_lock(self):
+        body = route_bodies()["/mmproject/sort_output"]
+        self.assertIn("extract_frame.lock_for(", body)
+        self.assertLess(body.index("sort_output("), body.index("_extract_change("))
+
     def test_trash_function_follows_availability(self):
         with open(INIT, encoding="utf-8") as f:
             text = f.read()

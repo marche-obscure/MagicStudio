@@ -4,8 +4,10 @@ les ecrit en PNG, note la video d'origine (.extract.json) et applique les regles
 video change. Numerotation des images a partir de 0. Rien n'est supprime sans la Corbeille.
 """
 
+import functools
 import json
 import os
+import threading
 
 import av
 
@@ -20,6 +22,54 @@ STATE_FILE = ".extract.json"
 PREFIXES = ("FIRST_FRAME_", "LAST_FRAME_", "FRAME_")
 
 _INFO_CACHE = {}
+
+
+# --- exclusion mutuelle par projet ----------------------------------------------------------
+# Un seul verrou (RLock, donc re-entrant) par projet. Il est pris ici par extract, check_lock_change
+# et replace_first_last, et par la route sort_output autour du tri ET du controle qui suit : une
+# lecture des Runs ne peut pas tomber au milieu d'un tri (video momentanement absente du Picture Lock).
+_LOCKS = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def lock_for(project):
+    key = os.path.normcase(os.path.abspath(project))
+    with _LOCKS_GUARD:
+        if key not in _LOCKS:
+            _LOCKS[key] = threading.RLock()
+        return _LOCKS[key]
+
+
+def _locked(fn):
+    @functools.wraps(fn)
+    def wrapper(project, *args, **kwargs):
+        with lock_for(project):
+            return fn(project, *args, **kwargs)
+    return wrapper
+
+
+def _flag(body, key):
+    v = body.get(key, False)
+    if not isinstance(v, bool):
+        raise ValueError("'%s' must be true or false" % key)
+    return v
+
+
+def parse_request(body):
+    """Corps de POST /mmproject/extract -> (which, n, overwrite) ; ValueError si invalide."""
+    if not isinstance(body, dict):
+        raise ValueError("Invalid request body")
+    n = body.get("n")
+    if n is not None and (isinstance(n, bool) or not isinstance(n, int)):
+        raise ValueError("'n' must be a whole number")
+    return str(body.get("which", "")), n, _flag(body, "overwrite")
+
+
+def parse_keep(body):
+    """Corps de POST /mmproject/extract/replace -> keep (bool) ; ValueError si invalide."""
+    if not isinstance(body, dict):
+        raise ValueError("Invalid request body")
+    return _flag(body, "keep")
 
 
 def extract_dir(project):
@@ -187,6 +237,7 @@ def _save(project, video, items, overwrite):
     return {"written": written, "exists": exists}
 
 
+@_locked
 def extract(project, which, n=None, overwrite=False):
     video = lock_video(project)
     if video is None:
@@ -218,9 +269,13 @@ def _trash(trash_fn, folder, names):
     return None
 
 
+@_locked
 def check_lock_change(project, trash_fn):
     """Regles de la section 6 de la spec ; seuls les PNG aux PREFIXES sont touches."""
     res = {"emptied": [], "deleted": [], "ask_replace": [], "trash_error": None}
+    lock_folder = os.path.join(project, run_record.RUSH_VIDEOS, run_record.SORT_FOLDERS[run_record.LOCK])
+    if os.path.isdir(lock_folder) and any(n.lower().endswith(".part") for n in os.listdir(lock_folder)):
+        return res  # copie en cours : la video n'est pas encore la, on ne decide rien
     folder = extract_dir(project)
     names = _extraction_files(project)
     state = _read_state(project)
@@ -266,6 +321,7 @@ def check_lock_change(project, trash_fn):
     return res
 
 
+@_locked
 def replace_first_last(project, keep):
     """keep=False : FIRST/LAST presents sont reextraits de la nouvelle video ; keep=True : gardes."""
     video = lock_video(project)

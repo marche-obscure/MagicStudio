@@ -192,6 +192,43 @@ class ListingTest(Base):
         self.assertEqual(ef.listing(self.project), [])
 
 
+class LockAndRequestTest(Base):
+    def test_part_file_in_lock_means_nothing_happens(self):
+        ef.extract(self.project, "fl")
+        before = self.state()
+        os.remove(self.video)
+        with open(os.path.join(self.lock, "big.mp4.part"), "wb") as f:
+            f.write(b"x")
+        res = ef.check_lock_change(self.project, FakeTrash())
+        self.assertEqual(res["emptied"] + res["deleted"] + res["ask_replace"], [])
+        self.assertEqual(len(ef.listing(self.project)), 2)
+        self.assertEqual(self.state(), before)
+
+    def test_lock_for_same_project_written_two_ways(self):
+        a = ef.lock_for(self.project)
+        b = ef.lock_for(self.project.replace("\\", "/").upper())
+        self.assertIs(a, b)
+        self.assertIsNot(a, ef.lock_for(self.project + "_other"))
+
+    def test_lock_is_reentrant(self):
+        with ef.lock_for(self.project):
+            ef.extract(self.project, "first")
+
+    def test_parse_request(self):
+        self.assertEqual(ef.parse_request({"which": "n", "n": 3, "overwrite": True}), ("n", 3, True))
+        self.assertEqual(ef.parse_request({"which": "first"}), ("first", None, False))
+        for bad in ({"n": True}, {"n": "3"}, {"n": 1.5}, {"overwrite": "false"}, {"overwrite": 1}, [], None, "x"):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                ef.parse_request(bad)
+
+    def test_parse_keep(self):
+        self.assertIs(ef.parse_keep({"keep": True}), True)
+        self.assertIs(ef.parse_keep({}), False)
+        for bad in ({"keep": "false"}, {"keep": 0}, [], None):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                ef.parse_keep(bad)
+
+
 class ChangeTest(Base):
     def prepare(self):
         ef.extract(self.project, "fl")

@@ -471,6 +471,9 @@ try:
         """Regles de changement de video du Picture Lock (Extract Frame) ; None si rien ne s'est passe ou en cas d'echec."""
         try:
             projects.require_project(project)  # la lecture des Runs n'a pas de garde : on ne supprime que dans un vrai projet
+        except (ValueError, FileNotFoundError):
+            return None  # pas un projet : rien a faire, pas de message
+        try:
             trash_fn = projects._to_recycle_bin if projects.TRASH_AVAILABLE else None
             res = extract_frame.check_lock_change(project, trash_fn)
         except Exception as e:  # ne casse jamais la lecture des Runs ni le tri
@@ -544,9 +547,14 @@ try:
         try:
             body = await request.json()
             projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
-            data = await _in_executor(run_record.sort_output, body.get("project", ""), body.get("run", ""),
-                                      body.get("index"), body.get("target", ""), bool(body.get("swap")))
-            change = await _in_executor(_extract_change, body.get("project", ""))
+            def work():
+                # Meme verrou qu'Extract Frame : le tri et le controle qui suit ne sont pas coupes par une lecture des Runs.
+                with extract_frame.lock_for(body.get("project", "")):
+                    res = run_record.sort_output(body.get("project", ""), body.get("run", ""),
+                                                 body.get("index"), body.get("target", ""), bool(body.get("swap")))
+                    change = _extract_change(body.get("project", ""))
+                return res, change
+            data, change = await _in_executor(work)
             if change and isinstance(data, dict):
                 data["extract_change"] = change
         except Exception as e:
@@ -578,9 +586,8 @@ try:
         try:
             body = await request.json()
             projects.require_project(body.get("project", ""))  # vrai projet seulement
-            n = body.get("n")
-            data = await _in_executor(extract_frame.extract, body.get("project", ""), body.get("which", ""),
-                                      None if n is None else int(n), bool(body.get("overwrite")))
+            which, n, overwrite = extract_frame.parse_request(body)
+            data = await _in_executor(extract_frame.extract, body.get("project", ""), which, n, overwrite)
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
@@ -592,7 +599,7 @@ try:
             body = await request.json()
             projects.require_project(body.get("project", ""))  # vrai projet seulement
             data = await _in_executor(extract_frame.replace_first_last, body.get("project", ""),
-                                      bool(body.get("keep")))
+                                      extract_frame.parse_keep(body))
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
