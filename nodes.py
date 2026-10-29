@@ -14,6 +14,7 @@ import os
 
 from . import load_media
 from . import media
+from . import profiles
 from . import projects
 from . import run_record
 from . import select_mod
@@ -38,6 +39,8 @@ ANY_TYPE = AnyType("*")
 PROJECT_TYPE = "MINIMAX_PROJECT"
 # Sortie final_cut du noeud Project -> entree du noeud Final Cut (choix utilisateur, 22/10/2026).
 FINAL_CUT_TYPE = "MINIMAX_FINAL_CUT"
+# Sortie package du RefLoader -> entree du noeud MagicStudio Container (variantes, 29/10/2026).
+PACKAGE_TYPE = "MAGICSTUDIO_PACKAGE"
 
 
 class MiniMaxH3RefLoader:
@@ -49,28 +52,52 @@ class MiniMaxH3RefLoader:
             },
         }
 
-    # Derniere sortie declaree "project" (Root folder pour le noeud Projet) :
-    # le JS l'affiche toujours apres les sorties du mode, et run() renvoie
-    # sa valeur a cette position (media.outputs_with_project).
-    # Noms techniques : 18 sorties MiniMax, 4 de reserve, project (media.declared_output_names).
-    # Le JS les renomme et les reordonne selon le profil et la selection.
-    RETURN_NAMES = tuple(media.declared_output_names())
-    RETURN_TYPES = tuple(ANY_TYPE for _ in RETURN_NAMES)
+    # Variantes (29/10/2026) : deux sorties fixes, project (Root folder pour le noeud
+    # Project) puis package (fichiers charges de la variante affichee, pour le noeud
+    # MagicStudio Container). Elles ne bougent plus.
+    RETURN_TYPES = (ANY_TYPE, PACKAGE_TYPE)
+    RETURN_NAMES = ("project", "package")
     FUNCTION = "run"
     CATEGORY = "MagicStudio"
     DESCRIPTION = (
-        "Pick reference images, videos, video soundtracks and audio for "
-        "MiniMax H3 Reference to Video."
+        "Pick the reference files of a model variant (MiniMax H3 Ref2VA / F2VA / FL2VA, LTX 2.3 / 2.5) in "
+        "thumbnail galleries. Wire package to a MagicStudio Container to get the outputs of the variant."
     )
 
     @classmethod
     def IS_CHANGED(cls, state):
         # Recharge si la selection ou le Root folder change, ou si un fichier selectionne est modifie.
-        return media.state_signature(media.parse_state(state)) + "|" + media.parse_root(state)
+        return media.variant_signature(media.parse_variant_state(state)) + "|" + media.parse_root(state)
 
     def run(self, state):
-        s = media.parse_state(state)
-        return media.outputs_with_project(s, media.build_outputs(s), media.parse_root(state))
+        return (media.parse_root(state), media.build_package(media.parse_variant_state(state)))
+
+
+class MagicStudioContainer:
+    """
+    Noeud MagicStudio Container (variantes, 29/10/2026) : redonne les sorties de la
+    variante choisie dans le RefLoader relie (entree package). Le JS
+    (web/js/container_node.js) affiche les noms et types de la variante ; run()
+    renvoie les valeurs deja chargees par le RefLoader, dans l'ordre du package,
+    completees par None : rien n'est recharge, meme avec plusieurs Containers.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"package": (PACKAGE_TYPE,)}}
+
+    RETURN_TYPES = tuple(ANY_TYPE for _ in range(profiles.CONTAINER_OUTPUTS))
+    RETURN_NAMES = tuple("output_%d" % i for i in range(1, profiles.CONTAINER_OUTPUTS + 1))
+    FUNCTION = "run"
+    CATEGORY = "MagicStudio"
+    DESCRIPTION = "Gives the outputs of the variant chosen in the MagicStudio RefLoader wired to package."
+
+    def run(self, package):
+        layout = package.get("layout") if isinstance(package, dict) else None
+        values = package.get("values") if isinstance(package, dict) else None
+        out = [values.get(k) for k in layout] if isinstance(layout, list) and isinstance(values, dict) else []
+        out = out[:profiles.CONTAINER_OUTPUTS]
+        return tuple(out + [None] * (profiles.CONTAINER_OUTPUTS - len(out)))
 
 
 def default_projects_root():

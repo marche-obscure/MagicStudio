@@ -684,3 +684,110 @@ def build_outputs(state):
     out = [values.get(k) for k in state_layout(state)]
     out += [None] * (TOTAL_OUTPUTS - len(out))
     return tuple(out)
+
+
+# ----------------------------------------------------------------------
+# Variantes (plan des variantes, 29/10/2026) : package du RefLoader
+# Un seul chemin de calcul pour toutes les variantes, lu dans la description
+# (profiles.VARIANTS). Les fonctions d'avant (parse_state, build_outputs...)
+# restent le temps que tous les fichiers passent aux variantes.
+# ----------------------------------------------------------------------
+def parse_variant_state(raw):
+    """Etat JSON du widget -> etat au format des variantes (anciens etats convertis)."""
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except (ValueError, TypeError):
+        data = {}
+    return profiles.migrate_state(data if isinstance(data, dict) else {})
+
+
+def _variant_trim(sel, row_id, name):
+    t = (sel.get("trims") or {}).get(row_id, {}).get(trim_key(name))
+    return (t[0], t[1]) if t else (0.0, None)
+
+
+def _row_moments(sel, row, names):
+    """Moment (secondes, -1 = Last) de chaque fichier de la ligne : memorise, sinon regle par defaut."""
+    stored = (sel.get("moments") or {}).get(row["id"], {})
+    if row.get("moment") != "frame":
+        return [stored.get(trim_key(n), 0.0) for n in names]
+    # Image sans moment choisi : First s'il est libre, sinon Last (moments memorises d'abord).
+    used = [stored[trim_key(n)] for n in names if trim_key(n) in stored]
+    out = []
+    for n in names:
+        m = stored.get(trim_key(n))
+        if m is None:
+            m = profiles.default_moment(used)
+            used.append(m)
+        out.append(m)
+    return out
+
+
+def variant_selected_paths(state):
+    """Chemins complets des fichiers de la variante affichee."""
+    v = profiles.variant_of(state)
+    lim = profiles.variant_limits(state, v)
+    paths = []
+    for row in profiles.rows_of(v):
+        for name in profiles.row_list(state, row["id"], v)[:lim["counts"][row["id"]]]:
+            paths.append(_resolve(state, row["kind"], name))
+    return paths
+
+
+def variant_signature(state):
+    """Empreinte de l'etat + dates de modification des fichiers de la variante (IS_CHANGED)."""
+    stamps = []
+    for p in variant_selected_paths(state):
+        try:
+            stamps.append(os.path.getmtime(p))
+        except OSError:
+            stamps.append(None)
+    return json.dumps([state, stamps], sort_keys=True)
+
+
+def build_package(state):
+    """
+    Charge les fichiers de la variante affichee : {"variant", "layout": [noms des sorties],
+    "values": {nom: valeur}} ; reglages compris, None pour une sortie sans fichier. Les erreurs
+    nomment la sortie. Le Container renvoie ces valeurs sans rien recharger.
+    """
+    v = profiles.variant_of(state)
+    lim = profiles.variant_limits(state, v)
+    sel = (state.get("selections") or {}).get(v) or {}
+    fps, seconds, step = lim["fps"], lim["seconds"], lim["frame_step"]
+    pixels = lim["max_size"][0] * lim["max_size"][1]
+    layout = profiles.variant_layout(state)
+    rows = {r["id"]: r for r in profiles.rows_of(v)}
+    names = {rid: profiles.row_list(state, rid, v)[:lim["counts"][rid]] for rid in rows}
+    moments = {rid: _row_moments(sel, rows[rid], names[rid]) for rid in rows if rows[rid].get("moment")}
+    values = {}
+    for out in layout:
+        key, value = out["key"], out["value"]
+        if out["row"] is None:
+            values[key] = profiles.setting_value(value, lim)
+            continue
+        row, i = rows[out["row"]], out["index"]
+        if i >= len(names[row["id"]]):
+            values[key] = None
+            continue
+        name = names[row["id"]][i]
+        if value == "frame":
+            frame = profiles.seconds_to_frame(moments[row["id"]][i], fps, seconds)
+            values[key] = profiles.step_frame(frame, step) if row.get("moment") == "video_frame" else frame
+            continue
+        path = _checked(state, row["kind"], name, key)
+        start, end = _variant_trim(sel, row["id"], name)
+        if value == "image":
+            values[key] = load_image(path)
+        elif value == "video_frames":
+            frames, _ = load_video(path, max_seconds=seconds, max_pixels=pixels, start=start, end=end,
+                                   fps=fps, multiple=lim["multiple"])
+            values[key] = frames[:profiles.frames_step(frames.shape[0], step)] if step > 1 else frames
+        elif value == "audio":
+            try:
+                values[key] = load_audio(path, max_seconds=seconds, start=start, end=end)
+            except ValueError:
+                raise ValueError("%s: no soundtrack in %s" % (key, path))
+        else:
+            raise ValueError("%s: unknown value %s" % (key, value))
+    return {"variant": v, "layout": [o["key"] for o in layout], "values": values}

@@ -636,5 +636,114 @@ class SharedStateCasesTest(unittest.TestCase):
 
 
 
+class PackageTests(TmpDirTest):
+    """Package du RefLoader et noeud MagicStudio Container (variantes, 29/10/2026)."""
+
+    def state(self, data):
+        data = dict(data)
+        data.setdefault("folders", {"image": self.dir, "video": self.dir, "audio": self.dir})
+        return media.parse_variant_state(json.dumps(data))
+
+    def test_old_main_state_package(self):
+        # Etat JSON exactement comme sur main : Ref2VA 2 images + 1 video rognee + 1 son.
+        Image.new("RGB", (8, 8)).save(self.p("a.png"))
+        Image.new("RGB", (8, 8)).save(self.p("b.png"))
+        make_video(self.p("v.mp4"), 2, 24)
+        make_audio(self.p("s.wav"), 1)
+        raw = {"mode": "ref2va", "images": ["a.png", "b.png"], "videos": ["v.mp4"], "audios": ["s.wav"],
+               "trims": {"video": {media.trim_key(self.p("v.mp4")): [0.5, 1.5]}},
+               "folders": {"image": self.dir, "video": self.dir, "audio": self.dir}}
+        old = media.build_outputs(media.parse_state(json.dumps(raw)))
+        pkg = media.build_package(media.parse_variant_state(json.dumps(raw)))
+        self.assertEqual(pkg["variant"], "minimax_h3.ref2va")
+        self.assertEqual(pkg["layout"], ["ref_image_1", "ref_image_2", "ref_video_1", "ref_video_audio_1", "ref_audio_1"])
+        for i, key in enumerate(pkg["layout"]):
+            new = pkg["values"][key]
+            if old[i] is None:
+                self.assertIsNone(new, key)
+            elif hasattr(old[i], "shape"):
+                self.assertEqual(tuple(new.shape), tuple(old[i].shape), key)
+            else:
+                self.assertEqual(tuple(new["waveform"].shape), tuple(old[i]["waveform"].shape), key)
+
+    def test_old_fl2va_state(self):
+        Image.new("RGB", (8, 8)).save(self.p("f.png"))
+        pkg = media.build_package(self.state({"mode": "fl2va", "first_frame": "f.png"}))
+        self.assertEqual(pkg["layout"], ["first_frame", "last_frame"])
+        self.assertEqual(tuple(pkg["values"]["first_frame"].shape), (1, 8, 8, 3))
+        self.assertIsNone(pkg["values"]["last_frame"])
+
+    def test_ltx_23_and_25_package(self):
+        Image.new("RGB", (8, 8)).save(self.p("a.png"))
+        rows = {"guide_images": [self.p("a.png")]}
+        p23 = media.build_package(self.state({"variant": "ltx.2_3", "selections": {"ltx.2_3": {"rows": rows}}}))
+        p25 = media.build_package(self.state({"variant": "ltx.2_5", "selections": {"ltx.2_5": {"rows": rows}}}))
+        self.assertEqual(p23["layout"], p25["layout"])
+        self.assertEqual(tuple(p23["values"]["guide_image_1"].shape), tuple(p25["values"]["guide_image_1"].shape))
+        self.assertEqual(p23["values"]["guide_frame_1"], 0)
+        empty = media.build_package(self.state({"variant": "ltx.2_5"}))
+        self.assertIsNone(empty["values"]["guide_image_1"])
+        self.assertIsNone(empty["values"]["soundtrack"])
+        self.assertEqual(empty["values"]["fps"], 24)
+
+    def test_settings_values(self):
+        pkg = media.build_package(self.state({"variant": "ltx.2_3"}))
+        self.assertEqual([pkg["values"][k] for k in ("fps", "width", "height", "length")], [24, 768, 1344, 481])
+
+    def test_frame_step_from_variant(self):
+        make_video(self.p("g.mp4"), 100 / 24.0 + 0.01, 24, width=64, height=64, with_audio=False)
+        s = self.state({"variant": "ltx.2_3", "selections": {"ltx.2_3": {
+            "rows": {"guide_video": [self.p("g.mp4")]},
+            "moments": {"guide_video": {media.trim_key(self.p("g.mp4")): 2}}}}})
+        pkg = media.build_package(s)
+        self.assertEqual(pkg["values"]["guide_video"].shape[0], 97)
+        self.assertEqual(pkg["values"]["guide_video_frame"], 41)
+
+    def test_package_values_shared(self):
+        Image.new("RGB", (8, 8)).save(self.p("a.png"))
+        pkg = media.build_package(self.state({"images": ["a.png"]}))
+        calls = []
+        old_load, old_video, old_audio = media.load_image, media.load_video, media.load_audio
+        media.load_image = media.load_video = media.load_audio = lambda *a, **k: calls.append(a)
+        try:
+            first = nodes_module().MagicStudioContainer().run(pkg)
+            second = nodes_module().MagicStudioContainer().run(pkg)
+        finally:
+            media.load_image, media.load_video, media.load_audio = old_load, old_video, old_audio
+        self.assertEqual(calls, [])
+        self.assertIs(first[0], second[0])
+        self.assertIs(first[0], pkg["values"]["ref_image_1"])
+
+    def test_container_pads_to_40(self):
+        pkg = media.build_package(self.state({"mode": "fl2va"}))
+        out = nodes_module().MagicStudioContainer().run(pkg)
+        self.assertEqual(len(out), 40)
+        self.assertEqual(out[2:], (None,) * 38)
+        self.assertEqual(nodes_module().MagicStudioContainer().run(None), (None,) * 40)
+
+    def test_missing_file_names_its_output(self):
+        with self.assertRaisesRegex(FileNotFoundError, "ref_image_1"):
+            media.build_package(self.state({"images": ["nope.png"]}))
+
+
+def nodes_module():
+    """nodes.py importe le paquet (imports relatifs) : charge comme sous-module d'un faux paquet."""
+    import importlib.util
+    import types
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if "mmpkg" not in sys.modules:
+        pkg = types.ModuleType("mmpkg")
+        pkg.__path__ = [root]
+        sys.modules["mmpkg"] = pkg
+        sys.modules["mmpkg.media"] = media
+    spec = importlib.util.spec_from_file_location("mmpkg.nodes", os.path.join(root, "nodes.py"))
+    mod = sys.modules.get("mmpkg.nodes")
+    if mod is None:
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["mmpkg.nodes"] = mod
+        spec.loader.exec_module(mod)
+    return mod
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -24,7 +24,7 @@ from . import final_cut
 from . import load_media
 from . import select_mod
 from .nodes import (MiniMaxH3RefLoader, MiniMaxH3Project, MiniMaxH3FinalCut, MiniMaxH3LoadMedia,
-                    MagicStudioSelectMod, default_projects_root, selectmod_roots)
+                    MagicStudioSelectMod, MagicStudioContainer, default_projects_root, selectmod_roots)
 
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3RefLoader": MiniMaxH3RefLoader,
@@ -32,6 +32,7 @@ NODE_CLASS_MAPPINGS = {
     "MiniMaxH3FinalCut": MiniMaxH3FinalCut,
     "MiniMaxH3LoadMedia": MiniMaxH3LoadMedia,
     "MagicStudioSelectMod": MagicStudioSelectMod,
+    "MagicStudioContainer": MagicStudioContainer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -40,6 +41,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3FinalCut": "MagicStudio Final Cut",
     "MiniMaxH3LoadMedia": "MagicStudio MedLoad",
     "MagicStudioSelectMod": "MagicStudio SelectMod",
+    "MagicStudioContainer": "MagicStudio Container",
 }
 
 WEB_DIRECTORY = "./web/js"
