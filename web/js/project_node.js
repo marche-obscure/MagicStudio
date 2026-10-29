@@ -2406,7 +2406,16 @@ const FOLDER_INFO = {
     "40.Rush Videos": "information only",
     "60.Rush Images": "information only",
 };
-const LIST_LABEL = { first_frame: "first frame", last_frame: "last frame" };
+/** Utilisations d'un fichier de la configuration : " · Ref2VA Images #1, LTX 2.3 Guide images #1". */
+function usesText(uses) {
+    const d = desc();
+    const parts = (uses || []).map((u) => {
+        const v = d.variants[u.variante];
+        const row = v ? v.rows.find((r) => r.id === u.ligne) : null;
+        return (v ? v.label : u.variante) + " " + (row ? row.label : u.ligne) + " #" + u.Indice;
+    });
+    return parts.length ? " · " + parts.join(", ") : "";
+}
 const PROMPT_WARNING = "Loading the workflow may lose the changes of the prompt in progress.";
 
 /** Lignes HTML des noeuds et liaisons en plus (+) ou manquants (−). */
@@ -4693,8 +4702,7 @@ function buildLoadDialog(container) {
         const wrap = div("", { padding: "1px 0 1px 26px" });
         const ok = x.status === "ok";
         const mark = ok ? MARK_OK : f.kind === "prompt" ? MARK_WARN : MARK_BAD;
-        const extra = (x.Liste && LIST_LABEL[x.Liste] ? " · " + LIST_LABEL[x.Liste] : "") +
-            (f.kind === "media" ? " · #" + x.Indice : "") + (ok ? "" : " (" + x.status + ")");
+        const extra = (f.kind === "media" ? usesText(x.Utilisations) : "") + (ok ? "" : " (" + x.status + ")");
         wrap.appendChild(div(mark + " " + escapeHtml(x.nom) + '<span style="color:#888">' + escapeHtml(extra) + "</span>"));
         if (ok || !(f.kind === "media" || f.kind === "workflow")) return wrap;
         if (!x.archive) {
@@ -6842,7 +6850,7 @@ app.registerExtension({
                             "&name=" + encodeURIComponent(wf.name), { cache: "no-store" });
                         if (!res.ok) throw new Error("Workflow not found: " + wf.name);
                         const data = JSON.parse(await res.text());
-                        const ln = media.length ? loaderNodeOf(data) : null;
+                        const ln = loaderNodeOf(data);
                         if (ln && Array.isArray(ln.widgets_values)) {
                             let st = {};
                             try {
@@ -6850,7 +6858,16 @@ app.registerExtension({
                             } catch (e) {
                                 st = {};
                             }
-                            ln.widgets_values[0] = JSON.stringify(loadedState(st, report, s.path, media, desc()));
+                            const ns = loadedState(st, report, s.path, media, desc());
+                            // Load garde la variante affichee dans l'onglet (choix utilisateur) : le
+                            // RefLoader du workflow recharge la reprend ; son Container suit.
+                            const cur = linkedLoader(node);
+                            const shown = cur ? cur.mmGetState().variant : null;
+                            if (shown && desc().variants[shown]) {
+                                ns.variant = shown;
+                                ns.lastVariant = Object.assign({}, ns.lastVariant, { [desc().variants[shown].model]: shown });
+                            }
+                            ln.widgets_values[0] = JSON.stringify(ns);
                         }
                         if (checked.dataOnly) {
                             // Data only (choix utilisateur, 22/10/2026) : le workflow de l'onglet reste,

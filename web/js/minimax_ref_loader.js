@@ -4480,7 +4480,7 @@ function buildLimitsDialog(container, ctx) {
     const title = document.createElement("div");
     Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "4px" });
     const hint = document.createElement("div");
-    hint.textContent = "Limits of this node for the model. A number of files cannot go above the model's value.";
+    hint.textContent = "Limits of this node for the variant. A number of files cannot go above the value of the variant.";
     Object.assign(hint.style, { color: "#999", marginBottom: "10px", lineHeight: "1.4" });
     const form = document.createElement("div");
     Object.assign(form.style, {
