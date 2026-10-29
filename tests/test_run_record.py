@@ -1404,6 +1404,15 @@ class AttachPostTest(unittest.TestCase):
         o = rr.attach_post(self.run, 0, 0, img, {}, None, warning="other run")
         self.assertEqual((o["kind"], o["copy"], o["post_warning"]), ("image", None, "other run"))
 
+    def test_read_post_workflow(self):
+        rr.attach_post(self.run, 0, 0, self.video("b.mp4"), {}, {"post": True})
+        got = rr.read_run_workflow(self.p, "20261029_100000_run.json", post="20261029_100000_run_post01.json")
+        self.assertEqual(got["workflow"], {"post": True})
+        with self.assertRaises(ValueError):
+            rr.read_run_workflow(self.p, "20261029_100000_run.json", post="../../evil.json")
+        with self.assertRaises(ValueError):
+            rr.read_run_workflow(self.p, "20261029_100000_run.json", post="20261028_090000_run_post01.json")
+
     def test_list_runs_gives_post_fields(self):
         rr.attach_post(self.run, 0, 0, self.video("b.mp4"), {"cfg": None, "nodes": [{"title": "Light"}]}, {"n": 1})
         outs = rr.list_runs(self.p)[0]["outputs"]

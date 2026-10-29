@@ -14,6 +14,7 @@ import {
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
     folderMax, activeLists, hiddenFolderItems,
     frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState, runSourcePaths, PICKUP_DIR, PICKUP_SUBS, pickupPath,
+    orderOutputs, postLabel,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -808,4 +809,24 @@ test("Pick Up : liste de la galerie et chemins (26/10/2026)", () => {
     assert.ok(!isMediaSubfolder("A/G/P/90.Pick Up/Image", "ref2va"));
     assert.equal(pickupPath("G:\\X\\P", "audio"), "G:\\X\\P\\90.Pick Up\\Son");
     assert.equal(pickupPath("G:\\X\\P\\", "image"), "G:\\X\\P\\90.Pick Up\\Image");
+});
+
+test("Post-traitements : original suivi de ses posts, badge Post n (29/10/2026)", () => {
+    const v = (index, extra) => Object.assign({ index, kind: "video", copy: "P/" + index + ".mp4", copy_exists: true }, extra);
+    const A = v(0), A2 = v(2);
+    const B = v(1, { post_of: 0, post_level: 1, post_date: "2026-10-29 11:00:00" });
+    const C = v(3, { post_of: 1, post_level: 2, post_date: "2026-10-29 12:00:00" });
+    assert.deepEqual(orderOutputs([A, B, A2, C]).map((o) => o.index), [0, 1, 3, 2]);
+    // Deux posts du meme original : par date.
+    const B2 = v(4, { post_of: 0, post_level: 1, post_date: "2026-10-29 10:30:00" });
+    assert.deepEqual(orderOutputs([A, B, B2]).map((o) => o.index), [0, 4, 1]);
+    // Post dont la source manque : a la fin.
+    const lost = v(5, { post_of: 9, post_level: 1, post_date: "x" });
+    assert.deepEqual(orderOutputs([lost, A]).map((o) => o.index), [0, 5]);
+    assert.deepEqual(orderOutputs(null), []);
+    assert.equal(postLabel(B), "Post 1");
+    assert.equal(postLabel(C), "Post 2");
+    assert.equal(postLabel(A), "");
+    const runs = [{ file: "r.json", outputs: [A, A2, B] }];
+    assert.deepEqual(rushItems(runs, "40.Rush Videos").map((x) => x.output.index), [0, 1, 2]);
 });

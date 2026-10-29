@@ -583,11 +583,45 @@ export function deletedText(d) {
  * les sorties citees par les JSON et presentes, [{file, run, output}], Run le
  * plus recent d'abord.
  */
+/**
+ * Post-traitements (choix utilisateur 28/10/2026) : chaque sortie suivie de ses
+ * post-traitements (post_of = index de la sortie source), en profondeur ; freres
+ * par niveau, date puis index ; un post dont la source manque reste a la fin.
+ */
+export function orderOutputs(outs) {
+    const list = outs || [];
+    const byIndex = new Map(list.map((o) => [o.index, o]));
+    const children = new Map();
+    for (const o of list) {
+        if (!o.post_level || !byIndex.has(o.post_of)) continue;
+        if (!children.has(o.post_of)) children.set(o.post_of, []);
+        children.get(o.post_of).push(o);
+    }
+    const rank = (a, b) => (a.post_level - b.post_level) || String(a.post_date || "").localeCompare(String(b.post_date || ""))
+        || (a.index - b.index);
+    const out = [];
+    const seen = new Set();
+    const visit = (o) => {
+        if (seen.has(o)) return;
+        seen.add(o);
+        out.push(o);
+        for (const c of (children.get(o.index) || []).sort(rank)) visit(c);
+    };
+    for (const o of list) if (!o.post_level) visit(o);
+    for (const o of list) visit(o);
+    return out;
+}
+
+/** Badge d'un post-traitement : « Post 1 », « Post 2 »… ; "" pour une sortie du Run. */
+export function postLabel(o) {
+    return o && o.post_level ? "Post " + o.post_level : "";
+}
+
 export function rushItems(runs, folder) {
     const kind = RUN_FOLDERS[folder];
     const items = [];
     for (const run of runs || []) {
-        for (const o of run.outputs || []) {
+        for (const o of orderOutputs(run.outputs)) {
             const file = o.kind === kind ? outputFile(o) : "";
             if (file) items.push({ file, run, output: o });
         }

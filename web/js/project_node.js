@@ -20,7 +20,7 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
-    PICKUP_DIR, PICKUP_SUBS, pickupPath,
+    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -2945,6 +2945,21 @@ function addStatusDot(box, out) {
     box.appendChild(dot);
 }
 
+/** Badge « Post n » d'un post-traitement (29/10/2026), en bas a gauche de la vignette. */
+function addPostBadge(box, out) {
+    const label = postLabel(out);
+    if (!label) return;
+    box.style.position = "relative";
+    const b = document.createElement("div");
+    b.textContent = label;
+    Object.assign(b.style, {
+        position: "absolute", left: "4px", bottom: "4px", padding: "1px 6px", borderRadius: "999px",
+        background: VIOLET, color: "#fff", fontSize: "10px", fontWeight: "bold", zIndex: "1", pointerEvents: "none",
+    });
+    b.title = "Post-processing of this run (level " + out.post_level + ")";
+    box.appendChild(b);
+}
+
 /** Dossier et nom d'un chemin complet. */
 function splitPath(path) {
     const sep = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
@@ -2970,6 +2985,19 @@ function runConfigHtml(run, out) {
         (out.source_exists ? "" : out.deleted ? ' <span style="color:#888">(deleted)</span>'
             : ' <span style="color:' + ORANGE + '">(missing)</span>'), out.source);
     if (out.resize_error) h += row("Resize", '<span style="color:' + ORANGE + '">' + escapeHtml(out.resize_error) + "</span>");
+    if (out.post_level) {
+        // Post-traitement (29/10/2026) : date et reglages des noeuds entre MedLoad et l'enregistrement.
+        h += row("Post-processing", escapeHtml(postLabel(out) + (out.post_date ? " – " + runDateText(out.post_date) : "")));
+        const params = out.post_params || {};
+        for (const k of ["steps", "cfg", "seed"]) {
+            if (params[k] !== null && params[k] !== undefined) h += row(k === "cfg" ? "CFG" : k[0].toUpperCase() + k.slice(1), escapeHtml(String(params[k])));
+        }
+        for (const n of params.nodes || []) {
+            const vals = Object.entries(n.values || {}).map(([k, v]) => k + ": " + v).join(", ");
+            h += row(escapeHtml(n.title || n.class_type || "?"), escapeHtml(vals || "–"), n.class_type || "");
+        }
+        if (out.post_warning) h += row("Warning", '<span style="color:' + ORANGE + '">' + escapeHtml(out.post_warning) + "</span>");
+    }
     return h;
 }
 
@@ -3770,7 +3798,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         showRun(list[runIndex]);
     }
     function showRun(run) {
-        const outs = (run.outputs || []).filter((o) => filter === "all" || o.kind === filter);
+        const outs = orderOutputs(run.outputs).filter((o) => filter === "all" || o.kind === filter);
         outIndex = Math.min(outIndex, Math.max(0, outs.length - 1));
         const out = outs[outIndex];
         fillConfig(run, out);
@@ -3790,6 +3818,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             Object.assign(t.style, { width: "100%", height: "auto", aspectRatio: "16 / 10", cursor: "pointer" });
             t.title = "Preview " + name;
             addStatusDot(t, out);
+            addPostBadge(t, out);
             t.addEventListener("click", () => showPreview(file, out.kind));
             const n = document.createElement("div");
             n.textContent = name;
@@ -3815,18 +3844,24 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             nav.append(prev, count, next);
             thumb.body.appendChild(nav);
         }
-        if (onWorkflow) thumb.body.appendChild(workflowButton(run));
+        if (onWorkflow) thumb.body.appendChild(workflowButton(run, out));
     }
 
     /**
      * "Retrieve the workflow" sous la vignette (choix utilisateur) : workflow du Run
      * (00.Workflows/Run) dans un nouvel onglet ; Run plus ancien : cherche dans ses rendus.
      */
-    function workflowButton(run) {
-        const files = (run.outputs || []).some((o) => o.source_exists || o.copy_exists);
+    function workflowButton(run, out) {
+        if (out && out.post_level) {
+            // Post-traitement : son propre workflow (00.Workflows/Run/<run>_postNN.json), s'il a ete garde.
+            const name = out.post_workflow ? splitPath(out.post_workflow)[1] : "";
+            run = Object.assign({}, run, { workflow: name || null, postWorkflow: name });
+        }
+        const files = !run.postWorkflow && (run.outputs || []).some((o) => o.source_exists || o.copy_exists);
         const b = makeTextButton("Retrieve the workflow", run.workflow ? GREEN : files ? VIOLET : INACTIVE_BG);
         Object.assign(b.style, { width: "100%", marginTop: "4px" });
-        b.title = run.workflow ? "Open the workflow of this run in a new tab (00.Workflows/Run/" + run.file + ")"
+        b.title = run.workflow ? "Open the workflow of this " + (run.postWorkflow ? "post-processing" : "run") +
+            " in a new tab (00.Workflows/Run/" + (run.postWorkflow || run.file) + ")"
             : files ? "Run recorded before the workflows were saved: look for the workflow in its output files, then open it in a new tab"
                 : "No workflow saved for this run";
         if (!run.workflow && !files) {
@@ -3933,6 +3968,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             const key = rushKey(it);
             const pic = dupThumb(dir, name, it.output.kind, 108);
             addStatusDot(pic, it.output);
+            addPostBadge(pic, it.output);
             if (failed.has(key)) {
                 // Echec du dernier lot : ✕ rouge a droite de la pastille.
                 const x = document.createElement("div");
@@ -5643,8 +5679,9 @@ app.registerExtension({
                 const s = getState();
                 try {
                     const data = await apiGet("/mmproject/run_workflow?project=" + encodeURIComponent(s.path) +
-                        "&name=" + encodeURIComponent(run.file));
-                    await openInNewTab(data.workflow, runTabName(run.file));
+                        "&name=" + encodeURIComponent(run.file) +
+                        (run.postWorkflow ? "&post=" + encodeURIComponent(run.postWorkflow) : ""));
+                    await openInNewTab(data.workflow, runTabName(run.postWorkflow || run.file));
                     return { ok: true };
                 } catch (e) {
                     return { ok: false, text: e.message };

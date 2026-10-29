@@ -1770,14 +1770,22 @@ def _workflow_in_file(path):
     return None
 
 
-def read_run_workflow(project, run_name):
+def read_run_workflow(project, run_name, post=None):
     """
     Workflow d'un Run : 00.Workflows/Run/<nom>, sinon (anciens Runs) celui
     range dans ses rendus (original, puis copie). Renvoie {"workflow": dict,
     "source": chemin} ; FileNotFoundError si aucun n'est trouve.
+    post (29/10/2026) : workflow d'un post-traitement de ce Run, <run>_postNN.json.
     """
     run_file = os.path.join(project or "", PROMPT_FOLDER, os.path.basename(run_name or ""))
     _check_run_file(run_file)
+    if post:
+        base = os.path.splitext(os.path.basename(run_file))[0]
+        if not re.match(r"^" + re.escape(base) + r"_post\d{2,}\.json$", post):
+            raise ValueError("Not a post-processing workflow of this run: %s" % post)
+        wf = run_workflow_path(project, post)
+        with open(wf, "r", encoding="utf-8") as f:
+            return {"workflow": json.load(f), "source": wf}
     wf = run_workflow_path(project, run_file)
     if os.path.isfile(wf):
         with open(wf, "r", encoding="utf-8") as f:

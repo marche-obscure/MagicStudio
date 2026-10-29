@@ -518,7 +518,8 @@ try:
         """Workflow d'un Run (00.Workflows/Run, sinon celui range dans ses rendus)."""
         q = request.rel_url.query
         try:
-            data = await _in_executor(run_record.read_run_workflow, q.get("project", "").strip(), q.get("name", ""))
+            data = await _in_executor(run_record.read_run_workflow, q.get("project", "").strip(), q.get("name", ""),
+                                      q.get("post", "") or None)
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
