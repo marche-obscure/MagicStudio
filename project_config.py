@@ -35,29 +35,27 @@ PROMPT = "04.Prompt"
 # LoRA ni les rushs, souvent tres gros et jamais charges).
 HASHED = ("00.Workflows", "04.Prompt", "08.Images", "10.Son", "12.Video", "14.Video-Audio")
 
-# Dossiers des listes du Ref Loader (deux profils, = MEDIA_FOLDERS en JS) : listes,
-# mot des cles ("image 1"), compteur.
-MEDIA = {
-    "08.Images": (("images", "first_frame", "last_frame", "guide_images"), "image", "NbImage"),
-    "10.Son": (("audios", "soundtrack", "voice"), "son", "NbSon"),
-    "12.Video": (("videos", "guide_video"), "video", "NbVideo"),
-    "14.Video-Audio": (("video_audios",), "video", "NbVideo"),
-}
-# Listes de chaque profil : seules celles du profil actif ont un indice.
-PROFILE_LISTS = {
-    "minimax_h3": ("images", "videos", "video_audios", "audios", "first_frame", "last_frame"),
-    "ltx2": ("guide_images", "guide_video", "soundtrack", "voice"),
-}
-# Liste -> type de rognage (cle de state.trims du Ref Loader).
-TRIM_KIND = {"videos": "video", "video_audios": "video_audio", "audios": "audio",
-             "guide_video": "guide_video", "soundtrack": "soundtrack", "voice": "voice"}
-# Listes avec un moment (secondes, -1 = Last ; cle de state.moments du Ref Loader).
-MOMENT_LISTS = ("guide_images", "guide_video")
+# Dossiers de medias (lignes du RefLoader : profiles.VARIANTS, cle "folder") : mot des cles
+# ("image 1") et compteur.
+FOLDER_INFO = {"08.Images": ("image", "NbImage"), "10.Son": ("son", "NbSon"), "12.Video": ("video", "NbVideo"),
+               "14.Video-Audio": ("video", "NbVideo")}
+MEDIA = tuple(FOLDER_INFO)
+VERSION = 3
 
 
-def config_profile(cfg):
-    """Profil d'une configuration ; un ancien fichier sans "profile" est MiniMax H3."""
-    return profiles.profile_of(cfg if isinstance(cfg, dict) else {})
+def selections_from_old(refs, trims=None, mode="ref2va", profile="minimax_h3", moments=None):
+    """Ancien envoi du noeud Project (listes, rognages, mode, profil, moments) -> (selections, variante)."""
+    data = dict(refs or {})
+    data.update({"trims": trims or {}, "mode": mode or "ref2va", "profile": profile or "minimax_h3",
+                 "moments": moments or {}})
+    state = profiles.migrate_state(data)
+    return state["selections"], state["variant"]
+
+
+def _variant_order(variant):
+    """Variante affichee d'abord, puis les autres dans l'ordre de la description."""
+    return [variant] + [v for v in profiles.VARIANTS if v != variant]
+
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -161,37 +159,64 @@ def _read_json(path):
 # ----------------------------------------------------------------------
 # Save
 # ----------------------------------------------------------------------
-def build_config(project, refs, trims=None, mode="ref2va", workflow="", datecreat=None, now=None,
-                 profile="minimax_h3", moments=None):
+def _usages(project, selections, variant, errors):
     """
-    Contenu de Project-Config.json. refs = listes du Ref Loader (chemins
-    absolus, deja copies dans le projet), trims = rognages du Ref Loader,
-    moments = moments des guides LTX 2.x, workflow = nom du workflow du projet
-    dans 00.Workflows. Tous les dossiers sont presents, meme vides. Indice :
-    numero dans la liste du Ref Loader (listes du profil actif seulement),
-    rang par nom ailleurs ; jamais nul : un fichier d'un dossier de medias que
-    le Ref Loader n'utilise pas est une erreur (ConfigError, rien n'est ecrit).
-    Un fichier des listes de l'autre profil n'a pas d'indice mais n'est pas une erreur.
+    Utilisations des fichiers des dossiers de medias : {dossier: {nom en minuscules: (nom,
+    [utilisation])}} dans l'ordre (variante affichee, puis les autres ; lignes ; numero).
+    Un fichier de la variante affichee hors du dossier de sa ligne (ou absent) est une
+    erreur ; celui d'une autre variante est ignore (Save ne copie que la variante affichee).
+    """
+    out = {f: {} for f in MEDIA}
+    for v in _variant_order(variant):
+        sel = (selections or {}).get(v) or {}
+        rows = sel.get("rows") or {}
+        for row in profiles.rows_of(v):
+            folder = row.get("folder")
+            if folder not in out:
+                continue
+            d = os.path.join(project, folder)
+            for i, path in enumerate((rows.get(row["id"]) or [])[:row["max"]]):
+                ok = path and projects._norm(os.path.dirname(path)) == projects._norm(d) and os.path.isfile(path)
+                if not ok:
+                    if v == variant:
+                        errors.append("%s: %s is not in the project folder" % (folder, path))
+                    continue
+                name = os.path.basename(path)
+                use = {"variante": v, "ligne": row["id"], "Indice": i + 1}
+                t = ((sel.get("trims") or {}).get(row["id"]) or {}).get(trim_key(path)) if row.get("trim") else None
+                if isinstance(t, (list, tuple)) and len(t) == 2:
+                    use["trim"] = [t[0], t[1]]
+                m = ((sel.get("moments") or {}).get(row["id"]) or {}).get(trim_key(path)) if row.get("moment") else None
+                if isinstance(m, (int, float)) and not isinstance(m, bool):
+                    use["moment"] = m
+                out[folder].setdefault(name.lower(), (name, []))[1].append(use)
+    return out
+
+
+def build_config(project, selections, variant=profiles.DEFAULT_VARIANT, workflow="", datecreat=None, now=None):
+    """
+    Contenu de config_projets_<projet>.json, format 3 (complement 6.2) : toutes les variantes
+    du RefLoader (selections = etat.selections, chemins absolus deja copies dans le projet),
+    variant = variante affichee, workflow = nom du workflow du projet dans 00.Workflows. Tous
+    les dossiers sont presents, meme vides. Dossiers de medias : chaque fichier une fois, avec
+    ses Utilisations [{variante, ligne, Indice, trim?, moment?}] ; un fichier qu'aucune variante
+    n'utilise est une erreur (ConfigError, rien n'est ecrit). Ailleurs : Indice = rang par nom.
     """
     if not project or not os.path.isdir(project):
         raise FileNotFoundError("Project folder not found: %s" % project)
-    refs = refs or {}
-    trims = trims or {}
-    moments = moments or {}
-    profile = profiles.profile_of({"profile": profile})
-    active = PROFILE_LISTS[profile]
+    variant = variant if variant in profiles.VARIANTS else profiles.DEFAULT_VARIANT
     now = now or time.strftime(DATE_FORMAT)
     out = {
         "Project": os.path.basename(os.path.abspath(project)),
         "format": FORMAT,
-        "version": 1,
-        "mode": None if profile == "ltx2" else "FL2VA" if mode == "fl2va" else "REF2VA",
-        "profile": profile,
+        "version": VERSION,
+        "variant": variant,
         "datecreat": datecreat or now,
         "datemodifi": now,
         "ProjectDir": project,
     }
     errors = []
+    usages = _usages(project, selections, variant, errors)
     # 02.Models / 06.LoRA (choix utilisateur) : indice en cours du registre, 0 et Valide false sans registre.
     registry_blocks = {run_record.MODELS_FOLDER: ("models", "IndiceEnCoursMODELS"),
                        run_record.LORA_FOLDER: ("lora", "IndiceEnCoursLoRA")}
@@ -204,32 +229,13 @@ def build_config(project, refs, trims=None, mode="ref2va", workflow="", datecrea
             continue
         hashed = folder in HASHED
         entries = []
-        if folder in MEDIA:
-            lists, word, counter = MEDIA[folder]
-            used = set()
-            for lst in lists:
-                if lst not in active:
-                    # Profil cache : fichiers gardes dans le dossier, sans indice.
-                    for p in refs.get(lst) or []:
-                        if p and projects._norm(os.path.dirname(p)) == projects._norm(d):
-                            used.add(os.path.basename(p).lower())
-                    continue
-                for i, p in enumerate(refs.get(lst) or []):
-                    name = os.path.basename(p or "")
-                    if not p or projects._norm(os.path.dirname(p)) != projects._norm(d) or not os.path.isfile(p):
-                        errors.append("%s: %s is not in the project folder" % (folder, p))
-                        continue
-                    used.add(name.lower())
-                    e = {"Indice": i + 1, "Liste": lst, "Dossier": d, "nom": name, "SHA256": projects.file_hash(p)}
-                    t = (trims.get(TRIM_KIND.get(lst, "")) or {}).get(trim_key(p))
-                    if isinstance(t, (list, tuple)) and len(t) == 2:
-                        e["trim"] = [t[0], t[1]]
-                    m = (moments.get(lst) or {}).get(trim_key(p)) if lst in MOMENT_LISTS else None
-                    if isinstance(m, (int, float)) and not isinstance(m, bool):
-                        e["moment"] = m
-                    entries.append(e)
+        if folder in FOLDER_INFO:
+            word, counter = FOLDER_INFO[folder]
+            for name, uses in usages[folder].values():
+                entries.append({"Dossier": d, "nom": name, "SHA256": projects.file_hash(os.path.join(d, name)),
+                                "Utilisations": uses})
             for name in _root_files(d):
-                if name.lower() not in used:
+                if name.lower() not in usages[folder]:
                     errors.append("%s/%s: no index (not used by the MagicStudio RefLoader)" % (folder, name))
         else:
             word, counter = "fichier", "NbFichier"
@@ -253,7 +259,7 @@ def build_config(project, refs, trims=None, mode="ref2va", workflow="", datecrea
     return out
 
 
-def save_config(project, refs, trims=None, mode="ref2va", workflow="", profile="minimax_h3", moments=None):
+def save_config(project, selections, variant=profiles.DEFAULT_VARIANT, workflow=""):
     """
     Ecrit 99.Project-Config/config_projets_<projet>.json ; l'ancien part d'abord dans
     99.Project-Config/Archives sous yyyyMMdd-HHmmss_config_projets_<projet>.json (date
@@ -266,7 +272,7 @@ def save_config(project, refs, trims=None, mode="ref2va", workflow="", profile="
     path = os.path.join(config_dir(project), name)
     old = _read_json(path) if os.path.isfile(path) else None
     datecreat = old.get("datecreat") if isinstance(old, dict) and isinstance(old.get("datecreat"), str) else None
-    cfg = build_config(project, refs, trims, mode, workflow, datecreat, profile=profile, moments=moments)
+    cfg = build_config(project, selections, variant, workflow, datecreat)
     archived = None
     if os.path.isfile(path):
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(os.path.getmtime(path)))
@@ -293,8 +299,41 @@ def read_config(project):
     cfg = _read_json(path)
     if not isinstance(cfg, dict) or cfg.get("format") != FORMAT:
         raise ValueError("%s is not a project configuration." % name)
-    cfg["profile"] = config_profile(cfg)  # ancien fichier sans profile : MiniMax H3
-    return cfg
+    return upgrade_config(cfg)
+
+
+def upgrade_config(cfg):
+    """
+    Ancienne configuration (version 1 : main sans profile, ou branche des profils avec
+    profile) -> format 3 : variant d'apres profile / mode ; chaque fichier des dossiers de
+    medias recoit ses Utilisations (Liste -> variante et ligne, Indice, trim, moment).
+    Le prochain Save l'ecrit au format 3.
+    """
+    if cfg.get("version") == VERSION and cfg.get("variant") in profiles.VARIANTS:
+        return cfg
+    out = json.loads(json.dumps(cfg))
+    prof = profiles.profile_of(out)  # ancien fichier sans profile : MiniMax H3
+    mode = str(out.get("mode") or "").lower()
+    out.pop("mode", None)
+    out.pop("profile", None)
+    out["version"] = VERSION
+    out["variant"] = ("ltx.2_3" if prof == "ltx2" else "minimax_h3.fl2va" if mode == "fl2va"
+                      else profiles.DEFAULT_VARIANT)
+    for folder in MEDIA:
+        for e in config_entries(out, folder):
+            lst, idx = e.pop("Liste", None), e.pop("Indice", None)
+            trim, moment = e.pop("trim", None), e.pop("moment", None)
+            uses = []
+            if lst in profiles._OLD_ROWS and isinstance(idx, int):
+                v, row = profiles._OLD_ROWS[lst]
+                use = {"variante": v, "ligne": row, "Indice": idx}
+                if isinstance(trim, list) and len(trim) == 2:
+                    use["trim"] = trim
+                if isinstance(moment, (int, float)) and not isinstance(moment, bool):
+                    use["moment"] = moment
+                uses.append(use)
+            e["Utilisations"] = uses
+    return out
 
 
 def config_entries(cfg, folder):
@@ -415,14 +454,13 @@ def copy_media(project, source, dry_run=False, sub=""):
     except (OSError, ValueError):
         cfg = None
     if cfg:
-        report = {"mode": cfg.get("mode"), "profile": config_profile(cfg), "folders": []}
+        report = {"variant": cfg.get("variant"), "folders": []}
         for folder in MEDIA:
             files = []
             for e in config_entries(cfg, folder):
                 dst_name = names.get((folder, e["nom"]))
                 if dst_name:
-                    files.append({"nom": dst_name, "Indice": e.get("Indice"), "Liste": e.get("Liste"),
-                                  "trim": e.get("trim"), "moment": e.get("moment"), "status": "ok"})
+                    files.append({"nom": dst_name, "Utilisations": e.get("Utilisations") or [], "status": "ok"})
             report["folders"].append({"folder": folder, "kind": "media", "files": files})
         out["report"] = report
     return out
@@ -459,9 +497,10 @@ def folder_kind(folder):
 def check_config(project, current=None):
     """
     Compare la configuration aux dossiers, sans rien modifier. Pour chaque
-    dossier : {folder, kind, count, files: [{nom, Indice, Liste, trim,
-    status (ok | changed | missing), archive}]} ; archive = fichier de meme
-    SHA256 trouve dans <dossier>/Archives (workflows et medias). workflow =
+    dossier : {folder, kind, count, files: [{nom, Indice, status (ok | changed |
+    missing), archive}]} ; archive = fichier de meme
+    SHA256 trouve dans <dossier>/Archives (workflows et medias) ; medias : Utilisations
+    au lieu de Indice (format 3). workflow =
     {name, status, source (file | archive | None), archive, same (structure
     identique au workflow courant 'current'), diff (courant -> a charger),
     changes (sauvegarde -> a charger, si le fichier differe)} ou None.
@@ -470,8 +509,7 @@ def check_config(project, current=None):
         raise FileNotFoundError("Project folder not found: %s" % project)
     cfg = read_config(project)
     cache = {}
-    report = {"mode": cfg.get("mode"), "profile": config_profile(cfg), "datemodifi": cfg.get("datemodifi"),
-              "folders": [], "workflow": None}
+    report = {"variant": cfg.get("variant"), "datemodifi": cfg.get("datemodifi"), "folders": [], "workflow": None}
     active = None
     for folder in projects.SUBFOLDERS:
         kind = folder_kind(folder)
@@ -479,8 +517,9 @@ def check_config(project, current=None):
         for e in config_entries(cfg, folder):
             name = e["nom"]
             path = projects._safe_file(os.path.join(project, folder), name)
-            item = {"nom": name, "Indice": e.get("Indice"), "Liste": e.get("Liste"), "trim": e.get("trim"),
-                    "moment": e.get("moment"), "status": "ok", "archive": None}
+            item = {"nom": name, "Indice": e.get("Indice"), "status": "ok", "archive": None}
+            if kind == "media":
+                item["Utilisations"] = e.get("Utilisations") or []
             sha = e.get("SHA256")
             if folder in HASHED and sha:
                 h = projects.file_hash(path)

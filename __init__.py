@@ -811,9 +811,15 @@ try:
         try:
             body = await request.json()
             projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
-            info = await _in_executor(project_config.save_config, body.get("project", ""), body.get("refs") or {},
-                                      body.get("trims") or {}, body.get("mode", ""), body.get("workflow", ""),
-                                      body.get("profile") or "minimax_h3", body.get("moments") or {})
+            if isinstance(body.get("selections"), dict):
+                selections, variant = body["selections"], body.get("variant") or ""
+            else:
+                # Ancien envoi du noeud Project (listes, rognages, mode, profil) jusqu'a son passage aux variantes.
+                selections, variant = project_config.selections_from_old(
+                    body.get("refs") or {}, body.get("trims") or {}, body.get("mode", ""),
+                    body.get("profile") or "minimax_h3", body.get("moments") or {})
+            info = await _in_executor(project_config.save_config, body.get("project", ""), selections, variant,
+                                      body.get("workflow", ""))
         except project_config.ConfigError as e:
             return web.json_response({"error": str(e), "errors": e.errors}, status=400)
         except Exception as e:

@@ -44,6 +44,12 @@ class ProjectConfigTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
 
+    def build(self, refs, trims=None, mode="ref2va", profile="minimax_h3", moments=None, **kw):
+        return pc.build_config(self.p, *pc.selections_from_old(refs, trims, mode, profile, moments), **kw)
+
+    def save(self, refs, trims=None, mode="ref2va", profile="minimax_h3", moments=None, **kw):
+        return pc.save_config(self.p, *pc.selections_from_old(refs, trims, mode, profile, moments), **kw)
+
     def refs(self):
         a = write(self.f("08.Images", "a.png"), b"A")
         b = write(self.f("08.Images", "b.png"), b"B")
@@ -64,22 +70,24 @@ class ProjectConfigTest(unittest.TestCase):
         write(self.f("02.Models", "m.safetensors"), b"M")
         write(self.f("04.Prompt", "p.txt"), b"P")
         write(self.f("08.Images", "Archives/old.png"), b"O")
-        cfg = pc.build_config(self.p, refs, trims, "ref2va", now="2026-10-17 10:00:00")
+        cfg = self.build(refs, trims, now="2026-10-17 10:00:00")
         self.assertEqual(cfg["Project"], "Proj")
-        self.assertEqual(cfg["mode"], "REF2VA")
+        self.assertEqual((cfg["version"], cfg["variant"]), (3, "minimax_h3.ref2va"))
         self.assertEqual(cfg["datecreat"], "2026-10-17 10:00:00")
         self.assertEqual(cfg["ProjectDir"], self.p)
         self.assertEqual([k for k in cfg if k[0].isdigit()], list(projects.SUBFOLDERS))
         self.assertNotIn("99.Project-Config", cfg)
         img = cfg["08.Images"][0]
-        self.assertEqual((img["Valide"], img["NbImage"]), (True, 3))
+        # a.png sert deux fois (Images de Ref2VA, First frame de FL2VA) : une seule entree.
+        self.assertEqual((img["Valide"], img["NbImage"]), (True, 2))
         self.assertEqual(img["image 1"][0]["nom"], "b.png")
-        self.assertEqual(img["image 1"][0]["Indice"], 1)
-        self.assertEqual(img["image 2"][0]["Indice"], 2)
-        self.assertEqual((img["image 3"][0]["Liste"], img["image 3"][0]["Indice"]), ("first_frame", 1))
+        self.assertEqual(img["image 1"][0]["Utilisations"], [{"variante": "minimax_h3.ref2va", "ligne": "images", "Indice": 1}])
+        self.assertEqual(img["image 2"][0]["Utilisations"], [
+            {"variante": "minimax_h3.ref2va", "ligne": "images", "Indice": 2},
+            {"variante": "minimax_h3.fl2va", "ligne": "first_frame", "Indice": 1}])
         self.assertEqual(img["image 1"][0]["SHA256"], projects.file_hash(refs["images"][0]))
         self.assertEqual(img["image 1"][0]["Dossier"], self.f("08.Images"))
-        self.assertEqual(cfg["12.Video"][0]["video 1"][0]["trim"], [5, 7])
+        self.assertEqual(cfg["12.Video"][0]["video 1"][0]["Utilisations"][0]["trim"], [5, 7])
         self.assertEqual(cfg["14.Video-Audio"], [{"Valide": False, "NbVideo": 0}])
         self.assertEqual(cfg["10.Son"], [{"Valide": False, "NbSon": 0}])
         # 02.Models : indice en cours du registre (aucun registre ici), plus la liste des fichiers.
@@ -112,10 +120,10 @@ class ProjectConfigTest(unittest.TestCase):
 
     def test_file_without_index_stops_the_save(self):
         refs, trims = self.refs()
-        pc.save_config(self.p, refs, trims)
+        self.save(refs, trims)
         before = read(os.path.join(self.p, "99.Project-Config", "config_projets_Proj.json"))
         with self.assertRaises(pc.ConfigError) as ctx:
-            pc.save_config(self.p, {"images": refs["images"]}, trims)
+            self.save({"images": refs["images"]}, trims)
         self.assertEqual(len(ctx.exception.errors), 1)
         self.assertIn("12.Video/shot.mp4", ctx.exception.errors[0])
         # Rien n'est ecrit ni archive.
@@ -143,43 +151,46 @@ class ProjectConfigTest(unittest.TestCase):
 
     def test_build_config_ltx_profile(self):
         refs, trims, moments = self.ltx_refs()
-        cfg = pc.build_config(self.p, refs, trims, "ref2va", now="2026-10-25 10:00:00", profile="ltx2", moments=moments)
-        self.assertEqual(cfg["profile"], "ltx2")
-        self.assertIsNone(cfg["mode"])
-        self.assertEqual(list(cfg)[list(cfg).index("mode") + 1], "profile")   # profile a cote de mode
+        cfg = self.build(refs, trims, now="2026-10-25 10:00:00", profile="ltx2", moments=moments)
+        self.assertEqual(cfg["variant"], "ltx.2_3")
+        self.assertNotIn("mode", cfg)
+        self.assertNotIn("profile", cfg)
+        use = lambda e: e[0]["Utilisations"][0]   # noqa: E731
         img = cfg["08.Images"][0]
         self.assertEqual(img["NbImage"], 2)
-        self.assertEqual([(img["image %d" % k][0]["Liste"], img["image %d" % k][0]["Indice"], img["image %d" % k][0]["nom"])
+        self.assertEqual([(use(img["image %d" % k])["ligne"], use(img["image %d" % k])["Indice"], img["image %d" % k][0]["nom"])
                           for k in (1, 2)], [("guide_images", 1, "g1.png"), ("guide_images", 2, "g2.png")])
-        self.assertEqual([img["image 1"][0]["moment"], img["image 2"][0]["moment"]], [0, -1])
+        self.assertEqual([use(img["image 1"])["moment"], use(img["image 2"])["moment"]], [0, -1])
         son = cfg["10.Son"][0]
         self.assertEqual(son["NbSon"], 2)
-        self.assertEqual([son["son 1"][0]["Liste"], son["son 2"][0]["Liste"]], ["soundtrack", "voice"])
-        self.assertEqual(son["son 2"][0]["trim"], [0, 2])
-        vid = cfg["12.Video"][0]["video 1"][0]
-        self.assertEqual((vid["Liste"], vid["trim"], vid["moment"]), ("guide_video", [1, 3], 1.5))
+        self.assertEqual([use(son["son 1"])["ligne"], use(son["son 2"])["ligne"]], ["soundtrack", "voice"])
+        self.assertEqual(use(son["son 2"])["trim"], [0, 2])
+        vid = use(cfg["12.Video"][0]["video 1"])
+        self.assertEqual((vid["ligne"], vid["trim"], vid["moment"]), ("guide_video", [1, 3], 1.5))
         self.assertEqual(cfg["14.Video-Audio"], [{"Valide": False, "NbVideo": 0}])
         # Enregistree puis relue
-        pc.save_config(self.p, refs, trims, "ref2va", profile="ltx2", moments=moments)
+        self.save(refs, trims, profile="ltx2", moments=moments)
         rep = pc.check_config(self.p)
-        self.assertEqual((rep["profile"], rep["mode"]), ("ltx2", None))
+        self.assertEqual(rep["variant"], "ltx.2_3")
         by = {f["folder"]: f for f in rep["folders"]}
-        self.assertEqual([(x["Liste"], x["moment"]) for x in by["08.Images"]["files"]],
+        self.assertEqual([(x["Utilisations"][0]["ligne"], x["Utilisations"][0]["moment"]) for x in by["08.Images"]["files"]],
                          [("guide_images", 0), ("guide_images", -1)])
 
-    def test_hidden_profile_files_are_kept_without_index(self):
-        # Fichiers du profil cache : pas d'indice, mais pas une erreur (jamais archives)
+    def test_other_variant_files_are_kept_with_their_uses(self):
+        # Fichiers des autres variantes : gardes avec leurs utilisations (jamais archives),
+        # ceux de la variante affichee d'abord.
         refs, trims = self.refs()
         lrefs, ltrims, moments = self.ltx_refs()
         both = dict(refs, **lrefs)
-        cfg = pc.build_config(self.p, both, dict(trims, **ltrims), "ref2va", profile="ltx2", moments=moments)
-        self.assertEqual([e[0]["nom"] for k, e in cfg["08.Images"][0].items() if k.startswith("image ")], ["g1.png", "g2.png"])
-        cfg = pc.build_config(self.p, both, dict(trims, **ltrims), "ref2va")
-        self.assertEqual(cfg["profile"], "minimax_h3")
-        self.assertEqual(cfg["mode"], "REF2VA")
-        self.assertEqual(cfg["08.Images"][0]["NbImage"], 3)
-        self.assertEqual(cfg["10.Son"], [{"Valide": False, "NbSon": 0}])
-        self.assertNotIn("moment", cfg["08.Images"][0]["image 1"][0])
+        cfg = self.build(both, dict(trims, **ltrims), profile="ltx2", moments=moments)
+        self.assertEqual([e[0]["nom"] for k, e in cfg["08.Images"][0].items() if k.startswith("image ")],
+                         ["g1.png", "g2.png", "b.png", "a.png"])
+        cfg = self.build(both, dict(trims, **ltrims))
+        self.assertEqual(cfg["variant"], "minimax_h3.ref2va")
+        self.assertEqual(cfg["08.Images"][0]["NbImage"], 4)
+        self.assertEqual(cfg["10.Son"][0]["NbSon"], 2)
+        self.assertEqual(cfg["08.Images"][0]["image 1"][0]["nom"], "b.png")
+        self.assertNotIn("moment", cfg["08.Images"][0]["image 1"][0]["Utilisations"][0])
 
     def test_unused_file_message_names_the_refloader(self):
         write(self.f("10.Son", "lost.wav"), b"L")
@@ -187,30 +198,25 @@ class ProjectConfigTest(unittest.TestCase):
             pc.build_config(self.p, {})
         self.assertIn("not used by the MagicStudio RefLoader", ctx.exception.errors[0])
 
-    def test_old_config_without_profile(self):
+    def test_saved_config_reads_back_its_variant(self):
+        # Les anciens fichiers (sans profile, ou avec) : VariantConfigTest.test_old_config_converted.
         refs, trims = self.refs()
-        pc.save_config(self.p, refs, trims)
-        path = os.path.join(self.p, "99.Project-Config", "config_projets_Proj.json")
-        cfg = json.loads(read(path))
-        del cfg["profile"]
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(cfg, f)
-        self.assertEqual(pc.read_config(self.p)["profile"], "minimax_h3")
-        rep = pc.check_config(self.p)
-        self.assertEqual((rep["profile"], rep["mode"]), ("minimax_h3", "REF2VA"))
+        self.save(refs, trims, mode="fl2va")
+        self.assertEqual(pc.read_config(self.p)["variant"], "minimax_h3.fl2va")
+        self.assertEqual(pc.check_config(self.p)["variant"], "minimax_h3.fl2va")
 
     # ---- sauvegarde et archives ----
     def test_save_archives_previous_never_overwrites(self):
         refs, trims = self.refs()
-        first = pc.save_config(self.p, refs, trims)
+        first = self.save(refs, trims)
         self.assertIsNone(first["archived"])
         path = first["path"]
         created = json.loads(read(path))["datecreat"]
         os.utime(path, (1792218600, 1792218600))
-        second = pc.save_config(self.p, refs, trims)
+        second = self.save(refs, trims)
         self.assertRegex(second["archived"], r"^\d{8}-\d{6}_config_projets_Proj\.json$")
         os.utime(path, (1792218600, 1792218600))
-        third = pc.save_config(self.p, refs, trims)
+        third = self.save(refs, trims)
         self.assertEqual(third["archived"], second["archived"].replace(".json", " (2).json"))
         arch = os.listdir(os.path.join(self.p, "99.Project-Config", "Archives"))
         self.assertEqual(len(arch), 2)
@@ -220,21 +226,21 @@ class ProjectConfigTest(unittest.TestCase):
     def test_check_ok_changed_missing_and_archive_match(self):
         refs, trims = self.refs()
         write(self.f("04.Prompt", "p.txt"), b"P")
-        pc.save_config(self.p, refs, trims)
+        self.save(refs, trims)
         a_arch = os.path.basename(projects.archive_files(self.p, "08.Images", ["a.png"])[0])  # meme contenu
         write(self.f("08.Images", "b.png"), b"B2")                 # b.png modifie, sans archive
         os.remove(self.f("12.Video", "shot.mp4"))                  # manquant
         write(self.f("04.Prompt", "p.txt"), b"P2")                 # prompt modifie
         rep = pc.check_config(self.p)
         by = {f["folder"]: f for f in rep["folders"]}
-        imgs = {(x["nom"], x["Liste"]): x for x in by["08.Images"]["files"]}
-        self.assertEqual(imgs[("b.png", "images")]["status"], "changed")
-        self.assertIsNone(imgs[("b.png", "images")]["archive"])
-        self.assertEqual(imgs[("a.png", "images")]["status"], "missing")
-        self.assertEqual(imgs[("a.png", "images")]["archive"], a_arch)
+        imgs = {x["nom"]: x for x in by["08.Images"]["files"]}
+        self.assertEqual(imgs["b.png"]["status"], "changed")
+        self.assertIsNone(imgs["b.png"]["archive"])
+        self.assertEqual(imgs["a.png"]["status"], "missing")
+        self.assertEqual(imgs["a.png"]["archive"], a_arch)
         self.assertTrue(a_arch.endswith("_a.png"))
         vid = by["12.Video"]["files"][0]
-        self.assertEqual((vid["status"], vid["archive"], vid["trim"]), ("missing", None, [5, 7]))
+        self.assertEqual((vid["status"], vid["archive"], vid["Utilisations"][0]["trim"]), ("missing", None, [5, 7]))
         prompt = by["04.Prompt"]
         self.assertEqual((prompt["kind"], prompt["files"][0]["status"], prompt["files"][0]["archive"]),
                          ("prompt", "changed", None))
@@ -270,7 +276,7 @@ class ProjectConfigTest(unittest.TestCase):
 
     def test_archive_with_same_name_preferred(self):
         refs, trims = self.refs()
-        pc.save_config(self.p, refs, trims)
+        self.save(refs, trims)
         write(self.f("08.Images", "Archives/aaa.png"), b"B")
         b_arch = os.path.basename(projects.archive_files(self.p, "08.Images", ["b.png"])[0])
         by = {x["nom"]: x for x in pc.check_config(self.p)["folders"][4]["files"]}
@@ -283,7 +289,7 @@ class ProjectConfigTest(unittest.TestCase):
     # ---- remise en place ----
     def test_restore_moves_archive_back_and_archives_current(self):
         refs, trims = self.refs()
-        pc.save_config(self.p, refs, trims)
+        self.save(refs, trims)
         b_arch = os.path.basename(projects.archive_files(self.p, "08.Images", ["b.png"], when=0)[0])
         write(self.f("08.Images", "b.png"), b"B2")
         done = pc.restore_files(self.p, [{"folder": "08.Images", "archive": b_arch, "nom": "b.png"},
@@ -306,6 +312,104 @@ class ProjectConfigTest(unittest.TestCase):
         arch = os.listdir(self.f("00.Workflows", "Archives"))
         self.assertEqual(len(arch), 1)
         self.assertRegex(arch[0], r"^\d{8}-\d{6}_Clip\.json$")
+
+
+class VariantConfigTest(unittest.TestCase):
+    """Configuration du projet v3 : toutes les variantes (plan des variantes, Task 6)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.p = projects.create_project(self.root, "Proj")
+        self.f = lambda folder, name="": os.path.join(self.p, folder, name) if name else os.path.join(self.p, folder)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def sels(self):
+        import profiles
+        a = write(self.f("08.Images", "a.png"), b"A")
+        v = write(self.f("12.Video", "shot.mp4"), b"V")
+        s = write(self.f("10.Son", "s.wav"), b"S")
+        st = profiles.migrate_state({"variant": "minimax_h3.ref2va"})
+        st["selections"]["minimax_h3.ref2va"]["rows"]["images"] = [a]
+        st["selections"]["minimax_h3.ref2va"]["rows"]["videos"] = [v]
+        st["selections"]["minimax_h3.ref2va"]["trims"]["videos"] = {pc.trim_key(v): [1, 2]}
+        st["selections"]["ltx.2_5"]["rows"]["guide_images"] = [a]
+        st["selections"]["ltx.2_5"]["moments"]["guide_images"] = {pc.trim_key(a): -1}
+        st["selections"]["ltx.2_5"]["rows"]["soundtrack"] = [s]
+        return st["selections"], (a, v, s)
+
+    def test_save_keeps_all_variants(self):
+        sels, _ = self.sels()
+        pc.save_config(self.p, sels, "ltx.2_5")
+        cfg = pc.read_config(self.p)
+        self.assertEqual((cfg["version"], cfg["variant"]), (3, "ltx.2_5"))
+        img = cfg["08.Images"][0]
+        self.assertEqual(img["NbImage"], 1)
+        uses = img["image 1"][0]["Utilisations"]
+        self.assertEqual(uses, [
+            {"variante": "ltx.2_5", "ligne": "guide_images", "Indice": 1, "moment": -1},
+            {"variante": "minimax_h3.ref2va", "ligne": "images", "Indice": 1},
+        ])
+        self.assertEqual(cfg["12.Video"][0]["video 1"][0]["Utilisations"],
+                         [{"variante": "minimax_h3.ref2va", "ligne": "videos", "Indice": 1, "trim": [1, 2]}])
+        self.assertEqual(cfg["10.Son"][0]["son 1"][0]["Utilisations"][0]["ligne"], "soundtrack")
+        rep = pc.check_config(self.p)
+        self.assertEqual(rep["variant"], "ltx.2_5")
+        by = {f["folder"]: f for f in rep["folders"]}
+        self.assertEqual(by["08.Images"]["files"][0]["Utilisations"], uses)
+
+    def test_file_used_by_two_variants(self):
+        sels, (a, _, _) = self.sels()
+        cfg = pc.build_config(self.p, sels, "minimax_h3.ref2va")
+        img = cfg["08.Images"][0]
+        self.assertEqual(img["NbImage"], 1)
+        self.assertEqual([u["variante"] for u in img["image 1"][0]["Utilisations"]], ["minimax_h3.ref2va", "ltx.2_5"])
+        self.assertEqual(img["image 1"][0]["SHA256"], projects.file_hash(a))
+
+    def test_old_config_converted(self):
+        # Fichier de main (sans profile) puis de la branche des profils (profile ltx2).
+        path = os.path.join(self.p, "99.Project-Config", "config_projets_Proj.json")
+        old_main = {"Project": "Proj", "format": pc.FORMAT, "version": 1, "mode": "FL2VA",
+                    "08.Images": [{"Valide": True, "NbImage": 1, "image 1": [
+                        {"Indice": 1, "Liste": "first_frame", "Dossier": self.f("08.Images"), "nom": "a.png"}]}]}
+        write(path, json.dumps(old_main).encode())
+        cfg = pc.read_config(self.p)
+        self.assertEqual((cfg["version"], cfg["variant"]), (3, "minimax_h3.fl2va"))
+        self.assertNotIn("mode", cfg)
+        self.assertEqual(cfg["08.Images"][0]["image 1"][0]["Utilisations"],
+                         [{"variante": "minimax_h3.fl2va", "ligne": "first_frame", "Indice": 1}])
+        old_ltx = {"Project": "Proj", "format": pc.FORMAT, "version": 1, "mode": None, "profile": "ltx2",
+                   "12.Video": [{"Valide": True, "NbVideo": 1, "video 1": [
+                       {"Indice": 1, "Liste": "guide_video", "nom": "gv.mp4", "trim": [1, 3], "moment": 1.5}]}]}
+        write(path, json.dumps(old_ltx).encode())
+        cfg = pc.read_config(self.p)
+        self.assertEqual(cfg["variant"], "ltx.2_3")
+        self.assertEqual(cfg["12.Video"][0]["video 1"][0]["Utilisations"],
+                         [{"variante": "ltx.2_3", "ligne": "guide_video", "Indice": 1, "trim": [1, 3], "moment": 1.5}])
+
+    def test_unused_media_file_still_error(self):
+        sels, _ = self.sels()
+        write(self.f("14.Video-Audio", "lost.mp4"), b"L")
+        with self.assertRaises(pc.ConfigError) as ctx:
+            pc.build_config(self.p, sels, "ltx.2_5")
+        self.assertEqual(len(ctx.exception.errors), 1)
+        self.assertIn("14.Video-Audio/lost.mp4: no index", ctx.exception.errors[0])
+
+    def test_shown_variant_file_outside_project_is_an_error(self):
+        sels, _ = self.sels()
+        sels["ltx.2_5"]["rows"]["voice"] = ["D:/ailleurs/v.wav"]
+        sels["ltx.2_3"]["rows"]["voice"] = ["D:/ailleurs/w.wav"]  # autre variante : ignore
+        with self.assertRaises(pc.ConfigError) as ctx:
+            pc.build_config(self.p, sels, "ltx.2_5")
+        self.assertEqual(len(ctx.exception.errors), 1)
+        self.assertIn("v.wav", ctx.exception.errors[0])
+
+    def test_old_payload_converted(self):
+        a = write(self.f("08.Images", "a.png"), b"A")
+        sels, variant = pc.selections_from_old({"first_frame": [a]}, {}, "fl2va", "minimax_h3", {})
+        self.assertEqual(variant, "minimax_h3.fl2va")
+        self.assertEqual(sels["minimax_h3.fl2va"]["rows"]["first_frame"], [a])
 
 
 class ResetCopyTest(unittest.TestCase):
@@ -382,8 +486,8 @@ class ResetCopyTest(unittest.TestCase):
         v = write(os.path.join(self.src, "12.Video", "shot.mp4"), b"V")
         write(os.path.join(self.src, "08.Images", "Archives", "arch.png"), b"OLD")
         write(os.path.join(self.src, "40.Rush Videos", "Footage", "r.mp4"), b"R")  # hors 08-14 : jamais copie
-        pc.save_config(self.src, {"images": [b, a], "first_frame": [a], "videos": [v]},
-                       {"video": {pc.trim_key(v): [5, 7]}})
+        pc.save_config(self.src, *pc.selections_from_old({"images": [b, a], "first_frame": [a], "videos": [v]},
+                                                         {"video": {pc.trim_key(v): [5, 7]}}))
         write(os.path.join(self.p, "08.Images", "x.png"), b"A")   # meme SHA256 que a.png : pas recopie
         write(os.path.join(self.p, "08.Images", "b.png"), b"Z")   # meme nom, autre contenu : b_02.png
         before = self.files_of(self.p)
@@ -400,10 +504,10 @@ class ResetCopyTest(unittest.TestCase):
         self.assertEqual(read(os.path.join(self.p, "08.Images", "b_02.png")), b"B")
         # Listes de la configuration de l'autre projet, ramenees aux fichiers du projet ouvert.
         rep = {f["folder"]: f["files"] for f in out["report"]["folders"]}
-        self.assertEqual([(x["Liste"], x["Indice"], x["nom"]) for x in rep["08.Images"]],
+        self.assertEqual([(u["ligne"], u["Indice"], x["nom"]) for x in rep["08.Images"] for u in x["Utilisations"]],
                          [("images", 1, "b_02.png"), ("images", 2, "x.png"), ("first_frame", 1, "x.png")])
-        self.assertEqual([(x["nom"], x["trim"]) for x in rep["12.Video"]], [("shot.mp4", [5, 7])])
-        self.assertEqual(out["report"]["mode"], "REF2VA")
+        self.assertEqual([(x["nom"], x["Utilisations"][0]["trim"]) for x in rep["12.Video"]], [("shot.mp4", [5, 7])])
+        self.assertEqual(out["report"]["variant"], "minimax_h3.ref2va")
         # L'autre projet n'a pas change ; un second Copy ne recopie rien.
         self.assertEqual(pc.copy_media(self.p, self.src)["copied"], 0)
         with self.assertRaises(ValueError):
@@ -424,7 +528,7 @@ class ResetCopyTest(unittest.TestCase):
         write(os.path.join(two, "08.Images", "a.png"), b"OTHER")       # meme nom, autre contenu : a_02.png
         write(os.path.join(two, "08.Images", "dup.png"), b"A")          # meme SHA256 que One/a.png : une copie
         write(os.path.join(two, "10.Son", "Archives", "s.wav"), b"S")
-        pc.save_config(one, {"images": [a]}, {})
+        pc.save_config(one, *pc.selections_from_old({"images": [a]}, {}))
         self.assertEqual(pc.sub_projects(group), ["One", "Two"])
         self.assertEqual(pc.sub_projects(group, exclude=two), ["One"])
         plan = pc.copy_media(self.p, group, dry_run=True)
