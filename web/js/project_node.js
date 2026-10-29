@@ -20,6 +20,7 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
+    PICKUP_DIR, PICKUP_SUBS, pickupPath,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -115,6 +116,28 @@ const FOLDER_ICONS = {
         '<path d="M6 4v4M10 4v4M14 4v4M18 4v4M6 16v4M10 16v4M14 16v4M18 16v4"></path>', 14),
 };
 
+/** Copie : API du presse-papiers, sinon zone de texte temporaire dans host (execCommand). */
+async function clipboardCopy(text, host) {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch (e) {
+        const area = document.createElement("textarea");
+        area.value = text;
+        Object.assign(area.style, { position: "fixed", left: "-9999px", top: "0" });
+        (host || document.body).appendChild(area);
+        area.select();
+        let ok = false;
+        try {
+            ok = document.execCommand("copy");
+        } catch (err) {
+            ok = false;
+        }
+        area.remove();
+        return ok;
+    }
+}
+
 function samePath(a, b) {
     const norm = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
     return norm(a) === norm(b);
@@ -184,6 +207,10 @@ const HELP_SECTIONS = [
             [iconBadge(PLUS_ICON, PINK), "New project"],
             [textBadge("Load"), "Put the project back (see <b>Load and Save</b>)"],
             [textBadge("Save"), "Record the project (see <b>Load and Save</b>)"],
+            [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]) + " " +
+                iconBadge(FOLDER_ICONS["10.Son"], FOLDER_COLORS["10.Son"]) + " " +
+                iconBadge(FOLDER_ICONS["12.Video"], FOLDER_COLORS["12.Video"]),
+                "Copy the path of <b>90.Pick Up/Image</b>, <b>/Son</b> or <b>/Video</b> (to save the runs there)"],
             [textBadge("Copy", "#1e88e5"), "Copy the media 08 to 14 of another project (identical files skipped)"],
             [textBadge("Reset", "#e53935"), "Empty the project (see the warning below)"],
             [textBadge("Purge", PURGE_RED), "Clean the runs: left “running”, or in error (to 98.Error)"],
@@ -244,6 +271,10 @@ const HELP_SECTIONS = [
                     "are in the project folder but have no row in the node."],
                 ["70.Rush Audio", "same four sort folders as 40 and 60, no row yet; its Picture Lock feeds the Audio " +
                     "of <b>MagicStudio Final Cut</b>."],
+                ["90.Pick Up", "Suggested folder to save the runs: <b>Image</b>, <b>Son</b>, <b>Video</b>. The three " +
+                    "icons at the bottom of the node copy their path; paste it into the save node of the workflow. " +
+                    "No row in the node; in the MagicStudio RefLoader, each subfolder appears in <b>Subfolder</b> " +
+                    "for the rows of its type."],
             ]) +
             hTip("A project name cannot contain <b>&lt; &gt; : \" / \\ | ? *</b> nor end with a dot."),
     },
@@ -283,7 +314,10 @@ const HELP_SECTIONS = [
                     "leaves."],
             ]) +
             hNote("this is not a change of the workflow: no configuration is written, and the bell of 00.Workflows " +
-                "ignores the lists of the RefLoader."),
+                "ignores the lists of the RefLoader.") +
+            hNote("a run saved directly into 08 to 14: at the end of the run its file goes to <b>40.Rush Videos</b> " +
+                "(video) or <b>60.Rush Images</b> (image), folder <b>Footage</b>, full quality. The bell never archives " +
+                "a file of a run. To save the runs, use <b>90.Pick Up</b> (see <b>Project folders</b>)."),
     },
     {
         id: "duplicates", title: "Duplicates in Archives", icon: DUP_ICON, color: BELL_ORANGE,
@@ -610,6 +644,10 @@ const HELP_SECTIONS_FR = [
             [iconBadge(PLUS_ICON, PINK), "Nouveau projet"],
             [textBadge("Load"), "Remettre le projet en place (voir <b>Load et Save</b>)"],
             [textBadge("Save"), "Enregistrer le projet (voir <b>Load et Save</b>)"],
+            [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]) + " " +
+                iconBadge(FOLDER_ICONS["10.Son"], FOLDER_COLORS["10.Son"]) + " " +
+                iconBadge(FOLDER_ICONS["12.Video"], FOLDER_COLORS["12.Video"]),
+                "Copier le chemin de <b>90.Pick Up/Image</b>, <b>/Son</b> ou <b>/Video</b> (pour y enregistrer les Runs)"],
             [textBadge("Copy", "#1e88e5"), "Copier les médias 08 à 14 d'un autre projet (fichiers identiques sautés)"],
             [textBadge("Reset", "#e53935"), "Vider le projet (voir l'avertissement ci-dessous)"],
             [textBadge("Purge", PURGE_RED), "Nettoyer les Runs : restés « running », ou en erreur (vers 98.Error)"],
@@ -672,6 +710,10 @@ const HELP_SECTIONS_FR = [
                     "erreur) sont dans le dossier du projet mais n'ont pas de ligne dans le nœud."],
                 ["70.Rush Audio", "mêmes quatre dossiers de tri que 40 et 60, pas encore de ligne ; son Picture Lock " +
                     "alimente l'Audio de <b>MagicStudio Final Cut</b>."],
+                ["90.Pick Up", "Dossier proposé pour enregistrer les Runs : <b>Image</b>, <b>Son</b>, <b>Video</b>. Les " +
+                    "trois icônes en bas du nœud copient leur chemin ; collez-le dans le nœud de sauvegarde du " +
+                    "workflow. Pas de ligne dans le nœud ; dans le MagicStudio RefLoader, chaque sous-dossier apparaît " +
+                    "dans <b>Subfolder</b> pour les lignes de son type."],
             ]) +
             hTip("Un nom de projet ne peut pas contenir <b>&lt; &gt; : \" / \\ | ? *</b> ni finir par un point.",
                 "Astuce :"),
@@ -712,7 +754,11 @@ const HELP_SECTIONS_FR = [
                 ["Archives", "un fichier y est nommé <b>yyyyMMdd_HHmmss_nom.ext</b> et reprend son nom en sortant."],
             ]) +
             hNote("ce n'est pas une modification du workflow : aucune configuration n'est écrite, et la cloche de " +
-                "00.Workflows ignore les listes du RefLoader.", "Remarque :"),
+                "00.Workflows ignore les listes du RefLoader.", "Remarque :") +
+            hNote("un Run enregistré directement dans 08 à 14 : à la fin du Run, son fichier va dans " +
+                "<b>40.Rush Videos</b> (vidéo) ou <b>60.Rush Images</b> (image), dossier <b>Footage</b>, en pleine " +
+                "qualité. La cloche n'archive jamais un fichier de Run. Pour enregistrer les Runs, utilisez " +
+                "<b>90.Pick Up</b> (voir <b>Dossiers du projet</b>).", "Remarque :"),
     },
     {
         id: "duplicates", title: "Doublons d'Archives",
@@ -3472,27 +3518,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         copyBtn.style.background = INACTIVE_BG;
         copyDone.textContent = "";
     }
-    /** Copie : API du presse-papiers, sinon zone de texte temporaire (execCommand). */
-    async function copyText(text) {
-        try {
-            await navigator.clipboard.writeText(text);
-            return true;
-        } catch (e) {
-            const area = document.createElement("textarea");
-            area.value = text;
-            Object.assign(area.style, { position: "fixed", left: "-9999px", top: "0" });
-            card.appendChild(area);
-            area.select();
-            let ok = false;
-            try {
-                ok = document.execCommand("copy");
-            } catch (err) {
-                ok = false;
-            }
-            area.remove();
-            return ok;
-        }
-    }
+    const copyText = (text) => clipboardCopy(text, card);
     copyBtn.addEventListener("click", async () => {
         const text = prompt.body.textContent;
         if (!text) return;
@@ -4904,7 +4930,21 @@ app.registerExtension({
                 width: "22px", height: "22px", borderRadius: "50%", border: "none", background: PINK,
                 color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
             });
-            bottom.append(bottomSpace, copyBtn, resetBtn, purgeBtn, loadBtn, saveBtn, reloadBtn, helpBtn);
+            // Pick Up (26/10/2026) : une icone par sous-dossier de 90.Pick Up, copie son chemin
+            // (a coller dans le noeud de sauvegarde du workflow). Couleurs et icones de 08 / 10 / 12.
+            const pickupBtns = [["image", "08.Images"], ["audio", "10.Son"], ["video", "12.Video"]].map(([kind, like]) => {
+                const b = makeIconButton(FOLDER_COLORS[like], FOLDER_ICONS[like], "");
+                b.style.width = b.style.height = "22px";
+                b.dataset.kind = kind;
+                b.dataset.color = FOLDER_COLORS[like];
+                b.addEventListener("click", async () => {
+                    const path = pickupPath(getState().path, kind);
+                    const ok = await clipboardCopy(path, container);
+                    say(ok ? "Path copied: " + path : "Copy failed: " + path, ok);
+                });
+                return b;
+            });
+            bottom.append(bottomSpace, ...pickupBtns, copyBtn, resetBtn, purgeBtn, loadBtn, saveBtn, reloadBtn, helpBtn);
 
             // Une ligne par sous-dossier : bouton (pastille coloree + nom) et
             // petite cloche. Pas encore d'action : leur role viendra plus tard.
@@ -5141,6 +5181,10 @@ app.registerExtension({
                     : "Reset: every file of the project goes to the Recycle Bin, and the MagicStudio RefLoader is emptied");
                 setOn(purgeBtn, current, PURGE_RED, current ? "Purge: delete the runs still marked running while no " +
                     "run is in progress, move the runs in error to 98.Error" : "Pick a project first");
+                for (const b of pickupBtns) {
+                    setOn(b, current, b.dataset.color, current ? "Copy the path of " + PICKUP_DIR + "/" +
+                        PICKUP_SUBS[b.dataset.kind] + " (to save the runs there)" : "Pick a project first");
+                }
                 syncModelsLink();
             }
 

@@ -838,6 +838,7 @@ export function filterSubfolders(entries, project) {
  * 12.Video en LTX 2.x (mode "ltx2") ; pas d'Archives : bouton View archives.
  * Aussi <projet>/40.Rush Videos/Picture Lock/Extract Frame (26/10/2026) pour les
  * lignes d'images : kind = type de fichier de la ligne ("image"...), absent = accepte.
+ * Et <projet>/90.Pick Up/Image | Son | Video (26/10/2026) : le sous-dossier du type de la ligne.
  */
 export function isMediaSubfolder(path, mode, kind) {
     const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
@@ -845,9 +846,24 @@ export function isMediaSubfolder(path, mode, kind) {
     if ((n === 4 || n === 5) && parts.slice(n - 3).join("/") === EXTRACT_FRAME_DIR.join("/")) {
         return !kind || kind === "image";
     }
+    if ((n === 3 || n === 4) && parts[n - 2] === PICKUP_DIR) {
+        return kind ? parts[n - 1] === PICKUP_SUBS[kind] : Object.values(PICKUP_SUBS).includes(parts[n - 1]);
+    }
     const allowed = mode === "fl2va" ? ["08.Images"] : mode === "ltx2" ? ["08.Images", "10.Son", "12.Video"] : UPDATE_FOLDERS;
     // Projet de la racine (P/08.Images) ou d'un dossier de projets (G/P/08.Images, 22/10/2026).
     return (n === 2 || n === 3) && allowed.includes(parts[n - 1]);
+}
+
+// --- Pick Up (26/10/2026) ------------------------------------------------------------------
+
+/** Dossier propose pour enregistrer les Runs (= projects.PICKUP_DIR), sans ligne dans le noeud. */
+export const PICKUP_DIR = "90.Pick Up";
+/** Type de fichier -> sous-dossier de Pick Up (= projects.PICKUP_SUBS). */
+export const PICKUP_SUBS = { image: "Image", audio: "Son", video: "Video" };
+
+/** Chemin Windows du sous-dossier de Pick Up pour kind (icones du noeud Projet : copie du chemin). */
+export function pickupPath(project, kind) {
+    return String(project || "").replace(/[\\/]+$/, "") + "\\" + PICKUP_DIR + "\\" + PICKUP_SUBS[kind];
 }
 
 // --- Extract Frame (26/10/2026) ------------------------------------------------------------

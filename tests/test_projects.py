@@ -718,6 +718,15 @@ class SameAsJsTest(unittest.TestCase):
         self.assertIsNotNone(m)
         self.assertEqual(tuple(re.findall(r'"([^"]*)"', m.group(1))), projects.EXTRACT_DIR)
 
+    def test_js_pickup(self):
+        """Pick Up (26/10/2026) : memes noms que projects.PICKUP_DIR / PICKUP_SUBS."""
+        with open(os.path.join(os.path.dirname(HERE), "web", "js", "project_paths.js"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn('PICKUP_DIR = "%s"' % projects.PICKUP_DIR, src)
+        m = re.search(r"PICKUP_SUBS\s*=\s*\{([^}]*)\}", src)
+        self.assertIsNotNone(m)
+        self.assertEqual(sorted(re.findall(r':\s*"([^"]*)"', m.group(1))), sorted(projects.PICKUP_SUBS))
+
     def test_js_lock_video_exts(self):
         """Extensions video du Picture Lock (bouton Extract Frame de l'en-tete) : celles de run_record."""
         import run_record

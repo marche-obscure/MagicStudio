@@ -494,6 +494,8 @@ const HELP_SECTIONS = [
                 ["Full", "a message above the line asks to check below the file to replace, then to pick the new one above."],
                 ["Extract Frame", "appears for the image rows when a project is wired. A picked image is copied into " +
                     "<b>08.Images</b> at <b>Save</b> (see the help of <b>MagicStudio Project</b>)."],
+                ["Pick Up", "<b>90.Pick Up/Image</b>, <b>/Son</b> or <b>/Video</b> appears in <b>Subfolder</b> for the " +
+                    "rows of that type when a project is wired. A picked file is copied into 08 to 14 at <b>Save</b>."],
             ]),
     },
     {
@@ -829,6 +831,9 @@ const HELP_SECTIONS_FR = [
                     "puis à choisir le nouveau en haut."],
                 ["Extract Frame", "apparaît pour les lignes d'images quand un projet est relié. Une image choisie est " +
                     "copiée dans <b>08.Images</b> au <b>Save</b> (voir l'aide de <b>MagicStudio Project</b>)."],
+                ["Pick Up", "<b>90.Pick Up/Image</b>, <b>/Son</b> ou <b>/Video</b> apparaît dans <b>Subfolder</b> pour " +
+                    "les lignes de ce type quand un projet est relié. Un fichier choisi est copié dans 08 à 14 au " +
+                    "<b>Save</b>."],
             ]),
     },
     {
