@@ -19,6 +19,7 @@ import {
     batchSortTargets, canDeleteRush, deletedText,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
+    EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -2814,6 +2815,422 @@ function runConfigHtml(run, out) {
  * rush (40 / 60, choix utilisateur 20/10/2026) : {move(run, out, key), remove(run, out, trash),
  * reload() -> runs, askDelete(noms, ancre, bouton) -> "trash" | "delete" | null, askWord(n, bouton) -> bool}.
  */
+// ----------------------------------------------------------------------
+// Fenetre Extract Frame (26/10/2026, choix utilisateur) : a cote de la fenetre
+// 40.Rush Videos, deplacable, sans fond bloquant ; video du Picture Lock avec un
+// compteur d'images (a partir de 0) et ◀ ▶, Select: First / Last / FL-Frame /
+// Frame-N, Extract, vignettes des images deja extraites en bas. Close, Echap et
+// clic a cote ferment (Echap et clic a cote : relayes par la fenetre 40).
+// ----------------------------------------------------------------------
+const LOCK_KEEP_ONE = "Picture Lock: keep one file";
+const VIDEO_CHANGED = "The Picture Lock video changed";
+
+/** Carte a droite de la carte de reference (retrecie a la place libre), sinon a gauche, sinon au bord droit. */
+function placeBeside(card, anchor, maxWidth) {
+    const r = anchor.getBoundingClientRect();
+    const max = Math.min(maxWidth, window.innerWidth - 16);
+    const right = window.innerWidth - r.right - 18;
+    const leftRoom = r.left - 18;
+    let w = max;
+    let left = Math.max(8, window.innerWidth - 8 - max);
+    if (right >= 320) {
+        w = Math.min(max, right);
+        left = r.right + 10;
+    } else if (leftRoom >= 320) {
+        w = Math.min(max, leftRoom);
+        left = r.left - 10 - w;
+    }
+    card.style.width = w + "px";
+    card.style.left = left + "px";
+    card.style.top = Math.max(8, Math.min(r.top, window.innerHeight - 260)) + "px";
+}
+
+/**
+ * ops = {info(project) -> Promise<infos de /mmproject/extract/info>,
+ *        extract(corps) -> Promise<{written, exists}> (erreur : Error avec le texte du serveur),
+ *        askReplace(project) -> Promise<bool> (question Replace / Keep apres un changement de video),
+ *        blocked() -> bool (cette question est ouverte : Echap ne ferme pas la fenetre)}
+ */
+function buildExtractWindow(container, ops) {
+    const { overlay, card } = makeOverlay();
+    overlay.style.zIndex = "10001";
+    // Pas de fond bloquant : la fenetre 40 reste utilisable a cote.
+    overlay.style.pointerEvents = "none";
+    card.style.pointerEvents = "auto";
+    Object.assign(card.style, {
+        width: "min(460px, 46vw)", padding: "10px 12px", borderColor: SORT_COLORS.picture_lock, display: "flex",
+        flexDirection: "column", gap: "8px", maxHeight: "92vh", overflowY: "auto",
+    });
+    const confirm = buildConfirm(container);
+
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "flex-start", gap: "8px" });
+    const titles = document.createElement("div");
+    Object.assign(titles.style, { flex: "1", minWidth: "0" });
+    const title = document.createElement("div");
+    Object.assign(title.style, {
+        fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, whiteSpace: "nowrap", overflow: "hidden",
+        textOverflow: "ellipsis",
+    });
+    const sub = document.createElement("div");
+    Object.assign(sub.style, { color: "#888", fontSize: "11px", wordBreak: "break-all" });
+    titles.append(title, sub);
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
+    Object.assign(closeBtn.style, { width: "22px", height: "22px" });
+    head.append(titles, closeBtn);
+
+    const screen = document.createElement("div");
+    Object.assign(screen.style, {
+        display: "flex", alignItems: "center", justifyContent: "center", background: "#111",
+        borderRadius: "8px", minHeight: "120px", overflow: "hidden",
+    });
+    const video = document.createElement("video");
+    video.controls = true;
+    video.preload = "auto";
+    Object.assign(video.style, { width: "100%", height: "auto", maxHeight: "48vh", objectFit: "contain", display: "block" });
+    screen.appendChild(video);
+
+    // Compteur "Frame n / total" a la place des secondes, ◀ ▶ = une image.
+    const stepRow = document.createElement("div");
+    Object.assign(stepRow.style, { display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" });
+    const prevBtn = makeTextButton("◀", INACTIVE_BG);
+    const nextBtn = makeTextButton("▶", INACTIVE_BG);
+    prevBtn.title = "One frame back";
+    nextBtn.title = "One frame forward";
+    [prevBtn, nextBtn].forEach((b) => Object.assign(b.style, { padding: "3px 12px" }));
+    const counter = document.createElement("span");
+    Object.assign(counter.style, { minWidth: "130px", textAlign: "center", fontWeight: "bold", color: "#ddd", fontSize: "12px" });
+    stepRow.append(prevBtn, counter, nextBtn);
+
+    // Select: First / Last / FL-Frame / Frame-N, numero (Frame-N), Extract.
+    const pickRow = document.createElement("div");
+    Object.assign(pickRow.style, { display: "flex", alignItems: "center", gap: "8px" });
+    const pickLabel = document.createElement("span");
+    pickLabel.textContent = "Select:";
+    Object.assign(pickLabel.style, { color: "#9fd6cf", fontWeight: "bold", fontSize: "12px" });
+    const choice = document.createElement("select");
+    Object.assign(choice.style, {
+        background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "6px", padding: "3px 6px",
+        fontSize: "12px",
+    });
+    for (const [value, text] of EXTRACT_CHOICES) {
+        const o = document.createElement("option");
+        o.value = value;
+        o.textContent = text;
+        o.style.background = "#111";
+        choice.appendChild(o);
+    }
+    const num = document.createElement("input");
+    num.type = "number";
+    num.min = "0";
+    num.step = "1";
+    Object.assign(num.style, {
+        width: "80px", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "6px",
+        padding: "3px 6px", fontSize: "12px", display: "none",
+    });
+    const spacer = document.createElement("div");
+    spacer.style.flex = "1";
+    const extractBtn = makeTextButton("Extract", SORT_COLORS.picture_lock);
+    Object.assign(extractBtn.style, { color: SORT_TEXT_COLORS.picture_lock });
+    pickRow.append(pickLabel, choice, num, spacer, extractBtn);
+
+    const note = document.createElement("div");
+    Object.assign(note.style, { minHeight: "14px", fontSize: "11px", color: "#9fd6cf", wordBreak: "break-word" });
+
+    // Images deja extraites (vignette, nom, numero).
+    const filesLabel = document.createElement("div");
+    Object.assign(filesLabel.style, { color: "#9fd6cf", fontWeight: "bold", fontSize: "11px" });
+    const files = document.createElement("div");
+    Object.assign(files.style, {
+        display: "flex", gap: "8px", overflowX: "auto", overflowY: "hidden", padding: "2px 2px 6px", minHeight: "40px",
+    });
+    card.append(head, screen, stepRow, pickRow, note, filesLabel, files);
+
+    let project = "";
+    let info = null;
+    let total = 0;
+    let fps = 0;
+    let shown = 0;
+    let busy = false;
+    let openId = 0;
+    let rvfc = 0;
+    let anchorCard = null;
+
+    const canExtract = () => !!(info && info.video && !info.overfull && total > 0);
+    function say(text, ok) {
+        note.textContent = text || "";
+        note.style.color = ok === false ? ORANGE : "#9fd6cf";
+    }
+    function paintButtons() {
+        const can = canExtract() && !busy;
+        extractBtn.disabled = !can;
+        Object.assign(extractBtn.style, { opacity: can ? "1" : "0.45", cursor: can ? "pointer" : "default" });
+        extractBtn.title = info && info.overfull ? LOCK_KEEP_ONE + " (40.Rush Videos/Picture Lock holds several files)"
+            : !info || !info.video ? "No video in 40.Rush Videos/Picture Lock"
+                : "Write the chosen frame(s) as PNG into " + EXTRACT_FRAME_DIR.join("/");
+        choice.disabled = busy;
+        num.disabled = busy;
+        num.style.display = choice.value === "n" ? "" : "none";
+        for (const [b, off] of [[prevBtn, shown <= 0], [nextBtn, shown >= total - 1]]) {
+            const dis = off || total <= 0;
+            b.disabled = dis;
+            Object.assign(b.style, { opacity: dis ? "0.45" : "1", cursor: dis ? "default" : "pointer" });
+        }
+    }
+    /** Image affichee : compteur ; Frame-N, video a l'arret : le champ suit (sauf pendant la saisie). */
+    function paintFrame(n) {
+        shown = n;
+        counter.textContent = frameText(n, total);
+        if (choice.value === "n" && video.paused && document.activeElement !== num) num.value = String(n);
+        paintButtons();
+    }
+    const fromTime = (t) => paintFrame(frameAt(t, fps, total));
+    function seek(n) {
+        if (total <= 0 || fps <= 0) return;
+        const k = Math.max(0, Math.min(total - 1, Math.floor(n)));
+        video.pause();
+        video.currentTime = timeOf(k, fps);
+        paintFrame(k);
+    }
+    video.addEventListener("timeupdate", () => fromTime(video.currentTime));
+    video.addEventListener("seeked", () => fromTime(video.currentTime));
+    video.addEventListener("pause", () => fromTime(video.currentTime));
+    video.addEventListener("error", () => {
+        if (video.getAttribute("src")) say("This video cannot be played in the browser: the frames can still be extracted by number.", false);
+    });
+    // Compteur plus fluide pendant la lecture : une mise a jour par image affichee.
+    function watchFrames() {
+        if (typeof video.requestVideoFrameCallback !== "function") return;
+        const step = (now, meta) => {
+            if (overlay.style.display === "none") return;
+            fromTime(meta && typeof meta.mediaTime === "number" ? meta.mediaTime : video.currentTime);
+            rvfc = video.requestVideoFrameCallback(step);
+        };
+        rvfc = video.requestVideoFrameCallback(step);
+    }
+    function stopWatch() {
+        if (rvfc && typeof video.cancelVideoFrameCallback === "function") video.cancelVideoFrameCallback(rvfc);
+        rvfc = 0;
+    }
+    prevBtn.addEventListener("click", () => seek(shown - 1));
+    nextBtn.addEventListener("click", () => seek(shown + 1));
+    choice.addEventListener("change", () => {
+        if (choice.value === "n") num.value = String(shown);
+        paintButtons();
+    });
+    // Numero tape : la video va a cette image.
+    num.addEventListener("input", () => {
+        const n = Number(num.value);
+        if (num.value !== "" && Number.isInteger(n) && n >= 0 && n <= total - 1) seek(n);
+    });
+    num.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            doExtract();
+        }
+    });
+
+    const extractDir = () => EXTRACT_FRAME_DIR.reduce((d, x) => joinDir(d, x), project);
+    function paintFiles() {
+        files.innerHTML = "";
+        const list = (info && info.files) || [];
+        filesLabel.textContent = "Extracted frames (" + list.length + ") – " + EXTRACT_FRAME_DIR.join("/");
+        if (!list.length) {
+            const d = document.createElement("div");
+            d.textContent = "No frame extracted yet.";
+            Object.assign(d.style, { color: "#888", alignSelf: "center" });
+            files.appendChild(d);
+            return;
+        }
+        const dir = extractDir();
+        for (const f of list) {
+            const t = document.createElement("div");
+            Object.assign(t.style, {
+                width: "110px", padding: "4px", borderRadius: "8px", background: "#1f1f1f", border: "1px solid #333",
+                flex: "0 0 auto", boxSizing: "border-box", cursor: f.frame != null ? "pointer" : "default",
+            });
+            const pic = dupThumb(dir, f.name, "image", 100);
+            const name = document.createElement("div");
+            name.textContent = f.name;
+            Object.assign(name.style, { fontSize: "10px", marginTop: "3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+            const nb = document.createElement("div");
+            nb.textContent = f.frame != null ? "Frame " + f.frame : "Frame ?";
+            Object.assign(nb.style, { fontSize: "10px", color: "#9fd6cf" });
+            t.title = f.name + (f.frame != null ? "\nClick: show this frame in the video" : "");
+            t.append(pic, name, nb);
+            if (f.frame != null) t.addEventListener("click", () => seek(f.frame));
+            files.appendChild(t);
+        }
+    }
+
+    /** Infos relues : lecteur recharge seulement si la video du Picture Lock a change. */
+    function apply(data) {
+        const before = info && info.video;
+        info = data || {};
+        total = Math.max(0, Math.floor(Number(info.frames) || 0));
+        fps = Number(info.fps) > 0 ? Number(info.fps) : 0;
+        sub.textContent = info.video ? "40.Rush Videos/Picture Lock/" + baseOf(info.video) +
+            (info.width ? " – " + info.width + "x" + info.height : "") + (fps ? " – " + Math.round(fps * 1000) / 1000 + " fps" : "")
+            : "No video in 40.Rush Videos/Picture Lock";
+        num.max = String(Math.max(0, total - 1));
+        if (!info.video) {
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+            screen.style.display = "none";
+        } else {
+            screen.style.display = "flex";
+            if (info.video !== before) {
+                video.src = "/mmrefloader/media?file=" + encodeURIComponent(info.video);
+                shown = 0;
+            }
+        }
+        if (info.overfull) say(LOCK_KEEP_ONE, false);
+        else if (!info.video) say("No video in 40.Rush Videos/Picture Lock: sort one video into Picture Lock first.", false);
+        paintFrame(Math.min(shown, Math.max(0, total - 1)));
+        paintFiles();
+    }
+    async function reload() {
+        const id = openId;
+        try {
+            const data = await ops.info(project);
+            if (id === openId && overlay.style.display !== "none") apply(data);
+        } catch (e) {
+            if (id === openId) say(e.message, false);
+        }
+    }
+
+    /**
+     * Appel d'extraction ; la video a change et une reponse Replace / Keep attend :
+     * la question d'abord, puis un nouvel essai. null si refuse (texte dans la note).
+     */
+    async function call(body) {
+        for (let attempt = 0; ; attempt++) {
+            try {
+                return await ops.extract(body);
+            } catch (e) {
+                const text = (e && e.message) || String(e);
+                if (attempt === 0 && text.startsWith(VIDEO_CHANGED) && (await ops.askReplace(project))) continue;
+                say(text, false);
+                return null;
+            }
+        }
+    }
+    /** Fichiers a remplacer -> appels avec overwrite (FIRST et LAST ensemble : FL-Frame). */
+    function overwriteCalls(names, body) {
+        const first = names.some((n) => n.startsWith("FIRST_FRAME_"));
+        const last = names.some((n) => n.startsWith("LAST_FRAME_"));
+        const out = [];
+        if (first && last) out.push({ project, which: "fl", overwrite: true });
+        else if (first) out.push({ project, which: "first", overwrite: true });
+        else if (last) out.push({ project, which: "last", overwrite: true });
+        if (names.some((n) => n.startsWith("FRAME_"))) out.push({ project, which: "n", n: body.n, overwrite: true });
+        return out;
+    }
+    async function doExtract() {
+        if (busy || !canExtract()) return;
+        const body = { project, which: choice.value };
+        if (body.which === "n") {
+            const n = Number(num.value);
+            if (num.value === "" || !Number.isInteger(n) || n < 0 || n > total - 1) {
+                say("Frame number: a whole number from 0 to " + (total - 1) + ".", false);
+                return;
+            }
+            body.n = n;
+        }
+        const id = openId;
+        busy = true;
+        paintButtons();
+        say("Extracting…");
+        try {
+            const res = await call(body);
+            if (!res) return;
+            const written = [...(res.written || [])];
+            const kept = [];
+            const yes = [];
+            for (const name of res.exists || []) {
+                const ok = await confirm.ask({
+                    title: "Replace " + name + "?",
+                    html: "<b>" + escapeHtml(name) + "</b> is already in " + EXTRACT_FRAME_DIR.join("/") + ".",
+                    okLabel: "Replace", okColor: ORANGE,
+                });
+                (ok === true ? yes : kept).push(name);
+            }
+            for (const b of overwriteCalls(yes, body)) {
+                const r = await call(b);
+                if (!r) return;
+                written.push(...(r.written || []));
+            }
+            if (id !== openId) return;
+            say((written.length ? "Written: " + written.join(", ") : "Nothing written") +
+                (kept.length ? " – kept: " + kept.join(", ") : ""), true);
+        } finally {
+            busy = false;
+            if (id === openId) {
+                paintButtons();
+                await reload();
+            }
+        }
+    }
+    extractBtn.addEventListener("click", doExtract);
+
+    const onKey = (e) => {
+        // Question ouverte (Replace <nom>? ou changement de video) : Echap lui revient.
+        if (overlay.style.display === "none" || busy || (ops.blocked && ops.blocked()) || e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close();
+    };
+    function close() {
+        if (overlay.style.display === "none") return;
+        openId++;
+        stopWatch();
+        video.pause();
+        video.removeAttribute("src"); // arrete le chargement
+        video.load();
+        info = null;
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+    closeBtn.addEventListener("click", close);
+
+    return {
+        /** open(dossier du projet, infos de /mmproject/extract/info, nom affiche, carte de reference) */
+        open(path, data, name, anchor) {
+            close();
+            openId++;
+            project = path;
+            info = null;
+            shown = 0;
+            anchorCard = anchor || null;
+            title.textContent = "Extract Frame – " + (name || baseOf(path));
+            choice.value = "first";
+            num.value = "0";
+            say("");
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            apply(data);
+            watchFrames();
+            if (anchorCard) placeBeside(card, anchorCard, 480);
+            else positionCardNextToNode(card, container, 480);
+        },
+        /** Relit les infos (video du Picture Lock changee, fichiers remplaces) si la fenetre est ouverte. */
+        refresh() {
+            if (overlay.style.display !== "none" && !busy) reload();
+        },
+        isOpen: () => overlay.style.display !== "none",
+        isBusy: () => busy,
+        projectPath: () => project,
+        say,
+        close,
+        remove() {
+            close();
+            confirm.remove();
+            overlay.remove();
+        },
+    };
+}
+
 function buildRunViewer(container, onSort, onWorkflow, rush) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
@@ -2859,7 +3276,17 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         return { key, d };
     });
     filterBox.append(filterLabel, ...filterDots.map((x) => x.d));
-    head.append(title, filterBox, orderBtn, closeBtn);
+    // 40 / 60 : Picture Lock avec plusieurs fichiers (projet d'avant la regle du fichier unique, 26/10/2026).
+    const lockBadge = document.createElement("span");
+    lockBadge.textContent = LOCK_KEEP_ONE;
+    Object.assign(lockBadge.style, {
+        color: ORANGE, fontWeight: "bold", fontSize: "11px", whiteSpace: "nowrap", flex: "0 0 auto", display: "none",
+        cursor: "help",
+    });
+    head.append(title, lockBadge, filterBox, orderBtn, closeBtn);
+    // Fenetre Extract Frame (40, 26/10/2026) : fermee avant la fenetre 40 (Echap, clic a cote).
+    const extractWin = () => (rush && rush.extractWindow) || null;
+    const extractOpen = () => !!(extractWin() && extractWin().isOpen());
 
     // 04.Prompt : filtre et liste des Runs.
     const pick = document.createElement("div");
@@ -3012,15 +3439,19 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     const checked = new Set();
     const failed = new Map();
 
+    // Question en cours (Extract Frame, changement de video) : Echap et clics vont a la question.
+    const asking = () => !!(rush && rush.busy && rush.busy());
     const onKey = (e) => {
-        if (overlay.style.display === "none" || moving || e.key !== "Escape") return;
+        if (overlay.style.display === "none" || moving || asking() || e.key !== "Escape") return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        if (preview.isOpen()) preview.close();
+        if (extractOpen()) extractWin().close();
+        else if (preview.isOpen()) preview.close();
         else close();
     };
     function close() {
         preview.close();
+        if (extractWin()) extractWin().close();
         checked.clear();
         failed.clear();
         note.textContent = "";
@@ -3030,7 +3461,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         thumb.body.innerHTML = "";
     }
     closeBtn.addEventListener("click", close);
-    overlay.addEventListener("mousedown", () => (moving ? null : preview.isOpen() ? preview.close() : close()));
+    overlay.addEventListener("mousedown", () => (moving || asking() ? null : extractOpen() ? extractWin().close()
+        : preview.isOpen() ? preview.close() : close()));
 
     /** Lignes des blocs Models / LoRA d'un Run (nom sans sous-dossier, chemin complet au survol). */
     function blockRows(run, key) {
@@ -3300,19 +3732,18 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 (on ? " (click: hide)" : " (click: show only these)");
         }
     }
-    let lockNote = "";
+    /** Avertissement orange de l'en-tete : Picture Lock de ce dossier avec plus d'un fichier. */
+    function paintLockBadge() {
+        const kind = folder === "40.Rush Videos" ? "video" : folder === "60.Rush Images" ? "image" : "";
+        const n = kind && rush && rush.overfull ? rush.overfull(kind) : 0;
+        lockBadge.style.display = n > 1 ? "" : "none";
+        lockBadge.title = n > 1 ? RUSH_FOLDER_OF[kind] + "/Picture Lock holds " + n + " files: only one is allowed. " +
+            "Move the others out by hand." + (kind === "video" ? " Extract Frame is off until then." : "") : "";
+    }
     function renderRush() {
         const all = allRush();
         paintFilter(all);
-        // Picture Lock d'un projet de MultiProject avec plusieurs fichiers (deposes a la main).
-        const warn = rush && rush.lockWarning ? rush.lockWarning(folder === "40.Rush Videos" ? "video" : "image") : "";
-        if (warn && (!note.textContent || note.textContent === lockNote)) {
-            note.textContent = warn;
-            note.style.color = ORANGE;
-        } else if (!warn && lockNote && note.textContent === lockNote) {
-            note.textContent = "";
-        }
-        lockNote = warn;
+        paintLockBadge();
         const items = filterByDot(all, dotFilter);
         // Cases des vignettes masquees (filtre) ou disparues : decochees.
         const visible = new Set(items.map(rushKey));
@@ -3399,6 +3830,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 });
                 t.appendChild(cb);
             }
+            const ex = extractButton(it);
+            if (ex) t.appendChild(ex);
             t.addEventListener("click", () => {
                 if (rushIndex !== i) {
                     rushIndex = i;
@@ -3415,6 +3848,41 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         conf.label.textContent = "Configuration – " + baseOf(it.file);
         fillConfig(it.run, it.output);
         setPrompt(it.run.prompt);
+    }
+
+    /**
+     * Bouton Extract Frame sous la vignette de la video du Picture Lock (40, 26/10/2026) ;
+     * grise avec « Picture Lock: keep one file » si le Picture Lock tient plusieurs fichiers.
+     */
+    function extractButton(it) {
+        const out = it.output;
+        if (folder !== "40.Rush Videos" || !rush || !rush.openExtract || out.kind !== "video" || !out.in_project ||
+            out.place !== "picture_lock" || out.deleted) return null;
+        const b = makeTextButton("Extract Frame", SORT_COLORS.picture_lock);
+        Object.assign(b.style, {
+            display: "block", width: "100%", marginTop: "4px", padding: "3px 4px", fontSize: "11px",
+            color: SORT_TEXT_COLORS.picture_lock,
+        });
+        const over = rush.overfull ? rush.overfull("video") > 1 : false;
+        if (over) {
+            b.disabled = true;
+            Object.assign(b.style, { opacity: "0.45", cursor: "default" });
+            b.title = LOCK_KEEP_ONE;
+        } else {
+            b.title = "Extract the first, last or any frame of this video as PNG (" + EXTRACT_FRAME_DIR.join("/") + ")";
+        }
+        // Le clic ne choisit pas la vignette et n'ouvre pas l'apercu.
+        b.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            if (b.disabled) return;
+            preview.close();
+            const res = await rush.openExtract(card);
+            if (res && res.text) {
+                note.textContent = res.text;
+                note.style.color = res.ok ? "#9fd6cf" : ORANGE;
+            }
+        });
+        return b;
     }
 
     /** Sous les vignettes : boutons du fichier choisi, ou boutons du lot s'il y a des cases cochees. */
@@ -3449,7 +3917,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 b.disabled = true;
                 Object.assign(b.style, { cursor: "default", opacity: "0.45" });
                 b.title = (key === "picture_lock" && single && sel.length > 1
-                    ? "Picture Lock holds only one file in a project of a MultiProject: check a single file"
+                    ? "Picture Lock holds only one file: check a single file"
                     : "All the checked files are already in " + where + name) + countTip(kind, key);
             } else {
                 b.title = "Move the " + sel.length + " checked file(s) into " + where + name +
@@ -3564,7 +4032,11 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             }
             const promptMode = name === "04.Prompt";
             orderBtn.refresh();
-            if (!same) note.textContent = "";
+            if (!same) {
+                note.textContent = "";
+                if (extractWin()) extractWin().close();
+            }
+            lockBadge.style.display = "none"; // 40 / 60 : repeint par renderRush
             title.textContent = name + " – " + projectName;
             conf.label.textContent = "Configuration";
             pick.style.display = promptMode ? "flex" : "none";
@@ -3584,6 +4056,12 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             positionCardNextToNode(card, container, 760);
         },
         isOpen: () => overlay.style.display !== "none",
+        /** Message en bas de la fenetre ouverte (Extract Frame : video du Picture Lock changee). */
+        notify(text, ok) {
+            if (overlay.style.display === "none" || !text) return;
+            note.textContent = text;
+            note.style.color = ok ? "#9fd6cf" : ORANGE;
+        },
         close,
         remove() {
             close();
@@ -4215,6 +4693,8 @@ app.registerExtension({
             // MultiProject (lu par /mmproject/runs) ; fichiers de Picture Lock par type.
             let singleLock = false;
             let lockedFiles = {};
+            // Picture Lock avec plus d'un fichier : {video|image|audio: nombre} (26/10/2026).
+            let lockOverfull = {};
             // Fichiers sur le disque par dossier de tri, fichiers deposes a la main (22/10/2026).
             let sortCounts = {};
             let orphanList = [];
@@ -4358,23 +4838,41 @@ app.registerExtension({
             // Lots de 40 / 60 (choix utilisateur, 20/10/2026) : deplacement sans confirmation,
             // suppression de No Good avec Corbeille ou definitive (mot CONFIRMER a taper).
             const rushDeleteChoice = buildDeleteChoice();
+            // Extract Frame (26/10/2026) : question Replace / Keep apres un changement de la video du
+            // Picture Lock (fenetre a part : elle peut venir d'une relecture des Runs a tout moment,
+            // sans fermer une autre question) ; fenetre Extract Frame a cote de la fenetre 40.
+            const extractConfirm = buildConfirm(container);
+            let replaceAsking = null;
+            let lastReplaceAnswer = { path: "", t: 0 };
+            const extractWindow = buildExtractWindow(container, {
+                info: (path) => apiGet("/mmproject/extract/info?project=" + encodeURIComponent(path)),
+                extract: (body) => apiPost("/mmproject/extract", body),
+                askReplace: (path) => askReplace(path),
+                blocked: () => !!replaceAsking,
+            });
             const rushOps = {
-                move: (run, out, key, swap) => apiPost("/mmproject/sort_output",
-                    { project: getState().path, run: run.file, index: out.index, target: key, swap: !!swap }),
+                async move(run, out, key, swap) {
+                    const path = getState().path;
+                    const data = await apiPost("/mmproject/sort_output",
+                        { project: path, run: run.file, index: out.index, target: key, swap: !!swap });
+                    if (data && data.extract_change) handleExtractChange(data.extract_change, path);
+                    return data;
+                },
                 singleLock: () => singleLock,
                 counts: (kind, key) => (sortCounts[kind] ? sortCounts[kind][key] : null),
                 orphanCount: (kind, key) => orphanList.filter((o) => o.kind === kind && o.place === key).length,
                 lockSwap: (out, key) => lockSwap(out, key),
-                lockWarning: (kind) => {
-                    const n = (lockedFiles[kind] || []).length;
-                    return singleLock && n > 1 ? RUSH_FOLDER_OF[kind] + "/Picture Lock holds " + n + " files: only one " +
-                        "is allowed in a project of a MultiProject. Move the others out by hand." : "";
-                },
+                // Picture Lock avec plus d'un fichier (projet d'avant la regle du fichier unique) : nombre, sinon 0.
+                overfull: (kind) => Number(lockOverfull[kind]) || 0,
+                extractWindow,
+                openExtract: (anchor) => openExtract(anchor),
+                busy: () => !!replaceAsking || extractWindow.isBusy(),
                 remove: (run, out, trash) => apiPost("/mmproject/delete_rush",
                     { project: getState().path, run: run.file, index: out.index, trash }),
                 async reload() {
                     await loadRuns(getState());
                     paintFolders();
+                    extractWindow.refresh(); // apres un lot : la video du Picture Lock a pu changer
                     return runList;
                 },
                 askDelete: (names, anchor, below) => rushDeleteChoice.ask(names, /Windows/i.test(navigator.userAgent), anchor, {
@@ -4391,7 +4889,7 @@ app.registerExtension({
             const runViewer = buildRunViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run), rushOps);
             const setViewer = buildSetViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run), rushOps);
             node.__mmprojectOverlays = [createDialog, help, confirm, resetDialog, copyDialog, renameDialog, workflowDialog, archiveMenu, deleteDialog,
-                loadDialog, duplicatesDialog, folderViewer, runViewer, setViewer, rushDeleteChoice];
+                loadDialog, duplicatesDialog, folderViewer, runViewer, setViewer, rushDeleteChoice, extractWindow, extractConfirm];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
@@ -4877,14 +5375,19 @@ app.registerExtension({
                         registries = data.registries || {};
                         singleLock = !!data.single_lock;
                         lockedFiles = data.locked || {};
+                        lockOverfull = data.overfull || {};
                         sortCounts = data.counts || {};
                         orphanList = data.orphans || [];
                     }
+                    // Extract Frame : la video du Picture Lock a change (pas attendu : la question
+                    // peut venir de n'importe quelle relecture, y compris le minuteur de secours).
+                    if (data.extract_change && getState().path === s.path) handleExtractChange(data.extract_change, s.path);
                 } catch (e) {
                     runList = [];
                     registries = {};
                     singleLock = false;
                     lockedFiles = {};
+                    lockOverfull = {};
                     sortCounts = {};
                     orphanList = [];
                 }
@@ -4956,8 +5459,88 @@ app.registerExtension({
             }
 
             /**
-             * Picture Lock d'un projet de MultiProject (choix utilisateur, 22/10/2026) : un
-             * seul fichier ; occupe -> echange confirme (l'ancien part dans le dossier du
+             * Extract Frame : resultat des regles du changement de la video du Picture Lock
+             * (relecture des Runs ou tri, 26/10/2026). emptied / trash_error : message ;
+             * ask_replace : question Replace / Keep ; fenetre Extract Frame relue.
+             */
+            async function handleExtractChange(change, path, silent) {
+                if (!change) return;
+                const msg = extractChangeText(change);
+                if (msg && !silent) showExtractText(msg.text, msg.ok);
+                // Question deja posee et repondue a l'instant : une relecture partie avant la reponse ne la repose pas.
+                const recent = lastReplaceAnswer.path === path && Date.now() - lastReplaceAnswer.t < 5000;
+                if ((change.ask_replace || []).length && !change.trash_error && !recent) await askReplace(path, change.ask_replace);
+                else extractWindow.refresh();
+            }
+            /** Texte d'un changement d'Extract Frame ({text, ok}), null s'il n'y a rien a dire. */
+            function extractChangeText(change) {
+                if (change.trash_error) {
+                    return { text: "Extract Frame: the Recycle Bin refused the old frames, nothing was removed – " + change.trash_error, ok: false };
+                }
+                if ((change.emptied || []).length) return { text: "Extract Frame emptied: the Picture Lock video was removed", ok: true };
+                return null;
+            }
+            /** Message d'Extract Frame : ligne d'etat du noeud, fenetre 40 et fenetre Extract Frame si ouvertes. */
+            function showExtractText(text, ok) {
+                say(text, ok);
+                runViewer.notify(text, ok);
+                if (extractWindow.isOpen()) extractWindow.say(text, ok);
+            }
+            /**
+             * Question apres un changement de video avec FIRST / LAST presents : Replace = images
+             * relues dans la nouvelle video ; Keep (aussi Echap / clic a cote : rien n'est perdu) =
+             * gardees. Une seule question a la fois. true si la reponse a ete enregistree.
+             */
+            function askReplace(path, names) {
+                if (replaceAsking) return replaceAsking;
+                replaceAsking = (async () => {
+                    try {
+                        const list = (names || []).length ? names.map((n) => "<b>" + escapeHtml(n) + "</b>").join("<br>") : "";
+                        const yes = await extractConfirm.ask({
+                            title: "Extract Frame",
+                            html: "The Picture Lock video changed. Replace FIRST_FRAME / LAST_FRAME with frames of the new video?" +
+                                (list ? '<br><span style="color:#999">' + list + "</span>" : "") +
+                                '<br><span style="color:#999">Keep: the frames of the old video stay.</span>',
+                            okLabel: "Replace", okColor: ORANGE, cancelLabel: "Keep",
+                        });
+                        try {
+                            const res = await apiPost("/mmproject/extract/replace", { project: path, keep: yes !== true });
+                            const written = (res && res.written) || [];
+                            showExtractText(yes === true
+                                ? "Extract Frame: " + (written.length ? written.join(", ") + " replaced with frames of the new video"
+                                    : "nothing to replace")
+                                : "Extract Frame: FIRST_FRAME / LAST_FRAME kept", true);
+                            return true;
+                        } catch (e) {
+                            showExtractText("Extract Frame: " + e.message, false);
+                            return false;
+                        }
+                    } finally {
+                        replaceAsking = null;
+                        lastReplaceAnswer = { path, t: Date.now() };
+                        extractWindow.refresh();
+                    }
+                })();
+                return replaceAsking;
+            }
+            /** Bouton Extract Frame de la fenetre 40 : infos relues, puis fenetre a cote ; {text, ok} si refus. */
+            async function openExtract(anchor) {
+                const s = getState();
+                if (!inProject(s.name)) return null;
+                try {
+                    const info = await apiGet("/mmproject/extract/info?project=" + encodeURIComponent(s.path));
+                    if (info.overfull) return { text: LOCK_KEEP_ONE, ok: false };
+                    if (!info.video) return { text: "No video in 40.Rush Videos/Picture Lock", ok: false };
+                    extractWindow.open(s.path, info, shortName(s.name), anchor);
+                    return null;
+                } catch (e) {
+                    return { text: e.message, ok: false };
+                }
+            }
+
+            /**
+             * Picture Lock d'un seul fichier (choix utilisateur, 22/10/2026 ; tous les projets
+             * depuis le 26/10/2026) : occupe -> echange confirme (l'ancien part dans le dossier du
              * nouveau, Rough Cut s'il vient d'ailleurs). {swap} ou null (annule, plusieurs fichiers).
              */
             async function lockSwap(out, key) {
@@ -4967,8 +5550,8 @@ app.registerExtension({
                 const where = RUSH_FOLDER_OF[out.kind] + "/";
                 if (held.length > 1) {
                     await confirm.ask({
-                        title: "Picture Lock holds " + held.length + " files",
-                        html: "In a project of a MultiProject, " + where + "Picture Lock keeps only one file. Move the " +
+                        title: LOCK_KEEP_ONE,
+                        html: where + "Picture Lock holds " + held.length + " files but keeps only one. Move the " +
                             "others out by hand first.",
                         okLabel: "OK", okColor: INACTIVE_BG, noCancel: true,
                     });
@@ -4983,7 +5566,7 @@ app.registerExtension({
                         "Picture Lock;<br><b>" + escapeHtml(held[0]) + "</b> goes to <b>" + where + SORT_NAME[back] + "</b> " +
                         '<span style="color:#999">(' + (inside ? "the folder of " + escapeHtml(name)
                             : "the new file comes from outside the project") + ").</span>" +
-                        '<br><span style="color:#999">A project of a MultiProject keeps one file in Picture Lock.</span>',
+                        '<br><span style="color:#999">Picture Lock keeps one file.</span>',
                     okLabel: "Swap", okColor: SORT_COLORS.picture_lock,
                 });
                 return ok ? { swap: true } : null;
@@ -5016,13 +5599,20 @@ app.registerExtension({
                     try {
                         const data = await apiPost("/mmproject/sort_output",
                             { project: s.path, run: run.file, index: out.index, target: key, swap: lock.swap });
+                        // Extract Frame : son message suit celui du tri (sinon il serait remplace).
+                        const ext = data && data.extract_change ? extractChangeText(data.extract_change) : null;
+                        if (data && data.extract_change) handleExtractChange(data.extract_change, s.path, true);
                         await loadRuns(s);
+                        extractWindow.refresh(); // la video du Picture Lock a pu changer
                         paintFolders();
                         const name = baseOf(data.copy || data.source || "");
                         const text = "File moved to " + dest + ": " + name + (data.swapped ? " – " +
-                            baseOf(data.swapped.file) + " went to " + SORT_NAME[data.swapped.place] : "");
-                        say(text, true);
-                        return { runs: runList, text, ok: true };
+                            baseOf(data.swapped.file) + " went to " + SORT_NAME[data.swapped.place] : "") +
+                            (ext ? " – " + ext.text : "");
+                        const ok = !ext || ext.ok;
+                        say(text, ok);
+                        if (ext && extractWindow.isOpen()) extractWindow.say(ext.text, ext.ok);
+                        return { runs: runList, text, ok };
                     } catch (e) {
                         if (attempt >= 3) {
                             await confirm.ask({

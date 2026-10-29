@@ -828,12 +828,44 @@ export function filterSubfolders(entries, project) {
  * utilisateur, 19/10/2026) : seulement <projet>/08.Images ... 14.Video-Audio
  * en Ref2VA, seulement <projet>/08.Images en F2VA / FL2VA, 08.Images, 10.Son et
  * 12.Video en LTX 2.x (mode "ltx2") ; pas d'Archives : bouton View archives.
+ * Aussi <projet>/40.Rush Videos/Picture Lock/Extract Frame (26/10/2026) pour les
+ * lignes d'images : kind = type de fichier de la ligne ("image"...), absent = accepte.
  */
-export function isMediaSubfolder(path, mode) {
+export function isMediaSubfolder(path, mode, kind) {
     const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
+    const n = parts.length;
+    if ((n === 4 || n === 5) && parts.slice(n - 3).join("/") === EXTRACT_FRAME_DIR.join("/")) {
+        return !kind || kind === "image";
+    }
     const allowed = mode === "fl2va" ? ["08.Images"] : mode === "ltx2" ? ["08.Images", "10.Son", "12.Video"] : UPDATE_FOLDERS;
     // Projet de la racine (P/08.Images) ou d'un dossier de projets (G/P/08.Images, 22/10/2026).
-    return (parts.length === 2 || parts.length === 3) && allowed.includes(parts[parts.length - 1]);
+    return (n === 2 || n === 3) && allowed.includes(parts[n - 1]);
+}
+
+// --- Extract Frame (26/10/2026) ------------------------------------------------------------
+
+/** Dossier des images extraites, sous le projet (= projects.EXTRACT_DIR). */
+export const EXTRACT_FRAME_DIR = ["40.Rush Videos", "Picture Lock", "Extract Frame"];
+
+/** Choix de la liste Select: de la fenetre Extract Frame ([valeur envoyee, texte]). */
+export const EXTRACT_CHOICES = [["first", "First"], ["last", "Last"], ["fl", "FL-Frame"], ["n", "Frame-N"]];
+
+/** Numero de l'image affichee au temps t (s), a partir de 0, jamais hors de 0..total-1. */
+export function frameAt(time, fps, total) {
+    const t = Number(time), f = Number(fps), tot = Math.floor(Number(total));
+    if (!(t > 0) || !(f > 0) || !(tot > 0)) return 0;
+    return Math.max(0, Math.min(tot - 1, Math.floor(t * f + 1e-6)));
+}
+
+/** Temps (s) du milieu de l'image n : un saut a ce temps affiche bien l'image n. */
+export function timeOf(frame, fps) {
+    const f = Number(fps);
+    return f > 0 ? (Math.max(0, Number(frame) || 0) + 0.5) / f : 0;
+}
+
+/** Compteur de la fenetre Extract Frame : "Frame n / total". */
+export function frameText(n, total) {
+    return "Frame " + n + " / " + total;
 }
 
 /**

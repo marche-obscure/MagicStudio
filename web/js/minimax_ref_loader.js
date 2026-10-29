@@ -2611,7 +2611,7 @@ function buildGallery(container, ctx) {
     /** Sous-dossier propose : dans le projet du filtre et, sur le dossier des projets, un dossier de medias. */
     function allowedSub(path) {
         if (!inProjectFilter(path, projFilter)) return false;
-        return projRow.style.display === "none" || isMediaSubfolder(path, galleryMode(ctx.getState()));
+        return projRow.style.display === "none" || isMediaSubfolder(path, galleryMode(ctx.getState()), fileKind(kind));
     }
 
     const addOption = (select, value, text, multi) => {
@@ -3597,7 +3597,7 @@ function buildGallery(container, ctx) {
             projRow.style.display = "none"; // paintProjRow reprend le projet choisi
             projPicker.close();
             if (projList && projList.names.length && base && samePath(base, projList.root) && sub &&
-                !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, galleryMode(st)))) {
+                !(inProjectFilter(sub, projFilter) && isMediaSubfolder(sub, galleryMode(st), fileKind(kind)))) {
                 sub = "";
                 saveNav();
             }

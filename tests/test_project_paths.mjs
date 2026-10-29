@@ -13,6 +13,7 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
     folderMax, activeLists, hiddenFolderItems,
+    frameAt, timeOf, frameText, EXTRACT_CHOICES,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -735,4 +736,27 @@ test("cloche : les references du profil cache sont aussi verifiees (manquantes =
     // Profil MiniMax actif : les guides LTX sont verifies.
     assert.deepEqual(hiddenFolderItems(Object.assign({}, st, { profile: "minimax_h3" }), "08.Images").map((i) => i.path),
         ["NEW/P/08.Images/g.png", "new/p/08.images/B.PNG"]);
+});
+
+test("Extract Frame : numero d'image, temps, compteur, choix, galerie", () => {
+    assert.equal(frameAt(0, 24, 97), 0);
+    assert.equal(frameAt(1.0, 24, 97), 24);
+    assert.equal(frameAt(99, 24, 97), 96);
+    assert.equal(frameAt(-1, 24, 97), 0);
+    assert.equal(frameAt(1.0, 0, 97), 0);
+    assert.equal(frameAt(0.5, 24, 0), 0);
+    assert.ok(Math.abs(timeOf(24, 24) - 1.0208) < 1e-3);
+    assert.equal(frameAt(timeOf(24, 24), 24, 97), 24);
+    assert.equal(frameAt(timeOf(96, 30), 30, 97), 96);
+    assert.equal(frameText(0, 97), "Frame 0 / 97");
+    assert.deepEqual(EXTRACT_CHOICES, [["first", "First"], ["last", "Last"], ["fl", "FL-Frame"], ["n", "Frame-N"]]);
+    assert.ok(isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", "ref2va"));
+    assert.ok(isMediaSubfolder("G/P/40.Rush Videos/Picture Lock/Extract Frame", "fl2va"));
+    assert.ok(isMediaSubfolder("P\\40.Rush Videos\\Picture Lock\\Extract Frame", "ltx2", "image"));
+    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", "ref2va", "video"));
+    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Picture Lock", "ref2va"));
+    assert.ok(!isMediaSubfolder("P/40.Rush Videos/Footage/Extract Frame", "ref2va"));
+    assert.ok(!isMediaSubfolder("A/G/P/40.Rush Videos/Picture Lock/Extract Frame", "ref2va"));
+    // Lignes de medias inchangees avec le type de la ligne
+    assert.ok(isMediaSubfolder("P/08.Images", "ref2va", "image"));
 });

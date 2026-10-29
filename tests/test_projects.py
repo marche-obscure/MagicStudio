@@ -696,6 +696,14 @@ class SameAsJsTest(unittest.TestCase):
         self.assertIsNotNone(m)
         self.assertEqual(tuple(re.findall(r'"([^"]*)"', m.group(1))), projects.SUBFOLDERS)
 
+    def test_js_extract_dir(self):
+        """Dossier Extract Frame (26/10/2026) : meme chemin que projects.EXTRACT_DIR."""
+        with open(os.path.join(os.path.dirname(HERE), "web", "js", "project_paths.js"), encoding="utf-8") as f:
+            src = f.read()
+        m = re.search(r"EXTRACT_FRAME_DIR\s*=\s*\[([^\]]*)\]", src)
+        self.assertIsNotNone(m)
+        self.assertEqual(tuple(re.findall(r'"([^"]*)"', m.group(1))), projects.EXTRACT_DIR)
+
 
 if __name__ == "__main__":
     unittest.main()
