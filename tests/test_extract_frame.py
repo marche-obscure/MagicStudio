@@ -281,6 +281,19 @@ class ChangeTest(Base):
         self.assertEqual(self.state()["size"], os.path.getsize(self.video))
         self.assertEqual(ef.check_lock_change(self.project, FakeTrash())["ask_replace"], [])
 
+    def test_keep_clears_old_frame_numbers(self):
+        ef.extract(self.project, "fl")
+        self.assertIsNotNone(self.state()["frames"]["LAST_FRAME_Sub.png"])
+        self.replace_video()
+        r = ef.check_lock_change(self.project, FakeTrash())
+        self.assertEqual(r["ask_replace"], ["FIRST_FRAME_Sub.png", "LAST_FRAME_Sub.png"])
+        ef.replace_first_last(self.project, True)
+        st = self.state()
+        self.assertEqual(st["size"], os.path.getsize(self.video))
+        self.assertEqual(st["frames"], {"FIRST_FRAME_Sub.png": None, "LAST_FRAME_Sub.png": None})
+        self.assertEqual(ef.listing(self.project), [{"name": "FIRST_FRAME_Sub.png", "frame": None},
+                                                    {"name": "LAST_FRAME_Sub.png", "frame": None}])
+
     def test_change_replaced_frames_deleted(self):
         ef.extract(self.project, "first")
         ef.extract(self.project, "n", 3)

@@ -353,9 +353,9 @@ const HELP_SECTIONS = [
                     "on; it stays checked with a red ✕."],
             ]) +
             hCard("Picture Lock", [
-                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "Every project (<b>Simple</b> or from a <b>MultiProject</b>): " +
+                ["Rule", "Every project (<b>Simple</b> or from a <b>MultiProject</b>): " +
                     "<b>one file</b> in each Picture Lock (40, 60 and 70), the final rush."],
-                [iconBadge(TREE_ICON, MULTI_COLOR), "When the Picture Lock is taken, <b>Swap</b> exchanges the two files " +
+                ["Swap", "When the Picture Lock is taken, <b>Swap</b> exchanges the two files " +
                     "(the old one goes to the folder of the new one). To keep several versions, use a <b>MultiProject</b>."],
                 ["Old project", "A project with several files in a Picture Lock: nothing is moved. An orange " +
                     "<b>Picture Lock: keep one file</b> warns you, and <b>Extract Frame</b> is greyed. Move the extra " +
@@ -785,9 +785,9 @@ const HELP_SECTIONS_FR = [
                     "continuent ; il reste coché avec un ✕ rouge."],
             ]) +
             hCard("Picture Lock", [
-                [iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR), "Tous les projets (<b>Simple</b> ou d'un <b>MultiProject</b>) : " +
+                ["Règle", "Tous les projets (<b>Simple</b> ou d'un <b>MultiProject</b>) : " +
                     "<b>un seul fichier</b> dans chaque Picture Lock (40, 60 et 70), le rush final."],
-                [iconBadge(TREE_ICON, MULTI_COLOR), "Si le Picture Lock est occupé, <b>Swap</b> échange les deux fichiers " +
+                ["Échange", "Si le Picture Lock est occupé, <b>Swap</b> échange les deux fichiers " +
                     "(l'ancien part dans le dossier du nouveau). Pour garder plusieurs versions, utilisez un <b>MultiProject</b>."],
                 ["Ancien projet", "Un projet qui a plusieurs fichiers dans un Picture Lock : rien n'est déplacé. Un " +
                     "avertissement orange <b>Picture Lock: keep one file</b> s'affiche et <b>Extract Frame</b> est grisé. " +

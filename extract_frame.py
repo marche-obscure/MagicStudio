@@ -343,5 +343,8 @@ def replace_first_last(project, keep):
                 imgs[num].save(os.path.join(folder, name), "PNG")
                 frames[name] = num
                 written.append(name)
+    else:
+        # Gardees : les numeros notes sont ceux de l'ANCIENNE video, donc inconnus pour la nouvelle.
+        frames = {k: None for k in frames}
     _write_state(project, video, frames)
     return {"written": written}
