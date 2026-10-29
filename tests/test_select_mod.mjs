@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-    EXPORT_FORMAT, exportFileName, buildExport, parseFieldsFile, sortFiles, sizeText, matchesSearch,
+    EXPORT_FORMAT, exportFileName, buildExport, parseFieldsFile, sortFiles, sizeText, matchesSearch, pickTarget,
 } from "../web/js/select_mod.js";
 
 test("SelectMod : export puis import = memes champs", () => {
@@ -67,3 +67,14 @@ test("SelectMod : aide EN / FR, memes rubriques dans le meme ordre", async () =>
     assert.deepEqual(block("HELP_SECTIONS"), order);
     assert.deepEqual(block("HELP_SECTIONS_FR"), order);
 });
+
+test("SelectMod : clic dans la fenetre, chemin relatif depuis le dossier de type (29/10/2026)", () => {
+    const root = "G:\\GenerateurIA\\models";
+    assert.deepEqual(pickTarget(root, root + "\\diffusion_models\\MINIMAXH3\\convrot\\m.safetensors"),
+        { origin: root + "\\diffusion_models", subdir: "MINIMAXH3/convrot" });
+    assert.deepEqual(pickTarget(root, root + "\\vae\\v.safetensors"), { origin: root + "\\vae", subdir: "" });
+    // Fichier pose directement dans models : pas de dossier de type.
+    assert.deepEqual(pickTarget(root, root + "\\x.safetensors"), { origin: root, subdir: "" });
+    assert.deepEqual(pickTarget("F:/C/models/", "F:/C/models/loras/a/b.safetensors"), { origin: "F:/C/models/loras", subdir: "a" });
+});
+

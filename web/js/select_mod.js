@@ -83,6 +83,23 @@ export function sizeText(bytes) {
     return Math.round(n / 1024) + " KB";
 }
 
+/**
+ * Clic sur un fichier de la fenetre (choix utilisateur 29/10/2026) : l'origine est le
+ * dossier de type (celui qui suit la racine models, ex. diffusion_models) et le
+ * sous-dossier part de lui ; en Relative, le champ recoit donc
+ * « MINIMAXH3\convrot\fichier », comme l'attendent les noeuds de chargement.
+ * Fichier pose dans la racine : origine = racine, pas de sous-dossier.
+ */
+export function pickTarget(rootPath, filePath) {
+    const root = String(rootPath || "").replace(/[\\/]+$/, "");
+    const file = String(filePath || "");
+    const dir = file.slice(0, Math.max(file.lastIndexOf("\\"), file.lastIndexOf("/")));
+    const parts = dir.slice(root.length).split(/[\\/]+/).filter(Boolean);
+    if (!parts.length) return { origin: root, subdir: "" };
+    const sep = root.includes("\\") ? "\\" : "/";
+    return { origin: root + sep + parts[0], subdir: parts.slice(1).join("/") };
+}
+
 /** Texte sans accents ni casse. */
 export function foldText(text) {
     return String(text || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();

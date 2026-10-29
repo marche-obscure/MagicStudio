@@ -5,7 +5,7 @@
 // ouvre une fenetre MagicStudio (arbre + tableau des fichiers, buildModelPicker).
 import { app } from "../../scripts/app.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
-import { exportFileName, buildExport, parseFieldsFile, sortFiles, sizeText } from "./select_mod.js";
+import { exportFileName, buildExport, parseFieldsFile, sortFiles, sizeText, pickTarget } from "./select_mod.js";
 
 const NODE_NAME = "MagicStudioSelectMod";
 
@@ -238,7 +238,8 @@ const HELP_SECTIONS = [
         id: "mode", title: "Absolute / Relative", icon: TAG_ICON, color: ORANGE,
         html: hCard("Format of the path written at the click", [
             ["<b>Absolute</b>", "the full path, e.g. <b>G:\\GenerateurIA\\models\\vae\\v.safetensors</b>"],
-            ["<b>Relative</b>", "the path from the models folder, e.g. <b>vae/v.safetensors</b>"],
+            ["<b>Relative</b>", "the path from the folder of its type (the folder after <b>models</b>), as the loader " +
+                "nodes expect it: a file of <b>diffusion_models\\MINIMAXH3</b> gives <b>MINIMAXH3\\model.safetensors</b>"],
         ]) +
         hList([
             "A filled field keeps its format, even if you switch the mode to fill another one.",
@@ -333,7 +334,8 @@ const HELP_SECTIONS_FR = [
         id: "mode", title: "Absolute / Relative",
         html: hCard("Format du chemin écrit au clic", [
             ["<b>Absolute</b>", "le chemin complet, par ex. <b>G:\\GenerateurIA\\models\\vae\\v.safetensors</b>"],
-            ["<b>Relative</b>", "le chemin depuis le dossier de modèles, par ex. <b>vae/v.safetensors</b>"],
+            ["<b>Relative</b>", "le chemin depuis le dossier de son type (celui qui suit <b>models</b>), comme l'attendent " +
+                "les nœuds de chargement : un fichier de <b>diffusion_models\\MINIMAXH3</b> donne <b>MINIMAXH3\\model.safetensors</b>"],
         ]) +
         hList([
             "Un champ rempli garde son format, même si vous changez de mode pour en remplir un autre.",
@@ -1774,10 +1776,10 @@ function buildModelPicker(container, ctx) {
         // 2e clic du meme fichier aussitot (double-clic) : deja choisi.
         if (lastPick.path === f.path && Date.now() - lastPick.at < 600) return;
         lastPick = { path: f.path, at: Date.now() };
-        const dir = f.path.slice(0, Math.max(f.path.lastIndexOf("\\"), f.path.lastIndexOf("/")));
-        const rel = dir.length > root.path.length ? dir.slice(root.path.length).replace(/^[\\/]+/, "") : "";
+        // Origine = dossier de type (ex. diffusion_models) : en Relative, le chemin part de lui.
+        const target = pickTarget(root.path, f.path);
         foot.textContent = f.path;
-        await ctx.pick(root.path, rel.replace(/\\/g, "/"), f.name);
+        await ctx.pick(target.origin, target.subdir, f.name);
         title.textContent = "Field " + ctx.activeField();
         if (close_) close();
     }
