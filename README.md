@@ -256,6 +256,21 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 - Wire `model_link` to the `models_link` input of **MagicStudio Project**: each run records the models of the fields, exactly as with MultiFiles Select.
 - The **?** button opens its help (Quick start, Fields, The folder window, Absolute / Relative, Export / Import, Link to the Project node, Good to know), in English or French.
 
+## MagicStudio SaveVoice node
+
+- **What it does:** saves a voice reference into `<project>\90.Pick Up\Son` of the project picked in the **MagicStudio Project** node. The folder is created if it is missing.
+- **Wiring:** wire an `audio` (AUDIO) and the `final_cut` output of the Project node to the `project` input. Without a project, the run is refused with "Wire the final_cut output of a MagicStudio Project node".
+- **Settings:**
+  - `prefix`: text at the start of the file name (can be empty).
+  - `format`: `wav` (default, best for a voice reference), `flac`, `mp3` or `opus`.
+  - `quality`: for `mp3`, `V0` (default), `128k` or `320k`; for `opus`, `64k`, `96k`, `128k` (default), `192k` or `320k`. For `wav` and `flac` the list is grey (nothing to choose).
+- **File name:** `<prefix>_yyyyMMdd_HHmmss.<format>`, or `voice_yyyyMMdd_HHmmss.<format>` when the prefix is empty. Forbidden characters are removed from the prefix. If the name is taken, one second is added: a file is never overwritten.
+- **Path row:** shows the folder `<project>\90.Pick Up\Son` (read only) with a **Copy** button. It follows the project of the Project node.
+- **Player:** plays the last saved file.
+- **Outputs:** `audio` (the same sound) and `path` (the full path of the saved file).
+- **Not attached to a Run:** the file does not appear in the rushes. To use it, open the RefLoader gallery and pick it in **Pick Up / Son**.
+- The **?** button opens its help (Quick start, Inputs, Settings, Outputs), in English or French.
+
 ## Post-processing
 
 - A file saved **after a MagicStudio MedLoad** that loads a file of a run is added to **that run** (the original run) as **Post 1**, not recorded as a new run. Retouch Post 1 again and you get **Post 2** of the same run.
