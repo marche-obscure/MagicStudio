@@ -3540,7 +3540,8 @@ const TREE_CARD_H = 156;
  *        showPreview(file, kind, anchor), counts(kind, key), singleLock() -> bool,
  *        move(run, out, key, swap), lockSwap(out, key) -> {swap} | null, remove(run, out, trash),
  *        askDelete(noms, ancre, bouton), askWord(n, bouton), reload() -> runs, refresh40(),
- *        openExtract(ancre) -> {text, ok} | null, overfull(kind), lock(bool) (fenetre 40 / 60 inactive pendant une action)}
+ *        openExtract(ancre) -> {text, ok} | null, overfull(kind), lock(bool) (fenetre 40 / 60 inactive pendant une action),
+ *        closePreview() (libere le fichier lu par le lecteur avant de le deplacer ou de le supprimer)}
  */
 function buildProcessingWindow(container, ops) {
     const { overlay, card } = makeOverlay();
@@ -3824,6 +3825,7 @@ function buildProcessingWindow(container, ops) {
 
     /** Lot : un fichier apres l'autre, barre de progression ; un echec n'arrete pas les autres. */
     async function runBatch(list, op) {
+        ops.closePreview(); // un fichier lu par le lecteur peut rester verrouille sous Windows
         busy = true;
         ops.lock(true);
         scroller.style.pointerEvents = "none";
@@ -3875,6 +3877,7 @@ function buildProcessingWindow(container, ops) {
         const list = sel.filter((o) => sortTargets(o).includes(key));
         const skipped = sel.length - list.length;
         // Picture Lock : un seul fichier, question Swap si occupe (meme code que 40).
+        ops.closePreview();
         busy = true;
         ops.lock(true);
         let lock;
@@ -3889,6 +3892,7 @@ function buildProcessingWindow(container, ops) {
         afterAction(ok + " file(s) moved to " + dest + " – " + ko + " failed" + (skipped ? " – " + skipped + " already there" : ""), ko);
     }
     async function deleteChecked(run, doomed, button) {
+        ops.closePreview();
         busy = true;
         ops.lock(true);
         let how = null;
@@ -4168,6 +4172,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             if (modelRun) modelRun = runs.find((r) => r.file === modelRun.file) || modelRun;
             return runs;
         },
+        closePreview: () => preview.close(),
         refresh40() {
             if (overlay.style.display === "none" || folder === "04.Prompt") return;
             orderBtn.refresh();
