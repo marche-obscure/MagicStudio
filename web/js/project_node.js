@@ -20,7 +20,7 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
-    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel,
+    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 
@@ -375,10 +375,13 @@ const HELP_SECTIONS = [
             ]) +
             hList([
                 "Retouch a Post 1 again: the new file is <b>Post 2</b> of the <b>same run</b>.",
-                "<b>40 / 60</b>: the post-processing shows next to its original, with a <b>Post n</b> badge; it is " +
-                    "sorted, checked and deleted like any file of a run.",
-                "<b>04, 02, 06</b>: ‹ › go from the original to Post 1, Post 2…; the configuration shows the " +
-                    "settings of the retouch nodes, and <b>Retrieve the workflow</b> opens its own workflow.",
+                "<b>40 / 60</b>: the post-processing shows next to its original; it is sorted, checked and " +
+                    "deleted like any file of a run.",
+                "Labels, only when a file was post-processed: the original has a green frame and a green " +
+                    "<b>Original</b> label; a post-processing shows <b>Post n</b>, then the file it comes from " +
+                    "(<b>Original</b> or <b>Post m</b>).",
+                "<b>04, 02, 06</b>: ‹ › go from the original to Post 1, Post 2…; the configuration says which file " +
+                    "it comes from, and <b>Retrieve the workflow</b> opens its own workflow.",
             ]) +
             hNote("a file loaded from outside any run is not attached, and no run is made for it.") +
             hNote("the Project node is not needed: the server attaches the file at the end of the run.") +
@@ -835,10 +838,13 @@ const HELP_SECTIONS_FR = [
             ]) +
             hList([
                 "Retouchez un Post 1 : le nouveau fichier est <b>Post 2</b> du <b>même Run</b>.",
-                "<b>40 / 60</b> : le post-traitement s'affiche à côté de son original, avec un badge <b>Post n</b> ; il " +
-                    "se trie, se coche et se supprime comme un fichier de Run.",
-                "<b>04, 02, 06</b> : ‹ › passent de l'original à Post 1, Post 2… ; la configuration montre les " +
-                    "réglages des nœuds de retouche, et <b>Retrieve the workflow</b> rouvre son propre workflow.",
+                "<b>40 / 60</b> : le post-traitement s'affiche à côté de son original ; il se trie, se coche et se " +
+                    "supprime comme un fichier de Run.",
+                "Étiquettes, seulement quand un fichier a été post-traité : l'original a un cadre vert et une " +
+                    "étiquette verte <b>Original</b> ; un post-traitement affiche <b>Post n</b>, puis le fichier dont " +
+                    "il vient (<b>Original</b> ou <b>Post m</b>).",
+                "<b>04, 02, 06</b> : ‹ › passent de l'original à Post 1, Post 2… ; la configuration indique de quel " +
+                    "fichier il vient, et <b>Retrieve the workflow</b> rouvre son propre workflow.",
             ]) +
             hNote("un fichier chargé hors de tout Run n'est pas rattaché, et aucun Run n'est créé pour lui.", "Remarque :") +
             hNote("le nœud Project n'est pas nécessaire : le serveur rattache le fichier à la fin du Run.", "Remarque :") +
@@ -2993,19 +2999,40 @@ function addStatusDot(box, out) {
     box.appendChild(dot);
 }
 
-/** Badge « Post n » d'un post-traitement (29/10/2026), en bas a gauche de la vignette. */
-function addPostBadge(box, out) {
-    const label = postLabel(out);
-    if (!label) return;
-    box.style.position = "relative";
+/** Pilule d'etiquette Original (vert) / Post n (violet). */
+function postPill(text) {
     const b = document.createElement("div");
-    b.textContent = label;
+    b.textContent = text;
     Object.assign(b.style, {
-        position: "absolute", left: "4px", bottom: "4px", padding: "1px 6px", borderRadius: "999px",
-        background: VIOLET, color: "#fff", fontSize: "10px", fontWeight: "bold", zIndex: "1", pointerEvents: "none",
+        padding: "1px 6px", borderRadius: "999px", background: text === "Original" ? DOT_GREEN : VIOLET,
+        color: "#fff", fontSize: "10px", fontWeight: "bold", whiteSpace: "nowrap",
     });
-    b.title = "Post-processing of this run (level " + out.post_level + ")";
-    box.appendChild(b);
+    return b;
+}
+
+/**
+ * Etiquettes de post-traitement (choix utilisateur 30/10/2026), seulement si la sortie a ete
+ * post-traitee ou en est un : original = cadre vert + « Original » en bas a droite ; post =
+ * « Post n » en bas a gauche, suivi de l'etiquette de sa source (« Original » ou « Post m »).
+ */
+function addPostBadge(box, out, outs) {
+    const tags = postTags(out, outs);
+    if (!tags.self) return;
+    box.style.position = "relative";
+    const row = document.createElement("div");
+    Object.assign(row.style, { position: "absolute", bottom: "4px", display: "flex", gap: "3px", zIndex: "1", pointerEvents: "none" });
+    if (!tags.parent) {
+        box.style.outline = "2px solid " + DOT_GREEN;
+        box.style.outlineOffset = "-2px";
+        row.style.right = "4px";
+        row.appendChild(postPill(tags.self));
+        box.title = "Original: has post-processed versions";
+    } else {
+        row.style.left = "4px";
+        row.append(postPill(tags.self), postPill(tags.parent));
+        box.title = tags.self + " is a post-processed version of " + tags.parent;
+    }
+    box.appendChild(row);
 }
 
 /** Dossier et nom d'un chemin complet. */
@@ -3034,16 +3061,15 @@ function runConfigHtml(run, out) {
             : ' <span style="color:' + ORANGE + '">(missing)</span>'), out.source);
     if (out.resize_error) h += row("Resize", '<span style="color:' + ORANGE + '">' + escapeHtml(out.resize_error) + "</span>");
     if (out.post_level) {
-        // Post-traitement (29/10/2026) : date et reglages des noeuds entre MedLoad et l'enregistrement.
-        h += row("Post-processing", escapeHtml(postLabel(out) + (out.post_date ? " – " + runDateText(out.post_date) : "")));
-        const params = out.post_params || {};
-        for (const k of ["steps", "cfg", "seed"]) {
-            if (params[k] !== null && params[k] !== undefined) h += row(k === "cfg" ? "CFG" : k[0].toUpperCase() + k.slice(1), escapeHtml(String(params[k])));
-        }
-        for (const n of params.nodes || []) {
-            const vals = Object.entries(n.values || {}).map(([k, v]) => k + ": " + v).join(", ");
-            h += row(escapeHtml(n.title || n.class_type || "?"), escapeHtml(vals || "–"), n.class_type || "");
-        }
+        // Post-traitement (choix utilisateur 30/10/2026) : une phrase simple, sans les reglages des noeuds.
+        const tags = postTags(out, run.outputs);
+        const src = tags.source ? outputFile(tags.source) || tags.source.source || "" : "";
+        const srcName = src ? splitPath(src)[1] : "";
+        h += row("Post-processing", escapeHtml(out.post_date ? runDateText(out.post_date) : ""));
+        h += '<div style="margin:6px 0;padding:6px 8px;border-radius:6px;background:#2a2540;line-height:1.5">' +
+            "<b>" + escapeHtml(tags.self) + "</b> is a post-processed version of <b>" + escapeHtml(tags.parent) + "</b>" +
+            (srcName ? ': <span style="font-family:monospace;font-size:11px;word-break:break-all">' + escapeHtml(srcName) + "</span>" : "") +
+            "</div>";
         if (out.post_warning) h += row("Warning", '<span style="color:' + ORANGE + '">' + escapeHtml(out.post_warning) + "</span>");
     }
     return h;
@@ -3866,7 +3892,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             Object.assign(t.style, { width: "100%", height: "auto", aspectRatio: "16 / 10", cursor: "pointer" });
             t.title = "Preview " + name;
             addStatusDot(t, out);
-            addPostBadge(t, out);
+            addPostBadge(t, out, run.outputs);
             t.addEventListener("click", () => showPreview(file, out.kind));
             const n = document.createElement("div");
             n.textContent = name;
@@ -4016,7 +4042,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             const key = rushKey(it);
             const pic = dupThumb(dir, name, it.output.kind, 108);
             addStatusDot(pic, it.output);
-            addPostBadge(pic, it.output);
+            addPostBadge(pic, it.output, it.run.outputs);
             if (failed.has(key)) {
                 // Echec du dernier lot : ✕ rouge a droite de la pastille.
                 const x = document.createElement("div");

@@ -260,7 +260,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 
 - A file saved **after a MagicStudio MedLoad** that loads a file of a run is added to **that run** (the original run) as **Post 1**, not recorded as a new run. Retouch Post 1 again and you get **Post 2** of the same run.
 - It works when you run the whole workflow or only the retouch branch, with or without the Project node.
-- In **40.Rush Videos / 60.Rush Images**, a post-processing shows next to its original with a **Post n** badge (videos get a small copy, like the other runs). In **04.Prompt, 02.Models, 06.LoRA**, ‹ › go from the original to its post-processings; the configuration shows the settings of the retouch nodes and **Retrieve the workflow** opens its own workflow.
+- In **40.Rush Videos / 60.Rush Images**, a post-processing shows next to its original (videos get a small copy, like the other runs). Labels show only when a file was post-processed: the original has a green frame and an **Original** label; a post-processing shows **Post n** followed by the file it comes from (**Original** or **Post m**). In **04.Prompt, 02.Models, 06.LoRA**, ‹ › go from the original to its post-processings; the configuration says in one sentence which file it comes from, and **Retrieve the workflow** opens its own workflow.
 - A file loaded from outside any run is not attached, and no run is made for it.
 
 ## Compatibility

@@ -611,6 +611,22 @@ export function postLabel(o) {
     return o && o.post_level ? "Post " + o.post_level : "";
 }
 
+/**
+ * Etiquettes d'une sortie (choix utilisateur 30/10/2026) : self = « Post n » pour un post,
+ * « Original » pour une sortie qui a au moins un post, sinon "" ; parent = etiquette de la
+ * source d'un post (« Original » ou « Post m ») ; source = la sortie source (null si absente).
+ */
+export function postTags(o, outs) {
+    const list = outs || [];
+    if (!o) return { self: "", parent: "", source: null };
+    if (!o.post_level) {
+        const mother = list.some((x) => x && x.post_level && x.post_of === o.index);
+        return { self: mother ? "Original" : "", parent: "", source: null };
+    }
+    const source = list.find((x) => x && x.index === o.post_of) || null;
+    return { self: postLabel(o), parent: source && source.post_level ? postLabel(source) : "Original", source };
+}
+
 export function rushItems(runs, folder) {
     const kind = RUN_FOLDERS[folder];
     const items = [];

@@ -14,7 +14,7 @@ import {
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
     folderMax, hiddenFolderItems, rowFolder, withoutFolderPaths, withoutReferences,
     frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState, runSourcePaths, PICKUP_DIR, PICKUP_SUBS, pickupPath,
-    orderOutputs, postLabel,
+    orderOutputs, postLabel, postTags,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -653,4 +653,18 @@ test("isMediaSubfolder keeps Extract Frame for image rows", () => {
     assert.ok(isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", L5, "image"));
     assert.ok(!isMediaSubfolder("P/40.Rush Videos/Picture Lock/Extract Frame", L5, "video"));
     assert.ok(isMediaSubfolder("P/14.Video-Audio"));   // sans variante : les quatre dossiers
+});
+
+test("Etiquettes Original / Post n (30/10/2026)", () => {
+    const A = { index: 0 }, Z = { index: 2 };
+    const B = { index: 1, post_of: 0, post_level: 1 };
+    const C = { index: 3, post_of: 1, post_level: 2 };
+    const outs = [A, B, Z, C];
+    assert.deepEqual(postTags(A, outs), { self: "Original", parent: "", source: null });
+    assert.deepEqual(postTags(Z, outs), { self: "", parent: "", source: null });
+    assert.deepEqual(postTags(B, outs), { self: "Post 1", parent: "Original", source: A });
+    assert.deepEqual(postTags(C, outs), { self: "Post 2", parent: "Post 1", source: B });
+    // Source absente : Original, sans fichier.
+    assert.deepEqual(postTags({ index: 5, post_of: 9, post_level: 1 }, outs), { self: "Post 1", parent: "Original", source: null });
+    assert.deepEqual(postTags(null, outs), { self: "", parent: "", source: null });
 });
