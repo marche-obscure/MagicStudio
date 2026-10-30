@@ -1,6 +1,8 @@
 // Regles des dossiers de projet, sans dependance a ComfyUI (testees par
 // node --test tests/test_project_paths.mjs).
 import { trimKey } from "./config_format.js";
+// Import circulaire voulu : post_tree.js n'appelle rien d'ici au chargement (fonctions seulement).
+import { postNames, postsOf } from "./post_tree.js";
 import { FALLBACK_DESCRIPTION, variantOf, rowsOf, variantLimits, migrateState } from "./profiles.js";
 
 // Sous-dossiers de chaque projet (meme liste que projects.SUBFOLDERS en Python).
@@ -606,34 +608,42 @@ export function orderOutputs(outs) {
     return out;
 }
 
-/** Badge d'un post-traitement : « Post 1 », « Post 2 »… ; "" pour une sortie du Run. */
-export function postLabel(o) {
-    return o && o.post_level ? "Post " + o.post_level : "";
+/** Nom d'une sortie (« Original », « Post A », « Post A.01 ») ; "" pour une sortie sans post et non-post. */
+export function postLabel(o, outs) {
+    if (!o) return "";
+    const list = outs || [];
+    const name = postNames(list).get(o.index);
+    if (name && list.includes(o)) return name;
+    return o.post_level ? "Post ?" : "";
 }
 
 /**
- * Etiquettes d'une sortie (choix utilisateur 30/10/2026) : self = « Post n » pour un post,
- * « Original » pour une sortie qui a au moins un post, sinon "" ; parent = etiquette de la
- * source d'un post (« Original » ou « Post m ») ; source = la sortie source (null si absente).
+ * Etiquettes d'une sortie (choix utilisateur 30/10/2026) : self = son nom (« Post A », « Post A.01 »,
+ * « Original » pour une sortie qui a des posts, sinon "") ; parent = nom de la source d'un post
+ * (« Original » ou « Post A ») ; source = la sortie source (null si absente).
  */
 export function postTags(o, outs) {
     const list = outs || [];
     if (!o) return { self: "", parent: "", source: null };
-    if (!o.post_level) {
-        const mother = list.some((x) => x && x.post_level && x.post_of === o.index);
-        return { self: mother ? "Original" : "", parent: "", source: null };
-    }
+    if (!o.post_level) return { self: postLabel(o, list), parent: "", source: null };
     const source = list.find((x) => x && x.index === o.post_of) || null;
-    return { self: postLabel(o), parent: source && source.post_level ? postLabel(source) : "Original", source };
+    return { self: postLabel(o, list), parent: source && source.post_level ? postLabel(source, list) : "Original", source };
 }
 
+/**
+ * 40 / 60 : une entree par original (sortie non-post) du bon type, avec ses posts presents ;
+ * un original sans fichier n'est garde que s'il a un post present (file === "").
+ */
 export function rushItems(runs, folder) {
     const kind = RUN_FOLDERS[folder];
     const items = [];
     for (const run of runs || []) {
-        for (const o of orderOutputs(run.outputs)) {
-            const file = o.kind === kind ? outputFile(o) : "";
-            if (file) items.push({ file, run, output: o });
+        const outs = run.outputs || [];
+        for (const o of orderOutputs(outs)) {
+            if (o.post_level || o.kind !== kind) continue;
+            const file = outputFile(o);
+            const posts = postsOf(outs, o.index).filter((p) => outputFile(p));
+            if (file || posts.length) items.push({ file, run, output: o, posts });
         }
     }
     return items;
@@ -742,16 +752,32 @@ export function orderByMtime(items, mtimes, order) {
 // l'ordre du filtre : dore (Picture Lock, 22/10/2026), vert, orange, rouge, gris.
 export const DOT_FILTER = ["picture_lock", "validated", "footage", "rejected", "outside"];
 
-/** Vignettes [{file, run, output}] dont la pastille est active ; aucune active = toutes. */
+const ownDot = (it) => (it.file ? sortDot(it.output) : null);
+const postDots = (it) => (it.posts || []).map((p) => sortDot(p));
+
+/** Vignettes [{file, run, output, posts}] dont l'original ou un post a une pastille active ; aucune active = toutes. */
 export function filterByDot(items, active) {
     if (!active || !active.size) return items || [];
-    return (items || []).filter((it) => active.has(sortDot(it.output)));
+    return (items || []).filter((it) => active.has(ownDot(it)) || postDots(it).some((d) => active.has(d)));
+}
+
+const DOT_NAME = Object.assign(Object.fromEntries(SORT_FOLDERS.map((x) => [x[0], x[2]])), { outside: "Outside the project" });
+
+/** « 2 post(s) in Picture Lock » pour les pastilles actives des posts quand l'original ne passe pas le filtre ; sinon "". */
+export function postHint(item, active) {
+    if (!item || !active || !active.size || active.has(ownDot(item))) return "";
+    const dots = postDots(item);
+    return DOT_FILTER.filter((k) => active.has(k) && dots.includes(k))
+        .map((k) => dots.filter((d) => d === k).length + " post(s) in " + DOT_NAME[k]).join(", ");
 }
 
 /** Nombre de vignettes par pastille : {picture_lock, validated, footage, rejected, outside}. */
 export function dotCounts(items) {
     const out = Object.fromEntries(DOT_FILTER.map((k) => [k, 0]));
-    for (const it of items || []) out[sortDot(it.output)] += 1;
+    for (const it of items || []) {
+        if (it.file) out[sortDot(it.output)] += 1;
+        for (const d of postDots(it)) out[d] += 1;
+    }
     return out;
 }
 

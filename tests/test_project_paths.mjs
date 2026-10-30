@@ -14,7 +14,7 @@ import {
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
     folderMax, hiddenFolderItems, rowFolder, withoutFolderPaths, withoutReferences,
     frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState, runSourcePaths, PICKUP_DIR, PICKUP_SUBS, pickupPath,
-    orderOutputs, postLabel, postTags,
+    orderOutputs, postLabel, postTags, postHint,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -436,11 +436,52 @@ test("Post-traitements : original suivi de ses posts, badge Post n (29/10/2026)"
     const lost = v(5, { post_of: 9, post_level: 1, post_date: "x" });
     assert.deepEqual(orderOutputs([lost, A]).map((o) => o.index), [0, 5]);
     assert.deepEqual(orderOutputs(null), []);
-    assert.equal(postLabel(B), "Post 1");
-    assert.equal(postLabel(C), "Post 2");
-    assert.equal(postLabel(A), "");
+    const names = [A, B, A2, C];
+    assert.equal(postLabel(B, names), "Post A");
+    assert.equal(postLabel(C, names), "Post A.01");
+    assert.equal(postLabel(A2, names), "");
     const runs = [{ file: "r.json", outputs: [A, A2, B] }];
-    assert.deepEqual(rushItems(runs, "40.Rush Videos").map((x) => x.output.index), [0, 1, 2]);
+    const items = rushItems(runs, "40.Rush Videos");
+    assert.deepEqual(items.map((x) => x.output.index), [0, 2]);
+    assert.deepEqual(items[0].posts.map((o) => o.index), [1]);
+    assert.deepEqual(items[1].posts, []);
+});
+
+test("40 / 60 : original supprime gardé seulement avec un post present", () => {
+    const v = (index, extra) => Object.assign({ index, kind: "video", copy: "P/" + index + ".mp4", copy_exists: true }, extra);
+    const gone = v(0, { copy_exists: false });
+    const post = v(1, { post_of: 0, post_level: 1, post_date: "d" });
+    const items = rushItems([{ file: "r.json", outputs: [gone, post] }], "40.Rush Videos");
+    assert.equal(items.length, 1);
+    assert.equal(items[0].file, "");
+    assert.deepEqual(items[0].posts.map((o) => o.index), [1]);
+    const postGone = v(1, { post_of: 0, post_level: 1, post_date: "d", copy_exists: false });
+    assert.deepEqual(rushItems([{ file: "r.json", outputs: [gone, postGone] }], "40.Rush Videos"), []);
+    // Rien ne plante sur un original supprime.
+    assert.equal(filterByDot(items, new Set(["footage"])).length, 0);
+    assert.equal(dotCounts(items).outside, 1);   // le post seul
+    assert.equal(groupByDot(items).length, 1);
+});
+
+test("40 / 60 : filtre et compteurs comptent les posts", () => {
+    const v = (index, extra) => Object.assign({ index, kind: "video", copy: "P/" + index + ".mp4", copy_exists: true, in_project: true }, extra);
+    const A = v(0, { place: "footage" });
+    const B = v(1, { place: "picture_lock", post_of: 0, post_level: 1, post_date: "d" });
+    const C = v(2, { place: "picture_lock", post_of: 0, post_level: 1, post_date: "e" });
+    const items = rushItems([{ file: "r.json", outputs: [A, B, C] }], "40.Rush Videos");
+    assert.equal(items.length, 1);
+    assert.equal(filterByDot(items, new Set(["picture_lock"])).length, 1);
+    assert.equal(filterByDot(items, new Set(["footage"])).length, 1);
+    assert.equal(filterByDot(items, new Set(["rejected"])).length, 0);
+    const counts = dotCounts(items);
+    assert.equal(counts.picture_lock, 2);
+    assert.equal(counts.footage, 1);
+    assert.equal(postHint(items[0], new Set(["picture_lock"])), "2 post(s) in Picture Lock");
+    assert.equal(postHint(items[0], new Set(["footage"])), "");
+    assert.equal(postHint(items[0], new Set()), "");
+    assert.equal(postHint(items[0], new Set(["picture_lock", "footage"])), "");
+    const one = rushItems([{ file: "r.json", outputs: [A, B] }], "40.Rush Videos");
+    assert.equal(postHint(one[0], new Set(["picture_lock"])), "1 post(s) in Picture Lock");
 });
 
 // ---- Etat du RefLoader au format des variantes (plan des variantes, Task 7) ----
@@ -662,9 +703,9 @@ test("Etiquettes Original / Post n (30/10/2026)", () => {
     const outs = [A, B, Z, C];
     assert.deepEqual(postTags(A, outs), { self: "Original", parent: "", source: null });
     assert.deepEqual(postTags(Z, outs), { self: "", parent: "", source: null });
-    assert.deepEqual(postTags(B, outs), { self: "Post 1", parent: "Original", source: A });
-    assert.deepEqual(postTags(C, outs), { self: "Post 2", parent: "Post 1", source: B });
+    assert.deepEqual(postTags(B, outs), { self: "Post A", parent: "Original", source: A });
+    assert.deepEqual(postTags(C, outs), { self: "Post A.01", parent: "Post A", source: B });
     // Source absente : Original, sans fichier.
-    assert.deepEqual(postTags({ index: 5, post_of: 9, post_level: 1 }, outs), { self: "Post 1", parent: "Original", source: null });
+    assert.deepEqual(postTags({ index: 5, post_of: 9, post_level: 1 }, outs), { self: "Post ?", parent: "Original", source: null });
     assert.deepEqual(postTags(null, outs), { self: "", parent: "", source: null });
 });
