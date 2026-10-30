@@ -307,6 +307,11 @@ class MagicStudioSelectMod:
         return (f[0], f[1], f[2], f[3], f[4], (save_folder or "").strip(), f[5], f[6])
 
 
+# Toutes les qualites (l'interface ne montre que celles du format).
+VOICE_QUALITIES = ("none", "V0", "128k", "320k", "64k", "96k", "192k")
+WIRE_PROJECT = "Wire the final_cut output of a MagicStudio Project node"
+
+
 class MagicStudioSaveVoice:
     """
     Enregistre une voix de reference dans <projet>/90.Pick Up/Son (save_voice.py).
@@ -315,13 +320,12 @@ class MagicStudioSaveVoice:
 
     @classmethod
     def INPUT_TYPES(cls):
-        qualities = ["none", "V0", "128k", "320k", "64k", "96k", "192k"]
         return {"required": {
             "audio": ("AUDIO",),
             "project": (FINAL_CUT_TYPE,),
             "prefix": ("STRING", {"default": "", "multiline": False}),
             "format": (list(save_voice.FORMATS), {"default": save_voice.DEFAULT_FORMAT}),
-            "quality": (qualities, {"default": "none"}),
+            "quality": (list(VOICE_QUALITIES), {"default": "none"}),
         }}
 
     RETURN_TYPES = ("AUDIO", "STRING")
@@ -343,19 +347,17 @@ class MagicStudioSaveVoice:
         # Le projet arrive par un lien : verifie dans run().
         if format is not None and format not in save_voice.FORMATS:
             return "Unsupported audio format: %s" % (format,)
-        if quality is not None and quality not in ("none", "V0", "128k", "320k", "64k", "96k", "192k"):
+        if quality is not None and quality not in VOICE_QUALITIES:
             return "Unsupported quality: %s" % (quality,)
         return True
 
     def run(self, audio, project, prefix="", format="wav", quality="none"):
         q = None if quality == "none" else quality
+        # Seules les erreurs de projet deviennent le message de branchement ; le reste passe tel quel.
         try:
-            paths = save_voice.save(audio, project, prefix, format, q)
-        except (FileNotFoundError, NotADirectoryError):
-            raise ValueError("Wire the final_cut output of a MagicStudio Project node")
-        except ValueError as e:
-            if "project" in str(e).lower():
-                raise ValueError("Wire the final_cut output of a MagicStudio Project node")
-            raise
+            projects.require_project(project)
+        except (FileNotFoundError, NotADirectoryError, ValueError):
+            raise ValueError(WIRE_PROJECT)
+        paths = save_voice.save(audio, project, prefix, format, q)
         return {"ui": {"mmvoice": [{"path": p, "name": os.path.basename(p)} for p in paths]},
                 "result": (audio, paths[0])}
