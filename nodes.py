@@ -213,7 +213,8 @@ class MiniMaxH3LoadMedia:
                 "file": ("STRING", {
                     "default": "", "multiline": False,
                     "tooltip": "Full path of the file, in the input folder of ComfyUI. Drop a file from "
-                               "MagicStudio Final Cut on the node to fill it.",
+                               "MagicStudio Final Cut, 40.Rush Videos / 60.Rush Images or Processing "
+                               "on the node to fill it.",
                 }),
             },
         }
@@ -227,7 +228,8 @@ class MiniMaxH3LoadMedia:
     FUNCTION = "run"
     CATEGORY = "MagicStudio"
     DESCRIPTION = (
-        "Load an image, a video or an audio file dropped from MagicStudio Final Cut, where it is (no copy). "
+        "Load an image, a video or an audio file dropped from MagicStudio Final Cut, 40.Rush Videos / "
+        "60.Rush Images or Processing, where it is (no copy). "
         "video: a video (same type as Load Video); video_frames: all the frames of a video, as images; "
         "audio_video: the soundtrack of a video; image: an image; audio: an audio file; name: the file name."
     )

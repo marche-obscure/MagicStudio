@@ -373,22 +373,74 @@ const HELP_SECTIONS = [
             hSteps([
                 "Load a video (or an image) of a run in <b>MagicStudio MedLoad</b>, for example from the Final Cut window.",
                 "Wire it to your retouch nodes, then to a save node, in the same workflow.",
-                "Run the workflow, or only this branch: the saved file becomes <b>Post 1</b> of the original run.",
+                "Run the workflow, or only this branch: the saved file becomes <b>Post A</b> of the original run.",
             ]) +
             hList([
-                "Retouch a Post 1 again: the new file is <b>Post 2</b> of the <b>same run</b>.",
-                "<b>40 / 60</b>: the post-processing shows next to its original; it is sorted, checked and " +
-                    "deleted like any file of a run.",
+                "Retouch a <b>Post A</b> again: the new file is <b>Post A.01</b> of the <b>same run</b>. Names: <b>Post A</b>, " +
+                    "<b>Post B</b>… for the posts of the original; <b>Post A.01</b>, <b>Post A.02</b>… for the posts of a post. " +
+                    "A name never changes, even after a deletion.",
+                "<b>40 / 60</b> show only the originals. The post-processings are in the <b>Processing</b> window " +
+                    "(next rubric); they are sorted, checked and deleted like any file of a run.",
                 "Labels, only when a file was post-processed: the original has a green frame and a green " +
-                    "<b>Original</b> label; a post-processing shows <b>Post n</b>, then the file it comes from " +
-                    "(<b>Original</b> or <b>Post m</b>).",
-                "<b>04, 02, 06</b>: ‹ › go from the original to Post 1, Post 2…; the configuration says which file " +
+                    "<b>Original</b> label; a post-processing shows its name (<b>Post A</b>, <b>Post A.01</b>…), then the " +
+                    "file it comes from (<b>Original</b> or its parent post).",
+                "<b>04, 02, 06</b>: ‹ › go from the original to Post A, Post B…; the configuration says which file " +
                     "it comes from, and <b>Retrieve the workflow</b> opens its own workflow.",
             ]) +
             hNote("a file loaded from outside any run is not attached, and no run is made for it.") +
             hNote("the Project node is not needed: the server attaches the file at the end of the run.") +
             hTip("several MedLoad upstream: the nearest one decides; a warning is shown when another one loads a " +
                 "file of another run."),
+    },
+    {
+        id: "processing", title: "Processing", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
+        html: "<p>The <b>Processing</b> window shows all the post-processings of one original, as a tree. " +
+            "<b>40 / 60</b> show the originals only.</p>" +
+            "<p><b>Open it</b></p>" +
+            hSteps([
+                "Open <b>40.Rush Videos</b> or <b>60.Rush Images</b>.",
+                "Find an original that has post-processings: it has a green <b>Original</b> label.",
+                "Click the purple button <b>Processing (n)</b> under its thumbnail (n = number of posts). " +
+                    "With <b>Extract Frame</b>, it is placed below it.",
+            ]) +
+            hCard("Read the tree", [
+                ["Tree", "The original is at the top, its posts below, joined by curved lines. Scroll when it is big."],
+                ["Names", "<b>Original</b>, <b>Post A</b>, <b>Post B</b>… (posts of the original), <b>Post A.01</b>… " +
+                    "(posts of Post A). A name never changes."],
+                ["Card", "Thumbnail, dot colour, name, date and time, check box. The chosen file has a purple frame."],
+                ["Deleted", "A deleted post that still has posts is a grey <b>Deleted</b> card, to keep the links. " +
+                    "A deleted post without posts is not shown."],
+                ["Player", "Click a thumbnail: the video or picture opens, as in 40 / 60."],
+            ]) +
+            hCard("Filter and sort", [
+                ["Filter", "Click dots to show only those colours. A post that does not match turns pale, " +
+                    "without check box, but stays in place. <b>The original is never filtered.</b>"],
+                ["Date ↓ / ↑", "Sorts the posts of a same parent. Names do not change. This is the same setting as in " +
+                    "40 / 60: it sorts both."],
+            ]) +
+            hCard("Sort the files", [
+                ["Buttons", "<b>Picture Lock</b>, <b>Rough Cut</b>, <b>Footage</b>, <b>No Good</b>, each with the total of its " +
+                    "folder (<b>Picture Lock · 1</b>). They move the <b>checked</b> files, one by one, with a progress bar."],
+                ["Picture Lock", "Only <b>one file</b>. If it is taken, a question asks for <b>Swap</b>: the old file goes " +
+                    "to the folder of the new one."],
+                ["Delete", "Under <b>No Good</b>, like in 40 / 60: Recycle Bin or permanent."],
+                ["Failure", "A failed file stays checked with a red ✕; the others go on."],
+            ]) +
+            hCard("Extract Frame", [
+                ["Button", "Under the card of the file that is in the <b>Picture Lock</b> of 40."],
+            ]) +
+            hCard("Drag to MedLoad", [
+                ["Drag", "Drag a card (or a thumbnail of 40 / 60) onto the <b>MagicStudio MedLoad</b> node. " +
+                    "A simple click still opens the player."],
+                ["File sent", "The <b>full-quality original</b> when it is in the project; otherwise the copy shown in 40. " +
+                    "A grey <b>Deleted</b> card cannot be dragged."],
+                ["Rule", "MedLoad only accepts files of the input folder of ComfyUI."],
+            ]) +
+            hNote("before any move, Swap or delete, the players are closed (preview and Extract Frame), because Windows " +
+                "keeps a file locked while it is played.") +
+            hNote("<b>Esc</b> or ✕ closes Processing (and the player it opened). Closing 40 / 60, or switching between 40 " +
+                "and 60, closes it too.") +
+            hTip("after each action, the 40 / 60 window is read again (dots, reminders, totals)."),
     },
     {
         id: "rushsort", title: "Sorting the rushes", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
@@ -438,8 +490,9 @@ const HELP_SECTIONS = [
             ]) +
             hCard("Display", [
                 ["Order", "Thumbnails grouped by dot, then by date (Date ↓ / ↑)."],
-                ["Filter", "Click dots to show only those colours."],
-            ]),
+                ["Filter", "Click dots to show only those colours. An original also appears when one of its posts has the colour."],
+            ]) +
+            hNote("the players are closed before a move, Swap or delete (Windows keeps a played file locked)."),
     },
     {
         id: "extract", title: "Extract Frame", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
@@ -836,22 +889,74 @@ const HELP_SECTIONS_FR = [
             hSteps([
                 "Chargez une vidéo (ou une image) d'un Run dans <b>MagicStudio MedLoad</b>, par exemple depuis la fenêtre du Final Cut.",
                 "Branchez-la sur vos nœuds de retouche, puis sur un nœud d'enregistrement, dans le même workflow.",
-                "Lancez le workflow, ou seulement cette branche : le fichier enregistré devient <b>Post 1</b> du Run d'origine.",
+                "Lancez le workflow, ou seulement cette branche : le fichier enregistré devient <b>Post A</b> du Run d'origine.",
             ]) +
             hList([
-                "Retouchez un Post 1 : le nouveau fichier est <b>Post 2</b> du <b>même Run</b>.",
-                "<b>40 / 60</b> : le post-traitement s'affiche à côté de son original ; il se trie, se coche et se " +
-                    "supprime comme un fichier de Run.",
+                "Retouchez un <b>Post A</b> : le nouveau fichier est <b>Post A.01</b> du <b>même Run</b>. Noms : <b>Post A</b>, " +
+                    "<b>Post B</b>… pour les posts de l'original ; <b>Post A.01</b>, <b>Post A.02</b>… pour les posts d'un post. " +
+                    "Un nom ne change jamais, même après une suppression.",
+                "<b>40 / 60</b> n'affichent que les originaux. Les post-traitements sont dans la fenêtre <b>Processing</b> " +
+                    "(rubrique suivante) ; ils se trient, se cochent et se suppriment comme un fichier de Run.",
                 "Étiquettes, seulement quand un fichier a été post-traité : l'original a un cadre vert et une " +
-                    "étiquette verte <b>Original</b> ; un post-traitement affiche <b>Post n</b>, puis le fichier dont " +
-                    "il vient (<b>Original</b> ou <b>Post m</b>).",
-                "<b>04, 02, 06</b> : ‹ › passent de l'original à Post 1, Post 2… ; la configuration indique de quel " +
+                    "étiquette verte <b>Original</b> ; un post-traitement affiche son nom (<b>Post A</b>, <b>Post A.01</b>…), puis le " +
+                    "fichier dont il vient (<b>Original</b> ou son post parent).",
+                "<b>04, 02, 06</b> : ‹ › passent de l'original à Post A, Post B… ; la configuration indique de quel " +
                     "fichier il vient, et <b>Retrieve the workflow</b> rouvre son propre workflow.",
             ]) +
             hNote("un fichier chargé hors de tout Run n'est pas rattaché, et aucun Run n'est créé pour lui.", "Remarque :") +
             hNote("le nœud Project n'est pas nécessaire : le serveur rattache le fichier à la fin du Run.", "Remarque :") +
             hTip("plusieurs MedLoad en amont : le plus proche décide ; un avertissement s'affiche quand un autre charge " +
                 "un fichier d'un autre Run.", "Astuce :"),
+    },
+    {
+        id: "processing", title: "Processing",
+        html: "<p>La fenêtre <b>Processing</b> montre tous les post-traitements d'un original, sous forme d'arbre. " +
+            "<b>40 / 60</b> n'affichent que les originaux.</p>" +
+            "<p><b>L'ouvrir</b></p>" +
+            hSteps([
+                "Ouvrez <b>40.Rush Videos</b> ou <b>60.Rush Images</b>.",
+                "Repérez un original qui a des post-traitements : il porte une étiquette verte <b>Original</b>.",
+                "Cliquez sur le bouton violet <b>Processing (n)</b> sous sa vignette (n = nombre de posts). " +
+                    "Avec <b>Extract Frame</b>, il est placé en dessous.",
+            ]) +
+            hCard("Lire l'arbre", [
+                ["Arbre", "L'original est en haut, ses posts en dessous, reliés par des traits courbes. Faites défiler s'il est grand."],
+                ["Noms", "<b>Original</b>, <b>Post A</b>, <b>Post B</b>… (posts de l'original), <b>Post A.01</b>… " +
+                    "(posts de Post A). Un nom ne change jamais."],
+                ["Carte", "Vignette, couleur de pastille, nom, date et heure, case à cocher. Le fichier choisi a un cadre violet."],
+                ["Deleted", "Un post supprimé qui a encore des posts est une carte grise <b>Deleted</b>, pour garder les liens. " +
+                    "Un post supprimé sans posts n'est pas affiché."],
+                ["Lecteur", "Cliquez sur une vignette : la vidéo ou l'image s'ouvre, comme dans 40 / 60."],
+            ]) +
+            hCard("Filtrer et trier", [
+                ["Filter", "Cliquez sur des pastilles pour n'afficher que ces couleurs. Un post qui ne correspond pas devient " +
+                    "pâle, sans case, mais reste à sa place. <b>L'original n'est jamais filtré.</b>"],
+                ["Date ↓ / ↑", "Trie les posts d'un même parent. Les noms ne changent pas. C'est le même réglage que dans " +
+                    "40 / 60 : il trie les deux."],
+            ]) +
+            hCard("Ranger les fichiers", [
+                ["Boutons", "<b>Picture Lock</b>, <b>Rough Cut</b>, <b>Footage</b>, <b>No Good</b>, chacun avec le total de son " +
+                    "dossier (<b>Picture Lock · 1</b>). Ils déplacent les fichiers <b>cochés</b>, un par un, avec une barre de progression."],
+                ["Picture Lock", "Un <b>seul fichier</b>. S'il est pris, une question propose <b>Swap</b> : l'ancien fichier " +
+                    "va dans le dossier du nouveau."],
+                ["Delete", "Sous <b>No Good</b>, comme dans 40 / 60 : Corbeille ou suppression définitive."],
+                ["Échec", "Un fichier en échec reste coché avec un ✕ rouge ; les autres continuent."],
+            ]) +
+            hCard("Extract Frame", [
+                ["Bouton", "Sous la carte du fichier qui est dans le <b>Picture Lock</b> de 40."],
+            ]) +
+            hCard("Glisser vers MedLoad", [
+                ["Glisser", "Glissez une carte (ou une vignette de 40 / 60) sur le nœud <b>MagicStudio MedLoad</b>. " +
+                    "Un simple clic ouvre toujours le lecteur."],
+                ["Fichier envoyé", "L'<b>original pleine qualité</b> quand il est dans le projet ; sinon la copie montrée dans 40. " +
+                    "Une carte grise <b>Deleted</b> ne se glisse pas."],
+                ["Règle", "MedLoad n'accepte que les fichiers du dossier input de ComfyUI."],
+            ]) +
+            hNote("avant tout déplacement, Swap ou suppression, les lecteurs sont fermés (aperçu et Extract Frame), car " +
+                "Windows garde un fichier verrouillé tant qu'il est lu.", "Remarque :") +
+            hNote("<b>Échap</b> ou ✕ ferme Processing (et le lecteur qu'il a ouvert). Fermer 40 / 60, ou passer de 40 à 60, " +
+                "le ferme aussi.", "Remarque :") +
+            hTip("après chaque action, la fenêtre 40 / 60 est relue (pastilles, rappels, totaux).", "Astuce :"),
     },
     {
         id: "rushsort", title: "Tri des rushs",
@@ -902,8 +1007,9 @@ const HELP_SECTIONS_FR = [
             ]) +
             hCard("Affichage", [
                 ["Ordre", "Vignettes groupées par pastille, puis par date (Date ↓ / ↑)."],
-                ["Filter", "Cliquez sur des pastilles pour n'afficher que ces couleurs."],
-            ]),
+                ["Filter", "Cliquez sur des pastilles pour n'afficher que ces couleurs. Un original apparaît aussi quand l'un de ses posts a la couleur."],
+            ]) +
+            hNote("les lecteurs sont fermés avant un déplacement, un Swap ou une suppression (Windows garde verrouillé un fichier lu).", "Remarque :"),
     },
     {
         id: "extract", title: "Extract Frame",

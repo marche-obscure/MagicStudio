@@ -73,7 +73,7 @@ def check_path(text, input_dir):
     """
     path = _unquote_path(text)
     if not path:
-        raise ValueError("No file: drop a file from MagicStudio Final Cut, or type its path.")
+        raise ValueError("No file: drop a file from MagicStudio Final Cut, 40.Rush Videos / 60.Rush Images or Processing, or type its path.")
     path = os.path.abspath(path)
     if not is_within_directory(input_dir, path):
         raise ValueError("Only files in the input folder of ComfyUI can be loaded: " + path)

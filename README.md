@@ -233,7 +233,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 
 ## MagicStudio MedLoad node
 
-- **Drop a file from the Final Cut window** onto the node (on its preview area or anywhere on the node): its full path goes into the `file` field, and the node shows the picture, a video player or an audio player. You can also type or paste the path in `file`.
+- **Drop a file from the Final Cut window, from 40.Rush Videos / 60.Rush Images or from Processing** onto the node (on its preview area or anywhere on the node): its full path goes into the `file` field, and the node shows the picture, a video player or an audio player. You can also type or paste the path in `file`.
 - **Outputs:**
 
   | File | `video` | `video_frames` | `audio_video` | `image` | `audio` |
@@ -274,10 +274,18 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 
 ## Post-processing
 
-- A file saved **after a MagicStudio MedLoad** that loads a file of a run is added to **that run** (the original run) as **Post 1**, not recorded as a new run. Retouch Post 1 again and you get **Post 2** of the same run.
+- A file saved **after a MagicStudio MedLoad** that loads a file of a run is added to **that run** (the original run) as **Post A**, not recorded as a new run. Retouch Post A again and you get **Post A.01** of the same run. Names: **Post A**, **Post B**… for the posts of the original; **Post A.01**, **Post A.02**… for the posts of a post. A name never changes, even after a deletion.
 - It works when you run the whole workflow or only the retouch branch, with or without the Project node.
-- In **40.Rush Videos / 60.Rush Images**, a post-processing shows next to its original (videos get a small copy, like the other runs). Labels show only when a file was post-processed: the original has a green frame and an **Original** label; a post-processing shows **Post n** followed by the file it comes from (**Original** or **Post m**). In **04.Prompt, 02.Models, 06.LoRA**, ‹ › go from the original to its post-processings; the configuration says in one sentence which file it comes from, and **Retrieve the workflow** opens its own workflow.
+- **40.Rush Videos / 60.Rush Images** show only the originals (videos get a small copy, like the other runs). Labels show only when a file was post-processed: the original has a green frame and an **Original** label; a post-processing shows its name (**Post A**, **Post A.01**…) followed by the file it comes from. In **04.Prompt, 02.Models, 06.LoRA**, ‹ › go from the original to its post-processings; the configuration says in one sentence which file it comes from, and **Retrieve the workflow** opens its own workflow.
 - A file loaded from outside any run is not attached, and no run is made for it.
+
+### Processing window
+
+- An original that has post-processings shows a purple **Processing (n)** button under its thumbnail (n = number of posts). It opens a tree window: the original at the top, its posts below, joined by curved lines. Names are **Post A**, **Post B**… and **Post A.01**…
+- Click a card to play it. The filter dots and the **Date** sort work as in 40 / 60 (the sort is the same global setting); a post that does not match the filter turns pale, the original is never filtered. A deleted post that still has posts is a grey **Deleted** card; a deleted post without posts is not shown.
+- The buttons **Picture Lock / Rough Cut / Footage / No Good** (with the total of each folder) move the checked files, like in 40 / 60: copy, SHA256 check, progress bar. Picture Lock keeps one file, with a **Swap** question when it is taken. **Delete** is under No Good. **Extract Frame** is under the card of the Picture Lock video.
+- Before a move, Swap or delete, the players are closed (Windows locks a file while it is played). **Esc** or ✕ closes the window; closing 40 / 60 or switching between 40 and 60 closes it too.
+- **Drag to MedLoad:** drag a Processing card, or a thumbnail of 40 / 60, onto **MagicStudio MedLoad**. The full-quality original is sent when it is in the project, otherwise the copy shown in 40. A **Deleted** card cannot be dragged. MedLoad still accepts only files of the ComfyUI input folder.
 
 ## Compatibility
 

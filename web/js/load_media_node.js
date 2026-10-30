@@ -78,7 +78,8 @@ const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Open the window of <b>MagicStudio Final Cut</b> (<b>Images</b>, <b>Video</b> or <b>Audio</b>).",
+            "Open the window of <b>MagicStudio Final Cut</b> (<b>Images</b>, <b>Video</b> or <b>Audio</b>), or " +
+            "the window <b>40.Rush Videos</b> / <b>60.Rush Images</b> or <b>Processing</b> of the Project node.",
             "Drag a file onto this node.",
             "Wire the outputs that match the file: <b>video</b>, <b>video_frames</b> or <b>audio_video</b> " +
             "for a video, <b>image</b> for an image, <b>audio</b> for an audio file.",
@@ -104,7 +105,7 @@ const HELP_SECTIONS = [
         hTip("<b>video_frames</b> holds every frame in memory: for a long or large video, prefer <b>video</b>.") +
         hTip("the file is loaded again only when the path changes or when the file is modified.") +
         hNote("a file saved after this node, when it loads a file of a run, is added to that run as " +
-            "<b>Post 1</b>, <b>Post 2</b>… (help of the Project node, <b>Post-processing</b>)."),
+            "<b>Post A</b>, <b>Post B</b>… (help of the Project node, <b>Post-processing</b>)."),
     },
     {
         id: "files", title: "Accepted files", icon: FOLDER_ICON, color: VIOLET,
@@ -114,14 +115,17 @@ const HELP_SECTIONS = [
             "Types: images, videos and audio files (the same as the RefLoader).",
         ]) +
         hNote("a file dragged from the Windows Explorer has no path for the browser: drag it from " +
-            "<b>MagicStudio Final Cut</b>, or type its path in <b>file</b>."),
+            "<b>MagicStudio Final Cut</b>, <b>40 / 60</b> or <b>Processing</b>, or type its path in <b>file</b>.") +
+        hNote("from <b>40 / 60</b> or <b>Processing</b>, the full-quality original is sent when it is in the " +
+            "project; otherwise the copy shown in 40. A grey <b>Deleted</b> card cannot be dragged."),
     },
 ];
 const HELP_SECTIONS_FR = [
     {
         id: "start", title: "Démarrage rapide",
         html: hSteps([
-            "Ouvrez la fenêtre de <b>MagicStudio Final Cut</b> (<b>Images</b>, <b>Video</b> ou <b>Audio</b>).",
+            "Ouvrez la fenêtre de <b>MagicStudio Final Cut</b> (<b>Images</b>, <b>Video</b> ou <b>Audio</b>), ou " +
+            "la fenêtre <b>40.Rush Videos</b> / <b>60.Rush Images</b> ou <b>Processing</b> du nœud Project.",
             "Glissez un fichier sur ce nœud.",
             "Branchez les sorties qui correspondent au fichier : <b>video</b>, <b>video_frames</b> ou " +
             "<b>audio_video</b> pour une vidéo, <b>image</b> pour une image, <b>audio</b> pour un son.",
@@ -148,7 +152,7 @@ const HELP_SECTIONS_FR = [
             "préférez <b>video</b>.", "Astuce :") +
         hTip("le fichier n'est rechargé que si le chemin change ou si le fichier est modifié.", "Astuce :") +
         hNote("un fichier enregistré après ce nœud, quand il charge un fichier d'un Run, est ajouté à ce Run " +
-            "comme <b>Post 1</b>, <b>Post 2</b>… (aide du nœud Project, <b>Post-traitements</b>).", "Remarque :"),
+            "comme <b>Post A</b>, <b>Post B</b>… (aide du nœud Project, <b>Post-traitements</b>).", "Remarque :"),
     },
     {
         id: "files", title: "Fichiers acceptés",
@@ -158,7 +162,11 @@ const HELP_SECTIONS_FR = [
             "Types : images, vidéos et sons (les mêmes que le RefLoader).",
         ]) +
         hNote("un fichier glissé depuis l'Explorateur Windows n'a pas de chemin pour le navigateur : glissez-le " +
-            "depuis <b>MagicStudio Final Cut</b>, ou tapez son chemin dans <b>file</b>.", "Remarque :"),
+            "depuis <b>MagicStudio Final Cut</b>, <b>40 / 60</b> ou <b>Processing</b>, ou tapez son chemin dans " +
+            "<b>file</b>.", "Remarque :") +
+        hNote("depuis <b>40 / 60</b> ou <b>Processing</b>, l'original pleine qualité est envoyé quand il est dans " +
+            "le projet ; sinon la copie montrée dans 40. Une carte grise <b>Deleted</b> ne se glisse pas.",
+            "Remarque :"),
     },
 ];
 function helpSections(lang) {
@@ -254,7 +262,7 @@ app.registerExtension({
                 shown = path;
                 if (!path) {
                     say("", null);
-                    empty("Drop a file from MagicStudio Final Cut here");
+                    empty("Drop a file from Final Cut, 40 / 60 or Processing here");
                     return;
                 }
                 let info;
@@ -263,7 +271,7 @@ app.registerExtension({
                 } catch (e) {
                     if (shown !== path) return;
                     say(e.message, null);
-                    empty("Drop a file from MagicStudio Final Cut here");
+                    empty("Drop a file from Final Cut, 40 / 60 or Processing here");
                     return;
                 }
                 if (shown !== path) return;
@@ -289,7 +297,7 @@ app.registerExtension({
             /** Depot d'un lien : le serveur en lit le chemin et le verifie, puis il va dans "file". */
             async function applyDrop(text) {
                 if (!text) {
-                    say("No path in this drop: drag the file from MagicStudio Final Cut.", null);
+                    say("No path in this drop: drag the file from MagicStudio Final Cut, 40 / 60 or Processing.", null);
                     return;
                 }
                 try {
