@@ -22,7 +22,7 @@ import {
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
     PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint,
 } from "./project_paths.js";
-import { dragPath, dragLink } from "./post_tree.js";
+import { dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 import { PROJECT_USED, renameLegacySlots, LEGACY_PROJECT_LINKS } from "./graph_links.js";
 
@@ -3046,14 +3046,20 @@ function makeDragSource(el, output, overlay) {
     const path = dragPath(output);
     if (!path) return;
     el.draggable = true;
+    let dragging = false;
     el.addEventListener("dragstart", (e) => {
         if (e.dataTransfer) {
             e.dataTransfer.setData("text/uri-list", dragLink(path, location.origin));
             e.dataTransfer.effectAllowed = "copy";
         }
-        if (overlay) overlay.style.pointerEvents = "none";
+        dragging = true;
+        // Chrome peut annuler un glisser si un style change tout de suite : on attend la fin de l'evenement.
+        setTimeout(() => {
+            if (dragging && overlay) overlay.style.pointerEvents = "none";
+        }, 0);
     });
     el.addEventListener("dragend", () => {
+        dragging = false;
         if (overlay) overlay.style.pointerEvents = "";
     });
 }
@@ -3518,6 +3524,437 @@ function buildExtractWindow(container, ops) {
     };
 }
 
+// ----------------------------------------------------------------------
+// Fenetre Processing (30/10/2026, choix utilisateur) : a cote de la fenetre 40 / 60, arbre
+// des post-traitements d'un original (cartes de 120 px, traits courbes), filtre de pastilles,
+// tri par date des freres, apercu au clic, glisser vers MedLoad, rangement par lot.
+// Deplacable, sans fond bloquant ; Echap et clic a cote : relayes par la fenetre 40 / 60.
+// ----------------------------------------------------------------------
+const TREE_COL = 150; // largeur d'une colonne de l'arbre (carte de 120 px + espace)
+const TREE_ROW = 170; // hauteur d'un niveau
+const TREE_CARD_W = 120;
+const TREE_CARD_H = 156;
+
+/**
+ * ops = {getRuns() -> runs, folder() -> "40.Rush Videos" | "60.Rush Images", overlay (couche de la fenetre 40 / 60),
+ *        showPreview(file, kind, anchor), counts(kind, key), singleLock() -> bool,
+ *        move(run, out, key, swap), lockSwap(out, key) -> {swap} | null, remove(run, out, trash),
+ *        askDelete(noms, ancre, bouton), askWord(n, bouton), reload() -> runs, refresh40(),
+ *        openExtract(ancre) -> {text, ok} | null, overfull(kind), lock(bool) (fenetre 40 / 60 inactive pendant une action)}
+ */
+function buildProcessingWindow(container, ops) {
+    const { overlay, card } = makeOverlay();
+    overlay.style.zIndex = "10001";
+    // Pas de fond bloquant : la fenetre 40 / 60 reste visible a cote (cartes en "auto").
+    overlay.style.pointerEvents = "none";
+    Object.assign(card.style, {
+        padding: "10px 12px", borderColor: VIOLET, display: "flex", flexDirection: "column", gap: "8px",
+        maxHeight: "92vh", pointerEvents: "auto",
+    });
+
+    // ---- En-tete : titre, filtre de pastilles, tri par date, fermer ----
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "8px" });
+    const title = document.createElement("div");
+    Object.assign(title.style, {
+        flex: "1", minWidth: "0", fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, whiteSpace: "nowrap",
+        overflow: "hidden", textOverflow: "ellipsis",
+    });
+    const dotFilter = new Set();
+    const filterBox = document.createElement("div");
+    Object.assign(filterBox.style, { display: "flex", alignItems: "center", gap: "6px", flex: "0 0 auto" });
+    const filterLabel = document.createElement("span");
+    filterLabel.textContent = "Filter:";
+    Object.assign(filterLabel.style, { color: "#9fd6cf", fontWeight: "bold", fontSize: "12px" });
+    const filterDots = DOT_FILTER.map((key) => {
+        const d = document.createElement("button");
+        d.type = "button";
+        Object.assign(d.style, {
+            width: "16px", height: "16px", borderRadius: "50%", padding: "0", cursor: "pointer",
+            background: DOT_COLORS[key] || DOT_GREY, boxSizing: "border-box",
+        });
+        d.addEventListener("click", () => {
+            if (dotFilter.has(key)) dotFilter.delete(key);
+            else dotFilter.add(key);
+            render();
+        });
+        return { key, d };
+    });
+    filterBox.append(filterLabel, ...filterDots.map((x) => x.d));
+    const orderBtn = makeDateOrderButton(() => {
+        render();
+        ops.refresh40(); // le reglage de date est commun : 40 / 60 se range aussi
+    });
+    const closeBtn = makeIconButton(INACTIVE_BG, CLOSE_ICON, "Close");
+    Object.assign(closeBtn.style, { width: "22px", height: "22px" });
+    head.append(title, filterBox, orderBtn, closeBtn);
+
+    // ---- Arbre : zone defilante (deux axes) ----
+    const scroller = document.createElement("div");
+    Object.assign(scroller.style, {
+        overflow: "auto", maxHeight: "58vh", minHeight: "120px", background: "#161616", border: "1px solid #2c2c2c",
+        borderRadius: "8px", position: "relative",
+    });
+    const canvas = document.createElement("div");
+    Object.assign(canvas.style, { position: "relative", margin: "10px" });
+    scroller.appendChild(canvas);
+
+    // ---- Barre de progression et boutons du lot ----
+    const progress = document.createElement("div");
+    Object.assign(progress.style, { display: "none", flexDirection: "column", gap: "3px" });
+    const progressText = document.createElement("div");
+    Object.assign(progressText.style, { fontSize: "11px", color: "#9fd6cf", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+    const progressTrack = document.createElement("div");
+    Object.assign(progressTrack.style, { height: "6px", background: "#2a2a2a", borderRadius: "3px", overflow: "hidden" });
+    const progressFill = document.createElement("div");
+    Object.assign(progressFill.style, { height: "100%", width: "0%", background: VIOLET, transition: "width 0.15s" });
+    progressTrack.appendChild(progressFill);
+    progress.append(progressText, progressTrack);
+    const bar = document.createElement("div");
+    const note = document.createElement("div");
+    Object.assign(note.style, { minHeight: "14px", fontSize: "11px", color: "#9fd6cf", wordBreak: "break-word" });
+    card.append(head, scroller, progress, bar, note);
+
+    let runFile = "";
+    let rootIndex = 0;
+    let anchorCard = null;
+    let selIndex = -1; // fichier choisi (bord violet)
+    let busy = false;
+    const checked = new Set(); // index des sorties cochees
+    const failed = new Map(); // index -> erreur du dernier lot
+
+    const isOpen = () => overlay.style.display !== "none";
+    const currentRun = () => (ops.getRuns() || []).find((r) => r.file === runFile) || null;
+    const say = (text, ok) => {
+        note.textContent = text || "";
+        note.style.color = ok === false ? ORANGE : "#9fd6cf";
+    };
+
+    /** Bouton Extract Frame sous la carte du fichier qui est dans le Picture Lock de 40 (meme regle que 40). */
+    function extractButton(out) {
+        if (ops.folder() !== "40.Rush Videos" || out.kind !== "video" || !out.in_project || out.place !== "picture_lock" ||
+            out.deleted || !outputFile(out)) return null;
+        const b = makeTextButton("Extract Frame", SORT_COLORS.picture_lock);
+        Object.assign(b.style, {
+            display: "block", width: "100%", marginTop: "3px", padding: "2px 4px", fontSize: "11px",
+            color: SORT_TEXT_COLORS.picture_lock,
+        });
+        const ok = !(ops.overfull("video") > 1);
+        b.disabled = !ok;
+        Object.assign(b.style, { opacity: ok ? "1" : "0.45", cursor: ok ? "pointer" : "default" });
+        b.title = ok ? "Extract the first, last or any frame of the Picture Lock video as PNG (" +
+            EXTRACT_FRAME_DIR.join("/") + ")" : LOCK_KEEP_ONE;
+        b.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            if (b.disabled) return;
+            const res = await ops.openExtract(card);
+            if (res && res.text) say(res.text, res.ok);
+        });
+        return b;
+    }
+
+    /** Une carte de l'arbre : vignette (ou « Deleted »), pastille de nom, date, case, Extract Frame. */
+    function makeCard(c, run, files) {
+        const o = c.node.output;
+        const file = outputFile(o);
+        const gone = !file;
+        const dim = isFiltered(o, rootIndex, dotFilter);
+        const t = document.createElement("div");
+        Object.assign(t.style, {
+            position: "absolute", left: c.x * TREE_COL + "px", top: c.depth * TREE_ROW + "px", width: TREE_CARD_W + "px",
+            height: TREE_CARD_H + "px", padding: "5px", borderRadius: "8px", background: "#1f1f1f", boxSizing: "border-box",
+            overflow: "hidden", pointerEvents: "auto", opacity: dim ? "0.35" : "1",
+            border: o.index === selIndex ? "2px solid " + VIOLET : "1px solid #333", cursor: gone ? "default" : "pointer",
+        });
+        let pic;
+        if (gone) {
+            pic = document.createElement("div");
+            pic.textContent = "Deleted";
+            Object.assign(pic.style, {
+                width: "108px", height: "71px", borderRadius: "6px", background: "#2b2b2b", color: "#888",
+                display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", fontSize: "12px", fontWeight: "bold",
+            });
+            pic.title = deletedText(o.deleted) || "File deleted";
+        } else {
+            const [dir, name] = splitPath(file);
+            pic = dupThumb(dir, name, o.kind, 108);
+            addStatusDot(pic, o);
+            makeDragSource(pic, o, ops.overlay);
+            pic.title = "Click: preview – drag onto a MiniMax H3 Load Media node";
+        }
+        if (failed.has(o.index)) {
+            const x = document.createElement("div");
+            x.textContent = "✕";
+            Object.assign(x.style, {
+                position: "absolute", top: "2px", left: "22px", color: "#ff3b30", fontWeight: "bold", fontSize: "14px",
+                lineHeight: "16px", textShadow: "0 0 3px #000", zIndex: "1",
+            });
+            x.title = "Failed: " + failed.get(o.index);
+            pic.appendChild(x);
+        }
+        t.appendChild(pic);
+        const pillRow = document.createElement("div");
+        Object.assign(pillRow.style, { marginTop: "4px", display: "flex" });
+        pillRow.appendChild(postPill(c.node.name || "Original"));
+        t.appendChild(pillRow);
+        const date = document.createElement("div");
+        date.textContent = runDateText(o.post_date || run.date);
+        Object.assign(date.style, { fontSize: "10px", marginTop: "3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+        if (file) date.title = splitPath(file)[1];
+        t.appendChild(date);
+        // Case : pas pour une carte « Deleted », ni pour un post filtre (decoche aussi).
+        if (!gone && !dim) {
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = checked.has(o.index);
+            cb.title = "Check to move or delete several files at once";
+            Object.assign(cb.style, { display: "block", margin: "3px auto 0", cursor: "pointer" });
+            cb.addEventListener("click", (e) => e.stopPropagation());
+            cb.addEventListener("change", () => {
+                if (cb.checked) checked.add(o.index);
+                else checked.delete(o.index);
+                paintBar(files, run);
+            });
+            t.appendChild(cb);
+        }
+        const ex = extractButton(o);
+        if (ex) t.appendChild(ex);
+        if (!gone) {
+            t.addEventListener("click", () => {
+                selIndex = o.index;
+                render();
+                ops.showPreview(file, o.kind, card);
+            });
+        }
+        return t;
+    }
+
+    function paintFilter(files) {
+        const counts = Object.fromEntries(DOT_FILTER.map((k) => [k, 0]));
+        for (const o of files) counts[sortDot(o)] += 1;
+        for (const { key, d } of filterDots) {
+            const on = dotFilter.has(key);
+            d.style.opacity = on ? "1" : "0.35";
+            d.style.border = on ? "2px solid #fff" : "2px solid transparent";
+            d.title = (key === "outside" ? "Outside the project" : SORT_NAME[key]) + ": " + counts[key] +
+                (on ? " (click: hide)" : " (click: show only these)");
+        }
+    }
+
+    /** Boutons du bas : 4 dossiers (total sur le disque), Delete sous No Good. */
+    function paintBar(files, run) {
+        bar.innerHTML = "";
+        Object.assign(bar.style, { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "6px", width: "100%" });
+        const sel = files.filter((o) => checked.has(o.index));
+        const kind = (files[0] && files[0].kind) || (RUN_FOLDERS[ops.folder()] || "video");
+        const where = RUSH_FOLDER_OF[kind] + "/";
+        const active = sel.length ? batchSortTargets(sel, ops.singleLock()) : [];
+        for (const [key, label, name] of SORT_FOLDERS) {
+            const n = ops.counts(kind, key);
+            const b = makeTextButton(label + " · " + (n == null ? "?" : n), INACTIVE_BG);
+            Object.assign(b.style, { border: "2px solid " + SORT_COLORS[key] });
+            if (busy || !active.includes(key)) {
+                b.disabled = true;
+                Object.assign(b.style, { cursor: "default", opacity: "0.45" });
+                b.title = !sel.length ? "Check one or more files first"
+                    : key === "picture_lock" && ops.singleLock() && sel.length > 1 ? "Picture Lock holds only one file: check a single file"
+                        : "All the checked files are already in " + where + name;
+            } else {
+                b.title = "Move the " + sel.length + " checked file(s) into " + where + name + " (copy, SHA256 check, then the original is deleted)";
+                b.addEventListener("click", () => moveChecked(run, sel, key, where + name));
+            }
+            bar.appendChild(b);
+        }
+        const doomed = sel.filter((o) => canDeleteRush(o));
+        if (doomed.length && !busy) {
+            const d = makeTextButton("Delete (" + doomed.length + ")", SORT_COLORS.rejected);
+            Object.assign(d.style, { gridColumn: "4", border: "2px solid " + SORT_COLORS.rejected });
+            d.title = "Delete the " + doomed.length + " checked file(s) of " + where + SORT_NAME.rejected;
+            d.addEventListener("click", () => deleteChecked(run, doomed, d));
+            bar.appendChild(d);
+        }
+    }
+
+    function render() {
+        const run = currentRun();
+        const tree = run ? pruneGone(postTree(run.outputs, rootIndex, dateOrder)) : null;
+        if (!tree) {
+            close();
+            return;
+        }
+        orderBtn.refresh();
+        const files = treeFiles(tree);
+        // Cases des fichiers disparus ou filtres : decochees.
+        const live = new Set(files.filter((o) => !isFiltered(o, rootIndex, dotFilter)).map((o) => o.index));
+        for (const k of [...checked]) if (!live.has(k)) checked.delete(k);
+        paintFilter(files);
+        const layout = treeLayout(tree);
+        const left = scroller.scrollLeft;
+        const top = scroller.scrollTop;
+        canvas.innerHTML = "";
+        const maxX = layout.cards.reduce((m, c) => Math.max(m, c.x), 0);
+        const w = maxX * TREE_COL + TREE_CARD_W;
+        const h = (layout.depth - 1) * TREE_ROW + TREE_CARD_H;
+        Object.assign(canvas.style, { width: w + "px", height: h + "px" });
+        // Traits courbes : du bas du parent au haut de l'enfant.
+        const ns = "http://www.w3.org/2000/svg";
+        const svgEl = document.createElementNS(ns, "svg");
+        svgEl.setAttribute("width", String(w));
+        svgEl.setAttribute("height", String(h));
+        Object.assign(svgEl.style, { position: "absolute", left: "0", top: "0", pointerEvents: "none" });
+        for (const [p, ch] of layout.links) {
+            const x1 = p.x * TREE_COL + TREE_CARD_W / 2;
+            const y1 = p.depth * TREE_ROW + TREE_CARD_H;
+            const x2 = ch.x * TREE_COL + TREE_CARD_W / 2;
+            const y2 = ch.depth * TREE_ROW;
+            const mid = (y1 + y2) / 2;
+            const path = document.createElementNS(ns, "path");
+            path.setAttribute("d", "M" + x1 + "," + y1 + " C" + x1 + "," + mid + " " + x2 + "," + mid + " " + x2 + "," + y2);
+            path.setAttribute("fill", "none");
+            path.setAttribute("stroke", DOT_GREEN);
+            path.setAttribute("stroke-width", "3");
+            svgEl.appendChild(path);
+        }
+        canvas.appendChild(svgEl);
+        for (const c of layout.cards) canvas.appendChild(makeCard(c, run, files));
+        scroller.scrollLeft = left;
+        scroller.scrollTop = top;
+        paintBar(files, run);
+    }
+
+    /** Lot : un fichier apres l'autre, barre de progression ; un echec n'arrete pas les autres. */
+    async function runBatch(list, op) {
+        busy = true;
+        ops.lock(true);
+        scroller.style.pointerEvents = "none";
+        bar.style.pointerEvents = "none";
+        progress.style.display = "flex";
+        say("");
+        let ok = 0;
+        let ko = 0;
+        try {
+            for (let i = 0; i < list.length; i++) {
+                const o = list[i];
+                progressText.textContent = i + 1 + " / " + list.length + " – " + baseOf(outputFile(o) || o.source || "");
+                progressFill.style.width = Math.round((i / list.length) * 100) + "%";
+                try {
+                    await op(o);
+                    ok++;
+                    failed.delete(o.index);
+                    checked.delete(o.index);
+                } catch (e) {
+                    ko++;
+                    failed.set(o.index, (e && e.message) || String(e));
+                }
+            }
+            progressFill.style.width = "100%";
+            try {
+                await ops.reload();
+            } catch (e) {
+                // liste gardee : relue a la prochaine ouverture
+            }
+        } finally {
+            progress.style.display = "none";
+            progressFill.style.width = "0%";
+            scroller.style.pointerEvents = "";
+            bar.style.pointerEvents = "";
+            busy = false;
+            ops.lock(false);
+        }
+        return { ok, ko };
+    }
+    /** Apres chaque action : arbre redessine, fenetre 40 / 60 relue aussi (pastilles, compteurs). */
+    function afterAction(text, ko) {
+        if (isOpen()) {
+            render();
+            if (isOpen()) say(text, !ko);
+        }
+        ops.refresh40();
+    }
+    async function moveChecked(run, sel, key, dest) {
+        const list = sel.filter((o) => sortTargets(o).includes(key));
+        const skipped = sel.length - list.length;
+        // Picture Lock : un seul fichier, question Swap si occupe (meme code que 40).
+        busy = true;
+        ops.lock(true);
+        let lock;
+        try {
+            lock = list.length ? await ops.lockSwap(list[0], key) : { swap: false };
+        } finally {
+            busy = false;
+            ops.lock(false);
+        }
+        if (!lock) return;
+        const { ok, ko } = await runBatch(list, (o) => ops.move(run, o, key, lock.swap));
+        afterAction(ok + " file(s) moved to " + dest + " – " + ko + " failed" + (skipped ? " – " + skipped + " already there" : ""), ko);
+    }
+    async function deleteChecked(run, doomed, button) {
+        busy = true;
+        ops.lock(true);
+        let how = null;
+        try {
+            how = await ops.askDelete(doomed.map((o) => baseOf(outputFile(o))), card, button);
+            if (how === "delete" && !(await ops.askWord(doomed.length, button))) how = null;
+        } finally {
+            busy = false;
+            ops.lock(false);
+        }
+        if (!how) return;
+        const trash = how === "trash";
+        const { ok, ko } = await runBatch(doomed, (o) => ops.remove(run, o, trash));
+        afterAction(ok + " file(s) deleted " + (trash ? "(Recycle Bin)" : "permanently") + " – " + ko + " failed", ko);
+    }
+
+    function close() {
+        if (!isOpen()) return;
+        overlay.style.display = "none";
+        checked.clear();
+        failed.clear();
+        canvas.innerHTML = "";
+        note.textContent = "";
+    }
+    closeBtn.addEventListener("click", () => {
+        if (!busy) close();
+    });
+
+    return {
+        /** open(Run, index de l'original, carte de reference) */
+        open(run, index, anchor) {
+            const was = isOpen();
+            if (!was || run.file !== runFile || index !== rootIndex) {
+                dotFilter.clear();
+                checked.clear();
+                failed.clear();
+                scroller.scrollLeft = scroller.scrollTop = 0;
+                selIndex = index;
+                note.textContent = "";
+            }
+            runFile = run.file;
+            rootIndex = index;
+            anchorCard = anchor || null;
+            const root = (run.outputs || []).find((o) => o.index === index);
+            const rootFile = root ? outputFile(root) : "";
+            title.textContent = ops.folder() + " – " + (rootFile ? baseOf(rootFile) : "deleted original");
+            overlay.style.display = "block";
+            render();
+            if (!isOpen()) return;
+            if (!was && anchorCard) placeBeside(card, anchorCard, 760);
+            else if (!was) positionCardNextToNode(card, container, 760);
+        },
+        /** Relit les Runs deja charges (apres une action de 40 / 60) ; se ferme si l'original n'a plus de quoi s'afficher. */
+        refresh() {
+            if (isOpen() && !busy) render();
+        },
+        isOpen,
+        isBusy: () => busy,
+        close,
+        remove() {
+            close();
+            overlay.remove();
+        },
+    };
+}
+
 function buildRunViewer(container, onSort, onWorkflow, rush) {
     const { overlay, card } = makeOverlay();
     Object.assign(card.style, {
@@ -3713,18 +4150,57 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     const checked = new Set();
     const failed = new Map();
 
+    // Fenetre Processing (30/10/2026) : ops assembles avec les pieces de cette fenetre et de rushOps.
+    const proc = buildProcessingWindow(container, {
+        getRuns: () => runs,
+        folder: () => folder,
+        overlay,
+        showPreview: (file, kind, anchor) => showPreview(file, kind, anchor),
+        counts: (kind, key) => (rush && rush.counts ? rush.counts(kind, key) : null),
+        singleLock: () => !!(rush && rush.singleLock && rush.singleLock()),
+        move: (run, out, key, swap) => rush.move(run, out, key, swap),
+        lockSwap: (out, key) => rush.lockSwap(out, key),
+        remove: (run, out, trash) => rush.remove(run, out, trash),
+        askDelete: (names, anchor, below) => rush.askDelete(names, anchor, below),
+        askWord: (n, below) => rush.askWord(n, below),
+        async reload() {
+            runs = (await rush.reload()) || runs;
+            if (modelRun) modelRun = runs.find((r) => r.file === modelRun.file) || modelRun;
+            return runs;
+        },
+        refresh40() {
+            if (overlay.style.display === "none" || folder === "04.Prompt") return;
+            orderBtn.refresh();
+            renderRush();
+        },
+        openExtract: (anchor) => (rush && rush.openExtract ? rush.openExtract(anchor) : null),
+        overfull: (kind) => (rush && rush.overfull ? rush.overfull(kind) : 0),
+        // Pendant une action de Processing, 40 / 60 ne ferme pas sur Echap / clic a cote et ses boutons sont inertes.
+        lock(on) {
+            moving = !!on;
+            strip.style.pointerEvents = on ? "none" : "";
+            rushSort.style.pointerEvents = on ? "none" : "";
+        },
+    });
+    const procOpen = () => proc.isOpen();
+
     // Question en cours (Extract Frame, changement de video) : Echap et clics vont a la question.
     const asking = () => !!(rush && rush.busy && rush.busy());
     const onKey = (e) => {
         if (overlay.style.display === "none" || moving || asking() || e.key !== "Escape") return;
         e.preventDefault();
         e.stopImmediatePropagation();
+        // Ordre : Extract Frame, puis Processing (et le lecteur qu'il a ouvert), puis le lecteur, puis 40 / 60.
         if (extractOpen()) extractWin().close();
-        else if (preview.isOpen()) preview.close();
+        else if (procOpen()) {
+            proc.close();
+            preview.close();
+        } else if (preview.isOpen()) preview.close();
         else close();
     };
     function close() {
         preview.close();
+        proc.close();
         if (extractWin()) extractWin().close();
         checked.clear();
         failed.clear();
@@ -3735,8 +4211,15 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         thumb.body.innerHTML = "";
     }
     closeBtn.addEventListener("click", close);
-    overlay.addEventListener("mousedown", () => (moving || asking() ? null : extractOpen() ? extractWin().close()
-        : preview.isOpen() ? preview.close() : close()));
+    overlay.addEventListener("mousedown", () => {
+        if (moving || asking()) return;
+        if (extractOpen()) extractWin().close();
+        else if (procOpen()) {
+            proc.close();
+            preview.close();
+        } else if (preview.isOpen()) preview.close();
+        else close();
+    });
 
     /** Lignes des blocs Models / LoRA d'un Run (nom sans sous-dossier, chemin complet au survol). */
     function blockRows(run, key) {
@@ -3861,7 +4344,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
 
     const shownOf = (file) => folder === "40.Rush Videos" || /[\\/]40\.Rush Videos[\\/]/.test(file)
         ? "40.Rush Videos/" + baseOf(file) : file;
-    const showPreview = (file, kind) => preview.toggle(file, kind, shownOf(file), card);
+    const showPreview = (file, kind, anchor) => preview.toggle(file, kind, shownOf(file), anchor || card);
 
     // ---- 04.Prompt ----
     const filteredRuns = () => inDateOrder(runsOfKind(runs, filter === "all" ? null : filter), dateOrder);
@@ -4027,6 +4510,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         if (state !== "hidden") paintExtractButton(headExtract, state === "enabled");
     }
     function renderRush() {
+        // Un dragend perdu (vignette redessinee pendant un glisser) ne doit pas laisser la couche inerte.
+        overlay.style.pointerEvents = "";
         const all = allRush();
         paintFilter(all);
         paintLockBadge();
@@ -4163,9 +4648,10 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         setPrompt(it.run.prompt);
     }
 
-    /** Fenetre Processing d'un original (la tache 4 remplace le corps de cette fonction). */
+    /** Fenetre Processing d'un original, a cote de celle-ci. */
     function openProcessing(it) {
-        // Pas encore de fenetre : la tache 4 la construit.
+        preview.close();
+        proc.open(it.run, it.output.index, card);
     }
     /** Bouton violet « Processing (n) » (n = posts presents), absent sans post ; le clic n'ouvre pas l'apercu. */
     function processingButton(it) {
@@ -4369,10 +4855,12 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 modelRun = null;
             }
             const promptMode = name === "04.Prompt";
+            overlay.style.pointerEvents = "";
             orderBtn.refresh();
             if (!same) {
                 note.textContent = "";
                 if (extractWin()) extractWin().close();
+                proc.close(); // changement de dossier 40 <-> 60 : Processing se ferme
             }
             lockBadge.style.display = "none"; // 40 / 60 : repeint par renderRush
             headExtract.style.display = "none";
@@ -4393,6 +4881,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 760);
+            if (same) proc.refresh(); // Runs relus pendant que Processing est ouverte
         },
         isOpen: () => overlay.style.display !== "none",
         /** Message en bas de la fenetre ouverte (Extract Frame : video du Picture Lock changee). */
@@ -4404,6 +4893,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         close,
         remove() {
             close();
+            proc.remove();
             preview.remove();
             overlay.remove();
         },

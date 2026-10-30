@@ -1,7 +1,7 @@
 // Tests de post_tree.js : noms Post A / Post A.01, arbre, disposition, glisser (choix utilisateur 30/10/2026).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { letters, postNames, rootOf, postTree, postsOf, treeLayout, dragPath, dragLink } from "../web/js/post_tree.js";
+import { letters, postNames, rootOf, postTree, postsOf, treeLayout, dragPath, dragLink, pruneGone, treeFiles, isFiltered } from "../web/js/post_tree.js";
 
 const v = (index, extra) => Object.assign({ index, kind: "video", copy: "P/" + index + ".mp4", copy_exists: true }, extra);
 const post = (index, of, level, time, extra) =>
@@ -126,4 +126,31 @@ test("dragPath", () => {
 test("dragLink", () => {
     assert.equal(dragLink("G:\\P\\a b.mp4", "http://127.0.0.1:8188"),
         "http://127.0.0.1:8188/mmrefloader/media?file=G%3A%5CP%5Ca%20b.mp4&filename=a%20b.mp4");
+});
+
+test("pruneGone : supprime sans descendant retire, supprime avec descendant garde", () => {
+    // B1(1) supprime mais C(3) present dessous ; B2(2) supprime sans enfant ; D(4), E(5) presents
+    const gone = { copy_exists: false, deleted: { how: "trash" } };
+    const outs = sample(gone);
+    outs[2] = post(2, 0, 1, "11:00:00", gone);
+    const tree = pruneGone(postTree(outs, 0, "asc"));
+    assert.deepEqual(tree.children.map((c) => c.output.index), [1]);
+    assert.deepEqual(tree.children[0].children.map((c) => c.output.index), [3, 4]);
+    assert.deepEqual(treeFiles(tree).map((o) => o.index), [0, 3, 5, 4]);
+});
+
+test("pruneGone : racine toujours gardee, arbre vide -> null", () => {
+    const outs = [v(0, { copy_exists: false })];
+    assert.equal(pruneGone(postTree(outs, 0)).children.length, 0);
+    assert.equal(pruneGone(null), null);
+});
+
+test("isFiltered : jamais l'original ni un supprime", () => {
+    const place = (index, p) => v(index, { in_project: true, place: p });
+    const active = new Set(["picture_lock"]);
+    assert.equal(isFiltered(place(0, "footage"), 0, active), false); // original
+    assert.equal(isFiltered(place(1, "footage"), 0, active), true);
+    assert.equal(isFiltered(place(2, "picture_lock"), 0, active), false);
+    assert.equal(isFiltered(v(3, { copy_exists: false }), 0, active), false); // sans fichier
+    assert.equal(isFiltered(place(1, "footage"), 0, new Set()), false);
 });

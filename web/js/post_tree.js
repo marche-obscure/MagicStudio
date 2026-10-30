@@ -2,7 +2,7 @@
 // "Original" / "Post A" / "Post A.01", arbre par original, disposition en colonnes pour la
 // fenetre Processing, et chemin / lien de glisser-deposer d'une sortie.
 // Module pur : aucun appel a project_paths.js au chargement (import circulaire possible).
-import { outputFile } from "./project_paths.js";
+import { outputFile, sortDot } from "./project_paths.js";
 
 /** Lettres de rang n : 0 -> A, 25 -> Z, 26 -> AA, 27 -> AB, 51 -> AZ, 52 -> BA. */
 export function letters(n) {
@@ -141,4 +141,38 @@ export function dragPath(o) {
 export function dragLink(path, origin) {
     const name = String(path).split(/[\\/]/).pop();
     return origin + "/mmrefloader/media?file=" + encodeURIComponent(path) + "&filename=" + encodeURIComponent(name);
+}
+
+/**
+ * Arbre sans les cartes inutiles : un nœud sans fichier et sans descendant present disparait
+ * (un supprime qui a des descendants presents reste, pour garder les liens) ; la racine reste toujours.
+ */
+export function pruneGone(tree) {
+    if (!tree) return null;
+    const keep = (n) => {
+        const children = n.children.map(keep).filter(Boolean);
+        return outputFile(n.output) || children.length ? { ...n, children } : null;
+    };
+    const kids = tree.children.map(keep).filter(Boolean);
+    return { ...tree, children: kids };
+}
+
+/** Sorties de l'arbre qui ont un fichier present, racine d'abord (parcours en profondeur). */
+export function treeFiles(tree) {
+    const out = [];
+    const walk = (n) => {
+        if (outputFile(n.output)) out.push(n.output);
+        n.children.forEach(walk);
+    };
+    if (tree) walk(tree);
+    return out;
+}
+
+/**
+ * Post pale dans Processing : un filtre de pastilles est actif et la pastille du post n'y est pas.
+ * L'original (rootIndex) n'est jamais filtre ; une carte « Deleted » (sans fichier) non plus.
+ */
+export function isFiltered(o, rootIndex, active) {
+    if (!o || !active || !active.size || o.index === rootIndex || !outputFile(o)) return false;
+    return !active.has(sortDot(o));
 }
