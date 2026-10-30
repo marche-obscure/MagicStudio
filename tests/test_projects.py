@@ -76,6 +76,20 @@ class RequireProjectTest(unittest.TestCase):
             with self.assertRaises(FileNotFoundError, msg=repr(bad)):
                 projects.require_project(bad)
 
+    def test_copy_source_can_be_a_group(self):
+        # Bug du 30/10/2026 : Copy depuis un MultiProject refuse (« Not a project folder »).
+        path = projects.create_project(self.root, "Yacht", group="Shiz", new_group=True)
+        group = os.path.dirname(path)
+        self.assertEqual(projects.require_copy_source(group), group)
+        self.assertEqual(projects.require_copy_source(path), path)
+        plain = os.path.join(self.root, "Documents")
+        os.makedirs(os.path.join(plain, "Photos"))
+        with self.assertRaises(ValueError):
+            projects.require_copy_source(plain)
+        for bad in ("", None, os.path.join(self.root, "absent")):
+            with self.assertRaises(FileNotFoundError, msg=repr(bad)):
+                projects.require_copy_source(bad)
+
 
 class ProjectFoldersTest(unittest.TestCase):
     def setUp(self):

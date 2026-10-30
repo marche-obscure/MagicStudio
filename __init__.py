@@ -548,7 +548,7 @@ try:
         try:
             body = await request.json()
             projects.require_project(body.get("project", ""))  # vrai projet seulement (revue securite du 24/10/2026)
-            projects.require_project(body.get("source", ""))
+            projects.require_copy_source(body.get("source", ""))  # projet ou MultiProject (30/10/2026)
             data = await _in_executor(project_config.copy_media, body.get("project", ""), body.get("source", ""),
                                       bool(body.get("dry_run")), str(body.get("sub") or ""))
         except Exception as e:

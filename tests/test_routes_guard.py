@@ -22,7 +22,7 @@ GUARDED = {
     "/mmproject/import_files": ["project"],
     "/mmproject/delete_duplicates": ["project"],
     "/mmproject/reset": ["project"],
-    "/mmproject/copy_media": ["project", "source"],
+    "/mmproject/copy_media": ["project"],
     "/mmproject/purge": ["project"],
     "/mmproject/sort_output": ["project"],
     "/mmproject/final_cut/sync": ["project"],
@@ -63,6 +63,10 @@ class RoutesGuardTest(unittest.TestCase):
         with open(INIT, encoding="utf-8") as f:
             posts = set(re.findall(r'@routes\.post\("([^"]+)"\)', f.read()))
         self.assertEqual(posts - free, set(GUARDED))
+
+    def test_copy_source_checked(self):
+        # Copy lit un projet ou un dossier de projets (MultiProject), jamais un dossier ordinaire (30/10/2026).
+        self.assertRegex(route_bodies()["/mmproject/copy_media"], r'require_copy_source\(body\.get\("source"')
 
     def test_archive_files_keeps_run_files(self):
         # La cloche n'archive jamais un fichier de Run (26/10/2026).

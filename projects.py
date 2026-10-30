@@ -108,6 +108,19 @@ def require_project(path):
     return path
 
 
+def require_copy_source(path):
+    """
+    Source du bouton Copy (bug du 30/10/2026 : un MultiProject etait refuse) : un
+    projet, ou un dossier de projets (copy_media propose alors ses sous-projets).
+    Copy ne fait que lire la source ; un dossier ordinaire reste refuse.
+    """
+    if not path or not str(path).strip() or not os.path.isdir(path):
+        raise FileNotFoundError("Project folder not found: %s" % path)
+    if not is_project(path) and not project_children(path):
+        raise ValueError("Not a project folder: %s" % path)
+    return path
+
+
 # Marque d'un dossier de projets (choix utilisateur 22/10/2026) : un dossier qui ne
 # contient que des projets ressemble a une racine ; la marque dit que c'est un groupe
 # declare sous son dossier mere (posee a sa creation et quand la racine le liste).
