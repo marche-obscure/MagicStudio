@@ -4979,8 +4979,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
 
     /** Lot : un fichier apres l'autre, barre de progression ; un echec n'arrete pas les autres. */
     async function runBatch(list, op) {
+        closePlayers(); // avant le compteur : une erreur ici ne laisse pas la fenetre bloquee
         holdOwn(true);
-        closePlayers();
         note.textContent = "";
         progress.style.display = "flex";
         let ok = 0;
