@@ -131,3 +131,16 @@ test("Final Cut et SaveVoice cherchent le projet par projectInputNames et migren
     assert.ok(src("save_voice_node.js").includes("projectInputNames("));
     assert.ok(!src("project_node.js").includes('o.name === "final_cut")'), "project_node : sortie final_cut");
 });
+
+test("linkedProject : le premier nom QUI A UN LIEN (project_used vide, ancien nom relie)", () => {
+    const g = fakeGraph();
+    const proj = fakeNode(g, 1, PROJECT, [], { mmProjectInfo: () => INFO });
+    const n = fakeNode(g, 2, "MagicStudioSaveVoice", ["audio", "project_used", "project"]);
+    wire(g, proj, n, 2);
+    assert.deepEqual(linkedProject(n, projectInputNames("MagicStudioSaveVoice"), PROJECT), { wired: true, info: INFO });
+    // Les deux relies : project_used d'abord.
+    const other = fakeNode(g, 3, PROJECT, [], { mmProjectInfo: () => ({ name: "B", path: "B" }) });
+    wire(g, other, n, 1);
+    assert.deepEqual(linkedProject(n, projectInputNames("MagicStudioSaveVoice"), PROJECT),
+        { wired: true, info: { name: "B", path: "B" } });
+});

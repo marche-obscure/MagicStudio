@@ -110,13 +110,12 @@ function storedLinkInto(n, slot) {
  * inputName : un nom, ou une liste (le premier present est pris : voir projectInputNames).
  */
 export function linkedProject(node, inputName, projectType) {
-    // Un nom ou une liste de noms acceptes (project_used puis l'ancien nom, 30/10/2026).
+    // Un nom ou une liste de noms acceptes (project_used puis l'ancien nom, 30/10/2026) : le
+    // premier qui a un lien (project_used vide + ancien nom relie = l'ancien), sinon le premier present.
     const names = Array.isArray(inputName) ? inputName : [inputName];
-    let slot = -1;
-    for (const name of names) {
-        slot = (node.inputs || []).findIndex((i) => i && i.name === name);
-        if (slot >= 0) break;
-    }
+    const slots = names.map((name) => (node.inputs || []).findIndex((i) => i && i.name === name))
+        .filter((i) => i >= 0);
+    const slot = slots.find((i) => storedLinkInto(node, i)) ?? (slots.length ? slots[0] : -1);
     let link = slot >= 0 ? storedLinkInto(node, slot) : null;
     let src = link ? node.graph.getNodeById(link.origin_id) : null;
     for (let hop = 0; src && hop < 10; hop++) {
@@ -158,12 +157,22 @@ export function linkedProject(node, inputName, projectType) {
 /** Nouveau nom du lien entre le noeud Project et les noeuds Final Cut / SaveVoice. */
 export const PROJECT_USED = "project_used";
 
-/** Anciens noms par type de noeud : {inputs|outputs: {ancien: nouveau}}. */
-export const LEGACY_PROJECT_LINKS = {
-    MiniMaxH3Project: { outputs: { final_cut: PROJECT_USED } },
-    MiniMaxH3FinalCut: { inputs: { final_cut: PROJECT_USED } },
-    MagicStudioSaveVoice: { inputs: { project: PROJECT_USED } },
-};
+/**
+ * Anciens noms par type de noeud : {inputs|outputs: {ancien: nouveau}}. Ecrit en JSON sur une
+ * ligne : project_config.LEGACY_LINK_NAMES (Python) doit etre identique (test_project_config).
+ */
+export const LEGACY_PROJECT_LINKS = {"MiniMaxH3Project": {"outputs": {"final_cut": "project_used"}}, "MiniMaxH3FinalCut": {"inputs": {"final_cut": "project_used"}}, "MagicStudioSaveVoice": {"inputs": {"project": "project_used"}}};
+
+/**
+ * Nom courant d'une entree / sortie (side "inputs" | "outputs") d'un noeud du type nodeType :
+ * l'ancien nom du lien project_used est ramene au nouveau, les autres noms sont rendus tels quels.
+ * Sert aux comparaisons de workflows (workflow_diff.js) : un workflow enregistre avant le
+ * 30/10/2026 a la meme structure que le meme workflow ouvert aujourd'hui.
+ */
+export function currentSlotName(nodeType, side, name) {
+    const names = ((LEGACY_PROJECT_LINKS[nodeType] || {})[side]) || {};
+    return Object.prototype.hasOwnProperty.call(names, name) ? names[name] : name;
+}
 
 /** Noms d'entree acceptes pour trouver le projet : project_used, puis l'ancien nom du type. */
 export function projectInputNames(nodeType) {

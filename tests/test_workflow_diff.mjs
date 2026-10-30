@@ -101,3 +101,34 @@ test("shortValue coupe les longues valeurs", () => {
     assert.equal(shortValue(12), "12");
     assert.equal(shortValue("x".repeat(100)).length, 50);
 });
+
+// ---- Lien project_used (30/10/2026) : anciens noms final_cut / project = meme signature ----
+function legacyWf(outName, fcIn, svIn, extra = false) {
+    const links = [[1, 3, 0, 5, 0, "MINIMAX_FINAL_CUT"], [2, 3, 0, 6, 1, "MINIMAX_FINAL_CUT"]];
+    if (extra) links.push([3, 3, 0, 8, 0, "MINIMAX_FINAL_CUT"]);
+    return {
+        nodes: [
+            { id: 3, type: "MiniMaxH3Project", outputs: [{ name: outName, links: [1, 2] }] },
+            { id: 5, type: "MiniMaxH3FinalCut", inputs: [{ name: fcIn, link: 1 }] },
+            { id: 6, type: "MagicStudioSaveVoice", inputs: [{ name: "audio", link: null }, { name: svIn, link: 2 }] },
+            { id: 8, type: "Other", inputs: [{ name: "final_cut", link: extra ? 3 : null }] },
+        ],
+        links,
+    };
+}
+
+test("ancien workflow (final_cut / project) et workflow migre : meme signature, aucun lien change", () => {
+    const old = legacyWf("final_cut", "final_cut", "project");
+    const cur = legacyWf("project_used", "project_used", "project_used");
+    assert.equal(workflowSignature(old), workflowSignature(cur));
+    const d = diffWorkflows(old, cur);
+    assert.equal(d.linksAdded, 0);
+    assert.equal(d.linksRemoved, 0);
+});
+
+test("lien project_used : un vrai changement reste vu", () => {
+    const cur = legacyWf("project_used", "project_used", "project_used");
+    const more = legacyWf("project_used", "project_used", "project_used", true);
+    assert.notEqual(workflowSignature(cur), workflowSignature(more));
+    assert.equal(diffWorkflows(cur, more).linksAdded, 1);
+});

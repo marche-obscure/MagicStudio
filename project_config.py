@@ -97,6 +97,42 @@ def _id_key(v):
     return (0, v, "") if isinstance(v, int) else (1, 0, str(v))
 
 
+# Anciens noms du lien project_used (30/10/2026) par type de noeud : {inputs|outputs: {ancien: nouveau}}.
+# Identique a LEGACY_PROJECT_LINKS de web/js/graph_links.js (verifie par test_project_config).
+LEGACY_LINK_NAMES = {
+    "MiniMaxH3Project": {"outputs": {"final_cut": "project_used"}},
+    "MiniMaxH3FinalCut": {"inputs": {"final_cut": "project_used"}},
+    "MagicStudioSaveVoice": {"inputs": {"project": "project_used"}},
+}
+
+
+def current_slot_name(node_type, side, name):
+    """Ancien nom du lien project_used ramene au nouveau ; tout autre nom rendu tel quel."""
+    return ((LEGACY_LINK_NAMES.get(node_type) or {}).get(side) or {}).get(name, name)
+
+
+def normalize_link_strings(nodes, links):
+    """
+    Liaisons enregistrees ("#o:sortie -> #t:entree", Links d'une configuration) avec les noms
+    courants : les types viennent de Nodes ("#id Type"). Les autres textes restent tels quels.
+    """
+    types = {}
+    for n in nodes or []:
+        head, _, typ = str(n).partition(" ")
+        types[head.lstrip("#")] = typ
+    out = []
+    for link in links or []:
+        left, sep, right = str(link).partition(" -> ")
+        o, _, on = left.lstrip("#").partition(":")
+        t, _, tn = right.lstrip("#").partition(":")
+        if not sep or not on or not tn:
+            out.append(link)
+            continue
+        out.append("#%s:%s -> #%s:%s" % (o, current_slot_name(types.get(o), "outputs", on),
+                                          t, current_slot_name(types.get(t), "inputs", tn)))
+    return out
+
+
 def workflow_structure(wf):
     """
     Structure d'un workflow : {"Nodes": ["#4 LoadImage", ...],
@@ -117,7 +153,8 @@ def workflow_structure(wf):
         if isinstance(slots, list) and isinstance(slot, int) and 0 <= slot < len(slots):
             name = slots[slot].get("name") if isinstance(slots[slot], dict) else None
             if name:
-                return str(name)
+                # Ancien nom du lien project_used (avant le 30/10/2026) = nouveau nom.
+                return current_slot_name((by_id.get(str(node_id)) or {}).get("type"), side, str(name))
         return str(slot)
 
     links = {}
@@ -547,7 +584,9 @@ def check_config(project, current=None):
         structure = workflow_structure(_read_json(src)) if src else None
         if structure:
             if item["status"] != "ok":
-                wf["changes"] = diff_structure({"Nodes": e.get("Nodes"), "Links": e.get("Links")}, structure)
+                # Links enregistres avant le 30/10/2026 : anciens noms du lien project_used ramenes.
+                links = normalize_link_strings(e.get("Nodes"), e.get("Links"))
+                wf["changes"] = diff_structure({"Nodes": e.get("Nodes"), "Links": links}, structure)
             cur = workflow_structure(current) if current else None
             if cur:
                 wf["diff"] = diff_structure(cur, structure)

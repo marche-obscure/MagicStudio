@@ -3,6 +3,8 @@
 // supprimes, valeurs changees, liens, et disposition (positions / tailles)
 // signalee a part. La vue (zoom, decalage) et "extra" sont ignores.
 
+import { currentSlotName } from "./graph_links.js";
+
 function nodesOf(wf) {
     const map = new Map();
     for (const n of (wf && Array.isArray(wf.nodes) ? wf.nodes : [])) {
@@ -21,7 +23,8 @@ function linksOf(wf) {
     const slot = (id, kind, i) => {
         const n = nodes.get(String(id));
         const s = n && Array.isArray(n[kind]) ? n[kind][i] : null;
-        return s && s.name ? s.name : i;
+        // Ancien nom du lien project_used (final_cut / project, avant le 30/10/2026) = nouveau nom.
+        return s && s.name ? currentSlotName(n.type, kind, s.name) : i;
     };
     const key = (o, os, t, ts) => o + ":" + slot(o, "outputs", os) + ">" + t + ":" + slot(t, "inputs", ts);
     const set = new Set();

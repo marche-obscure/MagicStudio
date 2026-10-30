@@ -274,6 +274,59 @@ class ProjectConfigTest(unittest.TestCase):
         self.assertTrue(w["same"])
         self.assertTrue(w["changes"]["same"])
 
+    # ---- Lien project_used (30/10/2026) : anciens noms final_cut / project = meme structure ----
+    @staticmethod
+    def _wf(out_name, fc_in, sv_in, extra_link=False):
+        nodes = [
+            {"id": 3, "type": "MiniMaxH3Project", "outputs": [{"name": out_name, "links": [1, 2]}]},
+            {"id": 5, "type": "MiniMaxH3FinalCut", "inputs": [{"name": fc_in, "link": 1}]},
+            {"id": 6, "type": "MagicStudioSaveVoice", "inputs": [{"name": "audio", "link": None}, {"name": sv_in, "link": 2}]},
+            {"id": 8, "type": "Other", "inputs": [{"name": "final_cut", "link": 3}, {"name": "project", "link": None}]},
+        ]
+        links = [[1, 3, 0, 5, 0, "MINIMAX_FINAL_CUT"], [2, 3, 0, 6, 1, "MINIMAX_FINAL_CUT"]]
+        if extra_link:
+            links.append([3, 3, 0, 8, 0, "MINIMAX_FINAL_CUT"])
+        return {"nodes": nodes, "links": links}
+
+    def test_structure_legacy_link_names_normalised(self):
+        old = pc.workflow_structure(self._wf("final_cut", "final_cut", "project"))
+        new = pc.workflow_structure(self._wf("project_used", "project_used", "project_used"))
+        self.assertEqual(old, new)
+        self.assertIn("#3:project_used -> #5:project_used", new["Links"])
+        self.assertIn("#3:project_used -> #6:project_used", new["Links"])
+        # Autre noeud : ses entrees final_cut / project ne sont pas renommees ; vrai changement vu.
+        other = pc.workflow_structure(self._wf("project_used", "project_used", "project_used", extra_link=True))
+        self.assertIn("#3:project_used -> #8:final_cut", other["Links"])
+        self.assertFalse(pc.diff_structure(new, other)["same"])
+
+    def test_check_config_old_saved_workflow_same(self):
+        old = self._wf("final_cut", "final_cut", "project")
+        write(self.f("00.Workflows", "Clip.json"), json.dumps(old).encode())
+        pc.save_config(self.p, {}, workflow="Clip.json")
+        cur = self._wf("project_used", "project_used", "project_used")
+        w = pc.check_config(self.p, cur)["workflow"]
+        self.assertTrue(w["same"])
+        changed = self._wf("project_used", "project_used", "project_used", extra_link=True)
+        self.assertFalse(pc.check_config(self.p, changed)["workflow"]["same"])
+
+    def test_check_config_old_stored_links_normalised(self):
+        """Configuration enregistree avant (Links avec final_cut) : pas de changement fantome."""
+        # Liaisons ecrites comme avant la normalisation (anciens noms).
+        legacy = ["#3:final_cut -> #5:final_cut", "#3:final_cut -> #6:project"]
+        self.assertEqual(pc.normalize_link_strings(["#3 MiniMaxH3Project", "#5 MiniMaxH3FinalCut",
+                                                    "#6 MagicStudioSaveVoice"], legacy),
+                         ["#3:project_used -> #5:project_used", "#3:project_used -> #6:project_used"])
+        self.assertEqual(pc.normalize_link_strings(["#8 Other", "#3 MiniMaxH3Project"], ["#3:x -> #8:final_cut"]),
+                         ["#3:x -> #8:final_cut"])
+
+    def test_legacy_table_matches_js(self):
+        """LEGACY_LINK_NAMES = LEGACY_PROJECT_LINKS de web/js/graph_links.js (objet JSON dans le JS)."""
+        src = read(os.path.join(os.path.dirname(HERE), "web", "js", "graph_links.js")).decode("utf-8")
+        mark = "export const LEGACY_PROJECT_LINKS = "
+        start = src.index(mark) + len(mark)
+        js = json.loads(src[start:src.index(";", start)])
+        self.assertEqual(js, pc.LEGACY_LINK_NAMES)
+
     def test_archive_with_same_name_preferred(self):
         refs, trims = self.refs()
         self.save(refs, trims)
