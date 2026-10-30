@@ -38,7 +38,7 @@ class SaveVoiceTest(unittest.TestCase):
         self.assertEqual(save_voice.clean_prefix("fin."), "fin")
 
     def test_clean_prefix_backslash(self):
-        self.assertEqual(save_voice.clean_prefix(r"a"), "ab")
+        self.assertEqual(save_voice.clean_prefix("a" + chr(92) + "b"), "ab")
         out = save_voice.clean_prefix(r"..\..\evil")
         self.assertNotIn("\\", out)
         self.assertNotIn("/", out)
