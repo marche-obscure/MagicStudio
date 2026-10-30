@@ -8,7 +8,7 @@ import {
     gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, DUP_COLORS,
     LOADABLE_FOLDERS, configRefs, loadedState, restoreItems, copyTabName, orderedFolderFiles,
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
-    batchSortTargets, canDeleteRush, deletedText, anchoredSubs, projectNameOfPath, subfolderLabel,
+    batchSortTargets, canDeleteRush, splitByKind, deletedText, anchoredSubs, projectNameOfPath, subfolderLabel,
     sameGroup, mergeData,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
@@ -708,4 +708,14 @@ test("Etiquettes Original / Post n (30/10/2026)", () => {
     // Source absente : Original, sans fichier.
     assert.deepEqual(postTags({ index: 5, post_of: 9, post_level: 1 }, outs), { self: "Post ?", parent: "Original", source: null });
     assert.deepEqual(postTags(null, outs), { self: "", parent: "", source: null });
+});
+
+test("splitByKind : un groupe par type de fichier, video puis image", () => {
+    const v1 = { kind: "video", index: 1 };
+    const i1 = { kind: "image", index: 2 };
+    const v2 = { index: 3 };
+    assert.deepEqual(splitByKind([i1, v1, v2]), [["video", [v1, v2]], ["image", [i1]]]);
+    assert.deepEqual(splitByKind([i1]), [["image", [i1]]]);
+    assert.deepEqual(splitByKind([]), []);
+    assert.deepEqual(splitByKind(null), []);
 });

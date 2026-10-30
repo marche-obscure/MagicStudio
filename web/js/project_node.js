@@ -16,7 +16,7 @@ import {
     unusedProjectFiles, runSourcePaths, orderedFolderFiles, folderUse, hiddenFolderItems, withoutFolderPaths,
     withoutReferences,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
-    batchSortTargets, canDeleteRush, deletedText,
+    batchSortTargets, canDeleteRush, splitByKind, deletedText,
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
@@ -3175,6 +3175,8 @@ function dropOnMedLoad(e) {
  * envoi en erreur). Ecoute en capture, retiree a la fin du glisser.
  */
 function blockStrayDrop(e) {
+    // Un depot termine toujours le glisser : la garde se retire elle-meme (meme si dragend est perdu).
+    window.removeEventListener("drop", blockStrayDrop, true);
     if (dropOnMedLoad(e)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -3762,6 +3764,13 @@ function buildProcessingWindow(container, ops) {
     let anchorCard = null;
     let selIndex = -1; // fichier choisi (bord violet)
     let busy = false;
+    // Action en cours dans la fenetre 40 / 60 (compteur propre a 40, lu ici) : Processing est inerte.
+    let ext = false;
+    const inert = () => {
+        const v = busy || ext ? "none" : "";
+        scroller.style.pointerEvents = v;
+        bar.style.pointerEvents = v;
+    };
     const checked = new Set(); // index des sorties cochees
     const failed = new Map(); // index -> erreur du dernier lot
 
@@ -3788,7 +3797,7 @@ function buildProcessingWindow(container, ops) {
             EXTRACT_FRAME_DIR.join("/") + ")" : LOCK_KEEP_ONE;
         b.addEventListener("click", async (e) => {
             e.stopPropagation();
-            if (b.disabled) return;
+            if (b.disabled || busy || ext) return;
             const res = await ops.openExtract(card);
             if (res && res.text) say(res.text, res.ok);
         });
@@ -3853,6 +3862,10 @@ function buildProcessingWindow(container, ops) {
             Object.assign(cb.style, { display: "block", margin: "3px auto 0", cursor: "pointer" });
             cb.addEventListener("click", (e) => e.stopPropagation());
             cb.addEventListener("change", () => {
+                if (ext) {
+                    cb.checked = !cb.checked; // action de 40 en cours : case inerte
+                    return;
+                }
                 if (cb.checked) checked.add(o.index);
                 else checked.delete(o.index);
                 paintBar(files, run);
@@ -3863,6 +3876,7 @@ function buildProcessingWindow(container, ops) {
         if (ex) t.appendChild(ex);
         if (!gone) {
             t.addEventListener("click", () => {
+                if (busy || ext) return; // un lecteur ne doit pas rouvrir un fichier qu'une action va deplacer
                 selIndex = o.index;
                 render();
                 ops.showPreview(file, o.kind, card);
@@ -3883,16 +3897,25 @@ function buildProcessingWindow(container, ops) {
         }
     }
 
+    /** « 40.Rush Videos/Footage », ou « 40.Rush Videos/Footage (2) + 60.Rush Images/Footage (1) » si les types sont mixtes. */
+    function destText(groups, name) {
+        return groups.length < 2
+            ? RUSH_FOLDER_OF[groups.length ? groups[0][0] : "video"] + "/" + name
+            : groups.map(([k, list]) => RUSH_FOLDER_OF[k] + "/" + name + " (" + list.length + ")").join(" + ");
+    }
+
     /** Boutons du bas : 4 dossiers (total sur le disque), Delete sous No Good. */
     function paintBar(files, run) {
         bar.innerHTML = "";
         Object.assign(bar.style, { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "6px", width: "100%" });
         const sel = files.filter((o) => checked.has(o.index));
-        const kind = (files[0] && files[0].kind) || (RUN_FOLDERS[ops.folder()] || "video");
-        const where = RUSH_FOLDER_OF[kind] + "/";
+        // Le dossier d'arrivee suit le type de CHAQUE fichier coche (video -> 40, image -> 60), pas celui de l'original.
+        const groups = splitByKind(sel);
+        const kinds = groups.length ? groups.map(([k]) => k) : [(files[0] && files[0].kind) || (RUN_FOLDERS[ops.folder()] || "video")];
         const active = sel.length ? batchSortTargets(sel, ops.singleLock()) : [];
         for (const [key, label, name] of SORT_FOLDERS) {
-            const n = ops.counts(kind, key);
+            const counts = kinds.map((k) => ops.counts(k, key));
+            const n = counts.some((c) => c == null) ? null : counts.reduce((a, c) => a + c, 0);
             const b = makeTextButton(label + " · " + (n == null ? "?" : n), INACTIVE_BG);
             Object.assign(b.style, { border: "2px solid " + SORT_COLORS[key] });
             if (busy || !active.includes(key)) {
@@ -3900,10 +3923,10 @@ function buildProcessingWindow(container, ops) {
                 Object.assign(b.style, { cursor: "default", opacity: "0.45" });
                 b.title = !sel.length ? "Check one or more files first"
                     : key === "picture_lock" && ops.singleLock() && sel.length > 1 ? "Picture Lock holds only one file: check a single file"
-                        : "All the checked files are already in " + where + name;
+                        : "All the checked files are already in " + destText(groups, name);
             } else {
-                b.title = "Move the " + sel.length + " checked file(s) into " + where + name + " (copy, SHA256 check, then the original is deleted)";
-                b.addEventListener("click", () => moveChecked(run, sel, key, where + name));
+                b.title = "Move the " + sel.length + " checked file(s) into " + destText(groups, name) + " (copy, SHA256 check, then the original is deleted)";
+                b.addEventListener("click", () => moveChecked(run, sel, key));
             }
             bar.appendChild(b);
         }
@@ -3911,7 +3934,7 @@ function buildProcessingWindow(container, ops) {
         if (doomed.length && !busy) {
             const d = makeTextButton("Delete (" + doomed.length + ")", SORT_COLORS.rejected);
             Object.assign(d.style, { gridColumn: "4", border: "2px solid " + SORT_COLORS.rejected });
-            d.title = "Delete the " + doomed.length + " checked file(s) of " + where + SORT_NAME.rejected;
+            d.title = "Delete the " + doomed.length + " checked file(s) of " + destText(splitByKind(doomed), SORT_NAME.rejected);
             d.addEventListener("click", () => deleteChecked(run, doomed, d));
             bar.appendChild(d);
         }
@@ -3969,8 +3992,7 @@ function buildProcessingWindow(container, ops) {
         ops.closePreview(); // un fichier lu par le lecteur peut rester verrouille sous Windows
         busy = true;
         ops.lock(true);
-        scroller.style.pointerEvents = "none";
-        bar.style.pointerEvents = "none";
+        inert();
         progress.style.display = "flex";
         say("");
         let ok = 0;
@@ -3999,9 +4021,8 @@ function buildProcessingWindow(container, ops) {
         } finally {
             progress.style.display = "none";
             progressFill.style.width = "0%";
-            scroller.style.pointerEvents = "";
-            bar.style.pointerEvents = "";
             busy = false;
+            inert();
             ops.lock(false);
         }
         return { ok, ko };
@@ -4014,8 +4035,9 @@ function buildProcessingWindow(container, ops) {
         }
         ops.refresh40();
     }
-    async function moveChecked(run, sel, key, dest) {
+    async function moveChecked(run, sel, key) {
         const list = sel.filter((o) => sortTargets(o).includes(key));
+        const name = (SORT_FOLDERS.find((f) => f[0] === key) || [])[2] || "";
         const skipped = sel.length - list.length;
         // Picture Lock : un seul fichier, question Swap si occupe (meme code que 40).
         ops.closePreview();
@@ -4029,8 +4051,17 @@ function buildProcessingWindow(container, ops) {
             ops.lock(false);
         }
         if (!lock) return;
-        const { ok, ko } = await runBatch(list, (o) => ops.move(run, o, key, lock.swap));
-        afterAction(ok + " file(s) moved to " + dest + " – " + ko + " failed" + (skipped ? " – " + skipped + " already there" : ""), ko);
+        // Bilan par dossier d'arrivee : chaque fichier est range selon son propre type.
+        const okBy = { video: 0, image: 0 };
+        const { ok, ko } = await runBatch(list, async (o) => {
+            await ops.move(run, o, key, lock.swap);
+            okBy[o.kind === "image" ? "image" : "video"]++;
+        });
+        const kindsDone = Object.keys(okBy).filter((k) => okBy[k] > 0);
+        const to = kindsDone.length > 1
+            ? ok + " file(s) moved (" + kindsDone.map((k) => okBy[k] + " to " + RUSH_FOLDER_OF[k] + "/" + name).join(", ") + ")"
+            : ok + " file(s) moved to " + RUSH_FOLDER_OF[kindsDone[0] || (splitByKind(list)[0] || ["video"])[0]] + "/" + name;
+        afterAction(to + " – " + ko + " failed" + (skipped ? " – " + skipped + " already there" : ""), ko);
     }
     async function deleteChecked(run, doomed, button) {
         ops.closePreview();
@@ -4059,10 +4090,15 @@ function buildProcessingWindow(container, ops) {
         note.textContent = "";
     }
     closeBtn.addEventListener("click", () => {
-        if (!busy) close();
+        if (!busy && !ext) close();
     });
 
     return {
+        /** Action de 40 / 60 en cours (true) ou finie (false) : cartes, cases et boutons inertes. */
+        setExternalBusy(on) {
+            ext = !!on;
+            inert();
+        },
         /** open(Run, index de l'original, carte de reference) */
         open(run, index, anchor) {
             const was = isOpen();
@@ -4089,7 +4125,10 @@ function buildProcessingWindow(container, ops) {
         },
         /** Relit les Runs deja charges (apres une action de 40 / 60) ; se ferme si l'original n'a plus de quoi s'afficher. */
         refresh() {
-            if (isOpen() && !busy) render();
+            if (isOpen() && !busy) {
+                render();
+                inert();
+            }
         },
         isOpen,
         isBusy: () => busy,
@@ -4285,7 +4324,22 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     progress.append(progressText, progressTrack);
     card.append(head, pick, strip, rushSort, progress, grid, note);
     const preview = buildPreviewWindow();
-    let moving = false;
+    // Occupe (I1) : deux compteurs, un par fenetre, pour qu'une fin d'action ne libere jamais l'autre.
+    //   ownBusy = actions de 40 / 60 (tri, lot, suppression, question Swap) ; procBusy = actions de Processing.
+    let ownBusy = 0;
+    let procBusy = 0;
+    const isMoving = () => ownBusy + procBusy > 0;
+    function paintBusy() {
+        const v = isMoving() ? "none" : "";
+        strip.style.pointerEvents = v;
+        rushSort.style.pointerEvents = v;
+        proc.setExternalBusy(ownBusy > 0);
+    }
+    /** Debut / fin d'une action de 40 / 60 ; toujours appariees (try / finally). */
+    function holdOwn(on) {
+        ownBusy = Math.max(0, ownBusy + (on ? 1 : -1));
+        paintBusy();
+    }
 
     let runs = [];
     let folder = "";
@@ -4329,9 +4383,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         overfull: (kind) => (rush && rush.overfull ? rush.overfull(kind) : 0),
         // Pendant une action de Processing, 40 / 60 ne ferme pas sur Echap / clic a cote et ses boutons sont inertes.
         lock(on) {
-            moving = !!on;
-            strip.style.pointerEvents = on ? "none" : "";
-            rushSort.style.pointerEvents = on ? "none" : "";
+            procBusy = Math.max(0, procBusy + (on ? 1 : -1));
+            paintBusy();
         },
     });
     const procOpen = () => proc.isOpen();
@@ -4339,7 +4392,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     // Question en cours (Extract Frame, changement de video) : Echap et clics vont a la question.
     const asking = () => !!(rush && rush.busy && rush.busy());
     const onKey = (e) => {
-        if (overlay.style.display === "none" || moving || asking() || e.key !== "Escape") return;
+        if (overlay.style.display === "none" || isMoving() || asking() || e.key !== "Escape") return;
         e.preventDefault();
         e.stopImmediatePropagation();
         // Ordre : Extract Frame, puis Processing (et le lecteur qu'il a ouvert), puis le lecteur, puis 40 / 60.
@@ -4362,9 +4415,12 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         strip.innerHTML = "";
         thumb.body.innerHTML = "";
     }
-    closeBtn.addEventListener("click", close);
+    closeBtn.addEventListener("click", () => {
+        if (isMoving()) return; // un deplacement est en cours : la fenetre reste ouverte
+        close();
+    });
     overlay.addEventListener("mousedown", () => {
-        if (moving || asking()) return;
+        if (isMoving() || asking()) return;
         if (extractOpen()) extractWin().close();
         else if (procOpen()) {
             proc.close();
@@ -4473,13 +4529,13 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 ? "Move the original into " + where + name + " (copy, SHA256 check, then the original is deleted)"
                 : "Move the file into " + where + name) + countTip(out.kind, key);
             b.addEventListener("click", async () => {
-                moving = true;
-                closePlayers();
+                holdOwn(true);
                 let res = null;
                 try {
+                    closePlayers();
                     res = await onSort(run, out, key);
                 } finally {
-                    moving = false;
+                    holdOwn(false);
                 }
                 if (!res) return;
                 runs = res.runs || runs;
@@ -4661,15 +4717,22 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         headExtract.style.display = state === "hidden" ? "none" : "";
         if (state !== "hidden") paintExtractButton(headExtract, state === "enabled");
     }
+    /** Redessine 40 / 60 puis Processing (sinon elle garde les anciennes pastilles, totaux et chemins). */
     function renderRush() {
-        // Un dragend perdu (vignette redessinee pendant un glisser) ne doit pas laisser la couche inerte.
+        // Un dragend perdu (vignette redessinee pendant un glisser) ne laisse ni la garde de depot ni la couche inerte.
+        window.removeEventListener("drop", blockStrayDrop, true);
+        paintRush();
+        proc.refresh(); // sans boucle : le rendu de Processing n'appelle pas refresh40
+    }
+    function paintRush() {
         overlay.style.pointerEvents = "";
         const all = allRush();
         paintFilter(all);
         paintLockBadge();
         const items = filterByDot(all, dotFilter);
         // Cases des vignettes masquees (filtre) ou disparues : decochees.
-        const visible = new Set(items.map(rushKey));
+        // Un original supprime (file === "") n'a pas de case : jamais dans les cases cochees.
+        const visible = new Set(items.filter((it) => it.file).map(rushKey));
         for (const k of [...checked]) if (!visible.has(k)) checked.delete(k);
         const scroll = strip.scrollLeft;
         strip.innerHTML = "";
@@ -4849,6 +4912,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     }
     /** Fenetre Extract Frame a cote de celle-ci ; refus (pas de video, plusieurs fichiers) dans la note. */
     async function openExtractWindow() {
+        if (isMoving()) return;
         preview.close();
         const res = await rush.openExtract(card);
         if (res && res.text) {
@@ -4857,7 +4921,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         }
     }
     headExtract.addEventListener("click", () => {
-        if (!headExtract.disabled) openExtractWindow();
+        if (!headExtract.disabled && !isMoving()) openExtractWindow();
     });
 
     /** Sous les vignettes : boutons du fichier choisi, ou boutons du lot s'il y a des cases cochees. */
@@ -4915,11 +4979,9 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
 
     /** Lot : un fichier apres l'autre, barre de progression ; un echec n'arrete pas les autres. */
     async function runBatch(list, op) {
-        moving = true;
+        holdOwn(true);
         closePlayers();
         note.textContent = "";
-        strip.style.pointerEvents = "none";
-        rushSort.style.pointerEvents = "none";
         progress.style.display = "flex";
         let ok = 0;
         let ko = 0;
@@ -4949,9 +5011,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         } finally {
             progress.style.display = "none";
             progressFill.style.width = "0%";
-            strip.style.pointerEvents = "";
-            rushSort.style.pointerEvents = "";
-            moving = false;
+            holdOwn(false);
         }
         return { ok, ko };
     }
@@ -4963,7 +5023,15 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         const list = sel.filter((x) => sortTargets(x.output).includes(key));
         const skipped = sel.length - list.length;
         // Picture Lock d'un projet de MultiProject : un seul fichier, echange confirme.
-        const lock = list.length ? await rush.lockSwap(list[0].output, key) : { swap: false };
+        // La question Swap compte aussi comme action en cours (Processing reste inerte).
+        holdOwn(true);
+        let lock;
+        try {
+            closePlayers();
+            lock = list.length ? await rush.lockSwap(list[0].output, key) : { swap: false };
+        } finally {
+            holdOwn(false);
+        }
         if (!lock) return;
         const { ok, ko } = await runBatch(list, (it) => rush.move(it.run, it.output, key, lock.swap));
         renderRush();
@@ -4971,13 +5039,14 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             (skipped ? " – " + skipped + " already there" : ""), ko);
     }
     async function deleteChecked(doomed, button) {
-        moving = true;
+        holdOwn(true);
         let how = null;
         try {
+            closePlayers();
             how = await rush.askDelete(doomed.map((x) => baseOf(x.file)), card, button);
             if (how === "delete" && !(await rush.askWord(doomed.length, button))) how = null;
         } finally {
-            moving = false;
+            holdOwn(false);
         }
         if (!how) return;
         const trash = how === "trash";

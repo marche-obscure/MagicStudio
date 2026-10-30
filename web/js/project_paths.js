@@ -566,6 +566,17 @@ export function canDeleteRush(o) {
     return sortDot(o) === "rejected" && !!outputFile(o);
 }
 
+/**
+ * Fichiers coches d'un meme dossier d'arrivee (30/10/2026) : un post peut etre d'un autre type que son
+ * original (image dans un Run video, video dans un Run image) ; chaque fichier va dans le dossier de SON type.
+ * Renvoie [[type, fichiers]] dans l'ordre video puis image, groupes vides omis.
+ */
+export function splitByKind(outs) {
+    const groups = { video: [], image: [] };
+    for (const o of outs || []) groups[o && o.kind === "image" ? "image" : "video"].push(o);
+    return Object.entries(groups).filter(([, list]) => list.length);
+}
+
 /** Marque "deleted" d'une sortie : "Deleted (Recycle Bin) – dd/MM/yyyy hh:mm:ss", "" sans marque. */
 export function deletedText(d) {
     if (!d || typeof d !== "object") return "";
