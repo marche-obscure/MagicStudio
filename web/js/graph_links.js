@@ -93,3 +93,52 @@ export function restoreOutputLinks(node, saved) {
         }
     }
 }
+
+/** Lien enregistre sur l'entree slot (input.link lu dans graph.links, sans getInputLink), ou null. */
+function storedLinkInto(n, slot) {
+    const input = n && n.inputs && n.inputs[slot];
+    if (!input || input.link == null || !n.graph) return null;
+    return linkById(n.graph, input.link);
+}
+
+/**
+ * Projet du noeud MagicStudio Project (type projectType) relie a l'entree inputName du noeud :
+ * {wired, info} (info = mmProjectInfo() du noeud Project : {name, path} ou null). Traverse Get
+ * (getInputLink(0) du Get : Pixaroma lit la premiere entree branchee du Set, KJNodes aussi ;
+ * sinon findSetter de KJNodes / Easy-Use, sinon un noeud "Set" de meme nom dans le graphe) et les
+ * Reroute, 10 sauts. Deplace depuis final_cut_node.js (30/10/2026) pour le partager avec SaveVoice.
+ */
+export function linkedProject(node, inputName, projectType) {
+    const slot = (node.inputs || []).findIndex((i) => i.name === inputName);
+    let link = slot >= 0 ? storedLinkInto(node, slot) : null;
+    let src = link ? node.graph.getNodeById(link.origin_id) : null;
+    for (let hop = 0; src && hop < 10; hop++) {
+        if (src.type === projectType) {
+            const info = typeof src.mmProjectInfo === "function" ? src.mmProjectInfo() : null;
+            return { wired: true, info };
+        }
+        const type = String(src.type || "");
+        if (/get/i.test(type) && typeof src.getInputLink === "function") {
+            const from = src;
+            link = from.getInputLink(0) || null;
+            src = link ? from.graph.getNodeById(link.origin_id) : null;
+        } else if (/get/i.test(type) && src.widgets && src.widgets[0]) {
+            const name = src.widgets[0].value;
+            let setter = typeof src.findSetter === "function" ? src.findSetter(src.graph) : null;
+            if (setter && setter.node) setter = setter.node;
+            if (!setter && src.graph) {
+                setter = (src.graph._nodes || []).find((n) => /set/i.test(String(n.type || "")) &&
+                    n.widgets && n.widgets[0] && n.widgets[0].value === name) || null;
+            }
+            link = setter ? storedLinkInto(setter, 0) : null;
+            src = link ? setter.graph.getNodeById(link.origin_id) : null;
+        } else if (src.isVirtualNode || /reroute/i.test(type)) {
+            const from = src;
+            link = storedLinkInto(from, 0);
+            src = link ? from.graph.getNodeById(link.origin_id) : null;
+        } else {
+            break;
+        }
+    }
+    return { wired: false, info: null };
+}

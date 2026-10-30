@@ -73,7 +73,7 @@ function helpIds(file, name) {
 }
 
 const HELP_FILES = ["minimax_ref_loader.js", "project_node.js", "final_cut_node.js", "load_media_node.js",
-    "container_node.js"];
+    "container_node.js", "save_voice_node.js"];
 
 for (const file of HELP_FILES) {
     test("help sections have the same ids in EN and FR: " + file, () => {

@@ -5666,10 +5666,13 @@ app.registerExtension({
             /**
              * Noeuds MagicStudio Final Cut du graphe : ils relisent leur plan (chacun remonte
              * lui-meme jusqu'a son noeud Project, directement ou par Get / Set et Reroute).
+             * Aussi les noeuds qui n'affichent que le projet relie (MagicStudio SaveVoice :
+             * crochet generique mmProjectRefresh, 30/10/2026).
              */
             function notifyFinalCut() {
                 for (const t of (node.graph && node.graph._nodes) || []) {
                     if (t && typeof t.mmFinalCutRefresh === "function") t.mmFinalCutRefresh();
+                    if (t && typeof t.mmProjectRefresh === "function") t.mmProjectRefresh();
                 }
             }
 

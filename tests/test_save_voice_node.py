@@ -28,9 +28,15 @@ class SaveVoiceNodeTest(unittest.TestCase):
     def test_savevoice_ui_not_a_run_output(self):
         self.assertEqual(run_tracker.output_files({"mmvoice": [{"path": "x.wav", "name": "x.wav"}]}), [])
 
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_js_qualities_match(self):
+        """QUALITIES de web/js/save_voice.js = save_voice.QUALITIES (objet JSON dans le JS)."""
+        import json
+        import save_voice
+        src = _read(os.path.join("web", "js", "save_voice.js"))
+        mark = "export const QUALITIES = "
+        start = src.index(mark) + len(mark)
+        js = json.loads(src[start:src.index("};", start) + 1])
+        self.assertEqual({k: tuple(v) for k, v in js.items()}, save_voice.QUALITIES)
 
 
 class SaveVoiceRunTest(unittest.TestCase):
@@ -62,10 +68,14 @@ class SaveVoiceRunTest(unittest.TestCase):
         import tempfile
         from unittest import mock
         projects_mod = self.nodes.projects
-        msg = "Invalid file name: C:\Project X\a.wav"
+        msg = r"Invalid file name: C:\Project X\a.wav"
         with tempfile.TemporaryDirectory() as d:
             with mock.patch.object(projects_mod, "require_project", return_value=d), \
                     mock.patch.object(self.nodes.save_voice, "save", side_effect=ValueError(msg)):
                 with self.assertRaises(ValueError) as c:
                     self._run(d)
         self.assertEqual(str(c.exception), msg)
+
+
+if __name__ == "__main__":
+    unittest.main()
