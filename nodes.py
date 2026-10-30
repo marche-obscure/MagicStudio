@@ -15,6 +15,7 @@ from . import media
 from . import profiles
 from . import projects
 from . import run_record
+from . import save_voice
 from . import select_mod
 
 
@@ -304,3 +305,57 @@ class MagicStudioSelectMod:
         select_mod.check_fields(fields, origin_dir, selectmod_roots())
         f = [(x or "").strip() for x in fields]
         return (f[0], f[1], f[2], f[3], f[4], (save_folder or "").strip(), f[5], f[6])
+
+
+class MagicStudioSaveVoice:
+    """
+    Enregistre une voix de reference dans <projet>/90.Pick Up/Son (save_voice.py).
+    Le fichier n'est lie a aucun Run : la sortie ui n'a pas de cle filename.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        qualities = ["none", "V0", "128k", "320k", "64k", "96k", "192k"]
+        return {"required": {
+            "audio": ("AUDIO",),
+            "project": (FINAL_CUT_TYPE,),
+            "prefix": ("STRING", {"default": "", "multiline": False}),
+            "format": (list(save_voice.FORMATS), {"default": save_voice.DEFAULT_FORMAT}),
+            "quality": (qualities, {"default": "none"}),
+        }}
+
+    RETURN_TYPES = ("AUDIO", "STRING")
+    RETURN_NAMES = ("audio", "path")
+    FUNCTION = "run"
+    OUTPUT_NODE = True
+    CATEGORY = "MagicStudio"
+    DESCRIPTION = (
+        "Saves a voice reference into <project>/90.Pick Up/Son (wav, flac, mp3 or opus). "
+        "Outputs the audio and the full path of the saved file."
+    )
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")  # chaque Run enregistre, comme le noeud Project
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, format=None, quality=None, **kwargs):
+        # Le projet arrive par un lien : verifie dans run().
+        if format is not None and format not in save_voice.FORMATS:
+            return "Unsupported audio format: %s" % (format,)
+        if quality is not None and quality not in ("none", "V0", "128k", "320k", "64k", "96k", "192k"):
+            return "Unsupported quality: %s" % (quality,)
+        return True
+
+    def run(self, audio, project, prefix="", format="wav", quality="none"):
+        q = None if quality == "none" else quality
+        try:
+            paths = save_voice.save(audio, project, prefix, format, q)
+        except (FileNotFoundError, NotADirectoryError):
+            raise ValueError("Wire the final_cut output of a MagicStudio Project node")
+        except ValueError as e:
+            if "project" in str(e).lower():
+                raise ValueError("Wire the final_cut output of a MagicStudio Project node")
+            raise
+        return {"ui": {"mmvoice": [{"path": p, "name": os.path.basename(p)} for p in paths]},
+                "result": (audio, paths[0])}
