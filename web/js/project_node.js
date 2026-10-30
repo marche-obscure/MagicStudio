@@ -3148,6 +3148,38 @@ function addPostBadge(box, out, outs) {
  * Final Cut. Pendant le glisser, la couche de la fenetre ne capte plus la souris (la carte garde
  * pointerEvents "auto") ; remise a dragend, meme si le fichier est lache ailleurs.
  */
+const MEDLOAD_TYPE = "MiniMaxH3LoadMedia";
+
+/**
+ * Le depot tombe-t-il sur un noeud MedLoad ? Oui si la cible est dans ses elements
+ * (zone de depot du mode classique, noeud entier en Node 2.0), ou si c'est le canevas
+ * lui-meme a l'endroit du noeud. Une fenetre posee par-dessus un MedLoad ne compte pas.
+ */
+function dropOnMedLoad(e) {
+    const graph = app.canvas && app.canvas.graph;
+    const target = e.target;
+    if (!graph || !target) return false;
+    const medloads = (graph._nodes || []).filter((n) => n.type === MEDLOAD_TYPE);
+    if (medloads.some((n) => (n.widgets || []).some((w) => w.element && w.element.contains(target)))) return true;
+    const host = target.closest ? target.closest("[data-node-id]") : null;
+    if (host) return medloads.some((n) => String(n.id) === host.getAttribute("data-node-id"));
+    if (target !== app.canvas.canvas) return false;
+    const pos = app.canvas.convertEventToCanvasOffset(e);
+    const node = pos && graph.getNodeOnPos(pos[0], pos[1]);
+    return !!node && node.type === MEDLOAD_TYPE;
+}
+
+/**
+ * Pendant un glisser parti de 40 / 60 ou de Processing, un depot ailleurs que sur
+ * MedLoad est ignore : sinon ComfyUI le prend pour un fichier (noeud Load Video cree,
+ * envoi en erreur). Ecoute en capture, retiree a la fin du glisser.
+ */
+function blockStrayDrop(e) {
+    if (dropOnMedLoad(e)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+}
+
 function makeDragSource(el, output, overlay) {
     const path = dragPath(output);
     if (!path) return;
@@ -3159,6 +3191,7 @@ function makeDragSource(el, output, overlay) {
             e.dataTransfer.effectAllowed = "copy";
         }
         dragging = true;
+        window.addEventListener("drop", blockStrayDrop, true);
         // Chrome peut annuler un glisser si un style change tout de suite : on attend la fin de l'evenement.
         setTimeout(() => {
             if (dragging && overlay) overlay.style.pointerEvents = "none";
@@ -3166,6 +3199,7 @@ function makeDragSource(el, output, overlay) {
     });
     el.addEventListener("dragend", () => {
         dragging = false;
+        window.removeEventListener("drop", blockStrayDrop, true);
         if (overlay) overlay.style.pointerEvents = "";
     });
 }
@@ -3225,17 +3259,18 @@ const LOCK_KEEP_ONE = "Picture Lock: keep one file";
 const VIDEO_CHANGED = "The Picture Lock video changed";
 
 /** Carte a droite de la carte de reference (retrecie a la place libre), sinon a gauche, sinon au bord droit. */
-function placeBeside(card, anchor, maxWidth) {
+/** minRoom : place minimale a cote de la fenetre de reference (sinon par-dessus, au bord droit). */
+function placeBeside(card, anchor, maxWidth, minRoom = 320) {
     const r = anchor.getBoundingClientRect();
     const max = Math.min(maxWidth, window.innerWidth - 16);
     const right = window.innerWidth - r.right - 18;
     const leftRoom = r.left - 18;
     let w = max;
     let left = Math.max(8, window.innerWidth - 8 - max);
-    if (right >= 320) {
+    if (right >= minRoom) {
         w = Math.min(max, right);
         left = r.right + 10;
-    } else if (leftRoom >= 320) {
+    } else if (leftRoom >= minRoom) {
         w = Math.min(max, leftRoom);
         left = r.left - 10 - w;
     }
@@ -4048,7 +4083,8 @@ function buildProcessingWindow(container, ops) {
             overlay.style.display = "block";
             render();
             if (!isOpen()) return;
-            if (!was && anchorCard) placeBeside(card, anchorCard, 760);
+            // 480 px au moins : plus etroit, le titre et les boutons du bas sont tasses.
+            if (!was && anchorCard) placeBeside(card, anchorCard, 760, 480);
             else if (!was) positionCardNextToNode(card, container, 760);
         },
         /** Relit les Runs deja charges (apres une action de 40 / 60) ; se ferme si l'original n'a plus de quoi s'afficher. */
