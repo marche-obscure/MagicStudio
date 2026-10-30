@@ -4021,6 +4021,11 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     head.append(title, lockBadge, headExtract, filterBox, orderBtn, closeBtn);
     // Fenetre Extract Frame (40, 26/10/2026) : fermee avant la fenetre 40 (Echap, clic a cote).
     const extractWin = () => (rush && rush.extractWindow) || null;
+    /** Ferme tous les lecteurs (apercu et video d'Extract Frame) : un fichier lu reste verrouille sous Windows. */
+    function closePlayers() {
+        preview.close();
+        if (extractWin()) extractWin().close();
+    }
     const extractOpen = () => !!(extractWin() && extractWin().isOpen());
 
     // 04.Prompt : filtre et liste des Runs.
@@ -4172,7 +4177,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             if (modelRun) modelRun = runs.find((r) => r.file === modelRun.file) || modelRun;
             return runs;
         },
-        closePreview: () => preview.close(),
+        closePreview: () => closePlayers(),
         refresh40() {
             if (overlay.style.display === "none" || folder === "04.Prompt") return;
             orderBtn.refresh();
@@ -4327,7 +4332,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 : "Move the file into " + where + name) + countTip(out.kind, key);
             b.addEventListener("click", async () => {
                 moving = true;
-                preview.close();
+                closePlayers();
                 let res = null;
                 try {
                     res = await onSort(run, out, key);
@@ -4769,7 +4774,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     /** Lot : un fichier apres l'autre, barre de progression ; un echec n'arrete pas les autres. */
     async function runBatch(list, op) {
         moving = true;
-        preview.close();
+        closePlayers();
         note.textContent = "";
         strip.style.pointerEvents = "none";
         rushSort.style.pointerEvents = "none";
