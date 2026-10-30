@@ -36,7 +36,8 @@ ANY_TYPE = AnyType("*")
 
 # Type de la sortie du noeud Projet et de l'entree du Ref Loader.
 PROJECT_TYPE = "MINIMAX_PROJECT"
-# Sortie final_cut du noeud Project -> entree du noeud Final Cut (choix utilisateur, 22/10/2026).
+# Sortie project_used du noeud Project -> entree project_used des noeuds Final Cut et SaveVoice
+# (choix utilisateur, 22/10/2026 ; nom final_cut / project jusqu'au 30/10/2026, type inchange).
 FINAL_CUT_TYPE = "MINIMAX_FINAL_CUT"
 # Sortie package du RefLoader -> entree du noeud MagicStudio Container (variantes, 29/10/2026).
 PACKAGE_TYPE = "MAGICSTUDIO_PACKAGE"
@@ -113,8 +114,8 @@ class MiniMaxH3Project:
     utilisateur 19/10/2026), ou <input de ComfyUI>/Projets si ce Root folder
     est vide. Le dossier se gere dans l'interface ; avec
     l'entree text_prompt branchee, chaque Run est enregistre dans
-    04.Prompt (voir run_record.py). Sortie final_cut (22/10/2026) : le dossier du
-    projet, pour le noeud MagicStudio Final Cut.
+    04.Prompt (voir run_record.py). Sortie project_used (22/10/2026, ex-final_cut) : le
+    dossier du projet, pour les noeuds MagicStudio Final Cut et SaveVoice.
     """
 
     @classmethod
@@ -136,7 +137,7 @@ class MiniMaxH3Project:
         }
 
     RETURN_TYPES = (FINAL_CUT_TYPE,)
-    RETURN_NAMES = ("final_cut",)
+    RETURN_NAMES = ("project_used",)
     # Noeud de sortie : execute a chaque Run pour l'enregistrer (choix utilisateur).
     OUTPUT_NODE = True
     FUNCTION = "run"
@@ -158,7 +159,7 @@ class MiniMaxH3Project:
             path = (json.loads(state or "{}") or {}).get("path") or ""
         except (TypeError, ValueError):
             path = ""
-        # Sortie final_cut : le dossier du projet ("" sans projet).
+        # Sortie project_used : le dossier du projet ("" sans projet).
         result = (path if path and os.path.isdir(path) else "",)
         # Sans text_prompt : rien a enregistrer (le dossier se gere dans l'interface).
         if text_prompt is None:
@@ -182,7 +183,7 @@ class MiniMaxH3FinalCut:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"final_cut": (FINAL_CUT_TYPE,)}}
+        return {"required": {"project_used": (FINAL_CUT_TYPE,)}}
 
     RETURN_TYPES = ()
     FUNCTION = "run"
@@ -192,7 +193,7 @@ class MiniMaxH3FinalCut:
         "the input folder of ComfyUI: drag the files into MiniMax H3 Director."
     )
 
-    def run(self, final_cut=None):
+    def run(self, project_used=None):
         return {}
 
 
@@ -309,7 +310,7 @@ class MagicStudioSelectMod:
 
 # Toutes les qualites (l'interface ne montre que celles du format).
 VOICE_QUALITIES = ("none", "V0", "128k", "320k", "64k", "96k", "192k")
-WIRE_PROJECT = "Wire the final_cut output of a MagicStudio Project node"
+WIRE_PROJECT = "Wire the project_used output of a MagicStudio Project node"
 
 
 class MagicStudioSaveVoice:
@@ -322,7 +323,7 @@ class MagicStudioSaveVoice:
     def INPUT_TYPES(cls):
         return {"required": {
             "audio": ("AUDIO",),
-            "project": (FINAL_CUT_TYPE,),
+            "project_used": (FINAL_CUT_TYPE,),
             "prefix": ("STRING", {"default": "", "multiline": False}),
             "format": (list(save_voice.FORMATS), {"default": save_voice.DEFAULT_FORMAT}),
             "quality": (list(VOICE_QUALITIES), {"default": "none"}),
@@ -351,13 +352,13 @@ class MagicStudioSaveVoice:
             return "Unsupported quality: %s" % (quality,)
         return True
 
-    def run(self, audio, project, prefix="", format="wav", quality="none"):
+    def run(self, audio, project_used, prefix="", format="wav", quality="none"):
         q = None if quality == "none" else quality
         # Seules les erreurs de projet deviennent le message de branchement ; le reste passe tel quel.
         try:
-            projects.require_project(project)
+            projects.require_project(project_used)
         except (FileNotFoundError, NotADirectoryError, ValueError):
             raise ValueError(WIRE_PROJECT)
-        paths = save_voice.save(audio, project, prefix, format, q)
+        paths = save_voice.save(audio, project_used, prefix, format, q)
         return {"ui": {"mmvoice": [{"path": p, "name": os.path.basename(p)} for p in paths]},
                 "result": (audio, paths[0])}

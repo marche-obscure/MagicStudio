@@ -107,9 +107,16 @@ function storedLinkInto(n, slot) {
  * (getInputLink(0) du Get : Pixaroma lit la premiere entree branchee du Set, KJNodes aussi ;
  * sinon findSetter de KJNodes / Easy-Use, sinon un noeud "Set" de meme nom dans le graphe) et les
  * Reroute, 10 sauts. Deplace depuis final_cut_node.js (30/10/2026) pour le partager avec SaveVoice.
+ * inputName : un nom, ou une liste (le premier present est pris : voir projectInputNames).
  */
 export function linkedProject(node, inputName, projectType) {
-    const slot = (node.inputs || []).findIndex((i) => i.name === inputName);
+    // Un nom ou une liste de noms acceptes (project_used puis l'ancien nom, 30/10/2026).
+    const names = Array.isArray(inputName) ? inputName : [inputName];
+    let slot = -1;
+    for (const name of names) {
+        slot = (node.inputs || []).findIndex((i) => i && i.name === name);
+        if (slot >= 0) break;
+    }
     let link = slot >= 0 ? storedLinkInto(node, slot) : null;
     let src = link ? node.graph.getNodeById(link.origin_id) : null;
     for (let hop = 0; src && hop < 10; hop++) {
@@ -141,4 +148,53 @@ export function linkedProject(node, inputName, projectType) {
         }
     }
     return { wired: false, info: null };
+}
+
+// ---- Lien project_used (30/10/2026, choix utilisateur) ----
+// La sortie du noeud MagicStudio Project s'appelait final_cut, l'entree du Final Cut aussi et
+// celle du SaveVoice project : les trois s'appellent maintenant project_used (meme type
+// MINIMAX_FINAL_CUT, memes positions).
+
+/** Nouveau nom du lien entre le noeud Project et les noeuds Final Cut / SaveVoice. */
+export const PROJECT_USED = "project_used";
+
+/** Anciens noms par type de noeud : {inputs|outputs: {ancien: nouveau}}. */
+export const LEGACY_PROJECT_LINKS = {
+    MiniMaxH3Project: { outputs: { final_cut: PROJECT_USED } },
+    MiniMaxH3FinalCut: { inputs: { final_cut: PROJECT_USED } },
+    MagicStudioSaveVoice: { inputs: { project: PROJECT_USED } },
+};
+
+/** Noms d'entree acceptes pour trouver le projet : project_used, puis l'ancien nom du type. */
+export function projectInputNames(nodeType) {
+    const legacy = (LEGACY_PROJECT_LINKS[nodeType] || {}).inputs || {};
+    return [PROJECT_USED, ...Object.keys(legacy)];
+}
+
+/**
+ * Renomme, dans les donnees enregistrees d'un noeud (avant configure), les entrees / sorties
+ * dont le nom est ancien : name, et localized_name / label quand ils valent l'ancien nom
+ * (une etiquette choisie par l'utilisateur est gardee). Les liens sont enregistres par
+ * position (link, links, origin_slot / target_slot) : on n'y touche pas, ils restent.
+ * Rien n'est renomme si le nouveau nom existe deja (pas de doublon). Modifie data et le renvoie.
+ */
+export function renameLegacySlots(data, map) {
+    if (!data || !map) return data;
+    for (const side of ["inputs", "outputs"]) {
+        const names = map[side];
+        const slots = data[side];
+        if (!names || !Array.isArray(slots)) continue;
+        const present = new Set(slots.map((s) => (s ? s.name : undefined)));
+        for (const slot of slots) {
+            if (!slot || !Object.prototype.hasOwnProperty.call(names, slot.name)) continue;
+            const old = slot.name;
+            const next = names[old];
+            if (present.has(next)) continue;
+            slot.name = next;
+            if (slot.localized_name === old) slot.localized_name = next;
+            if (slot.label === old) slot.label = next;
+            present.add(next);
+        }
+    }
+    return data;
 }

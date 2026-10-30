@@ -6,7 +6,9 @@ import {
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, escapeHtml, buildHelpOverlay,
 } from "./minimax_ref_loader.js";
 import { makeFileCache } from "./final_cut_cache.js";
-import { linkedProject as linkedProjectOf } from "./graph_links.js";
+import {
+    linkedProject as linkedProjectOf, projectInputNames, renameLegacySlots, LEGACY_PROJECT_LINKS,
+} from "./graph_links.js";
 import { frameStrip, stepIndex, numberedLabel, framesOfCopy } from "./final_cut_frames.js";
 
 // --------------------------------------------------------------------
@@ -71,8 +73,8 @@ const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Wire the <b>final_cut</b> output of the <b>MagicStudio Project</b> node to the <b>final_cut</b> input " +
-            "of this node.",
+            "Wire the <b>project_used</b> output of the <b>MagicStudio Project</b> node to the <b>project_used</b> " +
+            "input of this node.",
             "The first time, the node creates the copies and the link in the input folder of ComfyUI.",
             "Click <b>Images</b>, <b>Video</b> or <b>Audio</b>: the window shows the copies; drag a file onto " +
             "<b>MiniMax H3 Director</b>.",
@@ -152,7 +154,8 @@ const HELP_SECTIONS_FR = [
     {
         id: "start", title: "Démarrage rapide",
         html: hSteps([
-            "Reliez la sortie <b>final_cut</b> du nœud <b>MagicStudio Project</b> à l'entrée <b>final_cut</b> de ce nœud.",
+            "Reliez la sortie <b>project_used</b> du nœud <b>MagicStudio Project</b> à l'entrée <b>project_used</b> " +
+            "de ce nœud.",
             "La première fois, le nœud crée les copies et le lien dans le dossier input de ComfyUI.",
             "Cliquez sur <b>Images</b>, <b>Video</b> ou <b>Audio</b> : la fenêtre montre les copies ; glissez un " +
             "fichier sur <b>MiniMax H3 Director</b>.",
@@ -792,6 +795,16 @@ app.registerExtension({
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== NODE_NAME) return;
 
+        // Anciens workflows (avant le 30/10/2026) : l'entree project_used s'appelait final_cut. Le frontend
+        // reprend les entrees enregistrees PAR NOM (une entree au nom inconnu serait ajoutee a
+        // la fin et son lien perdu) et les sorties par position : on renomme dans les donnees
+        // enregistrees avant configure() ; les liens (par position) restent.
+        const configure = nodeType.prototype.configure;
+        nodeType.prototype.configure = function (info) {
+            renameLegacySlots(info, LEGACY_PROJECT_LINKS[NODE_NAME]);
+            return configure.apply(this, arguments);
+        };
+
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
@@ -875,8 +888,11 @@ app.registerExtension({
                 status.style.color = ok ? "#9fd6cf" : ORANGE;
             };
 
-            /** Projet du noeud MagicStudio Project relie a l'entree final_cut (graph_links.linkedProject). */
-            function linkedProject() { return linkedProjectOf(node, "final_cut", PROJECT_NODE); }
+            /**
+             * Projet du noeud MagicStudio Project relie a l'entree project_used (ou final_cut, nom d'avant
+             * le 30/10/2026 : noeud pas encore migre) (graph_links.linkedProject).
+             */
+            function linkedProject() { return linkedProjectOf(node, projectInputNames(NODE_NAME), PROJECT_NODE); }
 
             // Vrai fichier joint au glisser : prepare avant (dragstart ne peut pas attendre),
             // dans un cache borne (relecture 24/10/2026, voir final_cut_cache.js).
@@ -923,7 +939,7 @@ app.registerExtension({
                 paintSyncButton(syncBtn, ready ? plan : null, busy);
                 if (!wired) {
                     where.textContent = "Not wired";
-                    say("Wire the final_cut output of the MagicStudio Project node.");
+                    say("Wire the project_used output of the MagicStudio Project node.");
                 } else if (!info) {
                     where.textContent = "No project";
                     say("Pick a project in the MagicStudio Project node.");

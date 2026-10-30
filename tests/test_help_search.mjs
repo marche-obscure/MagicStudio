@@ -144,3 +144,15 @@ test("container help EN and FR have the same ids", () => {
     assert.deepEqual(en, ["start", "inputs", "outputs", "variants"]);
     assert.deepEqual(helpIds("container_node.js", "HELP_SECTIONS_FR"), en);
 });
+
+// --- Lien project_used (30/10/2026) : plus de nom de lien final_cut dans les aides ---
+test("help arrays no longer name the link final_cut", () => {
+    for (const file of ["project_node.js", "final_cut_node.js", "save_voice_node.js"]) {
+        for (const name of ["HELP_SECTIONS", "HELP_SECTIONS_FR"]) {
+            // "Final Cut" (noeud) et "Final-Cut_" (dossier) restent : on cherche le nom du lien seul.
+            const text = helpText(file, name).replaceAll("final_cut.py", "");
+            assert.ok(!text.includes("final_cut"), file + " " + name + " : final_cut encore cite");
+            assert.ok(text.includes("project_used"), file + " " + name + " : project_used absent");
+        }
+    }
+});

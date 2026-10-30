@@ -4,13 +4,14 @@ import {
     iconBadge, hList, hSteps, hTip, hNote, hCard, AUDIO_ICON, START_ICON, FOLDER_ICON, GEAR_ICON,
     buildHelpOverlay, vueMode,
 } from "./minimax_ref_loader.js";
-import { linkedProject } from "./graph_links.js";
+import { linkedProject, projectInputNames, renameLegacySlots, LEGACY_PROJECT_LINKS } from "./graph_links.js";
 import { qualityChoices, fixQuality, voicePath, NO_QUALITY } from "./save_voice.js";
 
 // --------------------------------------------------------------------
 // Noeud MagicStudio SaveVoice (plan du 30/10/2026) : enregistre une voix de
 // reference dans <projet>\90.Pick Up\Son. Le projet vient de la sortie
-// final_cut du noeud MagicStudio Project (entree "project"), suivie a travers
+// project_used du noeud MagicStudio Project (entree "project_used", "project" avant le
+// 30/10/2026), suivie a travers
 // Get / Set et Reroute (graph_links.linkedProject, partage avec Final Cut).
 // Interface : qualite selon le format, ligne du dossier + Copy, lecteur du
 // dernier fichier enregistre (ui.mmvoice du Run).
@@ -22,7 +23,7 @@ const MIN_WIDTH = 340;
 const UI_HEIGHT = 140;
 const RECHECK_MS = 2000; // relecture legere du projet relie et du format
 const COPIED_MS = 1500;
-const WIRE_TEXT = "Wire the final_cut output of a MagicStudio Project node";
+const WIRE_TEXT = "Wire the project_used output of a MagicStudio Project node";
 const CHOOSE_TEXT = "Choose a project in the MagicStudio Project node";
 const mediaUrl = (path) => "/mmrefloader/media?file=" + encodeURIComponent(path);
 const baseName = (path) => String(path || "").split(/[\\/]/).pop();
@@ -54,7 +55,7 @@ const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Wire the <b>final_cut</b> output of the <b>MagicStudio Project</b> node to the <b>project</b> input.",
+            "Wire the <b>project_used</b> output of the <b>MagicStudio Project</b> node to the <b>project_used</b> input.",
             "Wire a sound to the <b>audio</b> input (for example a voice made by a text-to-speech node).",
             "Choose the <b>format</b>: <b>wav</b> or <b>flac</b> for a voice reference.",
             "Click <b>Run</b>: the file is saved in <b>90.Pick Up\\Son</b> of the project, and the player shows it.",
@@ -69,7 +70,7 @@ const HELP_SECTIONS = [
         id: "inputs", title: "Inputs", icon: FOLDER_ICON, color: VIOLET,
         html: hCard("Inputs (both required)", [
             ["<b>audio</b>", "the sound to save"],
-            ["<b>project</b>", "the <b>final_cut</b> output of <b>MagicStudio Project</b>, directly or " +
+            ["<b>project_used</b>", "the <b>project_used</b> output of <b>MagicStudio Project</b>, directly or " +
                 "through Get / Set or Reroute nodes"],
         ]) +
         hNote("without a linked project, the Run stops with the message <b>" + WIRE_TEXT + "</b>.") +
@@ -105,7 +106,7 @@ const HELP_SECTIONS_FR = [
     {
         id: "start", title: "Démarrage rapide",
         html: hSteps([
-            "Branchez la sortie <b>final_cut</b> du nœud <b>MagicStudio Project</b> sur l'entrée <b>project</b>.",
+            "Branchez la sortie <b>project_used</b> du nœud <b>MagicStudio Project</b> sur l'entrée <b>project_used</b>.",
             "Branchez un son sur l'entrée <b>audio</b> (par exemple une voix créée par un nœud de synthèse vocale).",
             "Choisissez le <b>format</b> : <b>wav</b> ou <b>flac</b> pour une référence de voix.",
             "Cliquez sur <b>Run</b> : le fichier est enregistré dans <b>90.Pick Up\\Son</b> du projet, et le " +
@@ -121,7 +122,7 @@ const HELP_SECTIONS_FR = [
         id: "inputs", title: "Entrées",
         html: hCard("Entrées (obligatoires toutes les deux)", [
             ["<b>audio</b>", "le son à enregistrer"],
-            ["<b>project</b>", "la sortie <b>final_cut</b> de <b>MagicStudio Project</b>, directement ou " +
+            ["<b>project_used</b>", "la sortie <b>project_used</b> de <b>MagicStudio Project</b>, directement ou " +
                 "par des nœuds Get / Set ou Reroute"],
         ]) +
         hNote("sans projet relié, le Run s'arrête avec le message <b>" + WIRE_TEXT + "</b>.", "Remarque :") +
@@ -179,6 +180,16 @@ app.registerExtension({
     name: "ComfyUI.MagicStudioSaveVoice",
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== NODE_NAME) return;
+
+        // Anciens workflows (avant le 30/10/2026) : l'entree project_used s'appelait project. Le frontend
+        // reprend les entrees enregistrees PAR NOM (une entree au nom inconnu serait ajoutee a
+        // la fin et son lien perdu) et les sorties par position : on renomme dans les donnees
+        // enregistrees avant configure() ; les liens (par position) restent.
+        const configure = nodeType.prototype.configure;
+        nodeType.prototype.configure = function (info) {
+            renameLegacySlots(info, LEGACY_PROJECT_LINKS[NODE_NAME]);
+            return configure.apply(this, arguments);
+        };
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -271,7 +282,7 @@ app.registerExtension({
                 copyBtn.textContent = state === "ok" ? "Copied" : state === "fail" ? "Failed" : "Copy";
             }
             function render(force) {
-                const { wired, info } = linkedProject(node, "project", PROJECT_NODE);
+                const { wired, info } = linkedProject(node, projectInputNames(NODE_NAME), PROJECT_NODE);
                 const key = (wired ? "1" : "0") + "|" + (info ? info.name + "|" + info.path : "");
                 if (!force && key === shownKey) return;
                 shownKey = key;

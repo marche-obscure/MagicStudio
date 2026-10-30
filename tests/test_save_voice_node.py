@@ -22,7 +22,7 @@ class SaveVoiceNodeTest(unittest.TestCase):
         self.assertIn("OUTPUT_NODE = True", nodes[nodes.index("class MagicStudioSaveVoice"):])
         self.assertIn('"MagicStudioSaveVoice": MagicStudioSaveVoice', init)
         self.assertIn('"MagicStudioSaveVoice": "MagicStudio SaveVoice"', init)
-        self.assertIn("Wire the final_cut output of a MagicStudio Project node", nodes)
+        self.assertIn("Wire the project_used output of a MagicStudio Project node", nodes)
         self.assertIn('"mmvoice"', nodes)
 
     def test_savevoice_ui_not_a_run_output(self):

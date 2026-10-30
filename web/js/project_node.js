@@ -23,6 +23,7 @@ import {
     PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags,
 } from "./project_paths.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
+import { PROJECT_USED, renameLegacySlots, LEGACY_PROJECT_LINKS } from "./graph_links.js";
 
 /** Description des variantes du RefLoader (route lue par son setup, sinon la copie de secours). */
 const desc = () => getVariantDesc();
@@ -255,8 +256,8 @@ const HELP_SECTIONS = [
                     "chosen by hand is never replaced)."],
                 ["Without it", "the models are read in the graph (position 0). The LoRA are always read in the graph."],
             ]) +
-            hNote("output <b>final_cut</b>: wire it to the <b>MagicStudio Final Cut</b> node (copies of the " +
-                "Picture Lock folders for MiniMax H3 Director)."),
+            hNote("output <b>project_used</b>: wire it to the <b>MagicStudio Final Cut</b> node (copies of the " +
+                "Picture Lock folders for MiniMax H3 Director) or to the <b>MagicStudio SaveVoice</b> node."),
     },
     {
         id: "folders", title: "Project folders", icon: PROJECT_ICON, color: VIOLET,
@@ -714,8 +715,8 @@ const HELP_SECTIONS_FR = [
                 ["Sans elle", "les modèles sont lus dans le graphe (position 0). Les LoRA sont toujours lues dans le " +
                     "graphe."],
             ]) +
-            hNote("sortie <b>final_cut</b> : reliez-la au nœud <b>MagicStudio Final Cut</b> (copies des Picture " +
-                "Lock pour MiniMax H3 Director).", "Remarque :"),
+            hNote("sortie <b>project_used</b> : reliez-la au nœud <b>MagicStudio Final Cut</b> (copies des Picture " +
+                "Lock pour MiniMax H3 Director) ou au nœud <b>MagicStudio SaveVoice</b>.", "Remarque :"),
     },
     {
         id: "folders", title: "Dossiers du projet",
@@ -4915,6 +4916,16 @@ app.registerExtension({
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== NODE_NAME) return;
 
+        // Anciens workflows (avant le 30/10/2026) : la sortie project_used s'appelait final_cut. Le frontend
+        // reprend les entrees enregistrees PAR NOM (une entree au nom inconnu serait ajoutee a
+        // la fin et son lien perdu) et les sorties par position : on renomme dans les donnees
+        // enregistrees avant configure() ; les liens (par position) restent.
+        const configure = nodeType.prototype.configure;
+        nodeType.prototype.configure = function (info) {
+            renameLegacySlots(info, LEGACY_PROJECT_LINKS[NODE_NAME]);
+            return configure.apply(this, arguments);
+        };
+
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
@@ -7056,11 +7067,14 @@ app.registerExtension({
             node.onConfigure = function () {
                 const ret = onConfigure ? onConfigure.apply(this, arguments) : undefined;
                 // Sortie "project" d'une version de test (sens inverse) : retiree avec son lien ;
-                // la sortie final_cut (22/10/2026) reste, et s'ajoute aux anciens workflows.
+                // la sortie project_used (22/10/2026, final_cut jusqu'au 30/10/2026, renommee avant
+                // configure par renameLegacySlots) reste, et s'ajoute aux anciens workflows.
+                // Une sortie encore nommee final_cut (secours) est renommee sur place, lien garde.
+                renameLegacySlots(node, LEGACY_PROJECT_LINKS[NODE_NAME]);
                 for (let i = (node.outputs || []).length - 1; i >= 0; i--) {
-                    if (node.outputs[i].name !== "final_cut") node.removeOutput(i);
+                    if (node.outputs[i].name !== PROJECT_USED) node.removeOutput(i);
                 }
-                if (!(node.outputs || []).some((o) => o.name === "final_cut")) node.addOutput("final_cut", FINAL_CUT_TYPE);
+                if (!(node.outputs || []).some((o) => o.name === PROJECT_USED)) node.addOutput(PROJECT_USED, FINAL_CUT_TYPE);
                 fitWidth();
                 render();
                 setTimeout(loadProjects, 0);

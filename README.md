@@ -37,7 +37,7 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 2. Add **MagicStudio RefLoader**, choose the model (**MiniMax H3** or **LTX**) and its variant (**Ref2VA**, **F2VA / FL2VA**, **LTX 2.3**, **LTX 2.5**), click a row (Images, Video…) and pick files in the gallery.
 3. Add **MagicStudio Container** and wire the `package` output of the RefLoader to its `package` input. Wire the outputs of the Container in order to the video model (**MiniMax H3 Reference to Video**: same numbers as its inputs, `ref_image_0` → `ref_image_0`, and so on).
 4. Optional: add **MagicStudio Project**, wire the `project` output of the RefLoader to its `project` input, then click **+** to create a project. Wire your final prompt to `text_prompt` to record every run.
-5. Optional: add **MagicStudio Final Cut** and wire the `final_cut` output of the Project node to it. Open its window and drag a file onto **MagicStudio MedLoad** to use it in a workflow.
+5. Optional: add **MagicStudio Final Cut** and wire the `project_used` output of the Project node to it. Open its window and drag a file onto **MagicStudio MedLoad** to use it in a workflow.
 
 ## Models and variants
 
@@ -218,7 +218,8 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 
 ## MagicStudio Final Cut node
 
-- **Wire the `final_cut` output** of the Project node to the `final_cut` input of this node.
+- **Wire the `project_used` output** of the Project node to the `project_used` input of this node.
+- Workflows saved before the link was renamed (`final_cut`, and `project` on SaveVoice) open with their link kept.
 - **It copies the final rushes:** the `Picture Lock` folders of `60.Rush Images`, `40.Rush Videos` and `70.Rush Audio` go to `Final-Cut_<Name>\Images`, `Video` and `Audio`. The originals are never touched.
 - **Simple project or MultiProject:** the copies of a Simple project stay in its folder; a MultiProject gathers the copies of all its projects in its own folder.
 - **Name of a copy:** `_NN_<file>`, where NN is the number of the project (00 for a Simple project; 01, 02… for the projects of a MultiProject, given once and never reused). The copy takes the date of the copy, so new copies come first in MiniMax H3 Director.
@@ -259,7 +260,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 ## MagicStudio SaveVoice node
 
 - **What it does:** saves a voice reference into `<project>\90.Pick Up\Son` of the project picked in the **MagicStudio Project** node. The folder is created if it is missing.
-- **Wiring:** wire an `audio` (AUDIO) and the `final_cut` output of the Project node to the `project` input. Without a project, the run is refused with "Wire the final_cut output of a MagicStudio Project node".
+- **Wiring:** wire an `audio` (AUDIO) and the `project_used` output of the Project node to the `project_used` input. Without a project, the run is refused with "Wire the project_used output of a MagicStudio Project node".
 - **Settings:**
   - `prefix`: text at the start of the file name (can be empty).
   - `format`: `wav` (default, best for a voice reference), `flac`, `mp3` or `opus`.
