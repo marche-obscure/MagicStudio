@@ -20,8 +20,9 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
-    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags,
+    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint,
 } from "./project_paths.js";
+import { dragPath, dragLink } from "./post_tree.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 import { PROJECT_USED, renameLegacySlots, LEGACY_PROJECT_LINKS } from "./graph_links.js";
 
@@ -3036,6 +3037,27 @@ function addPostBadge(box, out, outs) {
     box.appendChild(row);
 }
 
+/**
+ * Vignette glissable vers MedLoad (choix utilisateur 30/10/2026) : le lien est le meme que celui du
+ * Final Cut. Pendant le glisser, la couche de la fenetre ne capte plus la souris (la carte garde
+ * pointerEvents "auto") ; remise a dragend, meme si le fichier est lache ailleurs.
+ */
+function makeDragSource(el, output, overlay) {
+    const path = dragPath(output);
+    if (!path) return;
+    el.draggable = true;
+    el.addEventListener("dragstart", (e) => {
+        if (e.dataTransfer) {
+            e.dataTransfer.setData("text/uri-list", dragLink(path, location.origin));
+            e.dataTransfer.effectAllowed = "copy";
+        }
+        if (overlay) overlay.style.pointerEvents = "none";
+    });
+    el.addEventListener("dragend", () => {
+        if (overlay) overlay.style.pointerEvents = "";
+    });
+}
+
 /** Dossier et nom d'un chemin complet. */
 function splitPath(path) {
     const sep = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
@@ -3501,6 +3523,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     Object.assign(card.style, {
         width: "min(760px, 94vw)", padding: "12px 14px", borderColor: VIOLET, display: "flex",
         flexDirection: "column", gap: "8px", maxHeight: "86vh",
+        pointerEvents: "auto", // la couche passe a "none" pendant un glisser (makeDragSource)
     });
     const head = document.createElement("div");
     Object.assign(head.style, { display: "flex", alignItems: "center", gap: "8px" });
@@ -4039,11 +4062,26 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 flex: "0 0 auto", boxSizing: "border-box",
                 border: i === rushIndex ? "2px solid " + VIOLET : "1px solid #333",
             });
-            const [dir, name] = splitPath(it.file);
+            // Original supprime mais avec des posts presents (file === "") : carte grise « Deleted ».
+            const gone = !it.file;
+            const name = gone ? "" : splitPath(it.file)[1];
             const key = rushKey(it);
-            const pic = dupThumb(dir, name, it.output.kind, 108);
-            addStatusDot(pic, it.output);
-            addPostBadge(pic, it.output, it.run.outputs);
+            let pic;
+            if (gone) {
+                pic = document.createElement("div");
+                pic.textContent = "Deleted";
+                Object.assign(pic.style, {
+                    width: "108px", height: "71px", borderRadius: "6px", background: "#2b2b2b", color: "#888",
+                    display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+                    fontSize: "12px", fontWeight: "bold",
+                });
+                pic.title = deletedText(it.output.deleted) || "Original deleted";
+            } else {
+                pic = dupThumb(splitPath(it.file)[0], name, it.output.kind, 108);
+                addStatusDot(pic, it.output);
+                addPostBadge(pic, it.output, it.run.outputs);
+                makeDragSource(pic, it.output, overlay);
+            }
             if (failed.has(key)) {
                 // Echec du dernier lot : ✕ rouge a droite de la pastille.
                 const x = document.createElement("div");
@@ -4056,7 +4094,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 pic.appendChild(x);
             }
             let trash = null;
-            if (canDeleteRush(it.output)) {
+            if (!gone && canDeleteRush(it.output)) {
                 // Poubelle des fichiers de No Good : grise, rouge quand la case est cochee.
                 trash = document.createElement("div");
                 trash.innerHTML = TRASH_ICON;
@@ -4079,7 +4117,16 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             label.title = name;
             Object.assign(label.style, { fontSize: "11px", marginTop: "4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
             t.appendChild(label);
-            if (rush) {
+            // Petit texte orange : posts presents qui ont la pastille filtree (l'original, lui, ne l'a pas).
+            const hint = postHint(it, dotFilter);
+            if (hint) {
+                const h = document.createElement("div");
+                h.textContent = hint;
+                h.title = hint;
+                Object.assign(h.style, { fontSize: "10px", color: ORANGE, marginTop: "2px", lineHeight: "1.3" });
+                t.appendChild(h);
+            }
+            if (rush && !gone) {
                 const cb = document.createElement("input");
                 cb.type = "checkbox";
                 cb.checked = checked.has(key);
@@ -4094,24 +4141,44 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 });
                 t.appendChild(cb);
             }
-            const ex = extractButton(it);
+            const ex = gone ? null : extractButton(it);
             if (ex) t.appendChild(ex);
+            const proc = processingButton(it);
+            if (proc) t.appendChild(proc);
             t.addEventListener("click", () => {
                 if (rushIndex !== i) {
                     rushIndex = i;
                     selKey = rushKey(it);
                     renderRush();
                 }
-                showPreview(it.file, it.output.kind);
+                if (!gone) showPreview(it.file, it.output.kind);
             });
             strip.appendChild(t);
         });
         strip.scrollLeft = scroll;
         const it = items[rushIndex];
         paintRushSort(items);
-        conf.label.textContent = "Configuration – " + baseOf(it.file);
+        conf.label.textContent = "Configuration – " + (it.file ? baseOf(it.file) : "deleted original");
         fillConfig(it.run, it.output);
         setPrompt(it.run.prompt);
+    }
+
+    /** Fenetre Processing d'un original (la tache 4 remplace le corps de cette fonction). */
+    function openProcessing(it) {
+        // Pas encore de fenetre : la tache 4 la construit.
+    }
+    /** Bouton violet « Processing (n) » (n = posts presents), absent sans post ; le clic n'ouvre pas l'apercu. */
+    function processingButton(it) {
+        const n = it.posts.length;
+        if (!n) return null;
+        const b = makeTextButton("Processing (" + n + ")", VIOLET);
+        Object.assign(b.style, { display: "block", width: "100%", marginTop: "4px", padding: "3px 4px", fontSize: "11px" });
+        b.title = n + " post-processed version(s) of this original";
+        b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openProcessing(it);
+        });
+        return b;
     }
 
     /**
@@ -4161,7 +4228,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         const sel = items.filter((x) => checked.has(rushKey(x)));
         if (!sel.length) {
             const it = items[rushIndex];
-            if (it) rushSort.appendChild(sortBar(it.run, it.output));
+            // Original supprime (file === "") : rien a ranger.
+            if (it && it.file) rushSort.appendChild(sortBar(it.run, it.output));
             return;
         }
         rushSort.appendChild(batchBar(sel));
