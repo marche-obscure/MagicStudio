@@ -25,7 +25,7 @@ DEFAULT_QUALITY = {"mp3": "V0", "opus": "128k"}
 VOICE_DIR = ("90.Pick Up", "Son")
 
 _OPUS_RATES = [8000, 12000, 16000, 24000, 48000]
-_FORBIDDEN = re.compile(r'[<>:"/\|?*\x00-\x1f]')
+_FORBIDDEN = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 def voice_dir(project):
@@ -150,6 +150,9 @@ def save(audio, project, prefix, fmt, quality, now=None):
     paths = []
     for i in range(count):
         path = os.path.join(folder, _suffixed(first, i + 1))
+        # garde-fou : jamais d'ecriture hors du dossier Son
+        if os.path.dirname(os.path.abspath(path)) != os.path.abspath(folder):
+            raise ValueError("Invalid file name: %s" % path)
         encode(waveforms[i], audio["sample_rate"], path, fmt, quality)
         paths.append(path)
     return paths

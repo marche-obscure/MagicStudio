@@ -37,6 +37,20 @@ class SaveVoiceTest(unittest.TestCase):
         self.assertEqual(save_voice.clean_prefix("  "), "voice")
         self.assertEqual(save_voice.clean_prefix("fin."), "fin")
 
+    def test_clean_prefix_backslash(self):
+        self.assertEqual(save_voice.clean_prefix(r"a"), "ab")
+        out = save_voice.clean_prefix(r"..\..\evil")
+        self.assertNotIn("\\", out)
+        self.assertNotIn("/", out)
+
+    def test_save_traversal_stays_in_son(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = self._project(tmp)
+            audio = {"waveform": sine(22050, 1).unsqueeze(0), "sample_rate": 22050}
+            out = save_voice.save(audio, p, r"..\..\evil", "wav", None, now=NOW)
+            son = os.path.abspath(os.path.join(p, "90.Pick Up", "Son"))
+            self.assertEqual(os.path.dirname(os.path.abspath(out[0])), son)
+
     def test_voice_name(self):
         self.assertEqual(
             save_voice.voice_name("voix", "mp3", NOW, lambda n: False),
