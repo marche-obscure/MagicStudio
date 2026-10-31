@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
-    PROJECT_USED, LEGACY_PROJECT_LINKS, projectInputNames, renameLegacySlots, linkedProject,
+    PROJECT_USED, LEGACY_PROJECT_LINKS, projectInputNames, renameLegacySlots, linkedProject, promptSource, PROMPT_UNWIRED,
 } from "../web/js/graph_links.js";
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -143,4 +143,49 @@ test("linkedProject : le premier nom QUI A UN LIEN (project_used vide, ancien no
     wire(g, other, n, 1);
     assert.deepEqual(linkedProject(n, projectInputNames("MagicStudioSaveVoice"), PROJECT),
         { wired: true, info: { name: "B", path: "B" } });
+});
+
+// ---- promptSource : text_prompt du noeud Project (31/10/2026) ----
+function projectNode(g) {
+    return fakeNode(g, 1, PROJECT, ["project", "text_prompt"]);
+}
+function getNode(g, id, name) {
+    return fakeNode(g, id, "PixaromaGetNode", [], { widgets: [{ value: name }] });
+}
+
+test("promptSource : unwired", () => {
+    const g = fakeGraph();
+    assert.deepEqual(promptSource(projectNode(g)), { ok: false, reason: "unwired" });
+    assert.match(PROMPT_UNWIRED, /receives nothing/);
+});
+
+test("promptSource : direct link", () => {
+    const g = fakeGraph();
+    const n = projectNode(g);
+    wire(g, fakeNode(g, 2, "PrimitiveStringMultiline", []), n, 1);
+    assert.deepEqual(promptSource(n), { ok: true });
+});
+
+test("promptSource : get without set", () => {
+    const g = fakeGraph();
+    const n = projectNode(g);
+    wire(g, getNode(g, 2, "TEXT-INITIAL"), n, 1);
+    assert.deepEqual(promptSource(n), { ok: false, reason: "get-without-set", name: "TEXT-INITIAL" });
+});
+
+test("promptSource : get with set", () => {
+    const g = fakeGraph();
+    const n = projectNode(g);
+    wire(g, getNode(g, 2, "TEXT-INITIAL"), n, 1);
+    const set = fakeNode(g, 3, "PixaromaSetNode", ["value"], { widgets: [{ value: "TEXT-INITIAL" }] });
+    wire(g, fakeNode(g, 4, "PrimitiveStringMultiline", []), set, 0);
+    assert.deepEqual(promptSource(n), { ok: true });
+});
+
+test("promptSource : set existant mais sans entree = rien recu", () => {
+    const g = fakeGraph();
+    const n = projectNode(g);
+    wire(g, getNode(g, 2, "TEXT-INITIAL"), n, 1);
+    fakeNode(g, 3, "PixaromaSetNode", ["value"], { widgets: [{ value: "TEXT-INITIAL" }] });
+    assert.deepEqual(promptSource(n), { ok: false, reason: "get-without-set", name: "TEXT-INITIAL" });
 });

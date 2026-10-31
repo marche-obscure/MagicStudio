@@ -24,7 +24,7 @@ import {
 } from "./project_paths.js";
 import { dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
-import { PROJECT_USED, renameLegacySlots, LEGACY_PROJECT_LINKS } from "./graph_links.js";
+import { PROJECT_USED, renameLegacySlots, LEGACY_PROJECT_LINKS, promptSource, PROMPT_UNWIRED } from "./graph_links.js";
 
 /** Description des variantes du RefLoader (route lue par son setup, sinon la copie de secours). */
 const desc = () => getVariantDesc();
@@ -5740,6 +5740,7 @@ app.registerExtension({
             const inProject = (name) => !!name && projects.includes(name) && wired();
             let message = "";   // erreur ou avertissement (orange), ou resultat (messageOk)
             let messageOk = false;
+            let promptShown = false; // l'avertissement text_prompt est affiche dans la ligne des messages
             // Workflow du projet : fichiers de 00.Workflows, workflow courant
             // ({name, mtime} ou null), son contenu et son empreinte.
             let wfInfo = { workflows: [], archives: [], current: null };
@@ -6065,7 +6066,15 @@ app.registerExtension({
                 } else if (!text && !folder.exists) {
                     text = "Projects folder not found (created with the first project)";
                     tip = folder.root;
+                } else if (!text && current) {
+                    // Avertissement avant le Run (31/10/2026) : seulement quand aucun message n'est affiche.
+                    const src = promptSource(node);
+                    if (!src.ok) {
+                        text = PROMPT_UNWIRED;
+                        tip = src.reason === "get-without-set" ? "Get: " + src.name + " has no Set" : PROMPT_UNWIRED;
+                    }
                 }
+                promptShown = text === PROMPT_UNWIRED && !message;
                 status.textContent = text;
                 status.style.color = wired() && message && messageOk ? "#9fd6cf" : ORANGE;
                 status.title = tip;
@@ -7370,6 +7379,8 @@ app.registerExtension({
                 if (wfInfo.current) paintBell(wf);
                 paintFolders();
                 syncModelsLink();
+                // Avertissement text_prompt : relu ici, repeint seulement s'il change (pas de scintillement).
+                if (!message && inProject(getState().name) && promptSource(node).ok === promptShown) render();
             };
             const scheduleRecheck = () => {
                 if (!node.graph) return;

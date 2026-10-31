@@ -102,6 +102,21 @@ function storedLinkInto(n, slot) {
 }
 
 /**
+ * Noeud Set correspondant a un noeud Get (findSetter de KJNodes / Easy-Use, sinon un noeud "Set"
+ * du graphe avec le meme widgets[0].value), ou null. Partage par linkedProject et promptSource.
+ */
+function setterOfGet(get) {
+    const name = get.widgets && get.widgets[0] ? get.widgets[0].value : undefined;
+    let setter = typeof get.findSetter === "function" ? get.findSetter(get.graph) : null;
+    if (setter && setter.node) setter = setter.node;
+    if (!setter && get.graph) {
+        setter = (get.graph._nodes || []).find((n) => /set/i.test(String(n.type || "")) &&
+            n.widgets && n.widgets[0] && n.widgets[0].value === name) || null;
+    }
+    return setter;
+}
+
+/**
  * Projet du noeud MagicStudio Project (type projectType) relie a l'entree inputName du noeud :
  * {wired, info} (info = mmProjectInfo() du noeud Project : {name, path} ou null). Traverse Get
  * (getInputLink(0) du Get : Pixaroma lit la premiere entree branchee du Set, KJNodes aussi ;
@@ -129,13 +144,7 @@ export function linkedProject(node, inputName, projectType) {
             link = from.getInputLink(0) || null;
             src = link ? from.graph.getNodeById(link.origin_id) : null;
         } else if (/get/i.test(type) && src.widgets && src.widgets[0]) {
-            const name = src.widgets[0].value;
-            let setter = typeof src.findSetter === "function" ? src.findSetter(src.graph) : null;
-            if (setter && setter.node) setter = setter.node;
-            if (!setter && src.graph) {
-                setter = (src.graph._nodes || []).find((n) => /set/i.test(String(n.type || "")) &&
-                    n.widgets && n.widgets[0] && n.widgets[0].value === name) || null;
-            }
+            const setter = setterOfGet(src);
             link = setter ? storedLinkInto(setter, 0) : null;
             src = link ? setter.graph.getNodeById(link.origin_id) : null;
         } else if (src.isVirtualNode || /reroute/i.test(type)) {
@@ -147,6 +156,49 @@ export function linkedProject(node, inputName, projectType) {
         }
     }
     return { wired: false, info: null };
+}
+
+// ---- Entree text_prompt (31/10/2026) ----
+
+/** Avertissement affiche avant le Run quand text_prompt ne recoit rien. */
+export const PROMPT_UNWIRED = "text_prompt receives nothing: runs will be recorded without a prompt";
+
+/**
+ * Ce que recevra l'entree text_prompt du noeud Project : {ok:true}, {ok:false, reason:"unwired"}
+ * (aucun lien) ou {ok:false, reason:"get-without-set", name} (un Get dont le Set de meme nom
+ * manque, ou dont le Set n'a lui-meme aucun lien). Meme parcours Get / Set / Reroute que
+ * linkedProject (10 sauts). Un noeud qu'on ne sait pas traverser compte comme une source valide.
+ */
+export function promptSource(node) {
+    const slot = (node.inputs || []).findIndex((i) => i && i.name === "text_prompt");
+    let link = slot >= 0 ? storedLinkInto(node, slot) : null;
+    let src = link ? node.graph.getNodeById(link.origin_id) : null;
+    if (!src) return { ok: false, reason: "unwired" };
+    for (let hop = 0; hop < 10; hop++) {
+        const type = String(src.type || "");
+        let next = null;
+        if (/get/i.test(type) && src.widgets && src.widgets[0]) {
+            const name = String(src.widgets[0].value);
+            const direct = typeof src.getInputLink === "function" ? src.getInputLink(0) : null;
+            const setter = direct ? null : setterOfGet(src);
+            link = direct || (setter ? storedLinkInto(setter, 0) : null);
+            if (!link) return { ok: false, reason: "get-without-set", name };
+            next = (setter || src).graph.getNodeById(link.origin_id);
+        } else if (/setnode/i.test(type) && src.widgets && src.widgets[0]) {
+            link = storedLinkInto(src, 0);
+            if (!link) return { ok: false, reason: "get-without-set", name: String(src.widgets[0].value) };
+            next = src.graph.getNodeById(link.origin_id);
+        } else if (src.isVirtualNode || /reroute/i.test(type)) {
+            link = storedLinkInto(src, 0);
+            if (!link) return { ok: false, reason: "unwired" };
+            next = src.graph.getNodeById(link.origin_id);
+        } else {
+            return { ok: true };
+        }
+        if (!next) return { ok: false, reason: "unwired" };
+        src = next;
+    }
+    return { ok: true };
 }
 
 // ---- Lien project_used (30/10/2026, choix utilisateur) ----
