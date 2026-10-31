@@ -247,7 +247,9 @@ const HELP_SECTIONS = [
                 ["Wire", "the final prompt text (the same text as the prompt of the MiniMax node)."],
                 ["Gives", "the record of each run: JSON in <b>04.Prompt</b>, copies in <b>40.Rush Videos</b>, " +
                     "registries in <b>02.Models</b> / <b>06.LoRA</b> (see <b>Run record</b>)."],
-                ["Without it", "nothing is recorded; the windows 04, 40 and 60 stay empty."],
+                ["Without it", "the run is still recorded, without a prompt; the windows show " +
+                    "<b>No prompt associated with this run</b> in orange. Before the run, the node says " +
+                    "<b>text_prompt receives nothing</b>."],
             ]) +
             inputCard("models_link", "Optional", [
                 ["Wire", "the <b>model_link</b> output of <b>MultiFiles Select</b> (directly, or through Set / Get, " +
@@ -658,8 +660,8 @@ const HELP_SECTIONS = [
     },
     {
         id: "runs", title: "Run record", icon: START_ICON, color: GREEN,
-        html: "<p>To record the runs: a <b>project picked</b> and the <b>text_prompt</b> input wired to the final " +
-            "prompt text.</p>" +
+        html: "<p>To record the runs: a <b>project picked</b> is enough. Wire the <b>text_prompt</b> input to the " +
+            "final prompt text to keep the prompt in each run.</p>" +
             hCard("When the run starts", [
                 [folderBadge("04.Prompt"), "<b>yyyyMMdd_HHmmss_run.json</b>: date, project, mode, prompt, and the CFG, " +
                     "Steps and Seed read in the run."],
@@ -676,6 +678,16 @@ const HELP_SECTIONS = [
             hCard("Not recorded", [
                 ["Cache", "A run without any <b>new file</b> (a result sent back by the cache of ComfyUI, for example): " +
                     "its JSON is removed and nothing is copied."],
+            ]) +
+            hCard("Run without a prompt", [
+                ["Why", "<b>text_prompt</b> is not wired, or it is wired to a <b>Get</b> node whose <b>Set</b> of the " +
+                    "same name does not exist (for example <b>Get: TEXT-INITIAL</b> without <b>Set: TEXT-INITIAL</b>), " +
+                    "or the text is empty."],
+                ["Result", "the run is recorded with an empty prompt. The windows show <b>No prompt associated with " +
+                    "this run</b> in orange. In 02 and 06, these runs make one separate group."],
+                ["Before the run", "the node shows <b>text_prompt receives nothing: runs will be recorded without a " +
+                    "prompt</b>."],
+                ["To fix it", "add the <b>Set</b> node of the same name, or wire a text node to <b>text_prompt</b>."],
             ]) +
             hCard("How CFG, Steps and Seed are read", [
                 ["Typed", "a value typed in the node is read directly."],
@@ -758,7 +770,9 @@ const HELP_SECTIONS_FR = [
                 ["Brancher", "le texte final du prompt (le même texte que le prompt du nœud MiniMax)."],
                 ["Apporte", "l'enregistrement de chaque Run : JSON dans <b>04.Prompt</b>, copies dans <b>40.Rush " +
                     "Videos</b>, registres dans <b>02.Models</b> / <b>06.LoRA</b> (voir <b>Enregistrement des Runs</b>)."],
-                ["Sans elle", "rien n'est enregistré ; les fenêtres 04, 40 et 60 restent vides."],
+                ["Sans elle", "le Run est quand même enregistré, sans prompt ; les fenêtres montrent " +
+                    "<b>No prompt associated with this run</b> en orange. Avant le Run, le nœud indique " +
+                    "<b>text_prompt receives nothing</b>."],
             ]) +
             inputCard("models_link", "Optionnelle", [
                 ["Brancher", "la sortie <b>model_link</b> de <b>MultiFiles Select</b> (directement, ou via Set / Get, " +
@@ -1182,8 +1196,8 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "runs", title: "Enregistrement des Runs",
-        html: "<p>Pour que les Runs soient enregistrés : <b>un projet choisi</b> et l'entrée <b>text_prompt</b> " +
-            "branchée sur le texte final du prompt.</p>" +
+        html: "<p>Pour que les Runs soient enregistrés : <b>un projet choisi</b> suffit. Branchez l'entrée " +
+            "<b>text_prompt</b> sur le texte final du prompt pour garder le prompt dans chaque Run.</p>" +
             hCard("Au lancement du Run", [
                 [folderBadge("04.Prompt"), "<b>yyyyMMdd_HHmmss_run.json</b> : date, projet, mode, prompt, et les CFG, " +
                     "Steps et Seed lus dans le Run."],
@@ -1200,6 +1214,17 @@ const HELP_SECTIONS_FR = [
             hCard("Ce qui n'est pas enregistré", [
                 ["Cache", "Un Run sans <b>fichier nouveau</b> (par exemple un résultat renvoyé par le cache de " +
                     "ComfyUI) : son JSON est retiré et rien n'est copié."],
+            ]) +
+            hCard("Run sans prompt", [
+                ["Pourquoi", "<b>text_prompt</b> n'est pas branchée, ou elle est branchée sur un nœud <b>Get</b> dont " +
+                    "le <b>Set</b> du même nom n'existe pas (par exemple <b>Get: TEXT-INITIAL</b> sans <b>Set: " +
+                    "TEXT-INITIAL</b>), ou le texte est vide."],
+                ["Résultat", "le Run est enregistré avec un prompt vide. Les fenêtres montrent <b>No prompt associated " +
+                    "with this run</b> en orange. Dans 02 et 06, ces Runs forment un groupe à part."],
+                ["Avant le Run", "le nœud affiche <b>text_prompt receives nothing: runs will be recorded without a " +
+                    "prompt</b>."],
+                ["Pour réparer", "ajoutez le nœud <b>Set</b> du même nom, ou branchez un nœud de texte sur " +
+                    "<b>text_prompt</b>."],
             ]) +
             hCard("Comment CFG, Steps et Seed sont lus", [
                 ["Tapée", "une valeur tapée dans le nœud est lue directement."],
