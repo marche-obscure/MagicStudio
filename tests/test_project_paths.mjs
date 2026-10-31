@@ -10,7 +10,7 @@ import {
     runDateText, runsOfKind, runSummary, outputFile, rushItems, folderUse, SORT_FOLDERS, sortDot, sortTargets,
     batchSortTargets, canDeleteRush, splitByKind, deletedText, anchoredSubs, projectNameOfPath, subfolderLabel,
     sameGroup, mergeData,
-    REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
+    REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, NO_PROMPT, promptMissing, setsOfRuns, setSummary, runTabName,
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
     folderMax, hiddenFolderItems, rowFolder, withoutFolderPaths, withoutReferences,
     frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState, runSourcePaths, PICKUP_DIR, PICKUP_SUBS, pickupPath,
@@ -718,4 +718,26 @@ test("splitByKind : un groupe par type de fichier, video puis image", () => {
     assert.deepEqual(splitByKind([i1]), [["image", [i1]]]);
     assert.deepEqual(splitByKind([]), []);
     assert.deepEqual(splitByKind(null), []);
+});
+
+test("NO_PROMPT exact text", () => {
+    assert.equal(NO_PROMPT, "No prompt associated with this run");
+});
+
+test("promptMissing old run", () => {
+    assert.equal(promptMissing({ prompt_missing: true, prompt: "" }), true);
+    assert.equal(promptMissing({ prompt: "  " }), true);
+    assert.equal(promptMissing({ prompt: null }), true);
+    assert.equal(promptMissing({ prompt: "a" }), false);
+});
+
+test("promptGroups missing group", () => {
+    const groups = promptGroups([{ prompt: "a" }, { prompt: "" }, { prompt: "  ", prompt_missing: true }, { prompt: "a" }]);
+    assert.equal(groups.length, 2);
+    const real = groups.find((g) => g.prompt === "a");
+    const none = groups.find((g) => g.missing);
+    assert.equal(real.runs.length, 2);
+    assert.equal(real.missing, false);
+    assert.equal(none.runs.length, 2);
+    assert.equal(none.prompt, "");
 });

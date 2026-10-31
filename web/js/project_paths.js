@@ -676,15 +676,23 @@ export function setsWithRuns(registries, runs, kind) {
     return ((registries && registries[kind]) || []).map((set) => ({ set, runs: runsOfSet(runs, kind, set.index) }));
 }
 
-/** Prompts identiques (espaces autour ignores) regroupes : [{prompt, runs}], groupe du Run le plus recent d'abord. */
+/** Texte d'avertissement d'un Run sans prompt (orange dans les fenetres). */
+export const NO_PROMPT = "No prompt associated with this run";
+
+/** Vrai si le Run n'a pas de prompt : marque prompt_missing, ou (ancien Run) prompt vide / d'espaces. */
+export function promptMissing(run) {
+    return !!run && (run.prompt_missing === true || String(run.prompt == null ? "" : run.prompt).trim() === "");
+}
+
+/** Prompts identiques (espaces autour ignores) regroupes : [{prompt, missing, runs}], groupe du Run le plus recent d'abord ; les Runs sans prompt forment un seul groupe missing. */
 export function promptGroups(runs) {
     const groups = new Map();
     for (const r of runs || []) {
-        const key = String(r.prompt == null ? "" : r.prompt).trim();
+        const key = promptMissing(r) ? "" : String(r.prompt).trim();
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(r);
     }
-    return [...groups].map(([prompt, list]) => ({ prompt, runs: list }));
+    return [...groups].map(([prompt, list]) => ({ prompt, missing: prompt === "", runs: list }));
 }
 
 /** Ensembles du registre kind utilises par ces Runs : [{index, count}] par numero ; index 0 = Runs sans ensemble. */

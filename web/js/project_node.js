@@ -17,7 +17,7 @@ import {
     withoutReferences,
     RUN_FOLDERS, runDateText, durationText, runsOfKind, runSummary, outputFile, rushItems, SORT_FOLDERS, sortDot, sortTargets,
     batchSortTargets, canDeleteRush, splitByKind, deletedText,
-    REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, setsOfRuns, setSummary, runTabName,
+    REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, NO_PROMPT, promptMissing, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
     PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint,
@@ -3223,6 +3223,7 @@ function runConfigHtml(run, out) {
     let h = row("Run", escapeHtml(runDateText(run.date)) + (run.mode ? " – " + escapeHtml(run.mode) : "")) +
         row("Steps", val("steps")) + row("CFG", val("cfg")) + row("Seed", val("seed")) +
         row("Status", '<span style="color:' + color + '">' + escapeHtml(run.status || "?") + "</span>");
+    if (promptMissing(run)) h += row("Prompt", '<span style="color:' + ORANGE + '">' + NO_PROMPT + "</span>");
     const took = durationText(run.duration);
     if (took) h += row("Duration", escapeHtml(took), "Total time of the run, model loading included");
     if (!out) return h + row("Output", '<span style="color:#888">none</span>');
@@ -4263,8 +4264,11 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     Object.assign(prompt.label.style, { display: "flex", alignItems: "center", gap: "6px" });
     prompt.label.append(copyBtn, promptTitle, copyDone);
     let copyTimer = 0;
-    function setPrompt(text) {
-        prompt.body.textContent = text || "";
+    // missing : Run sans prompt -> avertissement orange a la place du texte, copie grisee.
+    function setPrompt(text, missing = false) {
+        if (missing) text = "";
+        prompt.body.textContent = missing ? NO_PROMPT : text || "";
+        prompt.body.style.color = missing ? ORANGE : "";
         copyBtn.disabled = !text;
         copyBtn.style.opacity = text ? "1" : "0.4";
         copyBtn.style.cursor = text ? "pointer" : "default";
@@ -4568,7 +4572,9 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             const o = document.createElement("option");
             o.value = String(i);
             const kinds = [...new Set((r.outputs || []).map((x) => x.kind))];
-            o.textContent = runDateText(r.date) + " – " + (r.mode || "?") + " – " + (kinds.join(" / ") || "no output");
+            o.textContent = (promptMissing(r) ? "⚠ " : "") + runDateText(r.date) + " – " + (r.mode || "?") + " – " +
+                (kinds.join(" / ") || "no output");
+            if (promptMissing(r)) o.title = NO_PROMPT;
             o.style.background = "#111";
             select.appendChild(o);
         });
@@ -4591,7 +4597,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         outIndex = Math.min(outIndex, Math.max(0, outs.length - 1));
         const out = outs[outIndex];
         fillConfig(run, out);
-        setPrompt(run.prompt);
+        setPrompt(run.prompt, promptMissing(run));
         thumb.body.innerHTML = "";
         thumb.label.textContent = out ? "Output – click the thumbnail to view the " + out.kind : "Output";
         const file = outputFile(out);
@@ -4860,7 +4866,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
         paintRushSort(items);
         conf.label.textContent = "Configuration – " + (it.file ? baseOf(it.file) : "deleted original");
         fillConfig(it.run, it.output);
-        setPrompt(it.run.prompt);
+        setPrompt(it.run.prompt, promptMissing(it.run));
     }
 
     /** Fenetre Processing d'un original, a cote de celle-ci. */
@@ -5311,11 +5317,11 @@ function buildSetViewer(container, onSort, onWorkflow, rush) {
             const textCol = document.createElement("div");
             Object.assign(textCol.style, { flex: "1", minWidth: "0" });
             const text = document.createElement("div");
-            text.textContent = g.prompt || "(empty prompt)";
-            text.title = g.prompt;
+            text.textContent = g.missing ? NO_PROMPT : g.prompt || "(empty prompt)";
+            text.title = g.missing ? NO_PROMPT : g.prompt;
             Object.assign(text.style, {
                 display: "-webkit-box", WebkitLineClamp: "3", WebkitBoxOrient: "vertical", overflow: "hidden",
-                lineHeight: "1.45", wordBreak: "break-word", color: g.prompt ? "#ddd" : "#888",
+                lineHeight: "1.45", wordBreak: "break-word", color: g.missing ? ORANGE : g.prompt ? "#ddd" : "#888",
             });
             const meta = document.createElement("div");
             meta.textContent = runDateText(g.runs[0].date) + " · " + g.runs.length + " run" + (g.runs.length > 1 ? "s" : "");
@@ -7462,8 +7468,10 @@ app.registerExtension({
                         [...new Set(moved.map((o) => o.from_media))].join(" / ") + " moved to " +
                         [...new Set(moved.map((o) => (o.kind === "video" ? "40.Rush Videos" : "60.Rush Images")))].join(" / ") +
                         " (Footage)" : "";
-                    say("Run recorded: " + baseOf(run.file) + (copied ? ", " + copied + " video(s) copied to 40.Rush Videos"
-                        : "") + movedText + (status === "done" ? "." : " (run stopped or failed)."), status === "done");
+                    // Run sans prompt (text_prompt ne recoit rien) : meme phrase, avertissement en tete.
+                    const noPrompt = data.prompt_missing ? "Run recorded without a prompt (text_prompt receives nothing): " : "";
+                    say(noPrompt + "Run recorded: " + baseOf(run.file) + (copied ? ", " + copied + " video(s) copied to 40.Rush Videos"
+                        : "") + movedText + (status === "done" ? "." : " (run stopped or failed)."), status === "done" && !noPrompt);
                     loadFolderFiles();
                 } catch (err) {
                     say(err.message);
