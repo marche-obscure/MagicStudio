@@ -586,7 +586,8 @@ def _finish_run(run_file, files, status, output_dir, now=None, duration=None):
     known = _known_sources(run_file)
     started = _run_start(data)
     new = [src for src in sources if os.path.normcase(src) not in known or _written_since(src, started)]
-    if not new and (sources or data["status"] == "error"):
+    # Run sans prompt (prompt_missing) et sans aucun fichier : rien a garder (Save / Load, SaveVoice seul).
+    if not new and (sources or data["status"] == "error" or data.get("prompt_missing")):
         os.remove(run_file)
         _remove_run_workflow(project, run_file)
         same = known.get(os.path.normcase(sources[0])) if sources else None

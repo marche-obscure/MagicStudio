@@ -349,9 +349,16 @@ class RunFileTest(unittest.TestCase):
 
     def test_no_new_file_removes_the_run(self):
         path = rr.start_run(self.p, "", PROMPT, self.when)
-        res = rr.finish_run(path, [], "interrupted", self.out)
+        res = rr.finish_run(path, [], "done", self.out)
         self.assertTrue(res["skipped"])
         self.assertFalse(os.path.exists(path))
+
+    def test_done_run_with_prompt_and_no_file_kept(self):
+        path = rr.start_run(self.p, "a red car", PROMPT, self.when)
+        res = rr.finish_run(path, [], "done", self.out)
+        self.assertNotIn("skipped", res)
+        self.assertEqual(res["status"], "done")
+        self.assertTrue(os.path.exists(path))
 
     def test_start_writes_workflow(self):
         wf = {"nodes": [{"id": 1, "type": "KSampler"}], "links": [], "extra": {"t": "\u00e9"}}
