@@ -170,6 +170,15 @@ export const PROMPT_UNWIRED = "text_prompt receives nothing: runs will be record
  * linkedProject (10 sauts). Un noeud qu'on ne sait pas traverser compte comme une source valide.
  */
 export function promptSource(node) {
+    try {
+        return promptSourceWalk(node);
+    } catch (e) {
+        // Un Get / Set tiers qui plante ne doit jamais casser render() : pas d'avertissement.
+        return { ok: true };
+    }
+}
+
+function promptSourceWalk(node) {
     const slot = (node.inputs || []).findIndex((i) => i && i.name === "text_prompt");
     let link = slot >= 0 ? storedLinkInto(node, slot) : null;
     let src = link ? node.graph.getNodeById(link.origin_id) : null;
@@ -177,13 +186,16 @@ export function promptSource(node) {
     for (let hop = 0; hop < 10; hop++) {
         const type = String(src.type || "");
         let next = null;
-        if (/get/i.test(type) && src.widgets && src.widgets[0]) {
+        if (/getnode/i.test(type) && src.widgets && src.widgets[0]) {
             const name = String(src.widgets[0].value);
-            const direct = typeof src.getInputLink === "function" ? src.getInputLink(0) : null;
-            const setter = direct ? null : setterOfGet(src);
-            link = direct || (setter ? storedLinkInto(setter, 0) : null);
+            // Le Set d'abord : getInputLink d'un Get sans Set leve une erreur (Easy-Use) ou
+            // affiche une alerte (KJNodes), donc on ne l'appelle que si un Set existe.
+            const setter = setterOfGet(src);
+            if (!setter) return { ok: false, reason: "get-without-set", name };
+            link = storedLinkInto(setter, 0) ||
+                (typeof src.getInputLink === "function" ? src.getInputLink(0) : null);
             if (!link) return { ok: false, reason: "get-without-set", name };
-            next = (setter || src).graph.getNodeById(link.origin_id);
+            next = setter.graph.getNodeById(link.origin_id);
         } else if (/setnode/i.test(type) && src.widgets && src.widgets[0]) {
             link = storedLinkInto(src, 0);
             if (!link) return { ok: false, reason: "get-without-set", name: String(src.widgets[0].value) };

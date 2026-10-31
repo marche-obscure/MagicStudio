@@ -189,3 +189,26 @@ test("promptSource : set existant mais sans entree = rien recu", () => {
     fakeNode(g, 3, "PixaromaSetNode", ["value"], { widgets: [{ value: "TEXT-INITIAL" }] });
     assert.deepEqual(promptSource(n), { ok: false, reason: "get-without-set", name: "TEXT-INITIAL" });
 });
+
+test("promptSource : Get dont getInputLink leve une erreur sans Set = avertissement, sans exception", () => {
+    const g = fakeGraph();
+    const n = projectNode(g);
+    wire(g, fakeNode(g, 2, "easy getNode", [], { widgets: [{ value: "TEXT-INITIAL" }],
+        getInputLink() { throw new Error("No setter found"); } }), n, 1);
+    assert.deepEqual(promptSource(n), { ok: false, reason: "get-without-set", name: "TEXT-INITIAL" });
+});
+
+test("promptSource : un noeud texte dont le type contient get n'est pas un Get", () => {
+    const g = fakeGraph();
+    const n = projectNode(g);
+    wire(g, fakeNode(g, 2, "PromptGetter", [], { widgets: [{ value: "x" }] }), n, 1);
+    assert.deepEqual(promptSource(n), { ok: true });
+});
+
+test("promptSource : une erreur tierce = ok, jamais d'exception", () => {
+    const g = fakeGraph();
+    const n = projectNode(g);
+    wire(g, fakeNode(g, 2, "KJGetNode", [], { widgets: [{ value: "A" }],
+        findSetter() { throw new Error("boom"); } }), n, 1);
+    assert.deepEqual(promptSource(n), { ok: true });
+});

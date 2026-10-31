@@ -567,7 +567,9 @@ def _finish_run(run_file, files, status, output_dir, now=None, duration=None):
     (in_place). Images : pas de copie (choix utilisateur), seulement citees.
     Le JSON recoit status, outputs et duration (run_duration). Aucun fichier
     nouveau alors que le Run en a renvoye, ou Run arrete sans fichier : le
-    JSON est retire, rien n'est copie ({skipped, same_as, status}). Deja
+    JSON est retire, rien n'est copie ({skipped, same_as, status, prompt_missing}).
+    Run sans prompt (prompt_missing) et sans aucun fichier : retire aussi (rien a
+    garder, ex. SaveVoice seul), meme termine avec succes. Deja
     termine : rien n'est refait.
     """
     project = _check_run_file(run_file)
@@ -591,7 +593,8 @@ def _finish_run(run_file, files, status, output_dir, now=None, duration=None):
         os.remove(run_file)
         _remove_run_workflow(project, run_file)
         same = known.get(os.path.normcase(sources[0])) if sources else None
-        return {"skipped": True, "same_as": same, "status": data["status"]}
+        return {"skipped": True, "same_as": same, "status": data["status"],
+                "prompt_missing": bool(data.get("prompt_missing"))}
     try:
         data = _register_run(project, data, now)
     except Exception as e:  # registre illisible : le Run garde son bloc complet

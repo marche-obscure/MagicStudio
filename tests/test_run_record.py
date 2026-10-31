@@ -351,6 +351,8 @@ class RunFileTest(unittest.TestCase):
         path = rr.start_run(self.p, "", PROMPT, self.when)
         res = rr.finish_run(path, [], "done", self.out)
         self.assertTrue(res["skipped"])
+        self.assertTrue(res["prompt_missing"])
+        self.assertEqual(res["status"], "done")
         self.assertFalse(os.path.exists(path))
 
     def test_done_run_with_prompt_and_no_file_kept(self):
@@ -546,7 +548,8 @@ class RunFileTest(unittest.TestCase):
         # Meme fichier renvoye par le cache de ComfyUI : JSON retire, rien de copie.
         second = rr.start_run(self.p, "p", PROMPT, self.when)
         res = rr.finish_run(second, files, "done", self.out)
-        self.assertEqual(res, {"skipped": True, "same_as": "20261017_153000_run.json", "status": "done"})
+        self.assertEqual(res, {"skipped": True, "same_as": "20261017_153000_run.json", "status": "done",
+                               "prompt_missing": False})
         self.assertFalse(os.path.exists(second))
         self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images")), [])
         # Nouveau fichier : enregistre.
@@ -1111,7 +1114,7 @@ class RunFileTest(unittest.TestCase):
         path = rr.start_run(self.p, "p", PROMPT, self.when)
         # Arrete sans fichier : pas enregistre.
         self.assertEqual(rr.finish_run(path, [], "interrupted", self.out),
-                         {"skipped": True, "same_as": None, "status": "error"})
+                         {"skipped": True, "same_as": None, "status": "error", "prompt_missing": False})
         self.assertFalse(os.path.exists(path))
         with self.assertRaises(ValueError):
             rr.finish_run(os.path.join(self.p, "04.Prompt", "notes.json"), [], "done", self.out)

@@ -114,7 +114,8 @@ class MiniMaxH3Project:
     utilisateur 19/10/2026), ou <input de ComfyUI>/Projets si ce Root folder
     est vide. Le dossier se gere dans l'interface ; chaque Run est enregistre
     dans 04.Prompt (voir run_record.py), avec le texte de l'entree text_prompt.
-    Optional: without it, the run is still recorded, without a prompt. Sortie project_used (22/10/2026, ex-final_cut) : le
+    text_prompt est facultative : sans elle, le Run est quand meme enregistre, sans prompt
+    (sauf s'il ne produit aucun fichier). Sortie project_used (22/10/2026, ex-final_cut) : le
     dossier du projet, pour les noeuds MagicStudio Final Cut et SaveVoice.
     """
 
@@ -168,7 +169,12 @@ class MiniMaxH3Project:
         if run_record.prompt_text(text_prompt)[1]:
             print("[MagicStudio Project] text_prompt receives nothing: run recorded without a prompt.")
         workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
-        run_file = run_record.start_run(path, text_prompt, prompt, workflow=workflow)
+        try:
+            run_file = run_record.start_run(path, text_prompt, prompt, workflow=workflow)
+        except (OSError, ValueError) as e:
+            # Erreur d'ecriture dans le projet : le Run de l'utilisateur ne doit pas echouer pour autant.
+            print("[MagicStudio Project] Could not start the run record (" + str(e) + "): this run is not recorded.")
+            return {"result": result}
         # Lu par l'interface : a la fin du Run, les fichiers generes sont associes a ce JSON.
         return {"ui": {"mmrun": [run_file]}, "result": result}
 

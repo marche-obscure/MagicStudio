@@ -678,6 +678,8 @@ const HELP_SECTIONS = [
             hCard("Not recorded", [
                 ["Cache", "A run without any <b>new file</b> (a result sent back by the cache of ComfyUI, for example): " +
                     "its JSON is removed and nothing is copied."],
+                ["Nothing made", "A run without a prompt and without any file (<b>SaveVoice</b> only, for example) " +
+                    "is not kept."],
             ]) +
             hCard("Run without a prompt", [
                 ["Why", "<b>text_prompt</b> is not wired, or it is wired to a <b>Get</b> node whose <b>Set</b> of the " +
@@ -1214,6 +1216,8 @@ const HELP_SECTIONS_FR = [
             hCard("Ce qui n'est pas enregistré", [
                 ["Cache", "Un Run sans <b>fichier nouveau</b> (par exemple un résultat renvoyé par le cache de " +
                     "ComfyUI) : son JSON est retiré et rien n'est copié."],
+                ["Rien de produit", "Un Run sans prompt et sans aucun fichier (<b>SaveVoice</b> seul, par exemple) " +
+                    "n'est pas gardé."],
             ]) +
             hCard("Run sans prompt", [
                 ["Pourquoi", "<b>text_prompt</b> n'est pas branchée, ou elle est branchée sur un nœud <b>Get</b> dont " +
@@ -4599,7 +4603,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             const kinds = [...new Set((r.outputs || []).map((x) => x.kind))];
             o.textContent = (promptMissing(r) ? "⚠ " : "") + runDateText(r.date) + " – " + (r.mode || "?") + " – " +
                 (kinds.join(" / ") || "no output");
-            if (promptMissing(r)) o.title = NO_PROMPT;
+            if (promptMissing(r)) { o.title = NO_PROMPT; o.style.color = ORANGE; }
             o.style.background = "#111";
             select.appendChild(o);
         });
@@ -7493,6 +7497,8 @@ app.registerExtension({
                         ? (end - run.start) / 1000 : null;
                     const data = await apiPost("/mmproject/run_done", { run_file: run.file, files: run.files, status, duration });
                     if (data.skipped) {
+                        // Run reussi sans prompt et sans fichier (SaveVoice seul...) : rien a dire.
+                        if (status === "done" && data.prompt_missing && !data.same_as) return;
                         say(data.same_as ? "Run not recorded: nothing changed since " + data.same_as + "."
                             : "Run not recorded: stopped or failed without any file.", !!data.same_as);
                         return;
