@@ -38,6 +38,15 @@ class ProjectUsedNamesTest(unittest.TestCase):
         self.assertIn("def run(self, audio, project_used,", body)
         self.assertNotIn('"project": (FINAL_CUT_TYPE,)', body)
 
+    def test_project_run_records_without_text_prompt(self):
+        """Le noeud Project enregistre le Run meme sans text_prompt (31/10/2026)."""
+        body = _class(_nodes(), "MiniMaxH3Project")
+        self.assertNotRegex(body, r"if text_prompt is None:\s*\n\s*return")
+        self.assertIn("run_record.prompt_text(", body)
+        cut = body.index('"optional"')
+        self.assertIn('"text_prompt"', body[cut:])
+        self.assertNotIn('"text_prompt":', body[:cut])
+
     def test_old_link_name_gone(self):
         """Plus de "final_cut" comme nom de lien (Final Cut, final_cut.py, routes gardes)."""
         src = _nodes()

@@ -112,9 +112,9 @@ class MiniMaxH3Project:
     l'interface JS (web/js/project_node.js), dans le Root folder recu du
     MagicStudio RefLoader (entree "project", obligatoire : choix
     utilisateur 19/10/2026), ou <input de ComfyUI>/Projets si ce Root folder
-    est vide. Le dossier se gere dans l'interface ; avec
-    l'entree text_prompt branchee, chaque Run est enregistre dans
-    04.Prompt (voir run_record.py). Sortie project_used (22/10/2026, ex-final_cut) : le
+    est vide. Le dossier se gere dans l'interface ; chaque Run est enregistre
+    dans 04.Prompt (voir run_record.py), avec le texte de l'entree text_prompt.
+    Optional: without it, the run is still recorded, without a prompt. Sortie project_used (22/10/2026, ex-final_cut) : le
     dossier du projet, pour les noeuds MagicStudio Final Cut et SaveVoice.
     """
 
@@ -127,7 +127,7 @@ class MiniMaxH3Project:
                 "project": (PROJECT_TYPE,),
             },
             "optional": {
-                "text_prompt": ("STRING", {"forceInput": True}),
+                "text_prompt": ("STRING", {"forceInput": True, "tooltip": "Prompt text saved with the run. Optional: without it, the run is still recorded, without a prompt."}),
                 # Sortie model_link de MultiFiles Select (choix utilisateur) : ses champs
                 # donnent les modeles du Run (02.Models), avec leur position.
                 "models_link": ("STRING", {"forceInput": True}),
@@ -144,14 +144,14 @@ class MiniMaxH3Project:
     CATEGORY = "MagicStudio"
     DESCRIPTION = (
         "Create or pick a project folder (00.Workflows, 02.Models, 04.Prompt, 06.LoRA, 08.Images, "
-        "10.Son, 40.Rush Videos, 60.Rush Images) in the root folder of the MagicStudio RefLoader."
+        "10.Son, 40.Rush Videos, 60.Rush Images) in the root folder of the MagicStudio RefLoader. "
+        "Optional: without text_prompt, the run is still recorded, without a prompt."
     )
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
         # Chaque Run est enregistre, meme avec le meme prompt. ComfyUI ne donne pas ici
-        # les entrees branchees (text_prompt) : le noeud s'execute donc a chaque Run,
-        # ce qui ne fait rien sans text_prompt.
+        # les entrees branchees (text_prompt) : le noeud s'execute donc a chaque Run.
         return float("nan")
 
     def run(self, state, project=None, text_prompt=None, models_link=None, prompt=None, extra_pnginfo=None):
@@ -161,12 +161,12 @@ class MiniMaxH3Project:
             path = ""
         # Sortie project_used : le dossier du projet ("" sans projet).
         result = (path if path and os.path.isdir(path) else "",)
-        # Sans text_prompt : rien a enregistrer (le dossier se gere dans l'interface).
-        if text_prompt is None:
-            return {"result": result}
         if not result[0]:
             print("[MagicStudio Project] No project picked: this run is not recorded.")
             return {"result": result}
+        # Sans texte (rien recu, vide ou espaces) : Run enregistre quand meme, prompt vide.
+        if run_record.prompt_text(text_prompt)[1]:
+            print("[MagicStudio Project] text_prompt receives nothing: run recorded without a prompt.")
         workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
         run_file = run_record.start_run(path, text_prompt, prompt, workflow=workflow)
         # Lu par l'interface : a la fin du Run, les fichiers generes sont associes a ce JSON.

@@ -325,6 +325,34 @@ class RunFileTest(unittest.TestCase):
         # Meme seconde : la suivante.
         self.assertTrue(rr.start_run(self.p, "b", PROMPT, self.when).endswith("20261017_153001_run.json"))
 
+    def test_prompt_text(self):
+        self.assertEqual(rr.prompt_text(None), ("", True))
+        self.assertEqual(rr.prompt_text("  \n "), ("", True))  # blank text
+        self.assertEqual(rr.prompt_text("a red car"), ("a red car", False))
+
+    def test_start_run_without_prompt(self):
+        for empty in ("", None, "  "):
+            data = read_json(rr.start_run(self.p, empty, PROMPT, self.when))
+            self.assertEqual(data["prompt"], "")
+            self.assertIs(data["prompt_missing"], True)
+            self.when += 1
+
+    def test_start_run_with_prompt_unchanged(self):
+        data = read_json(rr.start_run(self.p, "a red car", PROMPT, self.when))
+        self.assertNotIn("prompt_missing", data)
+
+    def test_list_runs_prompt_missing(self):
+        rr.start_run(self.p, "", PROMPT, self.when)
+        rr.start_run(self.p, "a red car", PROMPT, self.when + 10)
+        runs = rr.list_runs(self.p)  # le plus recent d'abord
+        self.assertEqual([r["prompt_missing"] for r in runs], [False, True])
+
+    def test_no_new_file_removes_the_run(self):
+        path = rr.start_run(self.p, "", PROMPT, self.when)
+        res = rr.finish_run(path, [], "interrupted", self.out)
+        self.assertTrue(res["skipped"])
+        self.assertFalse(os.path.exists(path))
+
     def test_start_writes_workflow(self):
         wf = {"nodes": [{"id": 1, "type": "KSampler"}], "links": [], "extra": {"t": "\u00e9"}}
         path = rr.start_run(self.p, "p", PROMPT, self.when, workflow=wf)

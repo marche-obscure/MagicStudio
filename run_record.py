@@ -439,6 +439,16 @@ def run_workflow_path(project, run_name):
     return os.path.join(project, *RUN_WORKFLOW_FOLDER, os.path.basename(run_name))
 
 
+def prompt_text(value):
+    """
+    Texte du prompt d'un Run -> (texte, manquant). Rien recu (None) ou texte vide
+    / fait d'espaces : ("", True) ; sinon le texte tel quel (31/10/2026).
+    """
+    if value is None or not str(value).strip():
+        return "", True
+    return value, False
+
+
 def start_run(project, text, prompt=None, when=None, workflow=None):
     """
     Ecrit 04.Prompt/yyyyMMdd_HHmmss_run.json (seconde suivante si le nom est
@@ -458,9 +468,13 @@ def start_run(project, text, prompt=None, when=None, workflow=None):
         if not os.path.exists(path) and not os.path.exists(run_workflow_path(project, name)):
             break
         t += 1
+    text, missing = prompt_text(text)
     data = {"date": time.strftime(DATE_FORMAT, time.localtime(t)),
             "project": os.path.basename(os.path.abspath(project)), "mode": run_mode(prompt),
             "prompt": text}
+    if missing:
+        # Run enregistre sans prompt (text_prompt ne recoit rien) : marque pour l'interface.
+        data["prompt_missing"] = True
     data.update(run_params(prompt))
     data["models"] = run_models(prompt)
     if isinstance(workflow, dict):
@@ -801,6 +815,7 @@ def list_runs(project):
         if not isinstance(data, dict):
             continue
         run = {k: data.get(k) for k in ("date", "mode", "prompt", "cfg", "steps", "seed", "status", "duration")}
+        run["prompt_missing"] = bool(data.get("prompt_missing"))
         run.update({k: data[k] for k in ("cfg_from", "steps_from", "seed_from") if data.get(k)})
         models = run_models_of(project, data, regs)
         if models is not None:
