@@ -873,7 +873,10 @@ export function inProjectFilter(path, project) {
     if (!project) return true;
     const p = String(path || "").replace(/\\/g, "/").toLowerCase();
     const n = String(project).toLowerCase();
-    return p === n || p.startsWith(n + "/");
+    if (p === n || p.startsWith(n + "/")) return true;
+    // Sous-projet "G/P" : le dossier Final-Cut_ du projet mere G compte aussi (02/11/2026).
+    const cut = n.lastIndexOf("/");
+    return cut > 0 && p.startsWith(n.slice(0, cut) + "/" + FINAL_CUT_PREFIX.toLowerCase());
 }
 
 /**
@@ -935,6 +938,10 @@ export function isMediaSubfolder(path, variant, kind, desc) {
     if ((n === 4 || n === 5) && parts.slice(n - 3).join("/") === EXTRACT_FRAME_DIR.join("/")) {
         return !kind || kind === "image";
     }
+    // <projet ou projet mere>/Final-Cut_<Nom>/Images | Video | Audio (02/11/2026) : celui du type de la ligne.
+    if (n === 3 && parts[1].startsWith(FINAL_CUT_PREFIX)) {
+        return kind ? parts[2] === FINAL_CUT_SUBS[kind] : Object.values(FINAL_CUT_SUBS).includes(parts[2]);
+    }
     if ((n === 3 || n === 4) && parts[n - 2] === PICKUP_DIR) {
         return kind ? parts[n - 1] === PICKUP_SUBS[kind] : Object.values(PICKUP_SUBS).includes(parts[n - 1]);
     }
@@ -944,6 +951,13 @@ export function isMediaSubfolder(path, variant, kind, desc) {
     // Projet de la racine (P/08.Images) ou d'un dossier de projets (G/P/08.Images, 22/10/2026).
     return (n === 2 || n === 3) && allowed.includes(parts[n - 1]);
 }
+
+// --- Final Cut (02/11/2026) ----------------------------------------------------------------
+
+/** Dossier des copies du Final Cut (= final_cut.PREFIX + nom du projet ou du projet mere). */
+export const FINAL_CUT_PREFIX = "Final-Cut_";
+/** Type de fichier -> sous-dossier du Final Cut (= final_cut.KINDS). */
+export const FINAL_CUT_SUBS = { image: "Images", video: "Video", audio: "Audio" };
 
 // --- Pick Up (26/10/2026) ------------------------------------------------------------------
 

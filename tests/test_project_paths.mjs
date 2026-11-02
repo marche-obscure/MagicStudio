@@ -11,7 +11,7 @@ import {
     batchSortTargets, canDeleteRush, splitByKind, deletedText, anchoredSubs, projectNameOfPath, subfolderLabel,
     sameGroup, mergeData,
     REGISTRY_FOLDERS, OTHER_REGISTRY, runsOfSet, setsWithRuns, promptGroups, NO_PROMPT, promptMissing, setsOfRuns, setSummary, runTabName,
-    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, durationText,
+    switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, FINAL_CUT_SUBS, durationText,
     folderMax, hiddenFolderItems, rowFolder, withoutFolderPaths, withoutReferences,
     frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState, runSourcePaths, PICKUP_DIR, PICKUP_SUBS, pickupPath,
     orderOutputs, postLabel, postTags, postHint,
@@ -740,4 +740,19 @@ test("promptGroups missing group", () => {
     assert.equal(real.missing, false);
     assert.equal(none.runs.length, 2);
     assert.equal(none.prompt, "");
+});
+
+test("Final-Cut folders in the gallery Subfolder list (02/11/2026)", () => {
+    assert.ok(isMediaSubfolder("P/Final-Cut_P/Images", "minimax_h3.ref2va", "image"));
+    assert.ok(isMediaSubfolder("G\\Final-Cut_G\\Video", "minimax_h3.ref2va", "video"));
+    assert.ok(isMediaSubfolder("G/Final-Cut_G/Audio", "ltx.2_3", "audio"));
+    assert.ok(!isMediaSubfolder("P/Final-Cut_P/Video", "minimax_h3.ref2va", "image"));
+    assert.ok(!isMediaSubfolder("P/Final-Cut_P", "minimax_h3.ref2va", "image"));
+    assert.ok(!isMediaSubfolder("P/Final-Cut_P/Images/sub", "minimax_h3.ref2va", "image"));
+    // Sous-projet G/P : le Final-Cut du projet mere G est dans le filtre, pas celui d'un autre groupe.
+    assert.ok(inProjectFilter("G/Final-Cut_G/Images", "G/P"));
+    assert.ok(inProjectFilter("G/Final-Cut_G/Images", "G"));
+    assert.ok(!inProjectFilter("H/Final-Cut_H/Images", "G/P"));
+    assert.ok(!inProjectFilter("G/Q/08.Images", "G/P"));
+    assert.equal(FINAL_CUT_SUBS.image, "Images");
 });
