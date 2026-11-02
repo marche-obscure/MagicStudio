@@ -1082,7 +1082,19 @@ async function relinkToRoot(getState, setState, root) {
     return map.size;
 }
 
+/**
+ * Memoire de navigation de la galerie (folders / subs) toujours presente : un etat ecrit
+ * sans elle (cas reel du 02/11/2026, noeuds copies d'un autre workflow) faisait planter
+ * l'ouverture de la galerie, et tous les boutons des lignes restaient sans effet.
+ */
+function navOf(s) {
+    if (!s.folders || typeof s.folders !== "object") s.folders = {};
+    if (!s.subs || typeof s.subs !== "object") s.subs = {};
+    return s;
+}
+
 function resetRootSubs(s) {
+    navOf(s);
     for (const k of ["image", "video", "audio"]) {
         if (!s.folders[k]) s.subs[k] = "";
     }
@@ -2778,7 +2790,7 @@ function buildGallery(container, ctx) {
 
     /** Memorise base et sous-dossier pour ce type (base = racine : stocke ""). */
     function saveNav() {
-        const s = ctx.getState();
+        const s = navOf(ctx.getState());
         // Video et Video/Audio partagent la memoire de navigation des videos.
         s.folders[fileKind(kind)] = base && base !== s.root ? base : "";
         s.subs[fileKind(kind)] = sub;
@@ -3659,7 +3671,7 @@ function buildGallery(container, ctx) {
             // Champ prerempli avec le dossier propre a ce type, sinon le dossier
             // racine ; on affiche le sous-dossier memorise (ou le Root folder
             // lui-meme) et on repere les sous-dossiers pour la liste deroulante.
-            const st = ctx.getState();
+            const st = navOf(ctx.getState());
             base = st.folders[fileKind(kind)] || st.root || "";
             sub = base ? st.subs[fileKind(kind)] || "" : "";
             // Filtre Project : le projet choisi dans H3 Project, sinon All.
