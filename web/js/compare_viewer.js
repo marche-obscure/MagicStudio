@@ -32,12 +32,16 @@ function barButton(text, title) {
  * Barre de lecture pour une ou deux videos : videos[0] donne l'heure, les autres la suivent
  * (play / pause / seek / image par image, boucle requestAnimationFrame avec syncFix).
  * fpsOf(video) -> cadence (pas d'image = 1 / fps). label = "A" / "B" (barres l'une sous l'autre) ou "".
+ * opts = {loop, onLoop(on)} : Loop repris d'une barre precedente (la barre est refaite au changement de mode).
+ * Chaque video garde son propre volume ; le curseur Volume montre celui de l'horloge et regle toutes les videos.
  */
-export function buildBar(videos, fpsOf, label) {
+export function buildBar(videos, fpsOf, label, opts = {}) {
     const clock = videos[0];
     const followers = videos.slice(1);
-    let loop = false;
+    let loop = !!opts.loop;
     let raf = 0;
+    let scrubbing = false; // curseur de temps tenu : tick() ne le reecrit pas
+    const pending = new Map(); // suiveur sans duree connue -> temps a appliquer a loadedmetadata
     const el = document.createElement("div");
     Object.assign(el.style, { display: "flex", alignItems: "center", gap: "4px", height: BAR_HEIGHT + "px", minWidth: "0" });
     if (label) {
@@ -80,13 +84,27 @@ export function buildBar(videos, fpsOf, label) {
      */
     function follow(t) {
         for (const f of followers) {
+            // Duree encore inconnue : on attend les metadonnees (sinon B partirait a 0).
+            if (!(dur(f) > 0)) {
+                pending.set(f, t);
+                continue;
+            }
+            pending.delete(f);
             const target = Math.min(t, dur(f));
             if (f.currentTime !== target) f.currentTime = target;
         }
     }
+    const onFollowerMeta = (e) => {
+        const f = e.target;
+        if (!pending.has(f) || !(dur(f) > 0)) return;
+        const t = pending.get(f);
+        pending.delete(f);
+        f.currentTime = Math.min(t, dur(f));
+    };
+    for (const f of followers) f.addEventListener("loadedmetadata", onFollowerMeta);
     function paintTime() {
         const d = dur(clock);
-        range.value = String(d > 0 ? Math.round((clock.currentTime / d) * 1000) : 0);
+        if (!scrubbing) range.value = String(d > 0 ? Math.round((clock.currentTime / d) * 1000) : 0);
         time.textContent = timeText(clock.currentTime) + " / " + timeText(d);
         playBtn.textContent = clock.paused ? "▶" : "❚❚";
         loopBtn.style.borderColor = loop ? GREEN : "#3a3a3a";
@@ -140,6 +158,16 @@ export function buildBar(videos, fpsOf, label) {
     };
     const onLoop = () => {
         loop = !loop;
+        if (opts.onLoop) opts.onLoop(loop);
+        paintTime();
+    };
+    // Curseur tenu (souris ou doigt) : la boucle de lecture ne le deplace pas.
+    const scrubStart = () => {
+        scrubbing = true;
+    };
+    const scrubEnd = () => {
+        if (!scrubbing) return;
+        scrubbing = false;
         paintTime();
     };
     const onRange = () => {
@@ -165,11 +193,14 @@ export function buildBar(videos, fpsOf, label) {
     nextBtn.addEventListener("click", () => step(1));
     loopBtn.addEventListener("click", onLoop);
     range.addEventListener("input", onRange);
+    range.addEventListener("pointerdown", scrubStart);
+    range.addEventListener("change", scrubEnd);
+    window.addEventListener("pointerup", scrubEnd);
+    window.addEventListener("pointercancel", scrubEnd);
     vol.addEventListener("input", onVol);
     const clockEvents = [["play", startLoop], ["pause", paintTime], ["ended", onEnded], ["loadedmetadata", paintTime],
         ["seeked", paintTime], ["timeupdate", () => clock.paused && paintTime()]];
     for (const [name, fn] of clockEvents) clock.addEventListener(name, fn);
-    onVol();
     paintTime();
     if (!clock.paused) startLoop();
     return {
@@ -179,6 +210,10 @@ export function buildBar(videos, fpsOf, label) {
             if (raf) cancelAnimationFrame(raf);
             raf = 0;
             for (const [name, fn] of clockEvents) clock.removeEventListener(name, fn);
+            for (const f of followers) f.removeEventListener("loadedmetadata", onFollowerMeta);
+            window.removeEventListener("pointerup", scrubEnd);
+            window.removeEventListener("pointercancel", scrubEnd);
+            pending.clear();
             el.remove();
         },
     };
@@ -209,6 +244,7 @@ export function buildCompareViewer(host, ops = {}) {
     const keys = { A: "", B: "" };
     const failed = { A: false, B: false };
     let released = false; // lecteurs vides par release() : rien n'est relu avant le prochain setSources
+    let disposed = false; // noeud supprime : plus aucun media cree (un paint tardif ne reverrouille rien)
 
     const root = document.createElement("div");
     Object.assign(root.style, { position: "absolute", inset: "0", overflow: "hidden" });
@@ -225,7 +261,7 @@ export function buildCompareViewer(host, ops = {}) {
     function mediaOf(side) {
         const src = state.sources[side];
         const k = sourceKey(src);
-        if (released) return null;
+        if (released || disposed) return null;
         if (k === keys[side] && (els[side] || !k)) return els[side];
         dropMedia(side);
         keys[side] = k;
@@ -323,6 +359,7 @@ export function buildCompareViewer(host, ops = {}) {
     let handle = null;
     /** Redessine le cadre (les elements media sont gardes). */
     function layout() {
+        if (disposed) return;
         // Detacher sans vider les medias (appendChild les deplace plus loin).
         root.innerHTML = "";
         layer = { A: null };
@@ -373,7 +410,10 @@ export function buildCompareViewer(host, ops = {}) {
     // ---- Lecteur ----
     const barHost = ops.barHost || null;
     let bars = [];
-    let barsKey = null; // {sync, mode, A, B} : barres refaites seulement si l'un change
+    let barsKey = null; // {sync, layout, A, B} : barres refaites seulement si l'un change
+    // Loop de chaque barre, repris quand la barre est refaite (mode, nouvelle source).
+    const loops = { sync: false, A: false, B: false };
+    const loopOpts = (k) => ({ loop: loops[k], onLoop: (on) => (loops[k] = on) });
     const fpsOf = (v) => state.fps[v === els.A ? "A" : "B"] || 24;
     function clearBars() {
         for (const b of bars) b.dispose();
@@ -381,19 +421,22 @@ export function buildCompareViewer(host, ops = {}) {
         if (barHost) barHost.innerHTML = "";
     }
     function paintBars() {
-        if (!barHost) return;
+        if (!barHost || disposed) return;
         const vA = viewer.media("A");
         const vB = viewer.media("B");
         barHost.style.height = playerHeight(state.sync) + "px";
+        // Sync allume : une seule barre quel que soit le mode (Loop et volume restent) ;
+        // Sync eteint : la disposition change seulement entre side et les autres modes.
+        const lay = state.sync ? "one" : state.mode === "side" ? "row" : "column";
         const k = barsKey;
-        if (k && k.sync === state.sync && k.mode === state.mode && k.A === vA && k.B === vB) return;
-        barsKey = { sync: state.sync, mode: state.mode, A: vA, B: vB };
+        if (k && k.sync === state.sync && k.layout === lay && k.A === vA && k.B === vB) return;
+        barsKey = { sync: state.sync, layout: lay, A: vA, B: vB };
         clearBars();
         // Images seulement (ou rien) : barres cachees, la hauteur reste (pas de saut).
         barHost.style.visibility = vA || vB ? "visible" : "hidden";
         if (!vA && !vB) return;
         if (state.sync) {
-            const bar = buildBar([vA, vB].filter(Boolean), fpsOf, "");
+            const bar = buildBar([vA, vB].filter(Boolean), fpsOf, "", loopOpts("sync"));
             bars.push(bar);
             barHost.appendChild(bar.el);
             return;
@@ -408,7 +451,7 @@ export function buildCompareViewer(host, ops = {}) {
             const cell = document.createElement("div");
             Object.assign(cell.style, side ? { flex: "1", minWidth: "0" } : { height: BAR_HEIGHT + "px" });
             if (v) {
-                const bar = buildBar([v], fpsOf, side ? "" : s);
+                const bar = buildBar([v], fpsOf, side ? "" : s, loopOpts(s));
                 bars.push(bar);
                 cell.appendChild(bar.el);
             }
@@ -470,6 +513,7 @@ export function buildCompareViewer(host, ops = {}) {
         el: root,
         /** Sources des deux cotes ; un cote inchange garde son element (et son temps de lecture). */
         setSources(sources) {
+            if (disposed) return;
             const next = { A: (sources && sources.A) || null, B: (sources && sources.B) || null };
             state.sources = next;
             released = false;
@@ -519,6 +563,7 @@ export function buildCompareViewer(host, ops = {}) {
         },
         /** Arret complet (noeud supprime). */
         dispose() {
+            disposed = true;
             clearBars();
             for (const side of SIDES) dropMedia(side);
             host.removeEventListener("mousemove", onMove);

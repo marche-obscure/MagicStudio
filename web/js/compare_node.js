@@ -29,7 +29,6 @@ const SIDE_COLORS = { A: SIDE_BLUE, B: VIOLET };
 const SIDES = ["A", "B"];
 // Hauteur du cadre : uiHeight(sync) moins le haut, la ligne d'etat, les modes, le lecteur et les etoiles.
 const FRAME_HEIGHT = 236;
-const mediaUrl = (path) => "/mmrefloader/media?file=" + encodeURIComponent(path);
 const baseName = (p) => String(p || "").split(/[\\/]/).pop();
 const normPath = (p) => String(p || "").replace(/[\\/]+/g, "/").toLowerCase();
 const key = (side) => (side === "A" ? "a" : "b");
@@ -550,19 +549,6 @@ app.registerExtension({
                 viewer.setSources(sources);
                 paintSync(s.sync, SIDES.some((x) => sources[x] && sources[x].kind === "video"));
             }
-            /** Element d'apercu (image, ou video sans son ni lecture) ; onFail si le fichier manque. */
-            function mediaElement(path, kind, onFail) {
-                const el = document.createElement(kind === "video" ? "video" : "img");
-                if (kind === "video") {
-                    el.muted = true;
-                    el.preload = "metadata";
-                }
-                el.draggable = false;
-                el.src = mediaUrl(path);
-                Object.assign(el.style, { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" });
-                el.addEventListener("error", () => onFail && onFail());
-                return el;
-            }
             let renderer = defaultRenderer;
 
             // ---- Interface publique pour les taches 6 a 8 ----
@@ -570,7 +556,7 @@ app.registerExtension({
                 node, container, top, pill, sideBtns, helpSlot, status, modeSlot, modeRow, frame, playerSlot, starRow,
                 viewer,
                 readState, writeState, wired, wiredKinds, comparisonKinds, sourceOf, lockFor, previewOf,
-                setSide, clearSide, applyDrop, say, paint, paintStatus, mediaElement,
+                setSide, clearSide, applyDrop, say, paint, paintStatus,
                 /** Remplace le dessin du cadre (tache 6) ; fn(api) est appelee a chaque paint(). */
                 setRenderer(fn) {
                     renderer = typeof fn === "function" ? fn : defaultRenderer;
