@@ -449,7 +449,11 @@ class MagicStudioCompare:
                 images, fps = frames, None
             kind = src[side]["kind"]
             path = compare.preview_path(folder_paths.get_temp_directory(), unique_id, side, kind)
-            compare.write_preview(path, kind, images, fps)
+            try:
+                compare.write_preview(path, kind, images, fps)
+            except Exception as e:  # un apercu rate ne doit pas arreter le Run
+                print("[MagicStudio] Compare preview failed: %s" % (e,))
+                continue
             ui.append({"side": side, "path": path, "kind": kind})
 
         chosen = src[choice]

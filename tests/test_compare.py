@@ -110,6 +110,27 @@ class PureTest(unittest.TestCase):
         p = compare.preview_path("t", "7", "B", "image")
         self.assertTrue(p.replace("\\", "/").endswith("magicstudio_compare/7_B.png"), p)
 
+    def test_preview_path_default_id(self):
+        for uid in (None, ""):
+            p = compare.preview_path("t", uid, "A", "image")
+            self.assertTrue(p.replace("\\", "/").endswith("magicstudio_compare/node_A.png"), p)
+
+    def test_write_preview_rgba(self):
+        import av
+        from PIL import Image
+        d = tempfile.mkdtemp()
+        try:
+            png = os.path.join(d, "a.png")
+            compare.write_preview(png, "image", _frames(2, 32, 48).new_zeros((2, 32, 48, 4)))
+            with Image.open(png) as im:
+                self.assertEqual(im.size, (48, 32))
+            mp4 = os.path.join(d, "a.mp4")
+            compare.write_preview(mp4, "video", _frames(2, 32, 48).new_zeros((2, 32, 48, 4)), fps=24)
+            with av.open(mp4) as c:
+                self.assertEqual(sum(1 for _ in c.decode(video=0)), 2)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
     def test_write_preview_png_and_mp4(self):
         import av
         from PIL import Image
@@ -200,6 +221,25 @@ class RunTest(unittest.TestCase):
         self.assertEqual(ui[0]["kind"], "video")
         self.assertTrue(ui[0]["path"].replace("\\", "/").endswith("magicstudio_compare/12_3_B.mp4"))
         self.assertTrue(os.path.isfile(ui[0]["path"]))
+
+    def test_preview_failure_keeps_result(self):
+        fb = _frames(3, 8, 8)
+        orig = self.nodes.compare.write_preview
+
+        def boom(*a, **k):
+            raise RuntimeError("no encoder")
+        self.nodes.compare.write_preview = boom
+        try:
+            r = self.nodes.MagicStudioCompare().run(self._st(), frames_b=fb, unique_id="5")
+        finally:
+            self.nodes.compare.write_preview = orig
+        self.assertIs(r["result"][1], fb)
+        self.assertEqual(r["ui"]["mmcompare"], [])
+
+    def test_run_both_inputs_same_side_refused(self):
+        with self.assertRaises(ValueError) as e:
+            self.nodes.MagicStudioCompare().run(self._st(), video_a=object(), frames_a=_frames(1))
+        self.assertEqual(str(e.exception), "Side A already has an input")
 
     def test_file_outside_refused(self):
         st = self._st(a={"path": self.outside, "kind": "image"})

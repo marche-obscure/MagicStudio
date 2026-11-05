@@ -118,14 +118,14 @@ def signature(state_text):
 
 def preview_path(temp_dir, unique_id, side, kind):
     """<temp>/magicstudio_compare/<unique_id nettoye>_<A|B>.mp4 (video) ou .png (image)."""
-    uid = re.sub(r"[^A-Za-z0-9_-]", "_", str(unique_id if unique_id is not None else ""))
+    uid = re.sub(r"[^A-Za-z0-9_-]", "_", str(unique_id if unique_id is not None else "")) or "node"
     return os.path.join(temp_dir, PREVIEW_DIR, "%s_%s.%s" % (uid, side, "png" if kind == "image" else "mp4"))
 
 
 def _frame_array(images, i):
     """Image i d'un tenseur [N, H, W, 3] (0..1) -> tableau uint8 [H, W, 3]."""
     import numpy as np
-    return (np.clip(images[i].cpu().numpy(), 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+    return (np.clip(images[i].cpu().numpy()[..., :3], 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
 
 
 def write_preview(path, kind, images, fps=None):
