@@ -7942,3 +7942,6 @@ app.registerExtension({
         };
     },
 });
+
+// Pieces reprises par la fenetre Folder de MedLoad (web/js/media_browser.js).
+export { buildPreviewWindow, blockStrayDrop };
