@@ -175,3 +175,25 @@ export function releaseComparePlayers(nodes) {
     }
     return n;
 }
+
+/** Coin de l'etiquette A / B dans le cadre : "tl" (haut gauche), "tr" (haut droite), "bl" (bas gauche). */
+export function tagCorner(mode, side) {
+    if (mode === "ud") return side === "A" ? "tl" : "bl";
+    if (mode === "rl") return side === "B" ? "tl" : "tr";
+    return side === "A" ? "tl" : "tr";
+}
+
+/** Temps lisible du lecteur : "m:ss.d" (dixiemes) ; 0 pour une valeur invalide. */
+export function timeText(t) {
+    const v = Number.isFinite(t) && t > 0 ? t : 0;
+    const tenths = Math.floor(v * 10 + 1e-6);
+    const m = Math.floor(tenths / 600);
+    const s = Math.floor((tenths % 600) / 10);
+    return m + ":" + String(s).padStart(2, "0") + "." + (tenths % 10);
+}
+
+/** Cadence d'un cote : apercu de frames branchees = 24, sinon fps lu (/mmrefloader/info), sinon 24. */
+export function sideFps(fromFrames, infoFps) {
+    if (fromFrames) return 24;
+    return Number(infoFps) > 0 ? Number(infoFps) : 24;
+}

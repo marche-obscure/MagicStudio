@@ -4,16 +4,18 @@ import { linkedProject, projectInputNames } from "./graph_links.js";
 import { buildFolderWindow } from "./media_browser.js";
 import { buildProjectWindow } from "./project_browser.js";
 import {
-    COMPARE_CLASS, parseState, formatState, effectiveKind, acceptKind, bodyDropSide, halfSide, uiHeight, initialStar,
+    COMPARE_CLASS, MODES, parseState, formatState, effectiveKind, acceptKind, bodyDropSide, halfSide, uiHeight,
+    initialStar, hintText,
 } from "./compare_pure.js";
+import { buildCompareViewer } from "./compare_viewer.js";
 
 // --------------------------------------------------------------------
 // Noeud MagicStudio Image / Video Compare (plan du 05/11/2026, tache 5 : sources).
 // Deux cotes A / B : une entree branchee (video_x ou frames_x) ou un fichier choisi
 // (fenetres Project | Folder, ou depot d'un lien sur tout le noeud). L'entree branchee
 // gagne : le fichier reste dans l'etat (widget "state", cache), montre grise.
-// Le cadre de lecture (tache 6), le lecteur (tache 7) et l'etoile (tache 8) se
-// branchent sur node.__mmCompare (voir le compte rendu de la tache 5).
+// Le cadre de lecture (tache 6, compare_viewer.js), le lecteur (tache 7) et l'etoile
+// (tache 8) se branchent sur node.__mmCompare (voir les comptes rendus des taches 5 a 7).
 // --------------------------------------------------------------------
 
 const NODE_NAME = COMPARE_CLASS;
@@ -25,8 +27,8 @@ const PREVIEW_KEY = "mmComparePreview";
 const SIDE_BLUE = "#1e88e5";
 const SIDE_COLORS = { A: SIDE_BLUE, B: VIOLET };
 const SIDES = ["A", "B"];
-// Hauteur provisoire du cadre (la tache 6 la recalcule avec les modes et le lecteur).
-const FRAME_HEIGHT = 250;
+// Hauteur du cadre : uiHeight(sync) moins le haut, la ligne d'etat, les modes, le lecteur et les etoiles.
+const FRAME_HEIGHT = 236;
 const mediaUrl = (path) => "/mmrefloader/media?file=" + encodeURIComponent(path);
 const baseName = (p) => String(p || "").split(/[\\/]/).pop();
 const normPath = (p) => String(p || "").replace(/[\\/]+/g, "/").toLowerCase();
@@ -214,10 +216,47 @@ app.registerExtension({
             Object.assign(status.style, {
                 fontWeight: "bold", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minHeight: "15px",
             });
-            // Place des modes Side by side / Left Right / Right Left / Up Down + aide (tache 6).
+            // Modes Side by side / Left Right / Right Left / Up Down, aide dessous.
             const modeSlot = document.createElement("div");
-            Object.assign(modeSlot.style, { display: "flex", alignItems: "center", gap: "4px" });
-            // Cadre de lecture : zone provisoire (deux moities A / B) remplacee par la tache 6.
+            Object.assign(modeSlot.style, { display: "flex", flexDirection: "column", gap: "3px" });
+            const modeRow = document.createElement("div");
+            Object.assign(modeRow.style, { display: "flex", alignItems: "center", gap: "4px", height: "22px" });
+            const modeBtns = {};
+            for (const [value, text] of MODES) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.textContent = text;
+                Object.assign(b.style, {
+                    background: "#252525", color: "#ddd", border: "1px solid #3a3a3a", borderRadius: "6px",
+                    padding: "2px 8px", cursor: "pointer", fontSize: "11px", flex: "0 0 auto",
+                });
+                b.addEventListener("click", () => {
+                    const s = readState();
+                    if (s.mode === value) return;
+                    s.mode = value;
+                    writeState(s);
+                    paint();
+                });
+                modeBtns[value] = b;
+                modeRow.appendChild(b);
+            }
+            const modeSpacer = document.createElement("div");
+            modeSpacer.style.flex = "1";
+            modeRow.appendChild(modeSpacer);
+            const hint = document.createElement("div");
+            Object.assign(hint.style, { color: "#999", fontSize: "11px", height: "14px", lineHeight: "14px" });
+            modeSlot.append(modeRow, hint);
+            function paintModes(mode) {
+                for (const [value] of MODES) {
+                    const b = modeBtns[value];
+                    const on = value === mode;
+                    b.style.borderColor = on ? ORANGE : "#3a3a3a";
+                    b.style.color = on ? ORANGE : "#ddd";
+                    b.style.fontWeight = on ? "bold" : "normal";
+                }
+                hint.textContent = hintText(mode);
+            }
+            // Cadre de lecture (compare_viewer.js).
             const frame = document.createElement("div");
             Object.assign(frame.style, {
                 position: "relative", height: FRAME_HEIGHT + "px", border: "2px dashed #3b5f5b", borderRadius: "8px",
@@ -442,64 +481,22 @@ app.registerExtension({
                 return setSide(target, info.path, info.kind);
             }
 
-            // ---- Cadre provisoire (remplace par la tache 6 via api.setRenderer) ----
+            // ---- Cadre de comparaison (compare_viewer.js) ----
+            const viewer = buildCompareViewer(frame, {
+                onRemove: (side) => clearSide(side),
+            });
+            /** Source d'un cote pour le cadre : null si rien (ni fichier ni entree branchee). */
+            function viewSource(side) {
+                const src = sourceOf(side);
+                if (!src.from) return null;
+                return { path: src.path, kind: src.kind, from: src.from, kept: src.kept };
+            }
             function defaultRenderer(api) {
-                api.frame.innerHTML = "";
-                for (const side of SIDES) {
-                    const src = api.sourceOf(side);
-                    const half = document.createElement("div");
-                    Object.assign(half.style, {
-                        position: "relative", flex: "1", minWidth: "0", display: "flex", alignItems: "center",
-                        justifyContent: "center", color: "#888", textAlign: "center", overflow: "hidden",
-                        borderLeft: side === "B" ? "1px solid #2a2a2a" : "none",
-                    });
-                    half.dataset.side = side;
-                    const tag = document.createElement("div");
-                    tag.textContent = side;
-                    Object.assign(tag.style, {
-                        position: "absolute", top: "4px", left: "4px", background: SIDE_COLORS[side], color: "white",
-                        fontWeight: "bold", borderRadius: "4px", padding: "0 6px", zIndex: "2", pointerEvents: "none",
-                    });
-                    const text = (t, extra) => {
-                        const d = document.createElement("div");
-                        d.textContent = t;
-                        Object.assign(d.style, { padding: "0 10px" }, extra || {});
-                        return d;
-                    };
-                    const box = document.createElement("div");
-                    Object.assign(box.style, {
-                        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "6px",
-                        width: "100%", height: "100%",
-                    });
-                    if (src.path) box.appendChild(api.mediaElement(src.path, src.kind, () => {
-                        box.innerHTML = "";
-                        box.appendChild(text(src.from === "input" ? "Run once to preview" : "File not found"));
-                    }));
-                    else if (src.from === "input") box.appendChild(text("Run once to preview"));
-                    else box.appendChild(text("Pick or drop a file for side " + side));
-                    if (src.kept) {
-                        box.appendChild(text("kept: " + baseName(src.kept.path) + " (used when input " + side + " is unwired)",
-                            { color: "#666", fontSize: "11px" }));
-                    }
-                    half.append(tag, box);
-                    if (src.from === "file") {
-                        const x = document.createElement("button");
-                        x.type = "button";
-                        x.textContent = "✕";
-                        x.title = "Remove this file from side " + side;
-                        Object.assign(x.style, {
-                            position: "absolute", top: "4px", right: "4px", width: "20px", height: "20px", padding: "0",
-                            border: "none", borderRadius: "50%", background: "#000a", color: "#ff6b6b", cursor: "pointer",
-                            fontWeight: "bold", zIndex: "2",
-                        });
-                        x.addEventListener("click", (e) => {
-                            e.stopPropagation();
-                            api.clearSide(side);
-                        });
-                        half.appendChild(x);
-                    }
-                    api.frame.appendChild(half);
-                }
+                const s = api.readState();
+                paintModes(s.mode);
+                viewer.setMode(s.mode);
+                viewer.setStar(s.star);
+                viewer.setSources({ A: viewSource("A"), B: viewSource("B") });
             }
             /** Element d'apercu (image, ou video sans son ni lecture) ; onFail si le fichier manque. */
             function mediaElement(path, kind, onFail) {
@@ -518,7 +515,8 @@ app.registerExtension({
 
             // ---- Interface publique pour les taches 6 a 8 ----
             const api = {
-                node, container, top, pill, sideBtns, helpSlot, status, modeSlot, frame, playerSlot, starRow,
+                node, container, top, pill, sideBtns, helpSlot, status, modeSlot, modeRow, frame, playerSlot, starRow,
+                viewer,
                 readState, writeState, wired, wiredKinds, comparisonKinds, sourceOf, lockFor, previewOf,
                 setSide, clearSide, applyDrop, say, paint, paintStatus, mediaElement,
                 /** Remplace le dessin du cadre (tache 6) ; fn(api) est appelee a chaque paint(). */
@@ -530,7 +528,30 @@ app.registerExtension({
                 onPaint: [],
                 /** Crochets appeles par mmCompareRelease() (lecteurs a vider). */
                 onRelease: [],
+                /** Crochets appeles par dispose() (minuteurs, boucles, ecouteurs a arreter). */
+                onDispose: [],
+                /** Efface un refus garde (branchement change) et repeint la ligne d'etat. */
+                clearMessage() {
+                    if (!message) return;
+                    message = null;
+                    paintStatus();
+                },
+                /** Noeud supprime : minuteurs, boucles de lecture et ecouteurs arretes. */
+                dispose() {
+                    clearTimeout(watchTimer);
+                    clearTimeout(pillTimer);
+                    viewer.dispose();
+                    for (const fn of api.onDispose) {
+                        try {
+                            fn(api);
+                        } catch (e) {
+                            console.error("[MagicStudio] Compare dispose:", e);
+                        }
+                    }
+                },
             };
+            // Lecteurs du cadre vides avec les autres (verrou Windows).
+            api.onRelease.push(() => viewer.release());
             function paint() {
                 paintSideButtons();
                 renderer(api);
@@ -588,7 +609,11 @@ app.registerExtension({
                 e.dataTransfer.dropEffect = "copy";
                 mark(true);
             }, true);
-            container.addEventListener("dragleave", () => mark(false), true);
+            // Passage d'une moitie a l'autre : la souris reste dans le widget, le cadre ne clignote pas.
+            container.addEventListener("dragleave", (e) => {
+                if (e.relatedTarget && container.contains(e.relatedTarget)) return;
+                mark(false);
+            }, true);
             container.addEventListener("drop", (e) => {
                 if (!accepts(e.dataTransfer)) return;
                 e.preventDefault();
@@ -652,6 +677,8 @@ app.registerExtension({
         const onConnectionsChange = nodeType.prototype.onConnectionsChange;
         nodeType.prototype.onConnectionsChange = function () {
             const res = onConnectionsChange ? onConnectionsChange.apply(this, arguments) : undefined;
+            // Un refus garde (ex. "Side A already has an input") ne vaut plus apres un changement de liens.
+            if (this.__mmCompare) this.__mmCompare.clearMessage();
             if (this.mmProjectRefresh) this.mmProjectRefresh();
             if (this.mmComparePaint) setTimeout(() => this.mmComparePaint(), 0);
             return res;
@@ -688,6 +715,7 @@ app.registerExtension({
         const onRemoved = nodeType.prototype.onRemoved;
         nodeType.prototype.onRemoved = function () {
             if (this.mmCompareRelease) this.mmCompareRelease();
+            if (this.__mmCompare) this.__mmCompare.dispose();
             (this.__mmcompareOverlays || []).forEach((o) => o.remove());
             (this.__mmcompareWindows || []).forEach((w) => w.remove());
             return onRemoved ? onRemoved.apply(this, arguments) : undefined;

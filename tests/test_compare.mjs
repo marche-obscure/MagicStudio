@@ -133,3 +133,33 @@ test("releaseComparePlayers", () => {
     assert.equal(r, 1);
     assert.equal(n, 1);
 });
+
+test("tagCorner : coin de l'etiquette selon le mode", async () => {
+    const { tagCorner } = await import("../web/js/compare_pure.js");
+    assert.equal(tagCorner("side", "A"), "tl");
+    assert.equal(tagCorner("side", "B"), "tr");
+    assert.equal(tagCorner("lr", "A"), "tl");
+    assert.equal(tagCorner("lr", "B"), "tr");
+    assert.equal(tagCorner("rl", "B"), "tl");
+    assert.equal(tagCorner("rl", "A"), "tr");
+    assert.equal(tagCorner("ud", "A"), "tl");
+    assert.equal(tagCorner("ud", "B"), "bl");
+});
+
+test("timeText : m:ss.d", async () => {
+    const { timeText } = await import("../web/js/compare_pure.js");
+    assert.equal(timeText(0), "0:00.0");
+    assert.equal(timeText(NaN), "0:00.0");
+    assert.equal(timeText(-3), "0:00.0");
+    assert.equal(timeText(1.26), "0:01.2");
+    assert.equal(timeText(65.5), "1:05.5");
+    assert.equal(timeText(0.3), "0:00.3");
+});
+
+test("sideFps : 24 pour des frames, sinon fps lu, sinon 24", async () => {
+    const { sideFps } = await import("../web/js/compare_pure.js");
+    assert.equal(sideFps(true, 30), 24);
+    assert.equal(sideFps(false, 29.97), 29.97);
+    assert.equal(sideFps(false, null), 24);
+    assert.equal(sideFps(false, 0), 24);
+});
