@@ -27,6 +27,36 @@ const KINDS = {
 const POST_TIP = "Grey: the saved file is a new run. Green: it is a post-processing of the loaded file's run";
 /** Valeur du widget post_processing : seul un vrai booleen compte (ancien workflow = valeur d'un autre widget, donc non). */
 const postOn = (widget) => !!widget && widget.value === true;
+
+/**
+ * Nodes 2.0 : le rendu Vue garde une ligne "post_processing" (point d'entree + nom) meme
+ * avec le widget cache ; on cache cette ligne (comme l'entree state du RefLoader). Relance
+ * quand Vue redessine le noeud (MutationObserver) ; sans effet en mode classique.
+ */
+function hideVuePostRow(node) {
+    const apply = () => {
+        const el = document.querySelector('[data-node-id="' + node.id + '"]');
+        if (!el) return null;
+        for (const span of el.querySelectorAll(".text-node-component-slot-text")) {
+            if (span.textContent.trim() !== "post_processing") continue;
+            const row = span.closest(".lg-slot");
+            const box = row && row.parentElement;
+            if (box && box.style.display !== "none") box.style.display = "none";
+        }
+        return el;
+    };
+    const watch = (tries) => {
+        const el = apply();
+        if (!el) {
+            if (tries > 0) setTimeout(() => watch(tries - 1), 500);
+            return;
+        }
+        if (el.__mmPostObserved) return;
+        el.__mmPostObserved = true;
+        new MutationObserver(() => apply()).observe(el, { childList: true, subtree: true });
+    };
+    watch(20);
+}
 const mediaUrl = (path) => "/mmrefloader/media?file=" + encodeURIComponent(path);
 // Ordre des sorties, identique a RETURN_NAMES de nodes.py (choix utilisateur 24/10/2026 :
 // video_frames puis audio_video sous video ; audio = fichiers son seulement ; name en
@@ -281,6 +311,7 @@ app.registerExtension({
                 // Nodes 2.0 (rendu Vue) : lit options.hidden, sinon le widget reste affiche.
                 if (!postWidget.options) postWidget.options = {};
                 postWidget.options.hidden = true;
+                hideVuePostRow(node);
             } else {
                 postRow.style.display = "none";
             }
