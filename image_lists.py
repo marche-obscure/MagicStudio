@@ -36,14 +36,24 @@ def _inside(path, folder):
     return os.path.commonpath([path, folder]) == folder and path != folder
 
 
-def _check_dir(project):
-    """Le dossier des archives doit rester dans le projet (jonction qui sort = refusee)."""
-    folder = lists_dir(project)
-    if os.path.lexists(folder):
-        expected = os.path.join(os.path.realpath(project), CONFIG_DIR, LISTS_DIR)
-        if os.path.normcase(os.path.realpath(folder)) != os.path.normcase(expected):
-            raise ValueError("Image-Lists is not inside the project")
-    return folder
+def _check_dir(project, create=False):
+    """
+    Le dossier des archives doit rester dans le projet : chaque niveau sous le projet (99.Project-Config,
+    puis Image-Lists), qu'il existe ou non, est compare a son chemin attendu (jonction / lien qui sort =
+    refuse). create=True les cree un par un, en reverifiant apres chaque creation, avant toute ecriture.
+    """
+    real = os.path.realpath(project)
+    path = project
+    for part in (CONFIG_DIR, LISTS_DIR):
+        path = os.path.join(path, part)
+        real = os.path.join(real, part)
+        if not os.path.lexists(path):
+            if not create:
+                break
+            os.mkdir(path)
+        if os.path.normcase(os.path.realpath(path)) != os.path.normcase(real):
+            raise ValueError("%s is not inside the project" % part)
+    return lists_dir(project)
 
 
 def _safe(project, file):
@@ -82,24 +92,31 @@ def save_list(project, name, images, now=None):
     if not isinstance(images, (list, tuple)) or not 1 <= len(images) <= MAX_IMAGES \
             or not all(isinstance(p, str) and p.strip() for p in images):
         raise ValueError("An image list needs 1 to %d images" % MAX_IMAGES)
-    folder = _check_dir(project)
-    os.makedirs(folder, exist_ok=True)
+    folder = _check_dir(project, create=True)
     clean = clean_name(name)
     t = int(time.time() if now is None else now)
     while True:
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(t))
         file = "%s_%s.json" % (stamp, clean)
         path = os.path.join(folder, file)
-        if not os.path.exists(path):
-            break
-        t += 1
-    data = {"format": FORMAT, "version": 1, "name": clean,
-            "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)),
-            "images": [_to_stored(project, p) for p in images]}
-    tmp = path + ".part"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+        data = {"format": FORMAT, "version": 1, "name": clean,
+                "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)),
+                "images": [_to_stored(project, p) for p in images]}
+        try:
+            f = open(path, "x", encoding="utf-8")  # "x" : jamais par-dessus un fichier existant
+        except FileExistsError:
+            t += 1
+            continue
+        try:
+            with f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except BaseException:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            raise
+        break
     return {"file": file, "name": clean, "stamp": stamp, "count": len(images)}
 
 

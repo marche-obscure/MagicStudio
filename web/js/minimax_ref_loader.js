@@ -4890,12 +4890,14 @@ app.registerExtension({
             let notice = "";
             let noticeTitle = "";
             let noticeColor = "";
+            let noticeColorFor = ""; // texte auquel la couleur s'applique (un autre message reprend l'orange)
             // Creation du noeud : les Containers ne sont pas encore prevenus.
             let creating = false;
             const setState = (s) => {
                 notice = "";
                 noticeTitle = "";
                 noticeColor = "";
+                noticeColorFor = "";
                 stateWidget.value = JSON.stringify(s);
                 refresh();
             };
@@ -5062,13 +5064,12 @@ app.registerExtension({
                 if (b.lists) {
                     archiveBtn = makeIconButton(GREEN, svg(ARCHIVE_ICON_BODY), "Archive this image list");
                     listsBtn = makeIconButton(VIOLET, svg(LISTS_ICON_BODY), "Archived image lists");
+                    // Etat relu avant de tester disabled (lien du projet change depuis le dernier dessin).
                     archiveBtn.addEventListener("click", () => {
-                        if (archiveBtn.disabled) return;
                         paintListButtons();
                         if (!archiveBtn.disabled) imageLists.archive();
                     });
                     listsBtn.addEventListener("click", () => {
-                        if (listsBtn.disabled) return;
                         paintListButtons();
                         if (!listsBtn.disabled) imageLists.open();
                     });
@@ -5220,6 +5221,7 @@ app.registerExtension({
                     notice = text;
                     noticeTitle = title || "";
                     noticeColor = color || "";
+                    noticeColorFor = text;
                     refresh();
                 },
             });
@@ -5248,6 +5250,13 @@ app.registerExtension({
             helpBtn.addEventListener("click", () => help.open());
             overviewBtn.addEventListener("click", () => overview.open());
             rootBtn.addEventListener("click", () => rootDialog.open());
+            // Lien du projet change : les boutons d'archives se redessinent (clavier, tactile compris).
+            const prevConnections = node.onConnectionsChange;
+            node.onConnectionsChange = function () {
+                const res = prevConnections ? prevConnections.apply(this, arguments) : undefined;
+                setTimeout(() => { try { paintListButtons(); } catch (e) { /* noeud retire */ } }, 0);
+                return res;
+            };
             node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview, orderWarning, limitsDialog,
                 imageLists];
 
@@ -5439,7 +5448,7 @@ app.registerExtension({
                     .map((r) => listOf(s, r.id).length + "/" + lim.counts[r.id] + " " + r.label.toLowerCase());
                 const refText = parts.length ? parts.join(", ") : "Nothing selected yet";
                 summary.textContent = notice || refText;
-                summary.style.color = notice ? (noticeColor || ORANGE) : "#9fd6cf";
+                summary.style.color = notice ? ((noticeColorFor === notice && noticeColor) || ORANGE) : "#9fd6cf";
                 summary.title = notice ? noticeTitle : "";
 
                 // Upload orange s'il ecrasera des references, couleur standard sinon.

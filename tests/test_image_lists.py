@@ -117,6 +117,28 @@ class ImageListsTest(unittest.TestCase):
         self.assertTrue(os.path.exists(keep))
         self.assertEqual(len(il.list_lists(self.project)), 1)
 
+    def test_config_junction_out_refused_before_any_write(self):
+        # 99.Project-Config est une jonction vers l'exterieur (sans Image-Lists) : rien n'est cree ni ecrit.
+        elsewhere = os.path.join(self.tmp, "elsewhere")
+        os.makedirs(elsewhere)
+        if not make_junction(os.path.join(self.project, "99.Project-Config"), elsewhere):
+            self.skipTest("no junction / symlink available")
+        with self.assertRaises(ValueError):
+            il.save_list(self.project, "a", self.images, now=NOW)
+        self.assertEqual(os.listdir(elsewhere), [])
+        with self.assertRaises(ValueError):
+            il.delete_lists(self.project, ["20261105-101500_a.json"])
+        with self.assertRaises(ValueError):
+            il.list_lists(self.project)
+
+    def test_never_overwrites(self):
+        path = os.path.join(il.lists_dir(self.project), "20261105-101500_Yacht.json")
+        os.makedirs(il.lists_dir(self.project))
+        open(path, "w").write("keep")
+        r = il.save_list(self.project, "Yacht", self.images, now=NOW)
+        self.assertEqual(r["file"], "20261105-101501_Yacht.json")
+        self.assertEqual(open(path).read(), "keep")
+
     def test_junction_out_refused(self):
         os.makedirs(os.path.join(self.project, "99.Project-Config"))
         elsewhere = os.path.join(self.tmp, "elsewhere")

@@ -913,6 +913,8 @@ try:
         """Archive une liste d'images (jamais par-dessus une archive existante)."""
         try:
             body = await request.json()
+            if not isinstance(body, dict) or not isinstance(body.get("project", ""), str):
+                raise ValueError("Invalid request")
             projects.require_project(body.get("project", ""))
             data = await _in_executor(image_lists.save_list, body.get("project", ""), body.get("name", ""),
                                       body.get("images", []))
@@ -925,6 +927,8 @@ try:
         """Supprime des archives de listes d'images (deja confirme dans l'UI)."""
         try:
             body = await request.json()
+            if not isinstance(body, dict) or not isinstance(body.get("project", ""), str):
+                raise ValueError("Invalid request")
             projects.require_project(body.get("project", ""))
             data = await _in_executor(image_lists.delete_lists, body.get("project", ""), body.get("files", []))
         except Exception as e:
