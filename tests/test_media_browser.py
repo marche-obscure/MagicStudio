@@ -41,6 +41,15 @@ class MediaBrowserTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    @staticmethod
+    def junction(link, target):
+        if os.name != "nt":
+            return False
+        try:
+            return subprocess.run(["cmd", "/c", "mklink", "/J", link, target], capture_output=True).returncode == 0
+        except OSError:
+            return False
+
     def test_roots(self):
         self.assertEqual([(r["id"], r["label"]) for r in self.r], [("input", "Input"), ("output", "Output")])
         self.assertEqual([r["id"] for r in mb.roots(self.inp, os.path.join(self.tmp, "absent"))], ["input"])
@@ -61,8 +70,7 @@ class MediaBrowserTest(unittest.TestCase):
 
     def test_junction_out_is_refused(self):
         link = os.path.join(self.inp, "lien")
-        res = subprocess.run(["cmd", "/c", "mklink", "/J", link, self.other], capture_output=True)
-        if res.returncode != 0:
+        if not self.junction(link, self.other):
             self.skipTest("jonction impossible")
         self.assertIsNone(mb.allowed(link, self.r))
         with self.assertRaises(PermissionError):
@@ -97,6 +105,36 @@ class MediaBrowserTest(unittest.TestCase):
         self.assertEqual(n("h.png"), [])  # dossier cache exclu
         self.assertEqual(n("notes"), [])  # pas un media
         self.assertEqual(n("  "), [])
+
+    def test_relative_unc_and_drive_relative_refused(self):
+        for bad in ("input", ".", "\\\\server\\share\\x", "C:foo", "a\0b"):
+            self.assertIsNone(mb.allowed(bad, self.r), repr(bad))
+            with self.assertRaises(PermissionError):
+                mb.files(bad, self.r)
+
+    def test_search_loop_junction_is_bounded(self):
+        link = os.path.join(self.inp, "sub", "deep", "boucle")
+        if not self.junction(link, self.inp):
+            self.skipTest("jonction impossible")
+        res = mb.search(self.inp, self.r, "d.png")
+        self.assertEqual([f["name"] for f in res["files"]], ["d.png"])
+        self.assertFalse(res["truncated"])
+        os.rmdir(link)
+
+    def test_search_scan_cap(self):
+        for i in range(10):
+            write(os.path.join(self.out, "cap", "x%d.txt" % i))
+        res = mb.search(self.out, self.r, "zzz", scan_limit=5)
+        self.assertTrue(res["truncated"])
+
+    def test_file_symlink_out_is_not_listed(self):
+        link = os.path.join(self.inp, "lien.png")
+        try:
+            os.symlink(os.path.join(self.other, "secret.png"), link)
+        except (OSError, NotImplementedError, AttributeError):
+            self.skipTest("lien symbolique impossible")
+        self.assertNotIn("lien.png", [f["name"] for f in mb.files(self.inp, self.r)])
+        self.assertNotIn("lien.png", [f["name"] for f in mb.search(self.inp, self.r, "lien")["files"]])
 
     def test_search_limit_and_truncated(self):
         for i in range(5):

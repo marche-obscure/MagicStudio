@@ -15,6 +15,7 @@ except ImportError:  # tests : module charge seul
 
 REFUSED = "The Folder window only reads the input and output folders of ComfyUI: "
 SEARCH_LIMIT = 500
+SCAN_LIMIT = 50000  # entrees examinees au plus par recherche
 KINDS = ("all", "video", "image", "audio")
 
 
@@ -44,7 +45,7 @@ def roots(input_dir, output_dir):
 
 def allowed(path, roots_):
     """realpath du chemin s'il est dans une racine permise, sinon None."""
-    if not path or not str(path).strip():
+    if not path or not str(path).strip() or not os.path.isabs(str(path)):
         return None
     try:
         real = os.path.realpath(os.path.abspath(path))
@@ -66,12 +67,14 @@ def _kind_ok(name, kind):
     return k is not None and (kind in (None, "", "all") or k == kind)
 
 
-def _media_names(folder):
+def _media_names(folder, roots_):
     try:
         names = os.listdir(folder)
     except OSError:
         return []
-    return [n for n in names if media.kind_of(n) and os.path.isfile(os.path.join(folder, n))]
+    # Un fichier qui est un lien vers l'exterieur des racines n'est jamais liste.
+    return [n for n in names if media.kind_of(n) and os.path.isfile(os.path.join(folder, n))
+            and (not os.path.islink(os.path.join(folder, n)) or allowed(os.path.join(folder, n), roots_))]
 
 
 def _subdirs(folder, roots_):
@@ -90,7 +93,7 @@ def tree(path, roots_):
     out = []
     for n in _subdirs(folder, roots_):
         p = os.path.join(folder, n)
-        out.append({"name": n, "path": p, "count": len(_media_names(p)), "has_children": bool(_subdirs(p, roots_))})
+        out.append({"name": n, "path": p, "count": len(_media_names(p, roots_)), "has_children": bool(_subdirs(p, roots_))})
     return out
 
 
@@ -103,7 +106,7 @@ def _file_info(folder, name):
 def files(path, roots_, kind="all"):
     """Medias du dossier : [{name, path, kind, size, mtime}], par nom ; kind = all / video / image / audio."""
     folder = _check(path, roots_)
-    return [_file_info(folder, n) for n in sorted(_media_names(folder), key=str.lower) if _kind_ok(n, kind)]
+    return [_file_info(folder, n) for n in sorted(_media_names(folder, roots_), key=str.lower) if _kind_ok(n, kind)]
 
 
 def fold(text):
@@ -111,18 +114,31 @@ def fold(text):
     return "".join(c for c in unicodedata.normalize("NFKD", str(text or "")) if not unicodedata.combining(c)).lower()
 
 
-def search(path, roots_, query, kind="all", limit=SEARCH_LIMIT):
+def search(path, roots_, query, kind="all", limit=SEARCH_LIMIT, scan_limit=None):
     """Medias du dossier et de ses sous-dossiers dont le nom contient tous les mots : {files, truncated}."""
     folder = _check(path, roots_)
     words = fold(query).split()
     out = []
     if not words:
         return {"files": out, "truncated": False}
+    seen = set()  # realpaths deja visites : une jonction vers un dossier parent ne boucle jamais
+    scanned = 0
     for dirpath, dirnames, filenames in os.walk(folder):
+        key = _real(dirpath)
+        if key in seen:
+            dirnames[:] = []
+            continue
+        seen.add(key)
         dirnames[:] = sorted((d for d in dirnames if not d.startswith(".")
-                              and allowed(os.path.join(dirpath, d), roots_)), key=str.lower)
+                              and allowed(os.path.join(dirpath, d), roots_)
+                              and _real(os.path.join(dirpath, d)) not in seen), key=str.lower)
         for n in sorted(filenames, key=str.lower):
+            scanned += 1
+            if scanned > (scan_limit or SCAN_LIMIT):
+                return {"files": out, "truncated": True}
             if not _kind_ok(n, kind) or not all(w in fold(n) for w in words):
+                continue
+            if os.path.islink(os.path.join(dirpath, n)) and not allowed(os.path.join(dirpath, n), roots_):
                 continue
             if len(out) >= limit:
                 return {"files": out, "truncated": True}
