@@ -458,6 +458,7 @@ const HELP_SECTIONS = [
                 [helpDot("#d32f2f"), "No Good"],
                 [helpDot("#8a8a8a"), "the original is outside the project"],
             ]) +
+            "<p>A gold <b>★</b> marks the file preferred in a MagicStudio Image / Video Compare.</p>" +
             hWarn("a click on a folder button <b>moves the selected file into that folder at once, without " +
                 "confirmation</b> (only bringing back an original from outside the project and the Swap of Picture Lock " +
                 "ask first). To go back, click the button of its previous folder.", "Warning:") +
@@ -991,6 +992,7 @@ const HELP_SECTIONS_FR = [
                 [helpDot("#d32f2f"), "No Good"],
                 [helpDot("#8a8a8a"), "l'original est hors du projet"],
             ]) +
+            "<p>Une <b>★</b> dorée marque le fichier préféré dans un MagicStudio Image / Video Compare.</p>" +
             hWarn("un clic sur un bouton de dossier <b>déplace aussitôt le fichier sélectionné dans ce dossier, sans " +
                 "confirmation</b> (seuls le rapatriement d'un original hors du projet et le Swap de Picture Lock " +
                 "demandent confirmation). Pour revenir en arrière, cliquez sur le bouton de son ancien dossier.",

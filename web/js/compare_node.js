@@ -1,5 +1,8 @@
 import { app } from "../../scripts/app.js";
-import { TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, apiGet, hideWidget } from "./minimax_ref_loader.js";
+import {
+    TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, apiGet, hideWidget,
+    hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, VIDEO_ICON, START_ICON, buildHelpOverlay,
+} from "./minimax_ref_loader.js";
 import { linkedProject, projectInputNames } from "./graph_links.js";
 import { buildFolderWindow } from "./media_browser.js";
 import { buildProjectWindow } from "./project_browser.js";
@@ -17,6 +20,207 @@ import { buildCompareViewer } from "./compare_viewer.js";
 // Le cadre de lecture (tache 6, compare_viewer.js), le lecteur (tache 7) et l'etoile
 // (tache 8) se branchent sur node.__mmCompare (voir les comptes rendus des taches 5 a 7).
 // --------------------------------------------------------------------
+
+// ---- Aide ----
+const HELP_SECTIONS = [
+    {
+        id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
+        html: hSteps([
+            "Click <b>A</b> (<b>Select Source :</b>), then click a file in the window that opens. The file goes to side <b>A</b>.",
+            "Click <b>B</b>, then click the second file. It goes to side <b>B</b>.",
+            "Move the mouse over the viewer to compare the two files. Click <b>Side by side</b>, <b>Left Right</b>, " +
+            "<b>Right Left</b> or <b>Up Down</b> to change the view.",
+            "Click <b>★ Source A</b> or <b>Source B ★</b> under the viewer to mark the file you prefer.",
+        ]) +
+        hCard("Parts of the node", [
+            ["<b>Project | Folder</b>", "choose where the picking window looks: the wired project, or the <b>input</b> and <b>output</b> folders of ComfyUI"],
+            ["<b>A</b> / <b>B</b>", "pick the file of each side"],
+            ["Viewer", "shows the two files; drop a file here to fill a side"],
+            ["<b>Sync</b>", "videos only: one clock for A and B"],
+            ["<b>★ Source A</b> / <b>Source B ★</b>", "mark the preferred file"],
+        ]),
+    },
+    {
+        id: "inputs", title: "Inputs", icon: FOLDER_ICON, color: GREEN,
+        html: hCard("Optional inputs", [
+            ["<b>project_used</b>", "the <b>project_used</b> output of a <b>MagicStudio Project</b> node; it lets <b>Project</b> open that project"],
+            ["<b>video_a</b> / <b>video_b</b>", "a video for side A / side B"],
+            ["<b>frames_a</b> / <b>frames_b</b>", "images for side A / side B: one image is an image, several images are a video"],
+        ]) +
+        hNote("a wired input wins over the file of the same side. The file stays in the node (shown in grey) and " +
+            "comes back when you unwire the input.") +
+        hNote("do not wire <b>video_a</b> and <b>frames_a</b> together (same for B): the link is refused.") +
+        hTip("a wired <b>frames_a</b> or <b>frames_b</b> has no known type until the first Run. Run once to " +
+            "preview: the viewer shows <b>Run once to preview</b> until the preview exists."),
+    },
+    {
+        id: "viewer", title: "The viewer", icon: VIDEO_ICON, color: ORANGE,
+        html: hCard("Views", [
+            ["<b>Side by side</b>", "A on the left, B on the right"],
+            ["<b>Left Right</b>", "A and B on top of each other; move the mouse left / right to slide the curtain"],
+            ["<b>Right Left</b>", "same, with B on the left"],
+            ["<b>Up Down</b>", "same, from top to bottom"],
+        ]) +
+        hCard("Sound", [
+            ["Mouse over the viewer", "you hear only the side under the mouse"],
+            ["Mouse outside", "you hear the starred side, or A if there is no star"],
+        ]) +
+        hCard("Player (videos)", [
+            ["<b>Play / Pause</b>", "start or stop"],
+            ["<b>Previous frame</b> / <b>Next frame</b>", "one image back / forward"],
+            ["<b>Stop</b>", "stop and go back to the start"],
+            ["<b>Loop</b>", "green = play again at the end"],
+            ["<b>Volume</b>", "sound level"],
+            ["<b>Sync</b>", "on (default): one bar for A and B, B follows A. Off: one bar under each side, each side plays alone"],
+        ]) +
+        hNote("images have no player and no <b>Sync</b>."),
+    },
+    {
+        id: "picking", title: "Picking files", icon: FOLDER_ICON, color: VIOLET,
+        html: hSteps([
+            "Click <b>Project</b> or <b>Folder</b>. <b>Project</b> is greyed until <b>project_used</b> is wired.",
+            "Click <b>A</b> or <b>B</b>: the window opens.",
+            "Click a file. It goes to the side you chose, and the window stays open. Click <b>B</b>, then a second file.",
+        ]) +
+        hCard("Good to know", [
+            ["Drop", "drag a file from a window onto the viewer: it goes to the half under the mouse. Elsewhere on the node, it goes to the first free side"],
+            ["Same type", "the first file sets the type: two images or two videos. The window greys the other type. Sound files are refused"],
+            ["<b>✕</b>", "removes the file of that side (and its star, if it had one)"],
+            ["Wired input", "its button <b>A</b> / <b>B</b> is greyed: unwire the input to pick a file"],
+        ]),
+    },
+    {
+        id: "star", title: "The star", icon: START_ICON, color: GREEN,
+        html: hSteps([
+            "Click <b>★ Source A</b> (or <b>Source B ★</b>): the file of that side becomes the preferred file.",
+            "Click the same star again to remove it. Click the other star to move it.",
+        ]) +
+        "<p>The star belongs to the <b>file</b>, not to the side. It is kept:</p>" +
+        hList([
+            "in the Run record, when the file is the output of a Run;",
+            "in <b>99.Project-Config/stars.json</b>, for another file of a project;",
+            "in the node only, for a wired input or a file outside a project.",
+        ]) +
+        "<p>A gold <b>★</b> shows the preferred file in <b>40.Rush Videos</b> / <b>60.Rush Images</b>, " +
+        "<b>Processing</b>, the <b>Project</b> window and the <b>Folder</b> window.</p>" +
+        hNote("the star follows the sorting and the archives done by MagicStudio. A file moved by hand loses its star."),
+    },
+    {
+        id: "outputs", title: "Outputs", icon: VIDEO_ICON, color: ORANGE,
+        html: "<p>The outputs come from the <b>preferred</b> side (the starred one, else <b>A</b>).</p>" +
+        hCard("Outputs", [
+            ["<b>video</b>", "the video; empty for an image"],
+            ["<b>images</b>", "the image, or all the frames of the video"],
+            ["<b>path</b>", "the path of the file; empty for a wired input"],
+            ["<b>choice</b>", "<b>A</b> or <b>B</b>"],
+        ]) +
+        hNote("if the chosen side is empty, the other side is used. With no file and no input, the Run stops " +
+            "with <b>Pick or wire at least one source</b>."),
+    },
+];
+
+const HELP_SECTIONS_FR = [
+    {
+        id: "start", title: "Démarrage rapide",
+        html: hSteps([
+            "Cliquez sur <b>A</b> (<b>Select Source :</b>), puis sur un fichier dans la fenêtre qui s'ouvre. Le fichier va du côté <b>A</b>.",
+            "Cliquez sur <b>B</b>, puis sur le deuxième fichier. Il va du côté <b>B</b>.",
+            "Passez la souris sur le cadre pour comparer les deux fichiers. Cliquez sur <b>Side by side</b>, " +
+            "<b>Left Right</b>, <b>Right Left</b> ou <b>Up Down</b> pour changer la vue.",
+            "Cliquez sur <b>★ Source A</b> ou <b>Source B ★</b> sous le cadre pour marquer le fichier que vous préférez.",
+        ]) +
+        hCard("Parties du nœud", [
+            ["<b>Project | Folder</b>", "choisit où la fenêtre cherche : le projet relié, ou les dossiers <b>input</b> et <b>output</b> de ComfyUI"],
+            ["<b>A</b> / <b>B</b>", "choisissent le fichier de chaque côté"],
+            ["Cadre", "montre les deux fichiers ; déposez un fichier ici pour remplir un côté"],
+            ["<b>Sync</b>", "vidéos seulement : une seule horloge pour A et B"],
+            ["<b>★ Source A</b> / <b>Source B ★</b>", "marquent le fichier préféré"],
+        ]),
+    },
+    {
+        id: "inputs", title: "Entrées",
+        html: hCard("Entrées facultatives", [
+            ["<b>project_used</b>", "la sortie <b>project_used</b> d'un nœud <b>MagicStudio Project</b> ; elle permet à <b>Project</b> d'ouvrir ce projet"],
+            ["<b>video_a</b> / <b>video_b</b>", "une vidéo pour le côté A / le côté B"],
+            ["<b>frames_a</b> / <b>frames_b</b>", "des images pour le côté A / le côté B : une image seule est une image, plusieurs images sont une vidéo"],
+        ]) +
+        hNote("une entrée branchée gagne sur le fichier du même côté. Le fichier reste dans le nœud (affiché en " +
+            "gris) et revient quand vous débranchez l'entrée.") +
+        hNote("ne branchez pas <b>video_a</b> et <b>frames_a</b> ensemble (idem pour B) : le lien est refusé.") +
+        hTip("une entrée <b>frames_a</b> ou <b>frames_b</b> branchée n'a pas de type connu avant le premier Run. " +
+            "Lancez un Run pour voir l'aperçu : le cadre affiche <b>Run once to preview</b> tant qu'il n'existe pas."),
+    },
+    {
+        id: "viewer", title: "Le cadre",
+        html: hCard("Vues", [
+            ["<b>Side by side</b>", "A à gauche, B à droite"],
+            ["<b>Left Right</b>", "A et B l'un sur l'autre ; bougez la souris à gauche / à droite pour faire glisser le rideau"],
+            ["<b>Right Left</b>", "pareil, avec B à gauche"],
+            ["<b>Up Down</b>", "pareil, de haut en bas"],
+        ]) +
+        hCard("Son", [
+            ["Souris sur le cadre", "vous n'entendez que le côté sous la souris"],
+            ["Souris hors du cadre", "vous entendez le côté étoilé, ou A s'il n'y a pas d'étoile"],
+        ]) +
+        hCard("Lecteur (vidéos)", [
+            ["<b>Play / Pause</b>", "lancer ou arrêter"],
+            ["<b>Previous frame</b> / <b>Next frame</b>", "une image en arrière / en avant"],
+            ["<b>Stop</b>", "arrêter et revenir au début"],
+            ["<b>Loop</b>", "vert = relire au bout"],
+            ["<b>Volume</b>", "niveau du son"],
+            ["<b>Sync</b>", "allumé (par défaut) : une seule barre pour A et B, B suit A. Éteint : une barre sous chaque côté, chacun joue seul"],
+        ]) +
+        hNote("les images n'ont ni lecteur ni <b>Sync</b>."),
+    },
+    {
+        id: "picking", title: "Choisir les fichiers",
+        html: hSteps([
+            "Cliquez sur <b>Project</b> ou <b>Folder</b>. <b>Project</b> est grisé tant que <b>project_used</b> n'est pas relié.",
+            "Cliquez sur <b>A</b> ou <b>B</b> : la fenêtre s'ouvre.",
+            "Cliquez sur un fichier. Il va du côté choisi, et la fenêtre reste ouverte. Cliquez sur <b>B</b>, puis sur un deuxième fichier.",
+        ]) +
+        hCard("Bon à savoir", [
+            ["Glisser", "glissez un fichier d'une fenêtre sur le cadre : il va à la moitié sous la souris. Ailleurs sur le nœud, il va au premier côté libre"],
+            ["Même type", "le premier fichier fixe le type : deux images ou deux vidéos. La fenêtre grise l'autre type. Les sons sont refusés"],
+            ["<b>✕</b>", "retire le fichier de ce côté (et son étoile, s'il en avait une)"],
+            ["Entrée branchée", "son bouton <b>A</b> / <b>B</b> est grisé : débranchez l'entrée pour choisir un fichier"],
+        ]),
+    },
+    {
+        id: "star", title: "L'étoile",
+        html: hSteps([
+            "Cliquez sur <b>★ Source A</b> (ou <b>Source B ★</b>) : le fichier de ce côté devient le fichier préféré.",
+            "Cliquez de nouveau sur la même étoile pour la retirer. Cliquez sur l'autre étoile pour la déplacer.",
+        ]) +
+        "<p>L'étoile appartient au <b>fichier</b>, pas au côté. Elle est gardée :</p>" +
+        hList([
+            "dans l'enregistrement du Run, quand le fichier est la sortie d'un Run ;",
+            "dans <b>99.Project-Config/stars.json</b>, pour un autre fichier d'un projet ;",
+            "dans le nœud seulement, pour une entrée branchée ou un fichier hors projet.",
+        ]) +
+        "<p>Une <b>★</b> dorée montre le fichier préféré dans <b>40.Rush Videos</b> / <b>60.Rush Images</b>, " +
+        "<b>Processing</b>, la fenêtre <b>Project</b> et la fenêtre <b>Folder</b>.</p>" +
+        hNote("l'étoile suit les rangements et les archives faits par MagicStudio. Un fichier déplacé à la main perd son étoile."),
+    },
+    {
+        id: "outputs", title: "Sorties",
+        html: "<p>Les sorties viennent du côté <b>préféré</b> (l'étoilé, sinon <b>A</b>).</p>" +
+        hCard("Sorties", [
+            ["<b>video</b>", "la vidéo ; vide pour une image"],
+            ["<b>images</b>", "l'image, ou toutes les images de la vidéo"],
+            ["<b>path</b>", "le chemin du fichier ; vide pour une entrée branchée"],
+            ["<b>choice</b>", "<b>A</b> ou <b>B</b>"],
+        ]) +
+        hNote("si le côté choisi est vide, l'autre côté est utilisé. Sans fichier ni entrée, le Run s'arrête avec " +
+            "<b>Pick or wire at least one source</b>."),
+    },
+];
+
+function helpSections(lang) {
+    if (lang !== "fr") return HELP_SECTIONS;
+    const fr = Object.fromEntries(HELP_SECTIONS_FR.map((sec) => [sec.id, sec]));
+    return HELP_SECTIONS.map((sec) => (fr[sec.id] ? Object.assign({}, sec, fr[sec.id]) : sec));
+}
 
 const NODE_NAME = COMPARE_CLASS;
 const MIN_WIDTH = 460;
@@ -702,7 +906,19 @@ app.registerExtension({
                 pillTimer = setTimeout(paintPill, 100);
             };
             node.__mmcompareWindows = [folderWin, projectWin];
-            node.__mmcompareOverlays = []; // aide (tache 9)
+            const helpBtn = document.createElement("button");
+            helpBtn.type = "button";
+            helpBtn.textContent = "?";
+            Object.assign(helpBtn.style, {
+                width: "22px", height: "22px", borderRadius: "50%", border: "none", background: PINK,
+                color: "white", fontWeight: "bold", cursor: "pointer", padding: "0", flex: "0 0 auto",
+            });
+            helpSlot.append(helpBtn);
+            const help = buildHelpOverlay(container, {
+                sectionsFor: helpSections, nodeTitle: "MagicStudio Image / Video Compare", sectionKey: "mmcompare.helpSection",
+            });
+            helpBtn.addEventListener("click", () => help.open());
+            node.__mmcompareOverlays = [help];
             node.__mmcompareSay = say;
 
             // ---- Depot sur tout le cadre du noeud (capture : le canevas ne doit pas le recevoir) ----

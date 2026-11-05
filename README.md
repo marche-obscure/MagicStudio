@@ -29,6 +29,7 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 | 🗂️ **Rush sorting** | Reject / Validate / Footage, coloured dots, filter and date order |
 | 🎞️ **Final Cut** | Copies of the Picture Lock rushes, kept in sync and linked in the input folder, ready to drag |
 | 📥 **MedLoad** | Drop a file from Final Cut: image, video or audio, loaded where it is (no copy) |
+| ⚖️ **Image / Video Compare** | Compare two images or two videos and star the best one |
 | 🌍 **Help & compatibility** | Built-in help in English and French; classic nodes and Nodes 2.0 |
 
 ## Quick start
@@ -251,6 +252,16 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 - **Safety:** only files inside the input or output folder of ComfyUI (or their subfolders) are accepted; any other path is refused before the run, with a message on the node.
 - A file dragged from the Windows Explorer gives no path to the browser: drag it from Final Cut, or type its path.
 - The **?** button opens its help (Quick start, Outputs, Project / Folder, Folder window, Project window, Accepted files), in English or French.
+
+## MagicStudio Image / Video Compare node
+
+- **Compares two files, A and B** (two images or two videos, never more). Click **A** or **B** (**Select Source :**) to pick the file of a side in the **Project | Folder** window (the wired project, or the `input` and `output` folders of ComfyUI), or drag a file onto the viewer. The window stays open after a click, so you can pick A then B. The first file sets the type: the other type is greyed, sound files are refused.
+- **Inputs (optional):** `project_used` (opens **Project**), `video_a` / `video_b` (`VIDEO`), `frames_a` / `frames_b` (`IMAGE`: one image is an image, several are a video). A wired input wins over the file of the same side (the file comes back when you unwire it). `video_x` and `frames_x` cannot be wired together on one side. A wired `frames_x` has an unknown type until the first Run (**Run once to preview**).
+- **Views:** **Side by side**, **Left Right**, **Right Left**, **Up Down** (a curtain follows the mouse). You hear only the side under the mouse (outside the viewer: the starred side, else A).
+- **Player (videos):** **Play / Pause**, **Previous frame**, **Next frame**, **Stop**, **Loop**, **Volume**. **Sync** (on by default): one bar for A and B; off: one bar per side.
+- **Star:** **★ Source A** / **Source B ★** mark the preferred file. The star belongs to the file: it is saved in the Run record (a Run output), in `99.Project-Config/stars.json` (another file of a project), or in the node only (wired input, file outside a project). A file moved by hand loses its star. A gold ★ shows in 40 / 60, **Processing** and the **Project** and **Folder** windows.
+- **Outputs:** `video` (empty for an image), `images`, `path` (empty for a wired input), `choice` (`A` or `B`). They come from the starred side, else A; if that side is empty, the other one.
+- The **?** button opens its help (Quick start, Inputs, The viewer, Picking files, The star, Outputs), in English or French.
 
 ## MagicStudio SelectMod node
 
