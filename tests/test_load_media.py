@@ -44,6 +44,13 @@ class FileNameTest(unittest.TestCase):
         self.assertLess(cls.index('"required"'), cls.index('"optional"'))
         self.assertIn("Grey: the saved file is a new run", opt)
 
+    def test_is_changed_accepts_post_processing(self):
+        with open(os.path.join(ROOT, "nodes.py"), encoding="utf-8") as f:
+            py = f.read()
+        cls = py[py.index("class MiniMaxH3LoadMedia"):]
+        self.assertIn("def IS_CHANGED(cls, file, post_processing=False, **kwargs):", cls)
+        self.assertIn("return load_media.signature(file)", cls)
+
     def test_return_names_match_js_outputs(self):
         py = open(os.path.join(ROOT, "nodes.py"), encoding="utf-8").read()
         cls = py[py.index("class MiniMaxH3LoadMedia"):]

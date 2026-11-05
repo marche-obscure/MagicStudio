@@ -258,8 +258,9 @@ class MiniMaxH3LoadMedia:
         return True
 
     @classmethod
-    def IS_CHANGED(cls, file):
+    def IS_CHANGED(cls, file, post_processing=False, **kwargs):
         # Recharge si le chemin change ou si le fichier est modifie (date, taille).
+        # ComfyUI passe TOUTES les entrees : post_processing ne change pas les sorties, on l'ignore.
         return load_media.signature(file)
 
     def run(self, file, post_processing=False):
