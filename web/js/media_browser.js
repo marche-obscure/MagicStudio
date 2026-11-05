@@ -7,8 +7,6 @@ import { dragLink } from "./post_tree.js";
 import { sizeText, matchesSearch } from "./select_mod.js";
 import { sortMedia, kindFilter, KINDS } from "./media_browser_pure.js";
 
-export { sortMedia, kindFilter };
-
 const KIND_KEY = "mmloadmedia.folderKind";
 const DIR_KEY = "mmloadmedia.folderDir";
 const KIND_LABELS = { all: "All", video: "Video", image: "Image", audio: "Son" };
@@ -111,6 +109,7 @@ export function buildFolderWindow(container, ops = {}) {
     card.append(head, body, footRow);
 
     let roots = [];
+    let rootsError = ""; // erreur de /mmmedia/roots, gardee visible
     let current = "";
     let files = []; // tous les types du dossier (ou de la recherche) ; le filtre de type s'applique a l'affichage
     let kind = readStore(KIND_KEY, "all");
@@ -344,17 +343,19 @@ export function buildFolderWindow(container, ops = {}) {
 
     async function load() {
         children.clear();
+        rootsError = "";
         try {
             roots = ((await apiGet("/mmmedia/roots")).roots) || [];
         } catch (e) {
             roots = [];
-            note.textContent = e.message;
+            rootsError = e.message;
         }
         if (!roots.length) {
             current = "";
             files = [];
             await renderTree();
             renderTable();
+            if (rootsError) note.textContent = rootsError;
             return;
         }
         for (const r of roots) expanded.add(normKey(r.path));
@@ -406,21 +407,14 @@ export function buildFolderWindow(container, ops = {}) {
     function onKey(e) {
         if (e.key !== "Escape" || !isOpen()) return;
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         if (preview.isOpen()) {
             preview.close();
             shownPath = "";
         } else close();
     }
-    // Close : le lecteur d'abord (1er clic), puis la fenetre (2e clic).
-    closeBtn.addEventListener("click", () => {
-        if (preview.isOpen()) {
-            preview.close();
-            shownPath = "";
-            return;
-        }
-        close();
-    });
+    // Close ferme tout d'un clic (close() ferme aussi le lecteur) ; seul Echap passe par le lecteur d'abord.
+    closeBtn.addEventListener("click", close);
 
     paintKinds();
     return {
