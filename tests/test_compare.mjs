@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import {
     COMPARE_CLASS, MODES, DEFAULT_STATE, STAR_GOLD, STAR_TIP, parseState, formatState, chosenSide, inputKind,
     effectiveKind, acceptKind, bodyDropSide, halfSide, wipePos, clipA, hintText, soundSide, syncFix, frameStep,
-    uiHeight, starPlan, initialStar, releaseComparePlayers,
+    uiHeight, starPlan, initialStar, releaseComparePlayers, starKey, starSetOf, isStarred,
 } from "../web/js/compare_pure.js";
 
 const cases = JSON.parse(readFileSync(new URL("./compare_cases.json", import.meta.url), "utf8"));
@@ -162,4 +162,15 @@ test("sideFps : 24 pour des frames, sinon fps lu, sinon 24", async () => {
     assert.equal(sideFps(false, 29.97), 29.97);
     assert.equal(sideFps(false, null), 24);
     assert.equal(sideFps(false, 0), 24);
+});
+
+test("starSetOf / isStarred : chemins normalises, liste invalide = vide", () => {
+    assert.equal(starKey("C:\\In\\A.MP4"), "c:/in/a.mp4");
+    const set = starSetOf(["C:\\In\\A.mp4", "", 3, "D:/x/b.png"]);
+    assert.equal(set.size, 2);
+    assert.ok(isStarred(set, "c:/in/a.MP4"));
+    assert.ok(!isStarred(set, "c:/in/zz.mp4"));
+    assert.ok(!isStarred(set, ""));
+    assert.equal(starSetOf(undefined).size, 0);
+    assert.ok(!isStarred(null, "a"));
 });

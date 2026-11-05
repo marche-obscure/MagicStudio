@@ -3,6 +3,7 @@
 // Modules charges une seule fois par le navigateur : importer project_node.js d'ici est sans risque.
 import { makeOverlay, apiGet, TITLE_COLOR, INACTIVE_BG, ORANGE, GREEN } from "./minimax_ref_loader.js";
 import { buildPreviewWindow, blockStrayDrop } from "./project_node.js";
+import { STAR_GOLD, STAR_TIP, starSetOf, isStarred } from "./compare_pure.js";
 import { dragLink } from "./post_tree.js";
 import { sizeText, matchesSearch } from "./select_mod.js";
 import { sortMedia, kindFilter, KINDS, lockedKinds, lockTip } from "./media_browser_pure.js";
@@ -235,6 +236,7 @@ export function buildFolderWindow(container, ops = {}) {
     }
 
     const GRID = "minmax(0, 1fr) 80px 120px";
+    let starSet = new Set(); // fichiers etoiles du projet du dossier courant (une lecture par chargement)
 
     /** Clic sur un nom : lecteur a cote ; meme fichier une 2e fois = lecteur ferme (pickOnly : onPick seul). */
     function showFile(f) {
@@ -291,6 +293,14 @@ export function buildFolderWindow(container, ops = {}) {
             name.textContent = f.name;
             name.title = f.name;
             Object.assign(name.style, { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
+            if (isStarred(starSet, f.path)) {
+                // ★ doree avant le nom (plan Compare, tache 8)
+                const star = document.createElement("span");
+                star.textContent = "★ ";
+                Object.assign(star.style, { color: STAR_GOLD });
+                star.title = STAR_TIP;
+                name.prepend(star);
+            }
             const size = document.createElement("div");
             size.textContent = sizeText(f.size);
             size.style.color = "#aaa";
@@ -345,6 +355,16 @@ export function buildFolderWindow(container, ops = {}) {
             note.textContent = e.message;
             return;
         }
+        // Etoiles : seulement utiles dans un projet (project vide sinon) ; une erreur = pas d'etoile.
+        let stars = new Set();
+        try {
+            const r = await apiGet("/mmproject/stars?path=" + encodeURIComponent(current));
+            if (r && r.project) stars = starSetOf(r.stars);
+        } catch (e) {
+            stars = new Set();
+        }
+        if (seq !== searchSeq) return;
+        starSet = stars;
         renderTable();
     }
 

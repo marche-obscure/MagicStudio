@@ -6,13 +6,14 @@ import {
 } from "./minimax_ref_loader.js";
 import {
     buildPreviewWindow, buildProcessingWindow, makeDragSource, makeFileDragSource, dupThumb, addStatusDot, addPostBadge,
-    splitPath,
+    addStarBadge, splitPath,
 } from "./project_node.js";
 import { rushItems, runDateText } from "./project_paths.js";
 import {
     PROJECT_KINDS, projectSections, sectionQuery, rushFolderOf, kindOfName, projectPathOf, projectGroups, splitProjectName, pickProject, mtimeText,
 } from "./project_browser_pure.js";
 import { lockedKinds, lockTip } from "./media_browser_pure.js";
+import { starSetOf, isStarred } from "./compare_pure.js";
 
 const KIND_KEY = "mmloadmedia.projectKind";
 const BAR_BG = "#161616";
@@ -277,10 +278,13 @@ export function buildProjectWindow(container, ops = {}) {
         preview.show(path, k, path, card);
     }
 
+    let starSet = new Set(); // fichiers etoiles du projet affiche (une lecture par dessin, pas par vignette)
+
     function fileTile(path, k, mtime) {
         const t = tileBox();
         const [dir, name] = splitPath(path);
         const pic = dupThumb(dir, name, k, 108);
+        addStarBadge(pic, isStarred(starSet, path));
         pic.title = "Click: preview – drag onto a MiniMax H3 Load Media node";
         makeFileDragSource(pic, path, dragLayer);
         t.appendChild(pic);
@@ -304,6 +308,7 @@ export function buildProjectWindow(container, ops = {}) {
             const [dir, name] = splitPath(it.file);
             pic = dupThumb(dir, name, it.output.kind, 108);
             addStatusDot(pic, it.output);
+            addStarBadge(pic, it.output.star);
             addPostBadge(pic, it.output, it.run.outputs);
             makeDragSource(pic, it.output, dragLayer);
             pic.title = "Click: preview – drag onto a MiniMax H3 Load Media node";
@@ -370,12 +375,22 @@ export function buildProjectWindow(container, ops = {}) {
         } catch (e) {
             error = e.message || String(e);
         }
+        // Etoiles des fichiers : une seule lecture ; une erreur ne casse pas la fenetre (pas d'etoile).
+        let stars = new Set();
+        if (!error && bases.length) {
+            try {
+                stars = starSetOf((await apiGet("/mmproject/stars?path=" + encodeURIComponent(path))).stars);
+            } catch (e) {
+                stars = new Set();
+            }
+        }
         if (mine !== seq || path !== projectPath) return; // un choix plus recent (ou la fermeture) a pris la place
         body.innerHTML = "";
         if (error) {
             note.textContent = error;
             return;
         }
+        starSet = stars;
         let total = 0;
         for (const s of sections) {
             const q = sectionQuery(s.folder);

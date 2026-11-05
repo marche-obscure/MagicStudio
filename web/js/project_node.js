@@ -22,6 +22,7 @@ import {
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
     PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint,
 } from "./project_paths.js";
+import { STAR_GOLD, STAR_TIP, releaseComparePlayers } from "./compare_pure.js";
 import { DROP_TARGETS, dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 import { PROJECT_USED, renameLegacySlots, LEGACY_PROJECT_LINKS, promptSource, PROMPT_UNWIRED } from "./graph_links.js";
@@ -3141,6 +3142,20 @@ function addStatusDot(box, out) {
     box.appendChild(dot);
 }
 
+/** Etoile doree « prefere dans une comparaison » (plan Compare, tache 8) : en haut a gauche, a droite de la pastille. */
+function addStarBadge(box, on) {
+    if (!on) return;
+    box.style.position = "relative";
+    const star = document.createElement("div");
+    star.textContent = "★";
+    Object.assign(star.style, {
+        position: "absolute", top: "3px", left: "22px", color: STAR_GOLD, fontSize: "13px", lineHeight: "16px",
+        textShadow: "0 0 3px #000", zIndex: "1", pointerEvents: "none",
+    });
+    star.title = STAR_TIP;
+    box.appendChild(star);
+}
+
 /** Pilule d'etiquette Original (vert) / Post n (violet). */
 function postPill(text) {
     const b = document.createElement("div");
@@ -3868,6 +3883,7 @@ function buildProcessingWindow(container, ops) {
             const [dir, name] = splitPath(file);
             pic = dupThumb(dir, name, o.kind, 108);
             addStatusDot(pic, o);
+            addStarBadge(pic, o.star);
             makeDragSource(pic, o, ops.overlay);
             pic.title = "Click: preview – drag onto a MiniMax H3 Load Media node";
         }
@@ -3875,7 +3891,7 @@ function buildProcessingWindow(container, ops) {
             const x = document.createElement("div");
             x.textContent = "✕";
             Object.assign(x.style, {
-                position: "absolute", top: "2px", left: "22px", color: "#ff3b30", fontWeight: "bold", fontSize: "14px",
+                position: "absolute", top: "2px", left: o.star ? "36px" : "22px", color: "#ff3b30", fontWeight: "bold", fontSize: "14px",
                 lineHeight: "16px", textShadow: "0 0 3px #000", zIndex: "1",
             });
             x.title = "Failed: " + failed.get(o.index);
@@ -4249,6 +4265,8 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
     function closePlayers() {
         preview.close();
         if (extractWin()) extractWin().close();
+        // Les lecteurs des noeuds Compare verrouillent aussi les fichiers (plan Compare, tache 8).
+        releaseComparePlayers((app.graph && app.graph._nodes) || []);
     }
     const extractOpen = () => !!(extractWin() && extractWin().isOpen());
 
@@ -4655,6 +4673,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             Object.assign(t.style, { width: "100%", height: "auto", aspectRatio: "16 / 10", cursor: "pointer" });
             t.title = "Preview " + name;
             addStatusDot(t, out);
+            addStarBadge(t, out.star);
             addPostBadge(t, out, run.outputs);
             t.addEventListener("click", () => showPreview(file, out.kind));
             const n = document.createElement("div");
@@ -4827,6 +4846,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
             } else {
                 pic = dupThumb(splitPath(it.file)[0], name, it.output.kind, 108);
                 addStatusDot(pic, it.output);
+                addStarBadge(pic, it.output.star);
                 addPostBadge(pic, it.output, it.run.outputs);
                 makeDragSource(pic, it.output, overlay);
             }
@@ -4835,7 +4855,7 @@ function buildRunViewer(container, onSort, onWorkflow, rush) {
                 const x = document.createElement("div");
                 x.textContent = "✕";
                 Object.assign(x.style, {
-                    position: "absolute", top: "2px", left: "22px", color: "#ff3b30", fontWeight: "bold",
+                    position: "absolute", top: "2px", left: it.output.star ? "36px" : "22px", color: "#ff3b30", fontWeight: "bold",
                     fontSize: "14px", lineHeight: "16px", textShadow: "0 0 3px #000", zIndex: "1",
                 });
                 x.title = "Failed: " + failed.get(key);
@@ -7954,5 +7974,5 @@ app.registerExtension({
 // Pieces reprises par la fenetre Folder de MedLoad (web/js/media_browser.js).
 export {
     buildPreviewWindow, blockStrayDrop, buildProcessingWindow, makeDragSource, makeFileDragSource, dupThumb,
-    addStatusDot, addPostBadge, postPill, splitPath,
+    addStatusDot, addStarBadge, addPostBadge, postPill, splitPath,
 };

@@ -164,6 +164,21 @@ export function initialStar(state, storedA, storedB) {
     return state.star;
 }
 
+/** Cle de comparaison d'un chemin (separateurs, casse Windows). */
+export function starKey(p) {
+    return String(p || "").replace(/[\\/]+/g, "/").toLowerCase();
+}
+
+/** Ensemble des fichiers etoiles (reponse de /mmproject/stars) ; liste absente ou invalide = ensemble vide. */
+export function starSetOf(stars) {
+    return new Set(Array.isArray(stars) ? stars.filter((p) => typeof p === "string" && p).map(starKey) : []);
+}
+
+/** Ce fichier est-il dans l'ensemble des etoiles ? */
+export function isStarred(set, path) {
+    return !!path && !!set && set.has(starKey(path));
+}
+
 /** Ferme les lecteurs des noeuds Compare (fichier verrouille sous Windows) ; renvoie leur nombre. */
 export function releaseComparePlayers(nodes) {
     let n = 0;

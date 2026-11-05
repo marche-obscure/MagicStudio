@@ -5,7 +5,7 @@ import { buildFolderWindow } from "./media_browser.js";
 import { buildProjectWindow } from "./project_browser.js";
 import {
     COMPARE_CLASS, MODES, parseState, formatState, effectiveKind, acceptKind, bodyDropSide, halfSide, uiHeight,
-    initialStar, hintText, sideFps,
+    initialStar, hintText, sideFps, starPlan, STAR_GOLD, STAR_TIP,
 } from "./compare_pure.js";
 import { buildCompareViewer } from "./compare_viewer.js";
 
@@ -29,6 +29,21 @@ const SIDE_COLORS = { A: SIDE_BLUE, B: VIOLET };
 const SIDES = ["A", "B"];
 // Hauteur du cadre : uiHeight(sync) moins le haut, la ligne d'etat, les modes, le lecteur et les etoiles.
 const FRAME_HEIGHT = 236;
+/** POST JSON (comme project_node.js) ; erreur HTTP -> exception avec le texte du serveur. */
+async function apiPost(url, body) {
+    const res = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    let data = null;
+    try {
+        data = await res.json();
+    } catch (e) {
+        data = null;
+    }
+    if (!res.ok) throw new Error((data && data.error) || "HTTP error " + res.status);
+    return data;
+}
+const STAR_OFF = "#666";
 const baseName = (p) => String(p || "").split(/[\\/]/).pop();
 const normPath = (p) => String(p || "").replace(/[\\/]+/g, "/").toLowerCase();
 const key = (side) => (side === "A" ? "a" : "b");
@@ -588,6 +603,59 @@ app.registerExtension({
                     }
                 },
             };
+            // ---- Ligne des etoiles (tache 8) : ★ Source A a gauche, Source B ★ a droite ----
+            const starBtns = {};
+            for (const side of SIDES) {
+                const b = document.createElement("button");
+                b.type = "button";
+                Object.assign(b.style, {
+                    background: "transparent", border: "none", padding: "0 2px", cursor: "pointer", fontSize: "12px",
+                    fontFamily: "inherit", maxWidth: "48%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                });
+                b.addEventListener("click", () => clickStar(side));
+                starBtns[side] = b;
+            }
+            starRow.append(starBtns.A, starBtns.B);
+            function paintStars(api2) {
+                const s = api2.readState();
+                for (const side of SIDES) {
+                    const b = starBtns[side];
+                    const on = s.star === side;
+                    b.textContent = side === "A" ? "★ Source A" : "Source B ★";
+                    b.style.color = on ? STAR_GOLD : STAR_OFF;
+                    const src = sourceOf(side);
+                    b.title = src.from === "input" ? "Input " + side : (src.path ? baseName(src.path) : STAR_TIP);
+                }
+            }
+            api.onPaint.push(paintStars);
+            /** Clic sur une etoile : l'etoile du noeud change tout de suite, le serveur garde celle du fichier. */
+            async function clickStar(side) {
+                const before = readState();
+                const plan = starPlan(before, side, wired());
+                const s = readState();
+                s.star = plan.star;
+                writeState(s);
+                paint();
+                if (!plan.on && !plan.off) {
+                    if (plan.star) say("Star kept in this node only (file outside a project or wired input)", false);
+                    return;
+                }
+                try {
+                    const r = await apiPost("/mmproject/star", { on: plan.on, off: plan.off });
+                    if (plan.star && (!plan.on || (r && r.on === "node"))) {
+                        say("Star kept in this node only (file outside a project or wired input)", false);
+                    } else {
+                        say("");
+                    }
+                } catch (e) {
+                    // Echec : etoile du noeud remise comme avant, texte dans la ligne d'etat.
+                    const back = readState();
+                    back.star = before.star;
+                    writeState(back);
+                    paint();
+                    say(e.message || String(e));
+                }
+            }
             // Lecteurs du cadre vides avec les autres (verrou Windows).
             api.onRelease.push(() => viewer.release());
             function paint() {
