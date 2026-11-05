@@ -72,3 +72,12 @@ test("projectPathOf, kindOfName, mtimeText", () => {
     assert.equal(mtimeText(0), "");
     assert.match(mtimeText(1700000000), /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/);
 });
+
+test("lockedKinds sur les types de la fenetre Project", async () => {
+    const { PROJECT_KINDS } = await import("../web/js/project_browser_pure.js");
+    const { lockedKinds } = await import("../web/js/media_browser_pure.js");
+    const ids = PROJECT_KINDS.map(([k]) => k);
+    assert.deepEqual(lockedKinds(ids, "image"), { active: "image", off: ["video", "audio"] });
+    assert.deepEqual(lockedKinds(ids, "video"), { active: "video", off: ["image", "audio"] });
+    assert.deepEqual(lockedKinds(ids, ""), { active: null, off: [] });
+});

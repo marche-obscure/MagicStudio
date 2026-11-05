@@ -3721,7 +3721,8 @@ const TREE_CARD_H = 156;
  *        move(run, out, key, swap), lockSwap(out, key) -> {swap} | null, remove(run, out, trash),
  *        askDelete(noms, ancre, bouton), askWord(n, bouton), reload() -> runs, refresh40(),
  *        openExtract(ancre) -> {text, ok} | null, overfull(kind), lock(bool) (fenetre 40 / 60 inactive pendant une action),
- *        closePreview() (libere le fichier lu par le lecteur avant de le deplacer ou de le supprimer)}
+ *        closePreview() (libere le fichier lu par le lecteur avant de le deplacer ou de le supprimer),
+ *        onPick(file, kind) et pickOnly (facultatifs, fenetre Project du noeud Compare : clic = choix du fichier)}
  */
 function buildProcessingWindow(container, ops) {
     const { overlay, card } = makeOverlay();
@@ -3916,7 +3917,9 @@ function buildProcessingWindow(container, ops) {
                 if (busy || ext) return; // un lecteur ne doit pas rouvrir un fichier qu'une action va deplacer
                 selIndex = o.index;
                 render();
-                ops.showPreview(file, o.kind, card);
+                // Compare (fenetre Project en lecture seule) : le clic choisit le fichier ; pickOnly = pas de lecteur.
+                if (ops.onPick) ops.onPick(file, o.kind);
+                if (!ops.pickOnly) ops.showPreview(file, o.kind, card);
             });
         }
         return t;

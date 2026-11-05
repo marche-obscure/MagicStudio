@@ -5,7 +5,7 @@ import { makeOverlay, apiGet, TITLE_COLOR, INACTIVE_BG, ORANGE, GREEN } from "./
 import { buildPreviewWindow, blockStrayDrop } from "./project_node.js";
 import { dragLink } from "./post_tree.js";
 import { sizeText, matchesSearch } from "./select_mod.js";
-import { sortMedia, kindFilter, KINDS } from "./media_browser_pure.js";
+import { sortMedia, kindFilter, KINDS, lockedKinds, lockTip } from "./media_browser_pure.js";
 
 const KIND_KEY = "mmloadmedia.folderKind";
 const DIR_KEY = "mmloadmedia.folderDir";
@@ -30,7 +30,11 @@ function writeStore(key, value) {
 
 /**
  * buildFolderWindow(container, ops) -> {open(anchor), close(), isOpen()}
- * ops : { onPick(path) } facultatif (appele a chaque clic sur un fichier, en plus du lecteur).
+ * ops (tout facultatif ; MedLoad passe {} : clic = lecteur) :
+ *   onPick(path, kind) : appele a chaque clic sur un fichier ;
+ *   pickOnly : le clic appelle seulement onPick (pas de lecteur), la fenetre reste ouverte (Compare) ;
+ *   kindLock() -> "" | "image" | "video" : type impose, les autres boutons de type sont grises.
+ * Renvoie aussi relock() : relit kindLock() et redessine (cote ou type impose change).
  */
 export function buildFolderWindow(container, ops = {}) {
     const { overlay, card } = makeOverlay();
@@ -122,11 +126,20 @@ export function buildFolderWindow(container, ops = {}) {
     const expanded = new Set();
     const children = new Map();
 
+    // Type impose (Compare) : le type actif suit, les autres boutons sont grises (rien n'est retenu).
+    const lockNow = () => lockedKinds(KINDS, ops.kindLock ? ops.kindLock() : "");
     function paintKinds() {
+        const lk = lockNow();
+        if (lk.active) kind = lk.active;
         for (const k of KINDS) {
             const on = k === kind;
+            const off = lk.off.includes(k);
             kindBtns[k].style.background = on ? GREEN : INACTIVE_BG;
             kindBtns[k].style.color = on ? "#fff" : "#ddd";
+            kindBtns[k].style.opacity = off ? "0.4" : "1";
+            kindBtns[k].style.cursor = off ? "default" : "pointer";
+            kindBtns[k].title = off ? lockTip(lk.active)
+                : k === "all" ? "Show all media files" : "Show " + KIND_LABELS[k].toLowerCase() + " files only";
         }
     }
 
@@ -223,9 +236,10 @@ export function buildFolderWindow(container, ops = {}) {
 
     const GRID = "minmax(0, 1fr) 80px 120px";
 
-    /** Clic sur un nom : lecteur a cote ; meme fichier une 2e fois = lecteur ferme. */
+    /** Clic sur un nom : lecteur a cote ; meme fichier une 2e fois = lecteur ferme (pickOnly : onPick seul). */
     function showFile(f) {
-        if (ops.onPick) ops.onPick(f.path);
+        if (ops.onPick) ops.onPick(f.path, f.kind);
+        if (ops.pickOnly) return;
         if (preview.isOpen() && shownPath === f.path) {
             preview.close();
             shownPath = "";
@@ -379,6 +393,7 @@ export function buildFolderWindow(container, ops = {}) {
     // Type, recherche, relire.
     for (const k of KINDS) {
         kindBtns[k].addEventListener("click", () => {
+            if (lockNow().off.includes(k)) return; // type grise par la comparaison
             kind = k;
             writeStore(KIND_KEY, k);
             paintKinds();
@@ -420,6 +435,11 @@ export function buildFolderWindow(container, ops = {}) {
     return {
         isOpen,
         close,
+        /** Type impose relu (Compare : cote ou premier fichier change) ; tableau redessine. */
+        relock() {
+            paintKinds();
+            if (isOpen()) renderTable();
+        },
         /** Detruit la fenetre (couche dans document.body) : appele quand le noeud est supprime. */
         remove() {
             close();
@@ -443,6 +463,7 @@ export function buildFolderWindow(container, ops = {}) {
             card.style.left = left + "px";
             card.style.top = top + "px";
             window.addEventListener("keydown", onKey, true);
+            paintKinds();
             load();
         },
     };

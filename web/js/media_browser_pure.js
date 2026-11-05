@@ -14,3 +14,18 @@ export function kindFilter(list, kind) {
     const items = list || [];
     return KINDS.includes(kind) && kind !== "all" ? items.filter((f) => f.kind === kind) : [...items];
 }
+
+/**
+ * Types utilisables quand un type est impose (Compare : "image" ou "video") : active = le type
+ * impose (s'il est dans la liste), off = les autres boutons, grises. lock vide = rien de grise.
+ */
+export function lockedKinds(kinds, lock) {
+    const list = kinds || [];
+    if (!lock || !list.includes(lock)) return { active: null, off: [] };
+    return { active: lock, off: list.filter((k) => k !== lock) };
+}
+
+/** Infobulle d'un bouton de type grise par le type impose. */
+export function lockTip(lock) {
+    return lock === "video" ? "This comparison compares videos" : "This comparison compares images";
+}

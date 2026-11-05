@@ -37,3 +37,24 @@ test("kindFilter", () => {
     assert.equal(kindFilter(LIST, "inconnu").length, 4);
     assert.deepEqual(kindFilter(null, "video"), []);
 });
+
+test("lockedKinds : type impose (Folder et Project)", async () => {
+    const { lockedKinds } = await import("../web/js/media_browser_pure.js");
+    assert.deepEqual(lockedKinds(["all", "video", "image", "audio"], "video"), { active: "video", off: ["all", "image", "audio"] });
+    assert.deepEqual(lockedKinds(["all", "video", "image", "audio"], ""), { active: null, off: [] });
+    assert.deepEqual(lockedKinds(["video", "image", "audio"], "image"), { active: "image", off: ["video", "audio"] });
+    assert.deepEqual(lockedKinds(["video", "image", "audio"], undefined), { active: null, off: [] });
+});
+
+test("MedLoad garde ses fenetres sans option (clic = lecteur)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../web/js/load_media_node.js", import.meta.url), "utf8");
+    assert.match(src, /buildFolderWindow\(container, \{\}\)/);
+    assert.match(src, /buildProjectWindow\(container, \{\}\)/);
+});
+
+test("lockTip : textes exacts", async () => {
+    const { lockTip } = await import("../web/js/media_browser_pure.js");
+    assert.equal(lockTip("video"), "This comparison compares videos");
+    assert.equal(lockTip("image"), "This comparison compares images");
+});

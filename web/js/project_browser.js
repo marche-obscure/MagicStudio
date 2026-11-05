@@ -12,6 +12,7 @@ import { rushItems, runDateText } from "./project_paths.js";
 import {
     PROJECT_KINDS, projectSections, sectionQuery, rushFolderOf, kindOfName, projectPathOf, projectGroups, splitProjectName, pickProject, mtimeText,
 } from "./project_browser_pure.js";
+import { lockedKinds, lockTip } from "./media_browser_pure.js";
 
 const KIND_KEY = "mmloadmedia.projectKind";
 const BAR_BG = "#161616";
@@ -44,6 +45,10 @@ function rootOfPath(path, name) {
  * buildProjectWindow(container, ops) -> {open(projectInfo, anchor), close(), isOpen()}
  * projectInfo : {name, path} du projet relie (mmProjectInfo du noeud Project) ; ops.getProjectList()
  * facultatif : {root, tree} deja connus (sinon /mmproject/list). Changer de projet ici ne modifie aucun noeud.
+ * Comme la fenetre Folder (tout facultatif ; MedLoad passe {} : clic = lecteur) : ops.onPick(path, kind),
+ * ops.pickOnly (clic = onPick seul, pas de lecteur, fenetre ouverte ; aussi dans Processing),
+ * ops.kindLock() -> "" | "image" | "video" (autres types grises ; Extract Frames grise pour une video).
+ * Renvoie aussi relock().
  */
 export function buildProjectWindow(container, ops = {}) {
     const { overlay, card } = makeOverlay();
@@ -148,18 +153,42 @@ export function buildProjectWindow(container, ops = {}) {
         closePreview: () => preview.close(),
         refresh40() {},
         lock() {},
+        // Compare : le clic d'une carte choisit le fichier (sans lecteur si pickOnly).
+        onPick: ops.onPick ? (file, k) => ops.onPick(file, k) : null,
+        pickOnly: !!ops.pickOnly,
     });
 
+    // Type impose (Compare) : le type actif suit (rien n'est retenu), les autres boutons sont grises ;
+    // Extract Frames (images) est grise quand on compare des videos.
+    const lockNow = () => lockedKinds(PROJECT_KINDS.map(([k]) => k), ops.kindLock ? ops.kindLock() : "");
+    const extractOff = () => lockNow().active === "video";
+    function applyLock() {
+        const lk = lockNow();
+        if (lk.active) kind = lk.active;
+        if (mode === "extract" && extractOff()) mode = "normal";
+        return lk;
+    }
+
     function paintHead() {
-        for (const [k] of PROJECT_KINDS) {
+        const lk = applyLock();
+        for (const [k, label] of PROJECT_KINDS) {
             const on = k === kind && mode !== "extract";
+            const off = lk.off.includes(k);
             kindBtns[k].style.background = on ? GREEN : INACTIVE_BG;
             kindBtns[k].style.color = on ? "#fff" : "#ddd";
+            kindBtns[k].style.opacity = off ? "0.4" : "1";
+            kindBtns[k].style.cursor = off ? "default" : "pointer";
+            kindBtns[k].title = off ? lockTip(lk.active) : "Show the " + label.toLowerCase() + " files of the project";
         }
         archivesBtn.style.background = mode === "archives" ? GREEN : INACTIVE_BG;
         archivesBtn.style.color = mode === "archives" ? "#fff" : "#ddd";
         extractBtn.style.background = mode === "extract" ? GREEN : INACTIVE_BG;
         extractBtn.style.color = mode === "extract" ? "#fff" : "#ddd";
+        const exOff = extractOff();
+        extractBtn.style.opacity = exOff ? "0.4" : "1";
+        extractBtn.style.cursor = exOff ? "default" : "pointer";
+        extractBtn.title = exOff ? lockTip("video")
+            : "Show the frames extracted from the Picture Lock videos (click again: back)";
     }
 
     function fillSelect() {
@@ -235,8 +264,10 @@ export function buildProjectWindow(container, ops = {}) {
         t.appendChild(d);
     }
 
-    /** Clic : lecteur ; meme fichier une 2e fois = lecteur ferme. */
+    /** Clic : lecteur ; meme fichier une 2e fois = lecteur ferme (pickOnly : onPick seul). */
     function showFile(path, k) {
+        if (ops.onPick) ops.onPick(path, k);
+        if (ops.pickOnly) return;
         if (preview.isOpen() && shownPath === path) {
             preview.close();
             shownPath = "";
@@ -386,6 +417,7 @@ export function buildProjectWindow(container, ops = {}) {
 
     for (const [k] of PROJECT_KINDS) {
         kindBtns[k].addEventListener("click", () => {
+            if (lockNow().off.includes(k)) return; // type grise par la comparaison
             kind = k;
             writeStore(KIND_KEY, k);
             if (mode === "extract") mode = "normal"; // Extract Frames ne depend pas du type : un type choisi en sort
@@ -396,7 +428,10 @@ export function buildProjectWindow(container, ops = {}) {
         });
     }
     archivesBtn.addEventListener("click", () => setMode("archives"));
-    extractBtn.addEventListener("click", () => setMode("extract"));
+    extractBtn.addEventListener("click", () => {
+        if (extractOff()) return; // images : grise quand on compare des videos
+        setMode("extract");
+    });
     select.addEventListener("change", () => chooseProject(pickProject(projectGroups(tree), select.value, projectName) || select.value));
     grpSelect.addEventListener("change", () => chooseProject(splitProjectName(projectName).group + "/" + grpSelect.value));
 
@@ -427,6 +462,15 @@ export function buildProjectWindow(container, ops = {}) {
     return {
         isOpen,
         close,
+        /** Type impose relu (Compare : cote ou premier fichier change) ; redessine si le type actif change. */
+        relock() {
+            const before = kind + "|" + mode;
+            paintHead();
+            if (isOpen() && kind + "|" + mode !== before) {
+                proc.close();
+                render();
+            }
+        },
         /** Detruit la fenetre (couche dans document.body) : appele quand le noeud est supprime. */
         remove() {
             close();
