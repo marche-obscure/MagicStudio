@@ -593,7 +593,7 @@ const HELP_SECTIONS = [
         id: "image_lists", title: "Image lists", icon: IMAGE_ICON, color: GREEN,
         html: "<p>With the <b>Image</b> model, you can keep a list of images under a name and bring it back later.</p>" +
             hSteps([
-                "Wire the <b>project_used</b> output of <b>MagicStudio Project</b>: without a project, the buttons are greyed.",
+                "Wire the <b>project</b> output of this RefLoader to the <b>project</b> input of <b>MagicStudio Project</b>, and pick a project: without a project, the buttons are greyed.",
                 "Pick your images in the <b>Images</b> row.",
                 "Click the <b>Archive</b> button (tooltip <b>Archive this image list</b>), type a <b>Name</b>, then confirm.",
                 "To bring a list back, click the <b>Lists</b> button (tooltip <b>Archived image lists</b>) and click the list.",
@@ -976,7 +976,7 @@ const HELP_SECTIONS_FR = [
         id: "image_lists", title: "Listes d'images",
         html: "<p>Avec le modèle <b>Image</b>, vous pouvez garder une liste d'images sous un nom et la retrouver plus tard.</p>" +
             hSteps([
-                "Branchez la sortie <b>project_used</b> de <b>MagicStudio Project</b> : sans projet, les boutons sont grisés.",
+                "Branchez la sortie <b>project</b> de ce RefLoader sur l'entrée <b>project</b> de <b>MagicStudio Project</b>, puis choisissez un projet : sans projet, les boutons sont grisés.",
                 "Choisissez vos images dans la ligne <b>Images</b>.",
                 "Cliquez sur le bouton <b>Archive</b> (infobulle <b>Archive this image list</b>), tapez un <b>Name</b>, puis confirmez.",
                 "Pour retrouver une liste, cliquez sur le bouton <b>Lists</b> (infobulle <b>Archived image lists</b>) puis sur la liste.",
