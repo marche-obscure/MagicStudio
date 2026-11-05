@@ -807,7 +807,48 @@ export function routeDescription(json) {
 
 /** Hauteur de l'interface DOM du RefLoader : ligne Model + une ligne par ligne de la variante + bas. */
 export function uiHeight(desc, variant) {
-    return 80 + 38 * rowsOf(desc, variant).length;
+    const rows = rowsOf(desc, variant);
+    // + 18 par ligne a seuil d'alerte (ligne d'alerte toujours reservee, pas de saut de hauteur).
+    return 80 + 38 * rows.length + 18 * rows.filter((r) => r.warn).length;
+}
+
+/**
+ * Boutons du haut selon la variante : sans aucune limite reglable (modele Image), Limits et la
+ * pilule des variantes sont grises ; la pilule montre alors les variantes du modele par defaut.
+ * -> {limitsOff, pills: [ids de variantes], pillsOff}
+ */
+export function variantControls(desc, variant) {
+    const d = descOf(desc);
+    const vd = d.variants[variant] || d.variants[d.default];
+    const off = Object.keys(vd.limits || {}).length === 0;
+    const model = off ? modelOf(d, d.default) : vd.model;
+    return { limitsOff: off, pills: variantsOfModel(d, model), pillsOff: off };
+}
+
+/**
+ * Alerte du compteur d'une ligne a seuil (row.warn) : n images choisies, plafond max.
+ * -> {level: "none" | "warn" | "full", text}
+ */
+export function countAlert(n, row, max) {
+    if (!row || !row.warn || !max) return { level: "none", text: "" };
+    if (n >= max) return { level: "full", text: "The list is full (" + max + " images)" };
+    if (n >= row.warn) {
+        const k = max - n;
+        return { level: "warn", text: k + " image" + (k === 1 ? "" : "s") + " left" };
+    }
+    return { level: "none", text: "" };
+}
+
+/**
+ * Nom de sortie de l'element i d'une ligne : la ligne de la variante affichee d'abord (une meme
+ * ligne "images" donne ref_image_n en Ref2VA et image_n en Image), sinon la premiere variante qui l'a.
+ */
+export function rowOutputName(desc, variant, rid, i) {
+    const d = descOf(desc);
+    let vd = d.variants[variant];
+    if (!vd || !vd.rows.some((r) => r.id === rid)) vd = Object.values(d.variants).find((x) => x.rows.some((r) => r.id === rid));
+    if (!vd) return rid;
+    return outputKey(vd.rows.find((r) => r.id === rid).outputs[0][0], vd, i);
 }
 
 /** Libelles de la fenetre Limits ; "Duration (s)" quand la variante sort une longueur (reglage length). */

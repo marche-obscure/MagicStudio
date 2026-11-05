@@ -4,7 +4,7 @@ import { LAST, secondsToFrame, guideMoments, checkMoment, sameFrameAs, stepFrame
     FALLBACK_DESCRIPTION, routeDescription, variantOf, modelOf, variantsOfModel, rowsOf as variantRowsOf,
     variantLimits, parseVariantState, uiHeight as variantUiHeight, limitLabels, variantLimitOverrides,
     pruneVariantMoments, variantLayoutKeys, variantModeLinks, isOldLoaderOutputs, rewirePlan, outputKey,
-    renumberOldName, renumberModeLinks } from "./profiles.js";
+    renumberOldName, renumberModeLinks, variantControls, countAlert, rowOutputName } from "./profiles.js";
 import { outputLinksOf } from "./graph_links.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
@@ -34,9 +34,14 @@ let variantDesc = FALLBACK_DESCRIPTION;
 const variantOfState = (s) => variantOf(s, variantDesc);
 /** Lignes de la variante affichee (description). */
 const rowsOfState = (s) => variantRowsOf(variantDesc, variantOfState(s));
-/** Ligne d'id rid (une meme ligne a les memes reglages dans toutes les variantes qui l'ont). */
-function rowInfo(rid) {
-    for (const v of Object.values(variantDesc.variants)) {
+/**
+ * Ligne d'id rid : celle de la variante v si on la donne (la ligne "images" existe en Ref2VA : 9 et
+ * ref_image_n, et en Image : 15 et image_n), sinon la premiere variante qui l'a.
+ */
+function rowInfo(rid, variant) {
+    const own = variantDesc.variants[variant];
+    const list = own ? [own, ...Object.values(variantDesc.variants)] : Object.values(variantDesc.variants);
+    for (const v of list) {
         const r = v.rows.find((x) => x.id === rid);
         if (r) return r;
     }
@@ -2634,7 +2639,7 @@ function buildGallery(container, ctx) {
             sub = "for information";
         } else {
             const idx = indexOf(path);
-            sub = idx >= 0 ? outputName(kind, idx) : "not selected";
+            sub = idx >= 0 ? outputName(kind, idx, variantOfState(ctx.getState())) : "not selected";
         }
         sidePreview.show(path, f.kind, sub);
     }
@@ -2868,7 +2873,10 @@ function buildGallery(container, ctx) {
     // ------ Affichage ------
     function updateCounters() {
         const arr = list();
-        counter.textContent = arr.length + " / " + limitOf(ctx.getState(), kind) + " selected";
+        const lim = limitOf(ctx.getState(), kind);
+        const al = countAlert(arr.length, rowInfo(kind, variantOfState(ctx.getState())), lim);
+        counter.textContent = arr.length + " / " + lim + " selected" + (al.text ? " · " + al.text : "");
+        counter.style.color = al.level === "full" ? MARK_RED : al.level === "warn" ? ORANGE : "#bbb";
         const folder = currentFolder();
         const shown = (it) => (folder && files.some((f) => canPick(kind, f.kind) && samePath(joinPath(folder, f.name), it))) ||
             (project && projFiles.some((f) => canPick(kind, f.kind) && samePath(joinPath(projDir, f.name), it))) ||
@@ -3937,10 +3945,12 @@ function buildRootDialog(container, ctx) {
 // --------------------------------------------------------------------
 // Fenetre de la selection : ordre, reorganisation et infos d'un fichier
 // --------------------------------------------------------------------
-/** Nom de la sortie de l'element i (index 0) d'une ligne : premiere sortie de la ligne, {n} = numero (first_index). */
-function outputName(rid, i) {
-    const v = Object.values(variantDesc.variants).find((x) => x.rows.some((r) => r.id === rid));
-    return outputKey(rowInfo(rid).outputs[0][0], v, i);
+/**
+ * Nom de la sortie de l'element i (index 0) d'une ligne : premiere sortie de la ligne, {n} = numero
+ * (first_index). `variant` = variante affichee (sinon la premiere qui a la ligne).
+ */
+function outputName(rid, i, variant) {
+    return rowOutputName(variantDesc, variant, rid, i);
 }
 
 function buildSelectionViewer(container, ctx) {
@@ -4054,7 +4064,7 @@ function buildSelectionViewer(container, ctx) {
             .filter((v) => v !== null);
         confirm.ask(
             "<b>Delete " + numbers.length + " reference" + (numbers.length > 1 ? "s" : "") + "?</b><br>" +
-            numbers.map((n) => outputName(kind, n - 1) + " : " + escapeHtml(baseName(pathOf(arr[n - 1])))).join("<br>") +
+            numbers.map((n) => outputName(kind, n - 1, variantOfState(ctx.getState())) + " : " + escapeHtml(baseName(pathOf(arr[n - 1])))).join("<br>") +
             '<div style="color:#999;margin-top:8px">The following references move up and the last ' +
             "output that becomes empty is removed.</div>",
             "Delete", deleteMarked, card);
@@ -4294,7 +4304,7 @@ function buildSelectionViewer(container, ctx) {
                 textOverflow: "ellipsis", color: "#fff",
             });
             const out = document.createElement("div");
-            out.textContent = "→ " + outputName(kind, i) + (isTrackRow(kind) ? "  (sound)" : "");
+            out.textContent = "→ " + outputName(kind, i, variantOfState(ctx.getState())) + (isTrackRow(kind) ? "  (sound)" : "");
             Object.assign(out.style, { padding: "0 5px", fontSize: "10px", color: "#9fd6cf" });
             const soundTag = soundOnly(kind, path) ? soundOnlyBadge({ right: "4px", top: "58px" }) : null;
 
@@ -4367,7 +4377,7 @@ function buildSelectionViewer(container, ctx) {
                 render();
             },
         } : null;
-        sidePreview.show(path, fileKind(kind), outputName(kind, idx), trim);
+        sidePreview.show(path, fileKind(kind), outputName(kind, idx, variantOfState(ctx.getState())), trim);
     }
 
     function hideSide() {
@@ -4412,7 +4422,7 @@ function buildSelectionViewer(container, ctx) {
             if (current !== path) return;
             const idx = list().findIndex((it) => samePath(pathOf(it), path));
             details.innerHTML =
-                row("Number:", idx + 1 + "  →  " + outputName(kind, idx)) +
+                row("Number:", idx + 1 + "  →  " + outputName(kind, idx, variantOfState(ctx.getState()))) +
                 row("File:", info.name) +
                 row("Folder:", info.folder) +
                 (info.width ? row("Size:", info.width + " × " + info.height + " px") : "") +
@@ -4711,7 +4721,7 @@ function buildOverview(container, ctx) {
         current = { kind, path };
         const trim = canTrim(kind)
             ? { range: trimOf(ctx.getState(), kind, path), onChange: () => {}, readOnly: true } : null;
-        sidePreview.show(path, fileKind(kind), outputName(kind, idx), trim);
+        sidePreview.show(path, fileKind(kind), outputName(kind, idx, variantOfState(ctx.getState())), trim);
         render();
     }
 
@@ -4753,7 +4763,7 @@ function buildOverview(container, ctx) {
             textOverflow: "ellipsis", color: "#fff",
         });
         const out = document.createElement("div");
-        out.textContent = "→ " + outputName(kind, i) + (isTrackRow(kind) ? "  (sound)" : "");
+        out.textContent = "→ " + outputName(kind, i, variantOfState(ctx.getState())) + (isTrackRow(kind) ? "  (sound)" : "");
         Object.assign(out.style, { padding: "0 5px 5px", fontSize: "10px", color: "#9fd6cf" });
         tile.append(thumb, badge);
         const tr = canTrim(kind) ? trimOf(ctx.getState(), kind, path) : null;
@@ -4928,8 +4938,11 @@ app.registerExtension({
                 background: INACTIVE_BG, color: "#ddd", fontWeight: "bold", fontSize: "11px", padding: "0 10px",
                 cursor: "pointer", boxSizing: "border-box",
             });
+            const LIMITS_TITLE = limitsBtn.title;
             limitsBtn.addEventListener("click", () => {
                 const s = getState();
+                // Modele Image : pas de limites reglables, le bouton est gris et sans effet.
+                if (variantControls(variantDesc, variantOfState(s)).limitsOff) return;
                 limitsDialog.open({ variant: variantOfState(s), current: variantLimits(s, variantDesc) });
             });
             topRow.appendChild(limitsBtn);
@@ -4945,7 +4958,13 @@ app.registerExtension({
             let pillsOf = "";
             function paintPills(s) {
                 const v = variantOfState(s);
-                const list = variantsOfModel(variantDesc, modelOf(variantDesc, v));
+                const ctl = variantControls(variantDesc, v);
+                // Modele Image : Limits et la pilule restent visibles mais grises (pilule du modele par defaut).
+                const off = ctl.pillsOff;
+                const list = ctl.pills;
+                limitsBtn.style.opacity = ctl.limitsOff ? "0.45" : "1";
+                limitsBtn.style.cursor = ctl.limitsOff ? "default" : "pointer";
+                limitsBtn.title = ctl.limitsOff ? "Not used by the Image model" : LIMITS_TITLE;
                 if (pillsOf !== list.join("|")) {
                     pillsOf = list.join("|");
                     modeToggle.innerHTML = "";
@@ -4959,15 +4978,22 @@ app.registerExtension({
                             flex: "1 0 auto", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold",
                             fontSize: "11px", padding: "0 6px", whiteSpace: "nowrap",
                         });
-                        mb.addEventListener("click", () => setVariant(id));
+                        mb.addEventListener("click", () => {
+                            if (modeToggle.dataset.off === "1") return;
+                            setVariant(id);
+                        });
                         modeToggle.appendChild(mb);
                     }
                 }
                 [...modeToggle.children].forEach((mb, i) => {
-                    const on = mb.dataset.variant === v;
+                    const on = mb.dataset.variant === v && !off;
                     mb.style.background = on ? PILL_COLORS[i % PILL_COLORS.length] : INACTIVE_BG;
                     mb.style.color = on ? "white" : INACTIVE_FG;
+                    mb.style.opacity = off ? "0.45" : "1";
+                    mb.style.cursor = off ? "default" : "pointer";
                 });
+                modeToggle.dataset.off = off ? "1" : "";
+                modeToggle.title = off ? "Not used by the Image model" : "";
                 const one = list.length < 2;
                 modeToggle.style.display = one ? "none" : "flex";
                 modelSelect.style.flex = one ? "1 1 auto" : "0 0 auto";
@@ -5028,11 +5054,12 @@ app.registerExtension({
                 trash.addEventListener("click", () => {
                     const items = listOf(getState(), b.kind);
                     if (!items.length) return;
+                    const vNow = variantOfState(getState());
                     clearConfirm.ask(
                         "<b>Delete all " + items.length + " " + b.label + " reference" +
                         (items.length > 1 ? "s" : "") + "?</b><br>" +
-                        items.map((it, i) => outputName(b.kind, i) + " : " + escapeHtml(baseName(it))).join("<br>") +
-                        '<div style="color:#999;margin-top:8px">Only ' + outputName(b.kind, 0) + " stays, empty.</div>",
+                        items.map((it, i) => outputName(b.kind, i, vNow) + " : " + escapeHtml(baseName(it))).join("<br>") +
+                        '<div style="color:#999;margin-top:8px">Only ' + outputName(b.kind, 0, vNow) + " stays, empty.</div>",
                         "Delete all", () => {
                             const s = getState();
                             const before = getState();
@@ -5046,7 +5073,15 @@ app.registerExtension({
                 row.appendChild(trash);
 
                 container.appendChild(row);
-                rows[b.id] = { row, btn, icon, count, trash };
+                // Ligne d'alerte sous la ligne (lignes a seuil warn seulement) ; place toujours reservee.
+                const alert = document.createElement("div");
+                Object.assign(alert.style, {
+                    display: "none", flex: "0 0 auto", height: "12px", lineHeight: "12px", fontSize: "11px",
+                    textAlign: "right", paddingRight: "4px", whiteSpace: "nowrap", overflow: "hidden",
+                    textOverflow: "ellipsis", visibility: "hidden",
+                });
+                container.appendChild(alert);
+                rows[b.id] = { row, btn, icon, count, trash, alert };
             }
 
             const bottom = document.createElement("div");
@@ -5285,11 +5320,15 @@ app.registerExtension({
                 paintPills(s);
                 // Lignes de la variante, dans son ordre (avant la barre du bas) ; les autres cachees.
                 const shown = rowsOfState(s);
-                for (const id of Object.keys(rows)) rows[id].row.style.display = "none";
+                for (const id of Object.keys(rows)) {
+                    rows[id].row.style.display = "none";
+                    rows[id].alert.style.display = "none";
+                }
                 for (const r of shown) {
                     const ui = rows[r.id];
                     if (!ui) continue;
                     container.insertBefore(ui.row, bottom);
+                    container.insertBefore(ui.alert, bottom);
                     ui.row.style.display = "flex";
                     ui.icon.style.background = rowColor(s, r.id);
                     const arr = listOf(s, r.id);
@@ -5300,14 +5339,23 @@ app.registerExtension({
                         ui.btn.title = arr[0] || "Pick the " + r.label.toLowerCase();
                     } else if (isTrackRow(r.id)) {
                         ui.count.textContent = arr.length + " / " + max + " · audio";
-                        ui.btn.title = arr.length ? "Soundtracks (" + outputName(r.id, 0) + "...):\n" + listTitle(arr, r.id, s)
+                        ui.btn.title = arr.length ? "Soundtracks (" + outputName(r.id, 0, variantOfState(s)) + "...):\n" + listTitle(arr, r.id, s)
                             : "No video soundtrack selected";
                     } else {
                         ui.count.textContent = arr.length + " / " + max;
                         ui.btn.title = listTitle(arr, r.trim ? r.id : null, s);
                     }
-                    // Compteur n / max en orange quand n > max (plafond abaisse par Limits).
-                    ui.count.style.color = arr.length > max ? ORANGE : INACTIVE_FG;
+                    // Compteur n / max en orange quand n > max (plafond abaisse par Limits) ; ligne a seuil :
+                    // orange puis rouge (liste pleine) avec la ligne d'alerte.
+                    const al = countAlert(arr.length, r, max);
+                    const alColor = al.level === "full" ? MARK_RED : al.level === "warn" ? ORANGE : null;
+                    ui.count.style.color = alColor || (arr.length > max ? ORANGE : INACTIVE_FG);
+                    if (r.warn) {
+                        ui.alert.style.display = "block";
+                        ui.alert.style.visibility = al.level === "none" ? "hidden" : "visible";
+                        ui.alert.style.color = alColor || INACTIVE_FG;
+                        ui.alert.textContent = al.text || " ";
+                    }
                     // Poubelle : grise et inactive sans reference, rouge sinon.
                     const on = arr.length > 0;
                     ui.trash.disabled = !on;

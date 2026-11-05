@@ -105,3 +105,37 @@ test("pruneVariantMoments : moments des fichiers retires de leur ligne", () => {
     assert.deepEqual(s.selections["ltx.2_3"].moments.guide_images, { "a.png": 1 });
     assert.deepEqual(s.selections["ltx.2_5"].moments.guide_images, {});
 });
+
+// ---- Modele Image dans le RefLoader (boutons grises, alerte, noms par variante) ----
+import { variantControls, countAlert, rowOutputName } from "../web/js/profiles.js";
+
+test("variantControls : Image grise Limits et la pilule, MiniMax / LTX non", () => {
+    assert.deepEqual(variantControls(null, "image.basic"),
+        { limitsOff: true, pills: ["minimax_h3.ref2va", "minimax_h3.fl2va"], pillsOff: true });
+    assert.deepEqual(variantControls(null, "ltx.2_3"), { limitsOff: false, pills: ["ltx.2_3", "ltx.2_5"], pillsOff: false });
+    assert.deepEqual(variantControls(null, "minimax_h3.fl2va"),
+        { limitsOff: false, pills: ["minimax_h3.ref2va", "minimax_h3.fl2va"], pillsOff: false });
+});
+
+test("countAlert : seuil 12, plein a 15, pas d'alerte sans warn", () => {
+    const img = VD.variants["image.basic"].rows[0];
+    assert.equal(countAlert(11, img, 15).level, "none");
+    assert.deepEqual(countAlert(12, img, 15), { level: "warn", text: "3 images left" });
+    assert.deepEqual(countAlert(14, img, 15), { level: "warn", text: "1 image left" });
+    assert.deepEqual(countAlert(15, img, 15), { level: "full", text: "The list is full (15 images)" });
+    const ref = VD.variants["minimax_h3.ref2va"].rows.find((r) => r.id === "images");
+    assert.equal(countAlert(9, ref, 9).level, "none");
+});
+
+test("rowOutputName : la ligne images suit la variante affichee", () => {
+    assert.equal(rowOutputName(null, "image.basic", "images", 0), "image_0");
+    assert.equal(rowOutputName(null, "image.basic", "images", 14), "image_14");
+    assert.equal(rowOutputName(null, "minimax_h3.ref2va", "images", 0), "ref_image_0");
+    assert.equal(rowOutputName(null, "ltx.2_3", "images", 1), "ref_image_1"); // sans la ligne : premiere variante qui l'a
+    assert.equal(rowOutputName(null, "ltx.2_3", "guide_images", 0), "guide_image_1");
+});
+
+test("uiHeight Image 136 (ligne d'alerte reservee)", () => {
+    assert.equal(uiHeight(VD, "image.basic"), 136);
+    assert.equal(uiHeight(VD, "minimax_h3.ref2va"), 232);
+});

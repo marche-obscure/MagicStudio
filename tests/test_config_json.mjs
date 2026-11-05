@@ -166,6 +166,22 @@ test("IMAGE config", () => {
     assert.deepEqual(back.rows.images, s.selections["image.basic"].rows.images);
 });
 
+test("IMAGE config is refused by the other variants, and the reverse", () => {
+    // Le RefLoader refuse un fichier dont la variante n'est pas celle affichee (conf.variant !== v).
+    const prefixes = {};
+    const files = {};
+    for (const v of ["image.basic", "minimax_h3.ref2va", "minimax_h3.fl2va", "ltx.2_3", "ltx.2_5"]) {
+        const st = vstate(v, {});
+        prefixes[v] = variantConfigPrefix(st);
+        files[v] = parseVariantConfig(formatVariantConfig(st)).variant;
+        assert.equal(files[v], v);
+    }
+    assert.equal(new Set(Object.values(prefixes)).size, 5);
+    for (const v of Object.keys(files)) {
+        if (v !== "image.basic") assert.notEqual(files[v], files["image.basic"]);
+    }
+});
+
 test("rows over the limit are cut at the row max", () => {
     const text = JSON.stringify({ format: "MiniMax H3 Reference Loader", version: 3, variant: "ltx.2_5", root: "D:/r",
         rows: { guide_images: Array.from({ length: 12 }, (_, i) => ({ path: "g" + i + ".png" })),
