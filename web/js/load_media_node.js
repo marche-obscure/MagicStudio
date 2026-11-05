@@ -581,17 +581,19 @@ app.registerExtension({
             }
             node.mmLoadMediaDrop = applyDrop;
 
-            // Depot sur la zone (element DOM) : le canvas ne doit pas le recevoir.
+            // Depot sur tout le cadre du noeud (zone, apercu, pilule ; 05/11/2026 : un depot sur l'apercu
+            // passait a ComfyUI, qui creait un noeud Load Video) : le canvas ne doit pas le recevoir.
             const mark = (on) => (zone.style.borderColor = on ? PINK : "#3b5f5b");
-            zone.addEventListener("dragover", (e) => {
+            container.addEventListener("dragover", (e) => {
                 if (!carriesLink(e.dataTransfer) && !(e.dataTransfer && e.dataTransfer.types.includes("Files"))) return;
                 e.preventDefault();
                 e.stopPropagation();
                 e.dataTransfer.dropEffect = "copy";
                 mark(true);
             });
-            zone.addEventListener("dragleave", () => mark(false));
-            zone.addEventListener("drop", (e) => {
+            container.addEventListener("dragleave", () => mark(false));
+            container.addEventListener("drop", (e) => {
+                if (!carriesLink(e.dataTransfer) && !(e.dataTransfer && e.dataTransfer.types.includes("Files"))) return;
                 e.preventDefault();
                 e.stopPropagation();
                 mark(false);
