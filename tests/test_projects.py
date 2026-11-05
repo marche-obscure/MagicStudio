@@ -583,6 +583,15 @@ class FolderFilesTest(unittest.TestCase):
             projects.folder_files(self.p, ["08.Images"], "..")
         with self.assertRaises(ValueError):
             projects.folder_files(self.p, ["99.Project-Config"])
+        # Pick Up et Extract Frame : lisibles (fenetre Project de MedLoad), rien d'autre.
+        pick = os.path.join(self.p, "90.Pick Up", "Video")
+        write(os.path.join(pick, "v.mp4"))
+        extra = projects.folder_files(self.p, ["90.Pick Up/Video", "40.Rush Videos/Picture Lock/Extract Frame"])
+        self.assertEqual(extra["90.Pick Up/Video"], [os.path.join(pick, "v.mp4")])
+        self.assertEqual(extra["40.Rush Videos/Picture Lock/Extract Frame"], [])
+        for bad in ["90.Pick Up", "90.Pick Up/../08.Images", "40.Rush Videos/Picture Lock", "../x"]:
+            with self.assertRaises(ValueError):
+                projects.folder_files(self.p, [bad])
         with self.assertRaises(FileNotFoundError):
             projects.folder_files(os.path.join(self.root, "nope"), ["08.Images"])
 

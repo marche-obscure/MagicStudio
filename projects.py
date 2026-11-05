@@ -670,6 +670,10 @@ def archive_files(project, folder, names, when=None):
     return moved
 
 
+# Dossiers lisibles en plus de SUBFOLDERS (fenetre Project de MedLoad, 05/11/2026) : Pick Up et Extract Frame.
+READABLE_EXTRA = tuple(PICKUP_DIR + "/" + sub for sub in PICKUP_SUBS) + ("/".join(EXTRACT_DIR),)
+
+
 def folder_files(project, folders, sub=""):
     """
     {dossier: [chemins]} : fichiers a la racine de chaque dossier du projet
@@ -683,9 +687,11 @@ def folder_files(project, folders, sub=""):
         raise FileNotFoundError("Project folder not found: %s" % project)
     out = {}
     for folder in folders:
-        if folder not in SUBFOLDERS:
+        if folder not in SUBFOLDERS and folder not in READABLE_EXTRA:
             raise ValueError("Unknown project folder: %s" % folder)
-        d = os.path.join(project, folder, sub) if sub else os.path.join(project, folder)
+        # Dossiers ecrits "a/b/c" : liste blanche fermee, jamais de chemin libre.
+        parts = folder.split("/")
+        d = os.path.join(project, *parts, sub) if sub else os.path.join(project, *parts)
         names = [e.name for e in os.scandir(d) if e.is_file() and not e.name.startswith(".")] if os.path.isdir(d) else []
         out[folder] = [os.path.join(d, n) for n in sorted(names, key=lambda n: (n.lower(), n))]
     return out

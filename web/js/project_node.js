@@ -3217,7 +3217,11 @@ function blockStrayDrop(e) {
 }
 
 function makeDragSource(el, output, overlay) {
-    const path = dragPath(output);
+    makeFileDragSource(el, dragPath(output), overlay);
+}
+
+/** Meme glisser pour un chemin de fichier (fenetre Project de MedLoad : fichiers des dossiers). */
+function makeFileDragSource(el, path, overlay) {
     if (!path) return;
     el.draggable = true;
     let dragging = false;
@@ -3818,7 +3822,7 @@ function buildProcessingWindow(container, ops) {
 
     /** Bouton Extract Frame sous la carte du fichier qui est dans le Picture Lock de 40 (meme regle que 40). */
     function extractButton(out) {
-        if (ops.folder() !== "40.Rush Videos" || out.kind !== "video" || !out.in_project || out.place !== "picture_lock" ||
+        if (ops.readOnly || ops.folder() !== "40.Rush Videos" || out.kind !== "video" || !out.in_project || out.place !== "picture_lock" ||
             out.deleted || !outputFile(out)) return null;
         const b = makeTextButton("Extract Frame", SORT_COLORS.picture_lock);
         Object.assign(b.style, {
@@ -3889,7 +3893,7 @@ function buildProcessingWindow(container, ops) {
         if (file) date.title = splitPath(file)[1];
         t.appendChild(date);
         // Case : pas pour une carte « Deleted », ni pour un post filtre (decoche aussi).
-        if (!gone && !dim) {
+        if (!gone && !dim && !ops.readOnly) {
             const cb = document.createElement("input");
             cb.type = "checkbox";
             cb.checked = checked.has(o.index);
@@ -3942,6 +3946,9 @@ function buildProcessingWindow(container, ops) {
     /** Boutons du bas : 4 dossiers (total sur le disque), Delete sous No Good. */
     function paintBar(files, run) {
         bar.innerHTML = "";
+        // Lecture seule (fenetre Project de MedLoad) : ni rangement, ni Delete.
+        bar.style.display = ops.readOnly ? "none" : "";
+        if (ops.readOnly) return;
         Object.assign(bar.style, { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "6px", width: "100%" });
         const sel = files.filter((o) => checked.has(o.index));
         // Le dossier d'arrivee suit le type de CHAQUE fichier coche (video -> 40, image -> 60), pas celui de l'original.
@@ -7944,4 +7951,7 @@ app.registerExtension({
 });
 
 // Pieces reprises par la fenetre Folder de MedLoad (web/js/media_browser.js).
-export { buildPreviewWindow, blockStrayDrop };
+export {
+    buildPreviewWindow, blockStrayDrop, buildProcessingWindow, makeDragSource, makeFileDragSource, dupThumb,
+    addStatusDot, addPostBadge, postPill, splitPath,
+};
