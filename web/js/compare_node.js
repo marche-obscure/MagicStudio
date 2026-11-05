@@ -74,7 +74,7 @@ const HELP_SECTIONS = [
             ["<b>Stop</b>", "stop and go back to the start"],
             ["<b>Loop</b>", "green = play again at the end"],
             ["<b>Volume</b>", "sound level"],
-            ["<b>Sync</b>", "on (default): one bar for A and B, B follows A. Off: one bar under each side, each side plays alone"],
+            ["<b>Sync</b>", "on (default): one bar for A and B, B follows A. Off: one bar for A and one for B, one under the other; each side plays alone"],
         ]) +
         hNote("images have no player: the <b>Sync</b> button is hidden for an image comparison."),
     },
@@ -179,7 +179,7 @@ const HELP_SECTIONS_FR = [
             ["<b>Stop</b>", "arrêter et revenir au début"],
             ["<b>Loop</b>", "vert = relire au bout"],
             ["<b>Volume</b>", "niveau du son"],
-            ["<b>Sync</b>", "allumé (par défaut) : une seule barre pour A et B, B suit A. Éteint : une barre sous chaque côté, chacun joue seul"],
+            ["<b>Sync</b>", "allumé (par défaut) : une seule barre pour A et B, B suit A. Éteint : une barre pour A et une pour B, l'une sous l'autre ; chacun joue seul"],
         ]) +
         hNote("les images n'ont pas de lecteur : le bouton <b>Sync</b> est caché pour une comparaison d'images."),
     },
@@ -263,7 +263,7 @@ async function apiPost(url, body) {
     if (!res.ok) throw new Error((data && data.error) || "HTTP error " + res.status);
     return data;
 }
-const STAR_OFF = "#666";
+const STAR_OFF = "#9e9e9e";
 const baseName = (p) => String(p || "").split(/[\\/]/).pop();
 const normPath = (p) => String(p || "").replace(/[\\/]+/g, "/").toLowerCase();
 const key = (side) => (side === "A" ? "a" : "b");
@@ -840,9 +840,13 @@ app.registerExtension({
             for (const side of SIDES) {
                 const b = document.createElement("button");
                 b.type = "button";
+                // Bouton bien visible sur le fond du noeud (demande utilisateur 05/11/2026 : etoiles peu visibles) :
+                // fond sombre, texte clair, etoile plus grande ; allumee = etoile et bord dores.
                 Object.assign(b.style, {
-                    background: "transparent", border: "none", padding: "0 2px", cursor: "pointer", fontSize: "12px",
-                    fontFamily: "inherit", maxWidth: "48%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    display: "inline-flex", alignItems: "center", gap: "5px",
+                    background: "rgba(0,0,0,0.45)", border: "1px solid " + STAR_OFF, borderRadius: "12px",
+                    padding: "2px 10px", cursor: "pointer", fontSize: "12px", color: "#eee",
+                    fontFamily: "inherit", maxWidth: "48%", overflow: "hidden", whiteSpace: "nowrap",
                 });
                 b.addEventListener("click", () => clickStar(side));
                 starBtns[side] = b;
@@ -853,8 +857,14 @@ app.registerExtension({
                 for (const side of SIDES) {
                     const b = starBtns[side];
                     const on = s.star === side;
-                    b.textContent = side === "A" ? "★ Source A" : "Source B ★";
-                    b.style.color = on ? STAR_GOLD : STAR_OFF;
+                    const star = document.createElement("span");
+                    star.textContent = on ? "★" : "☆";
+                    Object.assign(star.style, { fontSize: "17px", lineHeight: "1", color: on ? STAR_GOLD : "#ddd" });
+                    const label = document.createElement("span");
+                    label.textContent = "Source " + side;
+                    b.replaceChildren(...(side === "A" ? [star, label] : [label, star]));
+                    b.style.borderColor = on ? STAR_GOLD : STAR_OFF;
+                    b.style.color = on ? STAR_GOLD : "#eee";
                     const src = sourceOf(side);
                     b.title = src.from === "input" ? "Input " + side : (src.path ? baseName(src.path) : STAR_TIP);
                     // Cote vide : etoile grisee, sans effet.

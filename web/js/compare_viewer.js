@@ -426,8 +426,8 @@ export function buildCompareViewer(host, ops = {}) {
         const vB = viewer.media("B");
         barHost.style.height = playerHeight(state.sync) + "px";
         // Sync allume : une seule barre quel que soit le mode (Loop et volume restent) ;
-        // Sync eteint : la disposition change seulement entre side et les autres modes.
-        const lay = state.sync ? "one" : state.mode === "side" ? "row" : "column";
+        // Sync eteint : deux barres empilees, quel que soit le mode.
+        const lay = state.sync ? "one" : "column";
         const k = barsKey;
         if (k && k.sync === state.sync && k.layout === lay && k.A === vA && k.B === vB) return;
         barsKey = { sync: state.sync, layout: lay, A: vA, B: vB };
@@ -441,17 +441,15 @@ export function buildCompareViewer(host, ops = {}) {
             barHost.appendChild(bar.el);
             return;
         }
-        // Sync eteint : en side, chaque barre sous son cadre ; sinon l'une sous l'autre avec A / B.
-        const side = state.mode === "side";
+        // Sync eteint : les deux barres l'une sous l'autre avec A / B, dans tous les modes
+        // (cote a cote en side, chaque barre etait trop etroite : curseur minuscule, temps coupe).
         const box = document.createElement("div");
-        Object.assign(box.style, side
-            ? { display: "flex", gap: "8px", alignItems: "flex-start" }
-            : { display: "flex", flexDirection: "column", gap: BARS_GAP + "px" });
+        Object.assign(box.style, { display: "flex", flexDirection: "column", gap: BARS_GAP + "px" });
         for (const [s, v] of [["A", vA], ["B", vB]]) {
             const cell = document.createElement("div");
-            Object.assign(cell.style, side ? { flex: "1", minWidth: "0" } : { height: BAR_HEIGHT + "px" });
+            Object.assign(cell.style, { height: BAR_HEIGHT + "px" });
             if (v) {
-                const bar = buildBar([v], fpsOf, side ? "" : s, loopOpts(s));
+                const bar = buildBar([v], fpsOf, s, loopOpts(s));
                 bars.push(bar);
                 cell.appendChild(bar.el);
             }
