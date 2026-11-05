@@ -48,12 +48,29 @@ def _upstream(prompt, node_id):
     return dist
 
 
+def post_processing_on(prompt, medload_id):
+    """
+    Vrai si le bouton "For post-processing : Yes" du MedLoad est actif (entree
+    post_processing). Absent (ancien workflow) = faux ; "true" / "false" lus
+    comme du texte ; un lien est suivi par run_record.resolve.
+    """
+    value = (((prompt or {}).get(str(medload_id)) or {}).get("inputs") or {}).get("post_processing")
+    v, _src = run_record.resolve(prompt, value)
+    if isinstance(v, str):
+        return v.strip().lower() == "true"
+    return v is True
+
+
 def upstream_medloads(prompt, node_id):
-    """[(id du MedLoad, distance)] en amont du noeud, le plus proche d'abord, puis par id."""
+    """
+    [(id du MedLoad, distance)] en amont du noeud, le plus proche d'abord, puis par id.
+    Seuls comptent les MedLoad dont le bouton post-traitement est actif (04/11/2026).
+    """
     if not isinstance(prompt, dict):
         return []
     dist = _upstream(prompt, node_id)
-    found = [(n, d) for n, d in dist.items() if (prompt.get(n) or {}).get("class_type") == MEDLOAD]
+    found = [(n, d) for n, d in dist.items()
+             if (prompt.get(n) or {}).get("class_type") == MEDLOAD and post_processing_on(prompt, n)]
     return sorted(found, key=lambda x: (x[1], run_record._sort_key(x[0])))
 
 

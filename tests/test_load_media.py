@@ -34,6 +34,16 @@ class FileNameTest(unittest.TestCase):
     def test_file_name_keeps_unicode(self):
         self.assertEqual(lm.file_name(os.path.join("G:\\", "in", "Plan 02 – été.mp4")), "Plan 02 – été.mp4")
 
+    def test_post_processing_input_is_optional_boolean(self):
+        py = open(os.path.join(ROOT, "nodes.py"), encoding="utf-8").read()
+        cls = py[py.index("class MiniMaxH3LoadMedia"):]
+        cls = cls[:cls.index("RETURN_TYPES")]
+        self.assertIn('"optional"', cls)
+        opt = cls[cls.index('"optional"'):]
+        self.assertRegex(opt, r'"post_processing": \("BOOLEAN", \{\s*"default": False')
+        self.assertLess(cls.index('"required"'), cls.index('"optional"'))
+        self.assertIn("Grey: the saved file is a new run", opt)
+
     def test_return_names_match_js_outputs(self):
         py = open(os.path.join(ROOT, "nodes.py"), encoding="utf-8").read()
         cls = py[py.index("class MiniMaxH3LoadMedia"):]

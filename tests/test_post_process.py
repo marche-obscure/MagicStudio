@@ -30,7 +30,7 @@ class UpstreamTest(unittest.TestCase):
     """Regle d'amont : le noeud qui enregistre a-t-il un MedLoad en amont ?"""
 
     def test_saver_downstream_of_medload(self):
-        p = {"1": node(pp.MEDLOAD, file="G:\\in\\a.mp4"), "2": node("Light", video=["1", 0], gain=1.2),
+        p = {"1": node(pp.MEDLOAD, file="G:\\in\\a.mp4", post_processing=True), "2": node("Light", video=["1", 0], gain=1.2),
              "3": node("SaveVideo", video=["2", 0])}
         self.assertEqual(pp.upstream_medloads(p, "3"), [("1", 2)])
 
@@ -39,10 +39,39 @@ class UpstreamTest(unittest.TestCase):
         self.assertEqual(pp.upstream_medloads(p, "3"), [])
 
     def test_two_medloads_nearest_first(self):
-        p = {"1": node(pp.MEDLOAD, file="a"), "2": node("Light", video=["1", 0]), "3": node("Blend", a=["2", 0]),
-             "4": node(pp.MEDLOAD, file="b"), "5": node("Mix", a=["3", 0], b=["4", 0])}
+        p = {"1": node(pp.MEDLOAD, file="a", post_processing=True), "2": node("Light", video=["1", 0]), "3": node("Blend", a=["2", 0]),
+             "4": node(pp.MEDLOAD, file="b", post_processing=True), "5": node("Mix", a=["3", 0], b=["4", 0])}
         self.assertEqual(pp.upstream_medloads(p, "5")[0], ("4", 1))
         self.assertEqual(pp.upstream_medloads(p, "5"), [("4", 1), ("1", 3)])
+
+    def test_post_processing_on_values(self):
+        def on(**kw):
+            return pp.post_processing_on({"1": node(pp.MEDLOAD, file="a", **kw)}, "1")
+        self.assertFalse(on())
+        self.assertFalse(on(post_processing=False))
+        self.assertFalse(on(post_processing="false"))
+        self.assertTrue(on(post_processing=True))
+        self.assertTrue(on(post_processing="true"))
+        self.assertTrue(on(post_processing="True"))
+        self.assertFalse(pp.post_processing_on({}, "9"))
+
+    def test_post_processing_from_link(self):
+        p = {"1": node("PrimitiveBoolean", value=True), "2": node(pp.MEDLOAD, file="a", post_processing=["1", 0])}
+        self.assertTrue(pp.post_processing_on(p, "2"))
+
+    def test_medload_without_input_ignored(self):
+        p = {"1": node(pp.MEDLOAD, file="a"), "2": node("Light", video=["1", 0]), "3": node("SaveVideo", video=["2", 0])}
+        self.assertEqual(pp.upstream_medloads(p, "3"), [])
+
+    def test_only_green(self):
+        p = {"1": node(pp.MEDLOAD, file="a", post_processing=False), "2": node(pp.MEDLOAD, file="b", post_processing=True),
+             "3": node("Mix", a=["1", 0], b=["2", 0]), "4": node("SaveVideo", video=["3", 0])}
+        self.assertEqual(pp.upstream_medloads(p, "4"), [("2", 2)])
+
+    def test_string_values(self):
+        p = {"1": node(pp.MEDLOAD, file="a", post_processing="false"), "2": node(pp.MEDLOAD, file="b", post_processing="true"),
+             "3": node("Mix", a=["1", 0], b=["2", 0]), "4": node("SaveVideo", video=["3", 0])}
+        self.assertEqual(pp.upstream_medloads(p, "4"), [("2", 2)])
 
     def test_medload_file_from_link(self):
         p = {"1": node("PrimitiveString", value="G:\\in\\a.mp4"), "2": node(pp.MEDLOAD, file=["1", 0]),
@@ -53,7 +82,7 @@ class UpstreamTest(unittest.TestCase):
 
     def test_branch_params_limited(self):
         p = {"1": node("KSampler", seed=7, steps=20, cfg=4.0), "2": node("VAEDecode", samples=["1", 0]),
-             "3": node(pp.MEDLOAD, file="a"), "4": node("Light", video=["3", 0], gain=1.5),
+             "3": node(pp.MEDLOAD, file="a", post_processing=True), "4": node("Light", video=["3", 0], gain=1.5),
              "5": node("SaveVideo", video=["4", 0], extra=["2", 0])}
         self.assertEqual(pp.branch_nodes(p, "3", "5"), {"4"})
         params = pp.branch_params(p, "3", "5")
@@ -61,7 +90,7 @@ class UpstreamTest(unittest.TestCase):
         self.assertEqual(params["nodes"], [{"id": "4", "title": "Light", "class_type": "Light", "values": {"gain": 1.5}}])
 
     def test_cycle_safe(self):
-        p = {"1": node(pp.MEDLOAD, file="a"), "2": node("A", x=["3", 0], y=["1", 0]), "3": node("B", x=["2", 0]),
+        p = {"1": node(pp.MEDLOAD, file="a", post_processing=True), "2": node("A", x=["3", 0], y=["1", 0]), "3": node("B", x=["2", 0]),
              "4": node("Save", v=["3", 0])}
         self.assertEqual(pp.upstream_medloads(p, "4"), [("1", 3)])
         self.assertEqual(pp.branch_nodes(p, "1", "4"), {"2", "3"})

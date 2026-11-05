@@ -223,6 +223,14 @@ class MiniMaxH3LoadMedia:
                                "on the node to fill it.",
                 }),
             },
+            # Ajoute apres les autres entrees (04/11/2026) : un ancien workflow garde la valeur de file.
+            "optional": {
+                "post_processing": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Grey: the saved file is a new run. Green: it is a post-processing of "
+                               "the loaded file's run",
+                }),
+            },
         }
 
     # Choix utilisateur (24/10/2026) : video_frames puis audio_video (bande-son de la video)
@@ -254,7 +262,8 @@ class MiniMaxH3LoadMedia:
         # Recharge si le chemin change ou si le fichier est modifie (date, taille).
         return load_media.signature(file)
 
-    def run(self, file):
+    def run(self, file, post_processing=False):
+        # post_processing : lu par le serveur de Runs (post_process.py), pas ici.
         import folder_paths
         path, kind = load_media.check_path(file, folder_paths.get_input_directory())
         name = load_media.file_name(path)

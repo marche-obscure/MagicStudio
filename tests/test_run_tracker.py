@@ -137,7 +137,7 @@ class PostTrackerTest(unittest.TestCase):
         self.prompt = {
             "1": {"class_type": "KSampler", "inputs": {"seed": 1, "steps": 4, "cfg": 1}},
             "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}},
-            "5": {"class_type": "MiniMaxH3LoadMedia", "inputs": {"file": "G:/in/A.mp4"}},
+            "5": {"class_type": "MiniMaxH3LoadMedia", "inputs": {"file": "G:/in/A.mp4", "post_processing": True}},
             "6": {"class_type": "Light", "inputs": {"video": ["5", 0], "gain": 1.2}},
             "7": {"class_type": "SaveVideo", "inputs": {"video": ["6", 0]}},
         }
@@ -201,6 +201,22 @@ class PostTrackerTest(unittest.TestCase):
         self.assertEqual(self.attached, [])
         self.assertEqual(self.finished, [("new.json", ["a2.png", "b.mp4"])])
 
+    def test_green_without_mother(self):
+        self.mothers = {}
+        end = self.execute("p", [("7", "b.mp4")], mmrun="new.json")
+        self.t.settle("p")
+        self.t.finish(*end)
+        self.assertEqual(self.attached, [])
+        self.assertEqual(self.finished, [("new.json", ["b.mp4"])])
+
+    def test_grey_medload_is_a_run(self):
+        self.prompt["5"]["inputs"]["post_processing"] = False
+        end = self.execute("p", [("7", "b.mp4")], mmrun="new.json")
+        self.t.settle("p")
+        self.t.finish(*end)
+        self.assertEqual(self.attached, [])
+        self.assertEqual(self.finished, [("new.json", ["b.mp4"])])
+
     def test_settle_once(self):
         end = self.execute("p", [("7", "b.mp4")], mmrun="new.json")
         self.t.settle("p")
@@ -209,7 +225,7 @@ class PostTrackerTest(unittest.TestCase):
         self.assertEqual(len(self.attached), 1)
 
     def test_two_medloads_other_run_warns(self):
-        self.prompt["8"] = {"class_type": "MiniMaxH3LoadMedia", "inputs": {"file": "G:/in/Z.mp4"}}
+        self.prompt["8"] = {"class_type": "MiniMaxH3LoadMedia", "inputs": {"file": "G:/in/Z.mp4", "post_processing": True}}
         self.prompt["6"]["inputs"]["mask"] = ["10", 0]
         self.prompt["10"] = {"class_type": "Resize", "inputs": {"image": ["8", 0]}}
         self.mothers["G:/in/Z.mp4"] = dict(self.MOTHER, run_file="P/04.Prompt/20261028_090000_run.json")
