@@ -43,6 +43,19 @@ class FileNameTest(unittest.TestCase):
         self.assertRegex(opt, r'"post_processing": \("BOOLEAN", \{\s*"default": False')
         self.assertLess(cls.index('"required"'), cls.index('"optional"'))
         self.assertIn("Grey: the saved file is a new run", opt)
+        # project_used (05/11/2026) : apres post_processing, type du noeud Project.
+        self.assertIn('"project_used": (FINAL_CUT_TYPE,)', opt)
+        self.assertLess(opt.index('"post_processing"'), opt.index('"project_used"'))
+
+    def test_validate_and_run_accept_new_inputs_and_output_dir(self):
+        with open(os.path.join(ROOT, "nodes.py"), encoding="utf-8") as f:
+            py = f.read()
+        cls = py[py.index("class MiniMaxH3LoadMedia"):]
+        cls = cls[:cls.index("def selectmod_roots")]
+        self.assertIn("def VALIDATE_INPUTS(cls, file, **kwargs):", cls)
+        self.assertIn("def run(self, file, post_processing=False, project_used=None):", cls)
+        self.assertEqual(cls.count("folder_paths.get_output_directory()"), 2)
+        self.assertIn("Project or Folder window", cls)
 
     def test_is_changed_accepts_post_processing(self):
         with open(os.path.join(ROOT, "nodes.py"), encoding="utf-8") as f:
@@ -95,6 +108,10 @@ class CheckPathTest(unittest.TestCase):
         os.makedirs(os.path.join(self.input, "Projet"))
         self.inside = os.path.join(self.input, "Projet", "a.png")
         Image.new("RGB", (8, 6), (255, 0, 0)).save(self.inside)
+        self.output = os.path.join(self.tmp, "output")
+        os.makedirs(self.output)
+        self.in_output = os.path.join(self.output, "o.png")
+        Image.new("RGB", (8, 6), (0, 255, 0)).save(self.in_output)
         self.outside = os.path.join(self.tmp, "b.png")
         Image.new("RGB", (8, 6)).save(self.outside)
 
@@ -114,13 +131,32 @@ class CheckPathTest(unittest.TestCase):
             lm.check_path("  ", self.input)
 
     def test_outside_input_refused(self):
-        with self.assertRaisesRegex(ValueError, "input folder"):
+        with self.assertRaisesRegex(ValueError, "^Only files in the input or output folder of ComfyUI can be loaded: "):
             lm.check_path(self.outside, self.input)
 
     def test_dot_dot_escape_refused(self):
         sneaky = os.path.join(self.input, "Projet", "..", "..", "b.png")
-        with self.assertRaisesRegex(ValueError, "input folder"):
-            lm.check_path(sneaky, self.input)
+        with self.assertRaisesRegex(ValueError, "^Only files in the input or output folder of ComfyUI can be loaded: "):
+            lm.check_path(sneaky, self.input, self.output)
+
+    def test_output_accepted(self):
+        path, kind = lm.check_path(self.in_output, self.input, self.output)
+        self.assertEqual(kind, "image")
+        self.assertEqual(os.path.normcase(path), os.path.normcase(os.path.abspath(self.in_output)))
+        self.assertEqual(lm.check_path(self.inside, self.input, self.output)[1], "image")
+
+    def test_output_refused_without_output_dir(self):
+        with self.assertRaisesRegex(ValueError, "^Only files in the input or output folder"):
+            lm.check_path(self.in_output, self.input)
+
+    def test_other_folder_refused_with_both(self):
+        with self.assertRaisesRegex(ValueError, "^Only files in the input or output folder of ComfyUI can be loaded: "):
+            lm.check_path(self.outside, self.input, self.output)
+
+    def test_dot_dot_from_output_escape_refused(self):
+        sneaky = os.path.join(self.output, "..", "b.png")
+        with self.assertRaisesRegex(ValueError, "^Only files in the input or output folder"):
+            lm.check_path(sneaky, self.input, self.output)
 
     def test_missing_file(self):
         with self.assertRaisesRegex(ValueError, "not found"):

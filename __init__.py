@@ -247,7 +247,7 @@ try:
                     raise ValueError("Not a file of MagicStudio Final Cut.")
             else:
                 text = q.get("file", "")
-            path, kind = load_media.check_path(text, folder_paths.get_input_directory())
+            path, kind = load_media.check_path(text, folder_paths.get_input_directory(), folder_paths.get_output_directory())
         except ValueError as e:
             return web.json_response({"error": str(e)}, status=400)
         return web.json_response({"path": path, "kind": kind})

@@ -218,7 +218,8 @@ class MiniMaxH3LoadMedia:
             "required": {
                 "file": ("STRING", {
                     "default": "", "multiline": False,
-                    "tooltip": "Full path of the file, in the input folder of ComfyUI. Drop a file from "
+                    "tooltip": "Full path of the file, in the input or output folder of ComfyUI. Choose it in "
+                               "the Project or Folder window of this node, or drop a file from "
                                "MagicStudio Final Cut, 40.Rush Videos / 60.Rush Images or Processing "
                                "on the node to fill it.",
                 }),
@@ -230,6 +231,8 @@ class MiniMaxH3LoadMedia:
                     "tooltip": "Grey: the saved file is a new run. Green: it is a post-processing of "
                                "the loaded file's run",
                 }),
+                # Utilise par l'interface seulement (fenetre Project) ; Python ne s'en sert pas.
+                "project_used": (FINAL_CUT_TYPE,),
             },
         }
 
@@ -242,17 +245,18 @@ class MiniMaxH3LoadMedia:
     FUNCTION = "run"
     CATEGORY = "MagicStudio"
     DESCRIPTION = (
-        "Load an image, a video or an audio file dropped from MagicStudio Final Cut, 40.Rush Videos / "
-        "60.Rush Images or Processing, where it is (no copy). "
+        "Load an image, a video or an audio file of the input or output folder of ComfyUI, where it is "
+        "(no copy): choose it in the Project or Folder window of this node, or drop it from "
+        "MagicStudio Final Cut, 40.Rush Videos / 60.Rush Images or Processing. "
         "video: a video (same type as Load Video); video_frames: all the frames of a video, as images; "
         "audio_video: the soundtrack of a video; image: an image; audio: an audio file; name: the file name."
     )
 
     @classmethod
-    def VALIDATE_INPUTS(cls, file):
+    def VALIDATE_INPUTS(cls, file, **kwargs):
         import folder_paths
         try:
-            load_media.check_path(file, folder_paths.get_input_directory())
+            load_media.check_path(file, folder_paths.get_input_directory(), folder_paths.get_output_directory())
         except ValueError as e:
             return str(e)
         return True
@@ -260,13 +264,15 @@ class MiniMaxH3LoadMedia:
     @classmethod
     def IS_CHANGED(cls, file, post_processing=False, **kwargs):
         # Recharge si le chemin change ou si le fichier est modifie (date, taille).
-        # ComfyUI passe TOUTES les entrees : post_processing ne change pas les sorties, on l'ignore.
+        # ComfyUI passe TOUTES les entrees : post_processing et project_used (dans kwargs)
+        # ne changent pas les sorties, on les ignore.
         return load_media.signature(file)
 
-    def run(self, file, post_processing=False):
+    def run(self, file, post_processing=False, project_used=None):
         # post_processing : lu par le serveur de Runs (post_process.py), pas ici.
+        # project_used : sert a la fenetre Project (interface), pas au chargement.
         import folder_paths
-        path, kind = load_media.check_path(file, folder_paths.get_input_directory())
+        path, kind = load_media.check_path(file, folder_paths.get_input_directory(), folder_paths.get_output_directory())
         name = load_media.file_name(path)
         if kind == "video":
             from comfy_api.latest import InputImpl

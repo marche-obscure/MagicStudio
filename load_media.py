@@ -66,17 +66,19 @@ def is_within_directory(directory, target):
         return False
 
 
-def check_path(text, input_dir):
+def check_path(text, input_dir, output_dir=None):
     """
-    (chemin absolu, type "image" / "video" / "audio") d'un fichier du dossier input.
+    (chemin absolu, type "image" / "video" / "audio") d'un fichier du dossier input
+    ou, si output_dir est donne, du dossier output (choix utilisateur 05/11/2026).
     ValueError (message en anglais, affiche par ComfyUI) sinon.
     """
     path = _unquote_path(text)
     if not path:
-        raise ValueError("No file: drop a file from MagicStudio Final Cut, 40.Rush Videos / 60.Rush Images or Processing, or type its path.")
+        raise ValueError("No file: drop a file from MagicStudio Final Cut, the Project or Folder window of this node, 40.Rush Videos / 60.Rush Images or Processing, or type its path.")
     path = os.path.abspath(path)
-    if not is_within_directory(input_dir, path):
-        raise ValueError("Only files in the input folder of ComfyUI can be loaded: " + path)
+    roots = [d for d in (input_dir, output_dir) if d]
+    if not any(is_within_directory(d, path) for d in roots):
+        raise ValueError("Only files in the input or output folder of ComfyUI can be loaded: " + path)
     if not os.path.isfile(path):
         raise ValueError("File not found: " + path)
     kind = media.kind_of(path)
