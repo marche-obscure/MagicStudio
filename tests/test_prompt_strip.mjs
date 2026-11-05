@@ -18,3 +18,15 @@ test("entrees invalides tolerees", () => {
     assert.equal(stripProjectUsed(null), null);
     assert.deepEqual(stripProjectUsed({ 1: null, 2: { class_type: "MiniMaxH3LoadMedia" } }), { 1: null, 2: { class_type: "MiniMaxH3LoadMedia" } });
 });
+
+test("strip Compare too", () => {
+    const out = {
+        1: { class_type: "MagicStudioCompare", inputs: { state: "{}", project_used: ["5", 0], video_a: ["7", 0] } },
+        2: { class_type: "MiniMaxH3LoadMedia", inputs: { file: "a.mp4", project_used: ["5", 0] } },
+        3: { class_type: "MiniMaxH3FinalCut", inputs: { project_used: ["5", 0] } },
+    };
+    const r = stripProjectUsed(out);
+    assert.deepEqual(r[1].inputs, { state: "{}", video_a: ["7", 0] });
+    assert.deepEqual(r[2].inputs, { file: "a.mp4" });
+    assert.deepEqual(r[3].inputs, { project_used: ["5", 0] });
+});

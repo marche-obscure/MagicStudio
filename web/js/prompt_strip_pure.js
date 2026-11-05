@@ -3,13 +3,15 @@
 // du MedLoad et de sa chaine tombe a chaque Queue, et le nœud Project s'execute pour rien).
 //     node --test tests/test_prompt_strip.mjs
 export const MEDLOAD_CLASS = "MiniMaxH3LoadMedia";
+// Le Compare (05/11/2026) garde aussi son lien project_used hors du prompt.
+export const STRIP_CLASSES = [MEDLOAD_CLASS, "MagicStudioCompare"];
 
-/** Supprime inputs.project_used de chaque nœud MedLoad de `output` (modifie et renvoie `output`). */
+/** Supprime inputs.project_used de chaque nœud MedLoad ou Compare de `output` (modifie et renvoie `output`). */
 export function stripProjectUsed(output) {
     if (!output || typeof output !== "object") return output;
     for (const id of Object.keys(output)) {
         const n = output[id];
-        if (n && n.class_type === MEDLOAD_CLASS && n.inputs && typeof n.inputs === "object") delete n.inputs.project_used;
+        if (n && STRIP_CLASSES.includes(n.class_type) && n.inputs && typeof n.inputs === "object") delete n.inputs.project_used;
     }
     return output;
 }

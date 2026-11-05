@@ -137,6 +137,9 @@ export function dragPath(o) {
     return outputFile(o) || "";
 }
 
+/** Noeuds qui acceptent un depot de vignette (MedLoad et Compare). */
+export const DROP_TARGETS = ["MiniMaxH3LoadMedia", "MagicStudioCompare"];
+
 /** Lien de glisser vers MedLoad : route media du Ref Loader + nom du fichier. */
 export function dragLink(path, origin) {
     const name = String(path).split(/[\\/]/).pop();

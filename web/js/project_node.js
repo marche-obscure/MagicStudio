@@ -22,7 +22,7 @@ import {
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
     PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint,
 } from "./project_paths.js";
-import { dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
+import { DROP_TARGETS, dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 import { PROJECT_USED, renameLegacySlots, LEGACY_PROJECT_LINKS, promptSource, PROMPT_UNWIRED } from "./graph_links.js";
 
@@ -3182,25 +3182,23 @@ function addPostBadge(box, out, outs) {
  * Final Cut. Pendant le glisser, la couche de la fenetre ne capte plus la souris (la carte garde
  * pointerEvents "auto") ; remise a dragend, meme si le fichier est lache ailleurs.
  */
-const MEDLOAD_TYPE = "MiniMaxH3LoadMedia";
-
 /**
- * Le depot tombe-t-il sur un noeud MedLoad ? Oui si la cible est dans ses elements
+ * Le depot tombe-t-il sur un noeud MedLoad ou Compare (DROP_TARGETS) ? Oui si la cible est dans ses elements
  * (zone de depot du mode classique, noeud entier en Node 2.0), ou si c'est le canevas
  * lui-meme a l'endroit du noeud. Une fenetre posee par-dessus un MedLoad ne compte pas.
  */
-function dropOnMedLoad(e) {
+function dropOnTarget(e) {
     const graph = app.canvas && app.canvas.graph;
     const target = e.target;
     if (!graph || !target) return false;
-    const medloads = (graph._nodes || []).filter((n) => n.type === MEDLOAD_TYPE);
+    const medloads = (graph._nodes || []).filter((n) => DROP_TARGETS.includes(n.type));
     if (medloads.some((n) => (n.widgets || []).some((w) => w.element && w.element.contains(target)))) return true;
     const host = target.closest ? target.closest("[data-node-id]") : null;
     if (host) return medloads.some((n) => String(n.id) === host.getAttribute("data-node-id"));
     if (target !== app.canvas.canvas) return false;
     const pos = app.canvas.convertEventToCanvasOffset(e);
     const node = pos && graph.getNodeOnPos(pos[0], pos[1]);
-    return !!node && node.type === MEDLOAD_TYPE;
+    return !!node && DROP_TARGETS.includes(node.type);
 }
 
 /**
@@ -3211,7 +3209,7 @@ function dropOnMedLoad(e) {
 function blockStrayDrop(e) {
     // Un depot termine toujours le glisser : la garde se retire elle-meme (meme si dragend est perdu).
     window.removeEventListener("drop", blockStrayDrop, true);
-    if (dropOnMedLoad(e)) return;
+    if (dropOnTarget(e)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
 }

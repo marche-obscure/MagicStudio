@@ -1,7 +1,7 @@
 // Tests de post_tree.js : noms Post A / Post A.01, arbre, disposition, glisser (choix utilisateur 30/10/2026).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { letters, postNames, rootOf, postTree, postsOf, treeLayout, dragPath, dragLink, pruneGone, treeFiles, isFiltered } from "../web/js/post_tree.js";
+import { letters, postNames, rootOf, postTree, postsOf, treeLayout, dragPath, dragLink, pruneGone, treeFiles, isFiltered, DROP_TARGETS } from "../web/js/post_tree.js";
 
 const v = (index, extra) => Object.assign({ index, kind: "video", copy: "P/" + index + ".mp4", copy_exists: true }, extra);
 const post = (index, of, level, time, extra) =>
@@ -153,4 +153,9 @@ test("isFiltered : jamais l'original ni un supprime", () => {
     assert.equal(isFiltered(place(2, "picture_lock"), 0, active), false);
     assert.equal(isFiltered(v(3, { copy_exists: false }), 0, active), false); // sans fichier
     assert.equal(isFiltered(place(1, "footage"), 0, new Set()), false);
+});
+
+test("drop targets : MedLoad et Compare", () => {
+    assert.ok(DROP_TARGETS.includes("MiniMaxH3LoadMedia"));
+    assert.ok(DROP_TARGETS.includes("MagicStudioCompare"));
 });
