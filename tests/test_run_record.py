@@ -1543,6 +1543,8 @@ class StarKeptTest(unittest.TestCase):
         path = os.path.join(self.p, "04.Prompt", name)
         for o in outputs:
             o.setdefault("star", True)
+            if o["star"] is False:      # sortie sans etoile : la cle est retiree
+                o.pop("star")
         rr._write(path, {"date": "2026-11-05 10:00:00", "prompt": "p", "duration": 5, "status": status,
                          "outputs": outputs})
         return name
@@ -1551,12 +1553,18 @@ class StarKeptTest(unittest.TestCase):
         return read_json(os.path.join(self.p, "04.Prompt", name))["outputs"]
 
     def test_star_kept_by_sort(self):
-        src = os.path.join(self.out, "a.png")
+        src = os.path.join(self.p, "60.Rush Images", "Footage", "a.png")
         write(src, b"img")
         name = self.run_with([{"source": src, "kind": "image", "copy": None}])
+        rej = os.path.join(self.p, "60.Rush Images", "No Good", "a.png")
+        val = os.path.join(self.p, "60.Rush Images", "Rough Cut", "a.png")
         rr.sort_output(self.p, name, 0, "rejected")
+        self.assertEqual((os.path.exists(src), os.path.isfile(rej)), (False, True))
+        self.assertEqual(self.outs(name)[0]["source"], rej)
         self.assertIs(self.outs(name)[0]["star"], True)
         rr.sort_output(self.p, name, 0, "validated")
+        self.assertEqual((os.path.exists(rej), os.path.isfile(val)), (False, True))
+        self.assertEqual(self.outs(name)[0]["source"], val)
         self.assertIs(self.outs(name)[0]["star"], True)
         self.assertIs(rr.list_runs(self.p)[0]["outputs"][0]["star"], True)
 
@@ -1565,11 +1573,17 @@ class StarKeptTest(unittest.TestCase):
         foot = os.path.join(self.p, "60.Rush Images", "Footage", "b.png")
         write(lock, b"a")
         write(foot, b"b")
-        a = self.run_with([{"source": lock, "kind": "image", "copy": None}])
-        b = self.run_with([{"source": foot, "kind": "image", "copy": None}])
+        a = self.run_with([{"source": lock, "kind": "image", "copy": None}])                  # etoilee
+        b = self.run_with([{"source": foot, "kind": "image", "copy": None, "star": False}])   # sans etoile
         rr.sort_output(self.p, b, 0, "picture_lock", swap=True)
+        # Les deux fichiers ont vraiment echange leur place...
+        a_new = os.path.join(self.p, "60.Rush Images", "Footage", "a.png")
+        self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images", "Picture Lock")), ["b.png"])
+        self.assertEqual(self.outs(a)[0]["source"], a_new)
+        self.assertEqual(self.outs(b)[0]["source"], lock.replace("a.png", "b.png"))
+        # ... et chacun garde sa propre etoile.
         self.assertIs(self.outs(a)[0]["star"], True)
-        self.assertIs(self.outs(b)[0]["star"], True)
+        self.assertNotIn("star", self.outs(b)[0])
 
     def test_star_kept_by_tidy(self):
         # Fichier laisse a la racine de 40 : tidy_rush le range dans Footage.
@@ -1663,11 +1677,26 @@ class StarKeptTest(unittest.TestCase):
     def test_list_runs_exposes_star_without_writing(self):
         src = os.path.join(self.out, "a.png")
         write(src, b"img")
-        name = self.run_with([{"source": src, "kind": "image", "copy": None}])
+        # Sortie etoilee laissee a la racine de 40 : tidy=True la rangerait (et reecrirait le JSON).
+        loose = os.path.join(self.p, "40.Rush Videos", "v.mp4")
+        write(loose, b"v")
+        name = self.run_with([{"source": src, "kind": "image", "copy": None},
+                              {"source": loose, "kind": "video", "copy": "40.Rush Videos/v.mp4", "in_place": True}])
         path = os.path.join(self.p, "04.Prompt", name)
         os.utime(path, (1000000000, 1000000000))
-        self.assertIs(rr.list_runs(self.p, tidy=False)[0]["outputs"][0]["star"], True)
+        with open(path, "rb") as f:
+            before = f.read()
+        outs = rr.list_runs(self.p, tidy=False)[0]["outputs"]
+        self.assertEqual([o["star"] for o in outs], [True, True])
         self.assertEqual(os.path.getmtime(path), 1000000000)
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), before)
+        self.assertTrue(os.path.isfile(loose))
+        # Avec tidy (defaut), le fichier est range et le JSON reecrit : le test n'est donc pas vide.
+        rr.list_runs(self.p)
+        self.assertFalse(os.path.exists(loose))
+        self.assertNotEqual(os.path.getmtime(path), 1000000000)
+        self.assertIs(self.outs(name)[1]["star"], True)
 
 
 if __name__ == "__main__":
