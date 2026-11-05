@@ -193,7 +193,7 @@ const HELP_SECTIONS = [
     {
         id: "projectwin", title: "Project window", icon: FOLDER_ICON, color: ORANGE,
         html: hList([
-            "Choose the project in the <b>Project name</b> menu at the top (this does not change any node); buttons <b>Video</b> (default), " +
+            "Choose the project in the <b>Project</b> list at the top, then the <b>Sub-project</b> list for a MultiProject (this does not change any node); buttons <b>Video</b> (default), " +
             "<b>Image</b> and <b>Son</b> show the folders of that type, each with its thumbnails.",
             "<b>Archives</b> shows the Archives folders of the chosen type (click again to go back).",
             "<b>Extract Frames</b> shows the frames extracted from the Picture Lock videos (click again to go back).",
@@ -294,7 +294,7 @@ const HELP_SECTIONS_FR = [
     {
         id: "projectwin", title: "Fenêtre Project",
         html: hList([
-            "Choisissez le projet dans le menu <b>Project name</b> en haut (aucun nœud n'est modifié) ; les boutons <b>Video</b> (par défaut), " +
+            "Choisissez le projet dans la liste <b>Project</b> en haut, puis la liste <b>Sub-project</b> pour un MultiProject (aucun nœud n'est modifié) ; les boutons <b>Video</b> (par défaut), " +
             "<b>Image</b> et <b>Son</b> montrent les dossiers de ce type, avec leurs vignettes.",
             "<b>Archives</b> montre les dossiers Archives du type choisi (cliquez de nouveau pour revenir).",
             "<b>Extract Frames</b> montre les images extraites des vidéos du Picture Lock (cliquez de nouveau pour revenir).",

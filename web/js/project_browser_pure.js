@@ -56,14 +56,31 @@ export function projectPathOf(root, name) {
     return String(root || "").replace(/[\\/]+$/, "") + sep + String(name || "").split("/").join(sep);
 }
 
-/** Projets et sous-projets pour le menu : [{value, label, group, multi}], comme le noeud Project (groupe en tete). */
-export function projectChoices(tree) {
-    const out = [];
-    for (const e of tree || []) {
-        if (!e.projects) out.push({ value: e.name, label: e.name, group: "", multi: false });
-        else for (const p of e.projects) out.push({ value: e.name + "/" + p, label: p, group: e.name, multi: true });
-    }
-    return out;
+/** Projets de premier niveau pour la ligne "Project" : [{name, multi, subs}] (subs vide pour un projet simple). */
+export function projectGroups(tree) {
+    return (tree || []).map((e) => (e.projects
+        ? { name: e.name, multi: true, subs: e.projects.slice() }
+        : { name: e.name, multi: false, subs: [] }));
+}
+
+/** "Groupe/Projet" -> {group, sub} ; "Solo" -> {group: "Solo", sub: ""}. */
+export function splitProjectName(name) {
+    const s = String(name || "");
+    const i = s.indexOf("/");
+    return i < 0 ? { group: s, sub: "" } : { group: s.slice(0, i), sub: s.slice(i + 1) };
+}
+
+/**
+ * Nom complet du projet montre apres le choix de groupName dans la ligne "Project" (pas de "All" ici) :
+ * projet simple = son nom ; MultiProject = le sous-projet courant s'il lui appartient, sinon le premier ("" sans sous-projet).
+ */
+export function pickProject(groups, groupName, current) {
+    const g = (groups || []).find((x) => x.name === groupName);
+    if (!g) return "";
+    if (!g.multi) return g.name;
+    const cur = splitProjectName(current);
+    const sub = cur.group === g.name && g.subs.includes(cur.sub) ? cur.sub : g.subs[0];
+    return sub ? g.name + "/" + sub : "";
 }
 
 /** Date de modification (secondes) -> "dd/mm/yyyy hh:mm:ss", "" sans date. */

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-    projectSections, sectionQuery, rushFolderOf, kindOfName, projectPathOf, projectChoices, mtimeText,
+    projectSections, sectionQuery, rushFolderOf, kindOfName, projectPathOf, projectGroups, splitProjectName, pickProject, mtimeText,
 } from "../web/js/project_browser_pure.js";
 
 const folders = (kind, mode) => projectSections(kind, mode).map((s) => s.folder);
@@ -37,14 +37,29 @@ function EXTRACT() {
     return projectSections("video", "extract")[0].folder;
 }
 
-test("project list : sous-projets d'un MultiProject comme dans le noeud Project", () => {
+test("projectGroups : projet simple et MultiProject avec sous-projets", () => {
     const tree = [{ name: "Solo", projects: null }, { name: "Serie", projects: ["Ep1", "Ep2"] }];
-    assert.deepEqual(projectChoices(tree), [
-        { value: "Solo", label: "Solo", group: "", multi: false },
-        { value: "Serie/Ep1", label: "Ep1", group: "Serie", multi: true },
-        { value: "Serie/Ep2", label: "Ep2", group: "Serie", multi: true },
+    assert.deepEqual(projectGroups(tree), [
+        { name: "Solo", multi: false, subs: [] },
+        { name: "Serie", multi: true, subs: ["Ep1", "Ep2"] },
     ]);
-    assert.deepEqual(projectChoices(null), []);
+    assert.deepEqual(projectGroups(null), []);
+});
+
+test("splitProjectName : G/P et projet simple", () => {
+    assert.deepEqual(splitProjectName("Serie/Ep1"), { group: "Serie", sub: "Ep1" });
+    assert.deepEqual(splitProjectName("Solo"), { group: "Solo", sub: "" });
+    assert.deepEqual(splitProjectName(""), { group: "", sub: "" });
+});
+
+test("pickProject : choix du groupe, sous-projet gardé s'il appartient au groupe", () => {
+    const g = projectGroups([{ name: "Solo", projects: null }, { name: "Serie", projects: ["Ep1", "Ep2"] }, { name: "Vide", projects: [] }]);
+    assert.equal(pickProject(g, "Solo", "Serie/Ep2"), "Solo");
+    assert.equal(pickProject(g, "Serie", "Solo"), "Serie/Ep1");
+    assert.equal(pickProject(g, "Serie", "Serie/Ep2"), "Serie/Ep2");
+    assert.equal(pickProject(g, "Serie", "Autre/Ep2"), "Serie/Ep1");
+    assert.equal(pickProject(g, "Vide", ""), "");
+    assert.equal(pickProject(g, "Inconnu", "Solo"), "");
 });
 
 test("projectPathOf, kindOfName, mtimeText", () => {

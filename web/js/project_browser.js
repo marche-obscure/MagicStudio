@@ -10,7 +10,7 @@ import {
 } from "./project_node.js";
 import { rushItems, runDateText } from "./project_paths.js";
 import {
-    PROJECT_KINDS, projectSections, sectionQuery, rushFolderOf, kindOfName, projectPathOf, projectChoices, mtimeText,
+    PROJECT_KINDS, projectSections, sectionQuery, rushFolderOf, kindOfName, projectPathOf, projectGroups, splitProjectName, pickProject, mtimeText,
 } from "./project_browser_pure.js";
 
 const KIND_KEY = "mmloadmedia.projectKind";
@@ -61,16 +61,34 @@ export function buildProjectWindow(container, ops = {}) {
     // ---- En-tete ----
     const head = document.createElement("div");
     Object.assign(head.style, { display: "flex", flexDirection: "column", gap: "6px", padding: "8px 10px", borderBottom: "1px solid #2a2a2a" });
-    const nameRow = document.createElement("div");
-    Object.assign(nameRow.style, { display: "flex", alignItems: "center", gap: "8px" });
-    const nameLabel = document.createElement("div");
-    nameLabel.textContent = "Project name :";
-    Object.assign(nameLabel.style, { fontWeight: "bold", color: TITLE_COLOR, flex: "0 0 auto" });
+    // Lignes "Project" et "Sub-project" comme la galerie du Reference Loader (sans "All" : la fenetre montre UN projet).
+    const makeRow = (labelText) => {
+        const row = document.createElement("div");
+        Object.assign(row.style, { display: "flex", gap: "6px", padding: "0", alignItems: "center" });
+        const label = document.createElement("div");
+        label.textContent = labelText;
+        Object.assign(label.style, { flex: "0 0 70px", color: "#9fd6cf", fontSize: "11px" });
+        row.appendChild(label);
+        return row;
+    };
+    const projRow = makeRow("Project");
     const select = document.createElement("select");
-    select.style.display = "none";
+    Object.assign(select.style, {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833",
+        borderRadius: "10px", padding: "4px 8px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+        cursor: "pointer",
+    });
     const picker = buildIconPicker(select, card,
         (o) => (o.value ? projectKind(o.dataset.multi === "1") : null), { borderRadius: "10px", padding: "4px 8px" });
-    nameRow.append(nameLabel, picker.el, select);
+    select.style.display = "none";
+    projRow.append(picker.el, select);
+    const grpRow = makeRow("Sub-project");
+    const grpSelect = document.createElement("select");
+    grpSelect.style.cssText = select.style.cssText;
+    grpSelect.style.display = "";
+    grpSelect.title = "One of the projects of this folder";
+    grpRow.appendChild(grpSelect);
+    grpRow.style.display = "none";
 
     const mkBtn = (text, tip) => {
         const b = document.createElement("button");
@@ -96,7 +114,7 @@ export function buildProjectWindow(container, ops = {}) {
     spacer.style.flex = "1";
     const closeBtn = makeTextButton("Close", ORANGE);
     barRow.append(archivesBtn, extractBtn, spacer, closeBtn);
-    head.append(nameRow, barRow);
+    head.append(projRow, grpRow, barRow);
 
     const body = document.createElement("div");
     Object.assign(body.style, { flex: "1", overflowY: "auto", overflowX: "hidden", padding: "8px 12px", background: BAR_BG });
@@ -145,25 +163,39 @@ export function buildProjectWindow(container, ops = {}) {
     }
 
     function fillSelect() {
+        const groups = projectGroups(tree);
+        const cur = splitProjectName(projectName);
         select.innerHTML = "";
-        let found = false;
-        for (const c of projectChoices(tree)) {
+        for (const g of groups) {
             const o = document.createElement("option");
-            o.value = c.value;
-            o.textContent = c.group ? c.group + " / " + c.label : c.label;
-            o.dataset.multi = c.multi ? "1" : "0";
-            if (c.value === projectName) found = true;
+            o.value = g.name;
+            o.textContent = g.name;
+            o.dataset.multi = g.multi ? "1" : "0";
             select.appendChild(o);
         }
-        if (projectName && !found) {
+        let entry = groups.find((g) => g.name === cur.group);
+        if (projectName && !entry) { // projet relie absent de la liste : on le montre quand meme
+            entry = { name: cur.group, multi: !!cur.sub, subs: cur.sub ? [cur.sub] : [] };
             const o = document.createElement("option");
-            o.value = projectName;
-            o.textContent = projectName;
-            o.dataset.multi = projectName.includes("/") ? "1" : "0";
+            o.value = entry.name;
+            o.textContent = entry.name;
+            o.dataset.multi = entry.multi ? "1" : "0";
             select.appendChild(o);
         }
-        select.value = projectName;
+        select.value = projectName ? cur.group : "";
         picker.paint();
+        grpSelect.innerHTML = "";
+        grpRow.style.display = entry && entry.multi ? "flex" : "none";
+        if (!entry || !entry.multi) return;
+        const subs = entry.subs.includes(cur.sub) || !cur.sub ? entry.subs : entry.subs.concat(cur.sub);
+        for (const p of subs) {
+            const o = document.createElement("option");
+            o.value = p;
+            o.textContent = p;
+            o.style.background = "#111";
+            grpSelect.appendChild(o);
+        }
+        grpSelect.value = cur.sub;
     }
 
     // ---- Vignettes ----
@@ -365,7 +397,8 @@ export function buildProjectWindow(container, ops = {}) {
     }
     archivesBtn.addEventListener("click", () => setMode("archives"));
     extractBtn.addEventListener("click", () => setMode("extract"));
-    select.addEventListener("change", () => chooseProject(select.value));
+    select.addEventListener("change", () => chooseProject(pickProject(projectGroups(tree), select.value, projectName) || select.value));
+    grpSelect.addEventListener("change", () => chooseProject(splitProjectName(projectName).group + "/" + grpSelect.value));
 
     function close() {
         seq++; // un chargement en cours ne repeuple pas la fenetre fermee
