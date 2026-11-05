@@ -620,6 +620,15 @@ test("folderUse LTX 2.5 14 is Not used", () => {
     assert.equal(folderUse([], vstate(FL, {}), "08.Images").mode, "F2VA / FL2VA");
 });
 
+test("folderUse Image : 08 = 15, les autres Not used", () => {
+    const IM = "image.basic";
+    const s = vstate(IM, { [IM]: { images: ["P/08.Images/a.png", "P/08.Images/b.png", "P/08.Images/c.png"] } });
+    assert.deepEqual(folderUse(["P/08.Images/a.png", "P/08.Images/b.png", "P/08.Images/c.png", "P/08.Images/x.png"], s, "08.Images"),
+        { used: 3, max: 15, mode: "Image" });
+    for (const f of ["10.Son", "12.Video", "14.Video-Audio"]) assert.equal(folderUse([], s, f).max, 0, f);
+    assert.deepEqual(folderMax(s), { "08.Images": 15, "10.Son": 0, "12.Video": 0, "14.Video-Audio": 0 });
+});
+
 test("configRefs : toutes les variantes et celle affichee", () => {
     const s = vstate(L3, { [L3]: { guide_images: ["g"] } });
     const c = configRefs(s);

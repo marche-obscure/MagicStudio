@@ -91,6 +91,11 @@ class RunParamsTest(unittest.TestCase):
         self.assertEqual(rr.run_mode(prompt({})), "Ref2VA")
         self.assertIsNone(rr.run_mode({"1": {"class_type": "KSampler", "inputs": {}}}))
 
+    def test_run_mode_image(self):
+        state = {"variant": "image.basic"}
+        prompt = {"1": {"class_type": "MiniMaxH3RefLoader", "inputs": {"state": json.dumps(state)}}}
+        self.assertEqual(rr.run_mode(prompt), "Image")
+
     def test_custom_sampler_nodes(self):
         prompt = {
             "10": {"class_type": "RandomNoise", "inputs": {"noise_seed": 123}},

@@ -147,6 +147,37 @@ test("links saved per variant", () => {
     assert.deepEqual(outputLinksOf(c2, 0), []);
 });
 
+test("Image model : container outputs image_0 ... image_n-1", () => {
+    const three = migrateState({ variant: "image.basic", selections: { "image.basic": { rows: { images: ["a.png", "b.png", "c.png"] } } } });
+    assert.deepEqual(variantLayoutKeys(three), ["image_0", "image_1", "image_2"]);
+    assert.deepEqual(variantLayoutKeys(migrateState({ variant: "image.basic" })), ["image_0"]);
+});
+
+test("links saved per variant (Image)", () => {
+    const g = fakeGraph();
+    const c = fakeNode(g, 1, "MagicStudioContainer", ["package"], ["ref_image_0", "ref_video_0"]);
+    const target = fakeNode(g, 2, "MiniMaxH3ReferenceToVideo", ["ref_image_0", "ref_video_0"], []);
+    c.outputs[0].label = "hero";
+    c.connect(0, target, 0);
+    c.connect(1, target, 1);
+    const saved = saveOutputLinks(c);
+    // passage Image : les sorties deviennent image_n, aucun lien d'Image memorise
+    const imageSaved = [{ key: "image_0", label: null, links: [] }, { key: "image_1", label: null, links: [] }];
+    c.outputs = [{ name: "image_0" }, { name: "image_1" }];
+    g.links.clear();
+    restoreOutputLinks(c, imageSaved);
+    assert.deepEqual(outputLinksOf(c, 0), []);
+    assert.deepEqual(outputLinksOf(c, 1), []);
+    // retour Ref2VA : les liens memorises reviennent
+    const g2 = fakeGraph();
+    const c2 = fakeNode(g2, 1, "MagicStudioContainer", ["package"], ["ref_image_0", "ref_video_0"]);
+    fakeNode(g2, 2, "MiniMaxH3ReferenceToVideo", ["ref_image_0", "ref_video_0"], []);
+    restoreOutputLinks(c2, saved);
+    assert.equal(c2.outputs[0].label, "hero");
+    assert.deepEqual(outputLinksOf(c2, 0).map((l) => l.target_slot), [0]);
+    assert.deepEqual(outputLinksOf(c2, 1).map((l) => l.target_slot), [1]);
+});
+
 test("pair colors only for a video and its soundtrack of the same number", () => {
     const s = migrateState({ mode: "ref2va", videos: ["a.mp4", "b.mp4"], video_audios: ["a.mp4"] });
     assert.deepEqual(pairedOutputs(s), { ref_video_0: 1, ref_video_audio_0: 1 });

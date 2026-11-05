@@ -412,6 +412,24 @@ class VariantConfigTest(unittest.TestCase):
         by = {f["folder"]: f for f in rep["folders"]}
         self.assertEqual(by["08.Images"]["files"][0]["Utilisations"], uses)
 
+    def test_image_variant_uses_and_other_variant_file_outside(self):
+        import profiles
+        a = write(self.f("08.Images", "a.png"), b"A")
+        b = write(self.f("08.Images", "b.png"), b"B")
+        outside = os.path.join(self.root, "elsewhere", "m.png")
+        write(outside, b"M")
+        st = profiles.migrate_state({"variant": "image.basic"})
+        st["selections"]["image.basic"]["rows"]["images"] = [a, b]
+        # fichier Ref2VA hors du projet : autre variante, ne bloque pas la sauvegarde
+        st["selections"]["minimax_h3.ref2va"]["rows"]["images"] = [outside]
+        pc.save_config(self.p, st["selections"], "image.basic")
+        cfg = pc.read_config(self.p)
+        self.assertEqual(cfg["variant"], "image.basic")
+        img = cfg["08.Images"][0]
+        self.assertEqual(img["NbImage"], 2)
+        self.assertEqual(img["image 1"][0]["Utilisations"], [{"variante": "image.basic", "ligne": "images", "Indice": 1}])
+        self.assertEqual(img["image 2"][0]["Utilisations"], [{"variante": "image.basic", "ligne": "images", "Indice": 2}])
+
     def test_file_used_by_two_variants(self):
         sels, (a, _, _) = self.sels()
         cfg = pc.build_config(self.p, sels, "minimax_h3.ref2va")
