@@ -5,7 +5,7 @@ import { buildFolderWindow } from "./media_browser.js";
 import { buildProjectWindow } from "./project_browser.js";
 import {
     COMPARE_CLASS, MODES, parseState, formatState, effectiveKind, acceptKind, bodyDropSide, halfSide, uiHeight,
-    initialStar, hintText,
+    initialStar, hintText, sideFps,
 } from "./compare_pure.js";
 import { buildCompareViewer } from "./compare_viewer.js";
 
@@ -243,6 +243,33 @@ app.registerExtension({
             const modeSpacer = document.createElement("div");
             modeSpacer.style.flex = "1";
             modeRow.appendChild(modeSpacer);
+            // Bouton Sync (tache 7) : une horloge pour A et B, ou un lecteur par cote.
+            const syncBtn = document.createElement("button");
+            syncBtn.type = "button";
+            syncBtn.textContent = "Sync";
+            syncBtn.title = "On: one clock for A and B. Off: each side plays on its own";
+            Object.assign(syncBtn.style, {
+                background: "#252525", color: "#ddd", border: "1px solid #3a3a3a", borderRadius: "6px",
+                padding: "2px 10px", cursor: "pointer", fontSize: "11px", flex: "0 0 auto",
+            });
+            syncBtn.addEventListener("click", () => {
+                const s = readState();
+                s.sync = !s.sync;
+                writeState(s);
+                paint();
+                // Hauteur du noeud = uiHeight(sync) (une ou deux barres).
+                const min = typeof node.computeSize === "function" ? node.computeSize() : null;
+                node.setSize([node.size[0], min ? min[1] : node.size[1]]);
+                node.setDirtyCanvas(true, true);
+            });
+            modeRow.appendChild(syncBtn);
+            function paintSync(on, videos) {
+                syncBtn.style.borderColor = on ? GREEN : "#3a3a3a";
+                syncBtn.style.color = on ? GREEN : "#ddd";
+                syncBtn.style.fontWeight = on ? "bold" : "normal";
+                // Sans video, le bouton reste utilisable mais estompe (rien a lire).
+                syncBtn.style.opacity = videos ? "1" : "0.5";
+            }
             const hint = document.createElement("div");
             Object.assign(hint.style, { color: "#999", fontSize: "11px", height: "14px", lineHeight: "14px" });
             modeSlot.append(modeRow, hint);
@@ -263,8 +290,9 @@ app.registerExtension({
                 background: "#0d0d0d", overflow: "hidden", boxSizing: "border-box", display: "flex",
             });
             frame.dataset.mmcompare = "frame";
-            // Place du lecteur (tache 7) et de la ligne des etoiles (tache 8).
+            // Lecteur (barres de compare_viewer.js) et ligne des etoiles (tache 8).
             const playerSlot = document.createElement("div");
+            Object.assign(playerSlot.style, { flex: "0 0 auto", overflow: "hidden" });
             const starRow = document.createElement("div");
             Object.assign(starRow.style, { display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: "18px" });
             starRow.dataset.mmcompare = "stars";
@@ -484,6 +512,7 @@ app.registerExtension({
             // ---- Cadre de comparaison (compare_viewer.js) ----
             const viewer = buildCompareViewer(frame, {
                 onRemove: (side) => clearSide(side),
+                barHost: playerSlot,
             });
             /** Source d'un cote pour le cadre : null si rien (ni fichier ni entree branchee). */
             function viewSource(side) {
@@ -491,12 +520,35 @@ app.registerExtension({
                 if (!src.from) return null;
                 return { path: src.path, kind: src.kind, from: src.from, kept: src.kept };
             }
+            // Cadence de chaque cote : /mmrefloader/info (fps) ; apercu de frames branchees = 24.
+            const fps = { A: 24, B: 24 };
+            const fpsKeys = { A: "", B: "" };
+            function refreshFps(side, src) {
+                const fromFrames = !!src && src.from === "input" && linkedInput(sideInputs(side)[1]);
+                const k = src && src.path && src.kind === "video" ? (fromFrames ? "f|" : "v|") + src.path : "";
+                if (k === fpsKeys[side]) return;
+                fpsKeys[side] = k;
+                fps[side] = 24;
+                viewer.setFps(fps);
+                if (!k || fromFrames) return;
+                apiGet("/mmrefloader/info?file=" + encodeURIComponent(src.path)).then((info) => {
+                    if (fpsKeys[side] !== k) return; // source changee pendant la lecture
+                    fps[side] = sideFps(false, info && info.fps);
+                    viewer.setFps(fps);
+                }).catch(() => {
+                    // fichier illisible : 24 images / s
+                });
+            }
             function defaultRenderer(api) {
                 const s = api.readState();
                 paintModes(s.mode);
+                const sources = { A: viewSource("A"), B: viewSource("B") };
+                for (const side of SIDES) refreshFps(side, sources[side]);
                 viewer.setMode(s.mode);
                 viewer.setStar(s.star);
-                viewer.setSources({ A: viewSource("A"), B: viewSource("B") });
+                viewer.setSync(s.sync);
+                viewer.setSources(sources);
+                paintSync(s.sync, SIDES.some((x) => sources[x] && sources[x].kind === "video"));
             }
             /** Element d'apercu (image, ou video sans son ni lecture) ; onFail si le fichier manque. */
             function mediaElement(path, kind, onFail) {

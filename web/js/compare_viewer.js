@@ -1,5 +1,5 @@
-import { VIOLET } from "./minimax_ref_loader.js";
-import { clipA, wipePos, halfSide, soundSide, tagCorner } from "./compare_pure.js";
+import { VIOLET, GREEN } from "./minimax_ref_loader.js";
+import { clipA, wipePos, halfSide, soundSide, tagCorner, syncFix, frameStep, timeText } from "./compare_pure.js";
 
 // --------------------------------------------------------------------
 // Cadre de comparaison du noeud MagicStudio Image / Video Compare (plan du 05/11/2026, tache 6).
@@ -7,7 +7,182 @@ import { clipA, wipePos, halfSide, soundSide, tagCorner } from "./compare_pure.j
 // dessus decoupee par clip-path, rideau qui suit la souris sans clic). Son : seule la video
 // de la moitie sous la souris parle ; hors du cadre, le cote etoile (sinon A).
 // release() vide chaque <video> (verrou des fichiers sous Windows).
+// Lecteur (tache 7) : Sync allume = une barre, A donne l'heure et B suit (recale au-dela de
+// 0,05 s) ; Sync eteint = une barre par cote. Images seulement : barres cachees, place gardee.
 // --------------------------------------------------------------------
+
+// Hauteur de la zone du lecteur : une barre (Sync) ou deux (la hauteur du noeud = uiHeight).
+const BAR_HEIGHT = 26;
+const BARS_GAP = 4;
+export const playerHeight = (sync) => (sync ? BAR_HEIGHT : 2 * BAR_HEIGHT + BARS_GAP);
+
+function barButton(text, title) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = text;
+    b.title = title;
+    Object.assign(b.style, {
+        minWidth: "24px", height: "22px", padding: "0 4px", border: "1px solid #3a3a3a", borderRadius: "5px",
+        background: "#252525", color: "#ddd", cursor: "pointer", fontSize: "11px", flex: "0 0 auto", lineHeight: "1",
+    });
+    return b;
+}
+
+/**
+ * Barre de lecture pour une ou deux videos : videos[0] donne l'heure, les autres la suivent
+ * (play / pause / seek / image par image, boucle requestAnimationFrame avec syncFix).
+ * fpsOf(video) -> cadence (pas d'image = 1 / fps). label = "A" / "B" (barres l'une sous l'autre) ou "".
+ */
+export function buildBar(videos, fpsOf, label) {
+    const clock = videos[0];
+    const followers = videos.slice(1);
+    let loop = false;
+    let raf = 0;
+    const el = document.createElement("div");
+    Object.assign(el.style, { display: "flex", alignItems: "center", gap: "4px", height: BAR_HEIGHT + "px", minWidth: "0" });
+    if (label) {
+        const t = document.createElement("span");
+        t.textContent = label;
+        Object.assign(t.style, {
+            background: SIDE_COLORS[label], color: "white", fontWeight: "bold", borderRadius: "4px",
+            padding: "0 5px", flex: "0 0 auto",
+        });
+        el.appendChild(t);
+    }
+    const playBtn = barButton("▶", "Play / Pause");
+    const prevBtn = barButton("◀|", "Previous frame");
+    const stopBtn = barButton("■", "Stop");
+    const nextBtn = barButton("|▶", "Next frame");
+    const loopBtn = barButton("⟲", "Loop");
+    const range = document.createElement("input");
+    range.type = "range";
+    range.min = "0";
+    range.max = "1000";
+    range.step = "1";
+    range.value = "0";
+    Object.assign(range.style, { flex: "1", minWidth: "40px", margin: "0", cursor: "pointer" });
+    const time = document.createElement("span");
+    Object.assign(time.style, { color: "#aaa", fontSize: "11px", flex: "0 0 auto", fontVariantNumeric: "tabular-nums" });
+    const vol = document.createElement("input");
+    vol.type = "range";
+    vol.min = "0";
+    vol.max = "1";
+    vol.step = "0.05";
+    vol.value = String(clock.volume);
+    vol.title = "Volume";
+    Object.assign(vol.style, { width: "54px", flex: "0 0 auto", margin: "0", cursor: "pointer" });
+    el.append(playBtn, prevBtn, stopBtn, nextBtn, loopBtn, range, time, vol);
+
+    const dur = (v) => (Number.isFinite(v.duration) ? v.duration : 0);
+    /**
+     * Met les suiveurs au temps t, exactement (seek, image par image, arret : un pas d'image est
+     * plus petit que la tolerance de syncFix) ; une video plus courte se fige sur sa derniere image.
+     */
+    function follow(t) {
+        for (const f of followers) {
+            const target = Math.min(t, dur(f));
+            if (f.currentTime !== target) f.currentTime = target;
+        }
+    }
+    function paintTime() {
+        const d = dur(clock);
+        range.value = String(d > 0 ? Math.round((clock.currentTime / d) * 1000) : 0);
+        time.textContent = timeText(clock.currentTime) + " / " + timeText(d);
+        playBtn.textContent = clock.paused ? "▶" : "❚❚";
+        loopBtn.style.borderColor = loop ? GREEN : "#3a3a3a";
+        loopBtn.style.color = loop ? GREEN : "#ddd";
+    }
+    function tick() {
+        raf = 0;
+        if (clock.paused) {
+            paintTime();
+            return;
+        }
+        const t = clock.currentTime;
+        for (const f of followers) {
+            if (t < dur(f)) {
+                const fix = syncFix(t, f.currentTime);
+                if (fix !== null) f.currentTime = fix;
+                if (f.paused) f.play().catch(() => {});
+            }
+        }
+        paintTime();
+        raf = requestAnimationFrame(tick);
+    }
+    const startLoop = () => {
+        if (!raf) raf = requestAnimationFrame(tick);
+    };
+    function play() {
+        if (clock.ended || (dur(clock) > 0 && clock.currentTime >= dur(clock))) {
+            clock.currentTime = 0;
+            follow(0);
+        }
+        clock.play().catch(() => {});
+        for (const f of followers) if (clock.currentTime < dur(f)) f.play().catch(() => {});
+    }
+    function pause() {
+        for (const v of videos) v.pause();
+        follow(clock.currentTime);
+    }
+    function seek(t) {
+        clock.currentTime = t;
+        follow(t);
+        paintTime();
+    }
+    function step(dir) {
+        pause();
+        seek(frameStep(clock.currentTime, fpsOf(clock), dir, dur(clock)));
+    }
+    const onPlayBtn = () => (clock.paused ? play() : pause());
+    const onStop = () => {
+        pause();
+        seek(0);
+    };
+    const onLoop = () => {
+        loop = !loop;
+        paintTime();
+    };
+    const onRange = () => {
+        const d = dur(clock);
+        if (d > 0) seek((Number(range.value) / 1000) * d);
+    };
+    const onVol = () => {
+        for (const v of videos) v.volume = Number(vol.value);
+    };
+    // Fin de A : arret des deux, ou retour a 0 des deux avec la boucle.
+    const onEnded = () => {
+        if (loop) {
+            seek(0);
+            play();
+        } else {
+            for (const v of videos) v.pause();
+            paintTime();
+        }
+    };
+    playBtn.addEventListener("click", onPlayBtn);
+    prevBtn.addEventListener("click", () => step(-1));
+    stopBtn.addEventListener("click", onStop);
+    nextBtn.addEventListener("click", () => step(1));
+    loopBtn.addEventListener("click", onLoop);
+    range.addEventListener("input", onRange);
+    vol.addEventListener("input", onVol);
+    const clockEvents = [["play", startLoop], ["pause", paintTime], ["ended", onEnded], ["loadedmetadata", paintTime],
+        ["seeked", paintTime], ["timeupdate", () => clock.paused && paintTime()]];
+    for (const [name, fn] of clockEvents) clock.addEventListener(name, fn);
+    onVol();
+    paintTime();
+    if (!clock.paused) startLoop();
+    return {
+        el,
+        videos,
+        dispose() {
+            if (raf) cancelAnimationFrame(raf);
+            raf = 0;
+            for (const [name, fn] of clockEvents) clock.removeEventListener(name, fn);
+            el.remove();
+        },
+    };
+}
 
 const SIDES = ["A", "B"];
 const SIDE_COLORS = { A: "#1e88e5", B: VIOLET };
@@ -23,11 +198,13 @@ const CORNERS = {
 
 /**
  * Cadre de comparaison dans `host` (cadre du noeud, position relative, hauteur fixe).
- * ops = {onHover(side|null), onPos(pos), onRemove(side)}.
+ * ops = {onHover(side|null), onPos(pos), onRemove(side), barHost (zone du lecteur, sous le cadre)}.
  * setSources({A, B}) : sources[side] = {path, kind, from?, kept?} | null (from = "input" | "file").
  */
 export function buildCompareViewer(host, ops = {}) {
-    const state = { mode: "side", star: "", hover: null, pos: 0.5, sources: { A: null, B: null } };
+    const state = {
+        mode: "side", star: "", hover: null, pos: 0.5, sources: { A: null, B: null }, sync: true, fps: { A: 24, B: 24 },
+    };
     const els = { A: null, B: null }; // element <img> / <video> de chaque cote
     const keys = { A: "", B: "" };
     const failed = { A: false, B: false };
@@ -190,6 +367,54 @@ export function buildCompareViewer(host, ops = {}) {
         }
         paintWipe();
         paintSound();
+        paintBars();
+    }
+
+    // ---- Lecteur ----
+    const barHost = ops.barHost || null;
+    let bars = [];
+    let barsKey = null; // {sync, mode, A, B} : barres refaites seulement si l'un change
+    const fpsOf = (v) => state.fps[v === els.A ? "A" : "B"] || 24;
+    function clearBars() {
+        for (const b of bars) b.dispose();
+        bars = [];
+        if (barHost) barHost.innerHTML = "";
+    }
+    function paintBars() {
+        if (!barHost) return;
+        const vA = viewer.media("A");
+        const vB = viewer.media("B");
+        barHost.style.height = playerHeight(state.sync) + "px";
+        const k = barsKey;
+        if (k && k.sync === state.sync && k.mode === state.mode && k.A === vA && k.B === vB) return;
+        barsKey = { sync: state.sync, mode: state.mode, A: vA, B: vB };
+        clearBars();
+        // Images seulement (ou rien) : barres cachees, la hauteur reste (pas de saut).
+        barHost.style.visibility = vA || vB ? "visible" : "hidden";
+        if (!vA && !vB) return;
+        if (state.sync) {
+            const bar = buildBar([vA, vB].filter(Boolean), fpsOf, "");
+            bars.push(bar);
+            barHost.appendChild(bar.el);
+            return;
+        }
+        // Sync eteint : en side, chaque barre sous son cadre ; sinon l'une sous l'autre avec A / B.
+        const side = state.mode === "side";
+        const box = document.createElement("div");
+        Object.assign(box.style, side
+            ? { display: "flex", gap: "8px", alignItems: "flex-start" }
+            : { display: "flex", flexDirection: "column", gap: BARS_GAP + "px" });
+        for (const [s, v] of [["A", vA], ["B", vB]]) {
+            const cell = document.createElement("div");
+            Object.assign(cell.style, side ? { flex: "1", minWidth: "0" } : { height: BAR_HEIGHT + "px" });
+            if (v) {
+                const bar = buildBar([v], fpsOf, side ? "" : s);
+                bars.push(bar);
+                cell.appendChild(bar.el);
+            }
+            box.appendChild(cell);
+        }
+        barHost.appendChild(box);
     }
     /** Rideau : decoupe de la couche A, trait blanc 2 px et poignee ronde 14 px. */
     function paintWipe() {
@@ -265,14 +490,36 @@ export function buildCompareViewer(host, ops = {}) {
             const el = els[side];
             return el && el.tagName === "VIDEO" && !failed[side] ? el : null;
         },
+        /** Sync allume : une barre (A donne l'heure) ; eteint : une barre par cote. */
+        setSync(on) {
+            const v = on !== false;
+            if (v === state.sync) return;
+            state.sync = v;
+            // Chaque cote garde son temps : tout s'arrete au changement.
+            for (const side of SIDES) {
+                const m = viewer.media(side);
+                if (m) m.pause();
+            }
+            paintBars();
+        },
+        /** Cadence de chaque cote (pas d'image = 1 / fps ; 24 par defaut). */
+        setFps(fps) {
+            for (const side of SIDES) {
+                const f = fps ? Number(fps[side]) : 0;
+                state.fps[side] = f > 0 ? f : 24;
+            }
+        },
         /** Vide les videos (pause, src retire, load) : le fichier n'est plus verrouille. */
         release() {
+            clearBars();
+            barsKey = null;
             for (const side of SIDES) dropMedia(side);
             released = true;
             layout();
         },
         /** Arret complet (noeud supprime). */
         dispose() {
+            clearBars();
             for (const side of SIDES) dropMedia(side);
             host.removeEventListener("mousemove", onMove);
             host.removeEventListener("mouseleave", onLeave);
