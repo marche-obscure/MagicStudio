@@ -400,6 +400,25 @@ class PackageTests(TmpDirTest):
         pkg = media.build_package(s)
         self.assertEqual(pkg["layout"][:3], ["ref_image_0", "ref_image_1", "ref_video_0"])
 
+    def test_image_package_keeps_size(self):
+        # Modele Image : pas de limites de duree ni de taille, image a sa taille d'origine.
+        Image.new("RGB", (2000, 1000)).save(self.p("big.png"))
+        Image.new("RGB", (8, 8)).save(self.p("small.png"))
+
+        def image_state(names):
+            return self.state({"variant": "image.basic",
+                               "selections": {"image.basic": {"rows": {"images": names}}}})
+
+        pkg = media.build_package(image_state([self.p("big.png"), self.p("small.png")]))
+        self.assertEqual(pkg["variant"], "image.basic")
+        self.assertEqual(pkg["layout"], ["image_0", "image_1"])
+        self.assertEqual(tuple(pkg["values"]["image_0"].shape), (1, 1000, 2000, 3))
+        self.assertEqual(tuple(pkg["values"]["image_1"].shape), (1, 8, 8, 3))
+        self.assertEqual(media.build_package(image_state([]))["values"], {"image_0": None})
+        with self.assertRaises(FileNotFoundError) as cm:  # sous-classe d'OSError, comme les autres sorties
+            media.build_package(image_state([self.p("missing.png")]))
+        self.assertTrue(str(cm.exception).startswith("image_0"), str(cm.exception))
+
     def test_ltx_moments_default_rule_and_voice_from_video(self):
         for n in "abc":
             Image.new("RGB", (8, 8)).save(self.p(n + ".png"))

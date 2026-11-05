@@ -72,6 +72,9 @@ export const FALLBACK_DESCRIPTION = /* FALLBACK_DESCRIPTION */ {
         },
         "ltx": {
             "label": "LTX"
+        },
+        "image": {
+            "label": "Image"
         }
     },
     "variants": {
@@ -417,6 +420,31 @@ export const FALLBACK_DESCRIPTION = /* FALLBACK_DESCRIPTION */ {
                             "voice",
                             "AUDIO",
                             "audio"
+                        ]
+                    ]
+                }
+            ]
+        },
+        "image.basic": {
+            "model": "image",
+            "label": "Image",
+            "limits": {},
+            "settings": [],
+            "first_index": 0,
+            "rows": [
+                {
+                    "id": "images",
+                    "label": "Images",
+                    "kind": "image",
+                    "max": 15,
+                    "warn": 12,
+                    "lists": true,
+                    "folder": "08.Images",
+                    "outputs": [
+                        [
+                            "image_{n}",
+                            "IMAGE",
+                            "image"
                         ]
                     ]
                 }

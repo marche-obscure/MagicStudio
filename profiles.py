@@ -64,7 +64,7 @@ def default_moment(used):
 # Miroir JS : web/js/profiles.js (FALLBACK_DESCRIPTION, verifie egal par test).
 # ======================================================================
 
-MODELS = {"minimax_h3": {"label": "MiniMax H3"}, "ltx": {"label": "LTX"}}
+MODELS = {"minimax_h3": {"label": "MiniMax H3"}, "ltx": {"label": "LTX"}, "image": {"label": "Image"}}
 
 _MINIMAX_LIMITS = {"seconds": 15, "max_size": [768, 1344], "fps": 24, "multiple": 1, "frame_step": 1}
 _LTX_LIMITS = {"seconds": 20, "max_size": [768, 1344], "fps": 24, "multiple": 32, "frame_step": 8}
@@ -115,6 +115,15 @@ VARIANTS = {
                 "rows": _ltx_rows()},
     "ltx.2_5": {"model": "ltx", "label": "LTX 2.5", "limits": dict(_LTX_LIMITS), "settings": _LTX_SETTINGS,
                 "rows": _ltx_rows()},
+    # Modele Image : une seule ligne (15 images au plus, alerte a 12), sans limites ni reglages ;
+    # "lists" = archives de listes d'images, "warn" = seuil d'alerte du compteur.
+    "image.basic": {
+        "model": "image", "label": "Image", "limits": {}, "settings": [], "first_index": 0,
+        "rows": [
+            {"id": "images", "label": "Images", "kind": "image", "max": 15, "warn": 12, "lists": True,
+             "folder": "08.Images", "outputs": [["image_{n}", "IMAGE", "image"]]},
+        ],
+    },
 }
 DEFAULT_VARIANT = "minimax_h3.ref2va"
 CONTAINER_OUTPUTS = 40

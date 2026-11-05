@@ -453,8 +453,10 @@ def build_package(state):
     v = profiles.variant_of(state)
     lim = profiles.variant_limits(state, v)
     sel = (state.get("selections") or {}).get(v) or {}
-    fps, seconds, step = lim["fps"], lim["seconds"], lim["frame_step"]
-    pixels = lim["max_size"][0] * lim["max_size"][1]
+    # Limites lues avec .get : le modele Image n'en a aucune (image a sa taille d'origine).
+    fps, seconds, step = lim.get("fps"), lim.get("seconds"), lim.get("frame_step")
+    max_size = lim.get("max_size")
+    pixels = max_size[0] * max_size[1] if max_size else None
     layout = profiles.variant_layout(state)
     rows = {r["id"]: r for r in profiles.rows_of(v)}
     names = {rid: profiles.row_list(state, rid, v)[:lim["counts"][rid]] for rid in rows}
@@ -480,7 +482,7 @@ def build_package(state):
             values[key] = load_image(path)
         elif value == "video_frames":
             frames, _ = load_video(path, max_seconds=seconds, max_pixels=pixels, start=start, end=end,
-                                   fps=fps, multiple=lim["multiple"])
+                                   fps=fps, multiple=lim.get("multiple"))
             values[key] = frames[:profiles.frames_step(frames.shape[0], step)] if step > 1 else frames
         elif value == "audio":
             try:

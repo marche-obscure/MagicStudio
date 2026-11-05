@@ -65,6 +65,25 @@ class VariantsTest(unittest.TestCase):
         self.assertEqual(p.variants_of_model("ltx"), ["ltx.2_3", "ltx.2_5"])
         self.assertEqual(p.variants_of_model("minimax_h3"), ["minimax_h3.ref2va", "minimax_h3.fl2va"])
 
+    def test_image_model(self):
+        self.assertEqual(p.variants_of_model("image"), ["image.basic"])
+        self.assertEqual(list(p.MODELS), ["minimax_h3", "ltx", "image"])
+        self.assertEqual(p.variant_limits({"variant": "image.basic"}), {"counts": {"images": 15}})
+        self.assertEqual(p.DEFAULT_VARIANT, "minimax_h3.ref2va")
+        self.assertEqual(p.CONTAINER_OUTPUTS, 40)
+
+    def test_switch_keeps_selections(self):
+        s = p.migrate_state({"variant": "minimax_h3.ref2va", "selections": {
+            "minimax_h3.ref2va": {"rows": {"images": ["a.png", "b.png"]}}}})
+        s["variant"] = "image.basic"
+        s["selections"]["image.basic"]["rows"]["images"] = ["x.png", "y.png", "z.png"]
+        s = p.migrate_state(s)
+        s["variant"] = "minimax_h3.ref2va"
+        s = p.migrate_state(s)
+        self.assertEqual(s["selections"]["minimax_h3.ref2va"]["rows"]["images"], ["a.png", "b.png"])
+        self.assertEqual(s["selections"]["image.basic"]["rows"]["images"], ["x.png", "y.png", "z.png"])
+        self.assertEqual(s["lastVariant"]["image"], "image.basic")
+
     def test_container_outputs_fit_largest_layout(self):
         biggest = 0
         for v, d in p.VARIANTS.items():

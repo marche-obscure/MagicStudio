@@ -60,7 +60,7 @@ class MiniMaxH3RefLoader:
     FUNCTION = "run"
     CATEGORY = "MagicStudio"
     DESCRIPTION = (
-        "Pick the reference files of a model variant (MiniMax H3 Ref2VA / F2VA / FL2VA, LTX 2.3 / 2.5) in "
+        "Pick the reference files of a model variant (MiniMax H3 Ref2VA / F2VA / FL2VA, LTX 2.3 / 2.5, Image) in "
         "thumbnail galleries. Wire package to a MagicStudio Container to get the outputs of the variant."
     )
 

@@ -147,6 +147,7 @@ const VARIANT_PREFIX = {
     "minimax_h3.fl2va": "FL2VA_minimax_config_",
     "ltx.2_3": "LTX23_magicstudio_config_",
     "ltx.2_5": "LTX25_magicstudio_config_",
+    "image.basic": "IMAGE_magicstudio_config_",
 };
 
 /** Debut du nom du fichier telecharge pour la variante affichee (suivi de yyyyMMdd-HHmmss.json). */

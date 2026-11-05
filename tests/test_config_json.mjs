@@ -158,6 +158,14 @@ test("file prefix per variant", () => {
     assert.equal(variantConfigPrefix({ mode: "fl2va" }), "FL2VA_minimax_config_");
 });
 
+test("IMAGE config", () => {
+    assert.equal(variantConfigPrefix({ variant: "image.basic" }), "IMAGE_magicstudio_config_");
+    const s = vstate("image.basic", { images: [R3 + "/i/a.png", "D:/x/b.png"] });
+    const back = parseVariantConfig(formatVariantConfig(s));
+    assert.equal(back.variant, "image.basic");
+    assert.deepEqual(back.rows.images, s.selections["image.basic"].rows.images);
+});
+
 test("rows over the limit are cut at the row max", () => {
     const text = JSON.stringify({ format: "MiniMax H3 Reference Loader", version: 3, variant: "ltx.2_5", root: "D:/r",
         rows: { guide_images: Array.from({ length: 12 }, (_, i) => ({ path: "g" + i + ".png" })),
