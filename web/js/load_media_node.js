@@ -2,7 +2,7 @@ import { app } from "../../scripts/app.js";
 import {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE,
     iconBadge, hList, hSteps, hTip, hNote, hCard, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, START_ICON, FOLDER_ICON,
-    apiGet, buildHelpOverlay,
+    apiGet, buildHelpOverlay, hideWidget, GREEN, INACTIVE_BG, INACTIVE_FG,
 } from "./minimax_ref_loader.js";
 
 // --------------------------------------------------------------------
@@ -16,13 +16,17 @@ import {
 
 const NODE_NAME = "MiniMaxH3LoadMedia";
 const MIN_WIDTH = 320;
-const UI_HEIGHT = 236;
+const UI_HEIGHT = 268;
 const PREVIEW_HEIGHT = 180;
 const KINDS = {
     image: ["Image", IMAGE_ICON, VIOLET],
     video: ["Video", VIDEO_ICON, ORANGE],
     audio: ["Audio", AUDIO_ICON, TITLE_COLOR],
 };
+// Infobulle du bouton Yes (identique a celle de l'entree post_processing dans nodes.py).
+const POST_TIP = "Grey: the saved file is a new run. Green: it is a post-processing of the loaded file's run";
+/** Valeur du widget post_processing : seul un vrai booleen compte (ancien workflow = valeur d'un autre widget, donc non). */
+const postOn = (widget) => !!widget && widget.value === true;
 const mediaUrl = (path) => "/mmrefloader/media?file=" + encodeURIComponent(path);
 // Ordre des sorties, identique a RETURN_NAMES de nodes.py (choix utilisateur 24/10/2026 :
 // video_frames puis audio_video sous video ; audio = fichiers son seulement ; name en
@@ -86,6 +90,7 @@ const HELP_SECTIONS = [
         ]) +
         hCard("Parts of the node", [
             ["<b>file</b>", "full path of the file; filled by the drop, or typed by hand"],
+            ["<b>For post-processing</b>", "the <b>Yes</b> button: grey = the saved file is a new run, green = it is a post-processing"],
             ["Drop zone", "shows the file (picture, video player or audio player)"],
             [iconBadge(VIDEO_ICON, ORANGE), "type and name of the file, or what is wrong in orange"],
         ]),
@@ -105,7 +110,19 @@ const HELP_SECTIONS = [
         hTip("<b>video_frames</b> holds every frame in memory: for a long or large video, prefer <b>video</b>.") +
         hTip("the file is loaded again only when the path changes or when the file is modified.") +
         hNote("a file saved after this node, when it loads a file of a run, is added to that run as " +
-            "<b>Post A</b>, <b>Post B</b>… (help of the Project node, <b>Post-processing</b>)."),
+            "<b>Post A</b>, <b>Post B</b>… only if the <b>Yes</b> button is green (section <b>The Yes button</b>)."),
+    },
+    {
+        id: "post", title: "The Yes button", icon: START_ICON, color: GREEN,
+        html: hSteps([
+            "Find the line <b>For post-processing :</b> above the drop zone.",
+            "Click <b>Yes</b> to turn it <b>green</b>: the file saved after this node is a post-processing of the " +
+            "run of the loaded file (<b>Post A</b>, <b>Post B</b>…).",
+            "Leave it <b>grey</b> (default) for a new run: the saved file is recorded as a normal run.",
+        ]) +
+        hNote("a green <b>Yes</b> changes nothing when the loaded file has no run: it is then a normal run.") +
+        hNote("a workflow saved before this button existed opens with <b>Yes</b> grey: click it again on the " +
+            "MedLoad that retouches a file of a run."),
     },
     {
         id: "files", title: "Accepted files", icon: FOLDER_ICON, color: VIOLET,
@@ -132,6 +149,7 @@ const HELP_SECTIONS_FR = [
         ]) +
         hCard("Parties du nœud", [
             ["<b>file</b>", "chemin complet du fichier ; rempli par le dépôt, ou tapé à la main"],
+            ["<b>For post-processing</b>", "le bouton <b>Yes</b> : gris = le fichier enregistré est un nouveau Run, vert = c'est un post-traitement"],
             ["Zone de dépôt", "montre le fichier (image, lecteur vidéo ou lecteur audio)"],
             [iconBadge(VIDEO_ICON, ORANGE), "type et nom du fichier, ou ce qui ne va pas, en orange"],
         ]),
@@ -152,7 +170,21 @@ const HELP_SECTIONS_FR = [
             "préférez <b>video</b>.", "Astuce :") +
         hTip("le fichier n'est rechargé que si le chemin change ou si le fichier est modifié.", "Astuce :") +
         hNote("un fichier enregistré après ce nœud, quand il charge un fichier d'un Run, est ajouté à ce Run " +
-            "comme <b>Post A</b>, <b>Post B</b>… (aide du nœud Project, <b>Post-traitements</b>).", "Remarque :"),
+            "comme <b>Post A</b>, <b>Post B</b>… seulement si le bouton <b>Yes</b> est vert (rubrique " +
+            "<b>Le bouton Yes</b>).", "Remarque :"),
+    },
+    {
+        id: "post", title: "Le bouton Yes",
+        html: hSteps([
+            "Repérez la ligne <b>For post-processing :</b> au-dessus de la zone de dépôt.",
+            "Cliquez sur <b>Yes</b> pour le passer au <b>vert</b> : le fichier enregistré après ce nœud est un " +
+            "post-traitement du Run du fichier chargé (<b>Post A</b>, <b>Post B</b>…).",
+            "Laissez-le <b>gris</b> (défaut) pour un nouveau Run : le fichier enregistré est noté comme un Run normal.",
+        ]) +
+        hNote("un <b>Yes</b> vert ne change rien quand le fichier chargé n'a pas de Run : c'est alors un Run " +
+            "normal.", "Remarque :") +
+        hNote("un workflow enregistré avant l'existence de ce bouton s'ouvre avec <b>Yes</b> gris : cliquez-le " +
+            "de nouveau sur le MedLoad qui retouche un fichier d'un Run.", "Remarque :"),
     },
     {
         id: "files", title: "Fichiers acceptés",
@@ -227,7 +259,46 @@ app.registerExtension({
                 background: "#0d0d0d", display: "flex", alignItems: "center", justifyContent: "center",
                 overflow: "hidden", color: "#888", textAlign: "center", boxSizing: "border-box",
             });
-            container.append(top, zone);
+            // Ligne "For post-processing :" + bouton Yes (gris = Run, vert = post-traitement).
+            const postRow = document.createElement("div");
+            Object.assign(postRow.style, { display: "flex", alignItems: "center", gap: "8px" });
+            const postLabel = document.createElement("span");
+            postLabel.textContent = "For post-processing :";
+            Object.assign(postLabel.style, { fontWeight: "bold" });
+            const postBtn = document.createElement("button");
+            postBtn.type = "button";
+            postBtn.textContent = "Yes";
+            postBtn.title = POST_TIP;
+            postLabel.title = POST_TIP;
+            Object.assign(postBtn.style, {
+                border: "none", borderRadius: "999px", padding: "2px 14px", fontWeight: "bold",
+                cursor: "pointer", fontSize: "12px",
+            });
+            postRow.append(postLabel, postBtn);
+            const postWidget = (node.widgets || []).find((w) => w.name === "post_processing");
+            if (postWidget) {
+                hideWidget(postWidget);
+                // Nodes 2.0 (rendu Vue) : lit options.hidden, sinon le widget reste affiche.
+                if (!postWidget.options) postWidget.options = {};
+                postWidget.options.hidden = true;
+            } else {
+                postRow.style.display = "none";
+            }
+            const paintPost = () => {
+                const on = postOn(postWidget);
+                postBtn.style.background = on ? GREEN : INACTIVE_BG;
+                postBtn.style.color = on ? "white" : INACTIVE_FG;
+            };
+            postBtn.addEventListener("click", () => {
+                if (!postWidget) return;
+                postWidget.value = !postOn(postWidget);
+                if (postWidget.callback) postWidget.callback(postWidget.value);
+                paintPost();
+                node.setDirtyCanvas(true, true);
+            });
+            node.mmLoadMediaPaintPost = paintPost;
+            paintPost();
+            container.append(top, postRow, zone);
 
             const help = buildHelpOverlay(container, {
                 sectionsFor: helpSections, nodeTitle: "MagicStudio MedLoad", sectionKey: "mmloadmedia.helpSection",
@@ -375,6 +446,11 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function () {
             const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
             migrateOutputs(this);
+            // Ancien workflow : le widget post_processing a pu recevoir la valeur d'un autre widget
+            // (texte vide) ; seul un booleen est gardé, sinon gris (False). "file" n'est pas touche.
+            const pw = (this.widgets || []).find((w) => w.name === "post_processing");
+            if (pw && typeof pw.value !== "boolean") pw.value = false;
+            if (this.mmLoadMediaPaintPost) this.mmLoadMediaPaintPost();
             if (this.mmLoadMediaRender) setTimeout(() => this.mmLoadMediaRender(), 0);
             return r;
         };

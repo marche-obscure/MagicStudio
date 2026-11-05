@@ -234,6 +234,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 ## MagicStudio MedLoad node
 
 - **Drop a file from the Final Cut window, from 40.Rush Videos / 60.Rush Images or from Processing** onto the node (on its preview area or anywhere on the node): its full path goes into the `file` field, and the node shows the picture, a video player or an audio player. You can also type or paste the path in `file`.
+- **For post-processing : Yes** button (above the preview): grey (default) = the file saved after this node is a new run; green = it is a post-processing of the loaded file's run. Click it to switch. Workflows saved before this button open with it grey.
 - **Outputs:**
 
   | File | `video` | `video_frames` | `audio_video` | `image` | `audio` |
@@ -274,7 +275,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 
 ## Post-processing
 
-- A file saved **after a MagicStudio MedLoad** that loads a file of a run is added to **that run** (the original run) as **Post A**, not recorded as a new run. Retouch Post A again and you get **Post A.01** of the same run. Names: **Post A**, **Post B**… for the posts of the original; **Post A.01**, **Post A.02**… for the posts of a post. A name never changes, even after a deletion.
+- A file saved **after a MagicStudio MedLoad** that loads a file of a run is added to **that run** (the original run) as **Post A**, not recorded as a new run, **only when the MedLoad button `For post-processing : Yes` is green** (grey by default; a workflow saved before the button existed opens with it grey). Retouch Post A again and you get **Post A.01** of the same run. Names: **Post A**, **Post B**… for the posts of the original; **Post A.01**, **Post A.02**… for the posts of a post. A name never changes, even after a deletion.
 - It works when you run the whole workflow or only the retouch branch, with or without the Project node.
 - **40.Rush Videos / 60.Rush Images** show only the originals (videos get a small copy, like the other runs). Labels show only when a file was post-processed: the original has a green frame and an **Original** label; a post-processing shows its name (**Post A**, **Post A.01**…) followed by the file it comes from. In **04.Prompt, 02.Models, 06.LoRA**, ‹ › go from the original to its post-processings; the configuration says in one sentence which file it comes from, and **Retrieve the workflow** opens its own workflow.
 - A file loaded from outside any run is not attached, and no run is made for it.

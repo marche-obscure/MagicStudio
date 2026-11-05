@@ -371,9 +371,11 @@ const HELP_SECTIONS = [
     {
         id: "post", title: "Post-processing", icon: FOLDER_ICONS["40.Rush Videos"], color: FOLDER_COLORS["40.Rush Videos"],
         html: "<p>A file saved <b>after a MagicStudio MedLoad</b> that loads a file of a run is added to " +
-            "<b>that run</b> (the original run), not to a new run.</p>" +
+            "<b>that run</b> (the original run), not to a new run, <b>only with the green Yes on the MedLoad</b> " +
+            "(line <b>For post-processing :</b>). With the grey <b>Yes</b> (default), the saved file is a new run.</p>" +
             hSteps([
-                "Load a video (or an image) of a run in <b>MagicStudio MedLoad</b>, for example from the Final Cut window.",
+                "Load a video (or an image) of a run in <b>MagicStudio MedLoad</b>, for example from the Final Cut window, " +
+                    "and click its <b>Yes</b> button to make it green.",
                 "Wire it to your retouch nodes, then to a save node, in the same workflow.",
                 "Run the workflow, or only this branch: the saved file becomes <b>Post A</b> of the original run.",
             ]) +
@@ -901,9 +903,12 @@ const HELP_SECTIONS_FR = [
     {
         id: "post", title: "Post-traitements",
         html: "<p>Un fichier enregistré <b>après un MagicStudio MedLoad</b> qui charge un fichier d'un Run est " +
-            "ajouté à <b>ce Run</b> (le Run d'origine), pas à un nouveau Run.</p>" +
+            "ajouté à <b>ce Run</b> (le Run d'origine), pas à un nouveau Run, <b>seulement avec le Yes vert du " +
+            "MedLoad</b> (ligne <b>For post-processing :</b>). Avec le <b>Yes</b> gris (défaut), le fichier " +
+            "enregistré est un nouveau Run.</p>" +
             hSteps([
-                "Chargez une vidéo (ou une image) d'un Run dans <b>MagicStudio MedLoad</b>, par exemple depuis la fenêtre du Final Cut.",
+                "Chargez une vidéo (ou une image) d'un Run dans <b>MagicStudio MedLoad</b>, par exemple depuis la fenêtre du Final Cut, " +
+                    "puis cliquez sur son bouton <b>Yes</b> pour le passer au vert.",
                 "Branchez-la sur vos nœuds de retouche, puis sur un nœud d'enregistrement, dans le même workflow.",
                 "Lancez le workflow, ou seulement cette branche : le fichier enregistré devient <b>Post A</b> du Run d'origine.",
             ]) +
