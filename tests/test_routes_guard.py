@@ -164,10 +164,11 @@ class DisplayNamesTest(unittest.TestCase):
             nodes = f.read()
         for name in ("MagicStudio RefLoader", "MagicStudio Project",
                      "MagicStudio Final Cut", "MagicStudio MedLoad", "MagicStudio SelectMod",
-                     "MagicStudio Container", "MagicStudio SaveVoice"):
+                     "MagicStudio Container", "MagicStudio SaveVoice",
+                     "MagicStudio Image / Video Compare"):
             self.assertIn('"%s"' % name, init)
         self.assertNotIn("loaders/minimax", nodes)
-        self.assertEqual(nodes.count('CATEGORY = "MagicStudio"'), 7)
+        self.assertEqual(nodes.count('CATEGORY = "MagicStudio"'), 8)
         # Plus de prefixe de message console a l'ancien nom.
         for folder, _dirs, files in os.walk(root):
             if any(x in folder for x in (".git", ".superpowers", "node_modules", "tests")):

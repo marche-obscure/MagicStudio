@@ -27,7 +27,7 @@ from . import image_lists
 from . import stars
 from . import media_browser
 from .nodes import (MiniMaxH3RefLoader, MiniMaxH3Project, MiniMaxH3FinalCut, MiniMaxH3LoadMedia,
-                    MagicStudioSelectMod, MagicStudioContainer, MagicStudioSaveVoice, default_projects_root, selectmod_roots)
+                    MagicStudioSelectMod, MagicStudioContainer, MagicStudioSaveVoice, MagicStudioCompare, default_projects_root, selectmod_roots)
 
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3RefLoader": MiniMaxH3RefLoader,
@@ -37,6 +37,7 @@ NODE_CLASS_MAPPINGS = {
     "MagicStudioSelectMod": MagicStudioSelectMod,
     "MagicStudioContainer": MagicStudioContainer,
     "MagicStudioSaveVoice": MagicStudioSaveVoice,
+    "MagicStudioCompare": MagicStudioCompare,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -47,6 +48,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MagicStudioSelectMod": "MagicStudio SelectMod",
     "MagicStudioContainer": "MagicStudio Container",
     "MagicStudioSaveVoice": "MagicStudio SaveVoice",
+    "MagicStudioCompare": "MagicStudio Image / Video Compare",
 }
 
 WEB_DIRECTORY = "./web/js"

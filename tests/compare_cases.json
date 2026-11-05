@@ -1,0 +1,25 @@
+{
+  "_doc": "Cas partages Python (tests/test_compare.py) et JS (tests/test_compare.mjs). chosen : args = [star, has_a, has_b], expect = cote choisi ou null (erreur). state : raw = valeur du widget state (texte JSON ou objet), expect = etat lu ou le mot default (= default_state). kinds : entrees Python seulement, pas lues par le JS.",
+  "default_state": {"version": 1, "a": {"path": "", "kind": ""}, "b": {"path": "", "kind": ""}, "mode": "side", "sync": true, "star": ""},
+  "chosen": [
+    {"args": ["A", true, true], "expect": "A"},
+    {"args": ["B", true, true], "expect": "B"},
+    {"args": ["", true, true], "expect": "A"},
+    {"args": ["B", true, false], "expect": "A"},
+    {"args": ["A", false, true], "expect": "B"},
+    {"args": ["", false, false], "expect": null}
+  ],
+  "state": [
+    {"raw": "x", "expect": "default"},
+    {"raw": {}, "expect": "default"},
+    {"raw": {"mode": "zz", "sync": "yes", "star": "C"}, "expect": "default"},
+    {"raw": {"mode": "ud", "sync": false, "star": "B", "a": {"path": "F:/x/a.png", "kind": "image"}, "b": {"path": "", "kind": "zz"}},
+     "expect": {"version": 1, "a": {"path": "F:/x/a.png", "kind": "image"}, "b": {"path": "", "kind": ""}, "mode": "ud", "sync": false, "star": "B"}}
+  ],
+  "kinds": [
+    {"video_a": true, "file_b": "b.png", "expect": "error A and B must both be images or both be videos"},
+    {"frames_a": 1, "file_b": "b.png", "expect": "image"},
+    {"frames_a": 12, "file_b": "b.mp4", "expect": "video"},
+    {"video_a": true, "file_a": "a.mp4", "expect_source_a": "input"}
+  ]
+}

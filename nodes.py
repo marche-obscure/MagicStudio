@@ -10,6 +10,7 @@ Container avec les noms et types de la variante (profiles.VARIANTS).
 import json
 import os
 
+from . import compare
 from . import load_media
 from . import media
 from . import profiles
@@ -386,3 +387,85 @@ class MagicStudioSaveVoice:
         paths = save_voice.save(audio, project_used, prefix, format, q)
         return {"ui": {"mmvoice": [{"path": p, "name": os.path.basename(p)} for p in paths]},
                 "result": (audio, paths[0])}
+
+
+class MagicStudioCompare:
+    """
+    Compare deux images ou deux videos (A / B : entree branchee ou fichier choisi) et garde
+    la preferee (compare.py). Les apercus des entrees branchees sont ecrits dans le dossier
+    temp de ComfyUI. Pas de VALIDATE_INPUTS : un fichier cache par une entree ne doit pas
+    bloquer le Run.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"state": ("STRING", {"default": "{}", "multiline": False})},
+            "optional": {
+                "project_used": (FINAL_CUT_TYPE,),
+                "video_a": ("VIDEO",),
+                "video_b": ("VIDEO",),
+                "frames_a": ("IMAGE",),
+                "frames_b": ("IMAGE",),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("VIDEO", "IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("video", "images", "path", "choice")
+    FUNCTION = "run"
+    CATEGORY = "MagicStudio"
+    DESCRIPTION = (
+        "Compare two images or two videos (A / B: a wired input or a picked file) and keep the preferred one. "
+        "Outputs the starred side (otherwise A): video (empty for an image), images, path (empty for a wired "
+        "input) and choice (A or B)."
+    )
+
+    @classmethod
+    def IS_CHANGED(cls, state="{}", **kwargs):
+        # Ni mode ni sync : changer de mode ne relance rien.
+        return compare.signature(state)
+
+    def run(self, state, project_used=None, video_a=None, video_b=None, frames_a=None, frames_b=None,
+            unique_id=None):
+        # project_used : sert a la fenetre de choix (interface), pas au Run.
+        import folder_paths
+        s = compare.parse_state(state)
+        inputs = {"A": (video_a, frames_a), "B": (video_b, frames_b)}
+        src = {side: compare.side_source(side, s, *inputs[side]) for side in compare.SIDES}
+        compare.check_kinds(src["A"], src["B"])
+        choice = compare.chosen_side(s["star"], src["A"]["from"] is not None, src["B"]["from"] is not None)
+
+        # Apercus des cotes branches (choisis ou non) ; la video est lue une seule fois.
+        ui, components = [], {}
+        for side in compare.SIDES:
+            video, frames = inputs[side]
+            if src[side]["from"] != "input":
+                continue
+            if video is not None:
+                components[side] = video.get_components()
+                images, fps = components[side].images, float(components[side].frame_rate)
+            else:
+                images, fps = frames, None
+            kind = src[side]["kind"]
+            path = compare.preview_path(folder_paths.get_temp_directory(), unique_id, side, kind)
+            compare.write_preview(path, kind, images, fps)
+            ui.append({"side": side, "path": path, "kind": kind})
+
+        chosen = src[choice]
+        video, frames = inputs[choice]
+        if chosen["from"] == "input":
+            if video is not None:
+                result = (video, components[choice].images, "", choice)
+            else:
+                result = (None, frames, "", choice)
+        else:
+            path, kind = load_media.check_path(
+                chosen["path"], folder_paths.get_input_directory(), folder_paths.get_output_directory())
+            if kind == "video":
+                from comfy_api.latest import InputImpl
+                v = InputImpl.VideoFromFile(path)
+                result = (v, v.get_components().images, path, choice)
+            else:
+                result = (None, media.load_image(path), path, choice)
+        return {"ui": {"mmcompare": ui}, "result": result}
