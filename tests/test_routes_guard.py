@@ -33,6 +33,8 @@ GUARDED = {
     "/mmproject/delete_archive": ["project"],
     "/mmproject/extract": ["project"],
     "/mmproject/extract/replace": ["project"],
+    "/mmproject/image_lists/save": ["project"],
+    "/mmproject/image_lists/delete": ["project"],
 }
 
 
@@ -67,6 +69,10 @@ class RoutesGuardTest(unittest.TestCase):
     def test_copy_source_checked(self):
         # Copy lit un projet ou un dossier de projets (MultiProject), jamais un dossier ordinaire (30/10/2026).
         self.assertRegex(route_bodies()["/mmproject/copy_media"], r'require_copy_source\(body\.get\("source"')
+
+    def test_image_lists_get_checks_the_project(self):
+        # Archives des listes d'images : la lecture aussi passe par require_project.
+        self.assertIn('require_project(q.get("project"', route_bodies()["/mmproject/image_lists"])
 
     def test_archive_files_keeps_run_files(self):
         # La cloche n'archive jamais un fichier de Run (26/10/2026).

@@ -23,6 +23,7 @@ from . import run_tracker
 from . import final_cut
 from . import load_media
 from . import select_mod
+from . import image_lists
 from . import media_browser
 from .nodes import (MiniMaxH3RefLoader, MiniMaxH3Project, MiniMaxH3FinalCut, MiniMaxH3LoadMedia,
                     MagicStudioSelectMod, MagicStudioContainer, MagicStudioSaveVoice, default_projects_root, selectmod_roots)
@@ -893,6 +894,42 @@ try:
         except Exception as e:
             return _project_error(e)
         return web.json_response({"ok": True})
+
+    # ------ Archives des listes d'images (modele Image) : seulement 99.Project-Config/Image-Lists ------
+
+    @routes.get("/mmproject/image_lists")
+    async def mmproject_image_lists(request):
+        """Archives de listes d'images du projet 'project' (la plus recente d'abord)."""
+        try:
+            q = request.rel_url.query
+            projects.require_project(q.get("project", ""))
+            data = await _in_executor(image_lists.list_lists, q.get("project", ""))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"lists": data})
+
+    @routes.post("/mmproject/image_lists/save")
+    async def mmproject_image_lists_save(request):
+        """Archive une liste d'images (jamais par-dessus une archive existante)."""
+        try:
+            body = await request.json()
+            projects.require_project(body.get("project", ""))
+            data = await _in_executor(image_lists.save_list, body.get("project", ""), body.get("name", ""),
+                                      body.get("images", []))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.post("/mmproject/image_lists/delete")
+    async def mmproject_image_lists_delete(request):
+        """Supprime des archives de listes d'images (deja confirme dans l'UI)."""
+        try:
+            body = await request.json()
+            projects.require_project(body.get("project", ""))
+            data = await _in_executor(image_lists.delete_lists, body.get("project", ""), body.get("files", []))
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
 
 except Exception:
     print("[MagicStudio] Could not register the API routes:")

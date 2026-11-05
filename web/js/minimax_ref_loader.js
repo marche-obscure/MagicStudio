@@ -7,6 +7,8 @@ import { LAST, secondsToFrame, guideMoments, checkMoment, sameFrameAs, stepFrame
     renumberOldName, renumberModeLinks, variantControls, countAlert, rowOutputName } from "./profiles.js";
 import { outputLinksOf } from "./graph_links.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
+import { buildImageLists } from "./image_lists.js";
+import { ARCHIVE_ICON_BODY, LISTS_ICON_BODY } from "./image_lists_pure.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
 import { gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
     relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, anchoredSubs,
@@ -4887,11 +4889,13 @@ app.registerExtension({
             // Upload) : efface au prochain changement de la selection.
             let notice = "";
             let noticeTitle = "";
+            let noticeColor = "";
             // Creation du noeud : les Containers ne sont pas encore prevenus.
             let creating = false;
             const setState = (s) => {
                 notice = "";
                 noticeTitle = "";
+                noticeColor = "";
                 stateWidget.value = JSON.stringify(s);
                 refresh();
             };
@@ -5004,9 +5008,13 @@ app.registerExtension({
             const rows = {};
             const allRows = [];
             for (const v of Object.values(variantDesc.variants)) {
-                for (const r of v.rows) if (!allRows.some((x) => x.id === r.id)) allRows.push(r);
+                for (const r of v.rows) {
+                    const known = allRows.find((x) => x.id === r.id);
+                    if (!known) allRows.push(Object.assign({}, r));
+                    else if (r.lists) known.lists = true; // ligne "images" partagee : Image la veut avec ses archives
+                }
             }
-            for (const b of allRows.map((r) => ({ id: r.id, kind: r.id, label: r.label, icon: rowIcon(r.id) }))) {
+            for (const b of allRows.map((r) => ({ id: r.id, kind: r.id, label: r.label, icon: rowIcon(r.id), lists: allRows.some((x) => x.id === r.id && x.lists) }))) {
                 const row = document.createElement("div");
                 Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center", flex: "0 0 auto" });
 
@@ -5048,6 +5056,30 @@ app.registerExtension({
                 });
                 row.appendChild(eye);
 
+                // Archives de listes d'images (lignes avec "lists" : modele Image) : Archive et Lists.
+                let archiveBtn = null;
+                let listsBtn = null;
+                if (b.lists) {
+                    archiveBtn = makeIconButton(GREEN, svg(ARCHIVE_ICON_BODY), "Archive this image list");
+                    listsBtn = makeIconButton(VIOLET, svg(LISTS_ICON_BODY), "Archived image lists");
+                    archiveBtn.addEventListener("click", () => {
+                        if (archiveBtn.disabled) return;
+                        paintListButtons();
+                        if (!archiveBtn.disabled) imageLists.archive();
+                    });
+                    listsBtn.addEventListener("click", () => {
+                        if (listsBtn.disabled) return;
+                        paintListButtons();
+                        if (!listsBtn.disabled) imageLists.open();
+                    });
+                    // Le lien du projet peut changer sans toucher a la selection : relire au survol.
+                    archiveBtn.addEventListener("mouseenter", () => paintListButtons());
+                    listsBtn.addEventListener("mouseenter", () => paintListButtons());
+                    archiveBtn.style.display = "none";
+                    listsBtn.style.display = "none";
+                    row.append(archiveBtn, listsBtn);
+                }
+
                 // Poubelle : vide toute la liste de la ligne, apres confirmation
                 // (rien a vider = pas de question).
                 const trash = makeIconButton(INACTIVE_BG, TRASH_ICON, "Clear the " + b.label + " selection");
@@ -5081,7 +5113,7 @@ app.registerExtension({
                     textOverflow: "ellipsis", visibility: "hidden",
                 });
                 container.appendChild(alert);
-                rows[b.id] = { row, btn, icon, count, trash, alert };
+                rows[b.id] = { row, btn, icon, count, trash, alert, archiveBtn, listsBtn };
             }
 
             const bottom = document.createElement("div");
@@ -5181,10 +5213,43 @@ app.registerExtension({
             const help = buildHelpOverlay(container);
             const overview = buildOverview(container, { getState });
             const limitsDialog = buildLimitsDialog(container, { getState, setState });
+            // Archives des listes d'images (modele Image) : fenetres Archive et Lists.
+            const imageLists = buildImageLists(container, {
+                getState, setState, getProject,
+                notify(text, title, color) {
+                    notice = text;
+                    noticeTitle = title || "";
+                    noticeColor = color || "";
+                    refresh();
+                },
+            });
+            /** Boutons Archive / Lists : grises sans projet relie (et Archive sans image). */
+            function paintListButtons() {
+                const s = getState();
+                const project = getProject();
+                for (const r of rowsOfState(s)) {
+                    const ui = rows[r.id];
+                    if (!ui || !ui.archiveBtn || !r.lists) continue;
+                    const empty = !listOf(s, r.id).length;
+                    const states = [[ui.archiveBtn, GREEN, !project || empty,
+                        !project ? "Wire a MagicStudio Project to archive the lists"
+                            : empty ? "Nothing to archive" : "Archive this image list"],
+                    [ui.listsBtn, VIOLET, !project,
+                        !project ? "Wire a MagicStudio Project to archive the lists" : "Archived image lists"]];
+                    for (const [btn, color, off, title] of states) {
+                        btn.disabled = off;
+                        btn.style.background = off ? INACTIVE_BG : color;
+                        btn.style.opacity = off ? "0.45" : "1";
+                        btn.style.cursor = off ? "default" : "pointer";
+                        btn.title = title;
+                    }
+                }
+            }
             helpBtn.addEventListener("click", () => help.open());
             overviewBtn.addEventListener("click", () => overview.open());
             rootBtn.addEventListener("click", () => rootDialog.open());
-            node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview, orderWarning, limitsDialog];
+            node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview, orderWarning, limitsDialog,
+                imageLists];
 
             // Une configuration "existe" des qu'une reference est selectionnee dans la variante
             // affichee ; le dossier racine seul ne compte pas.
@@ -5330,6 +5395,11 @@ app.registerExtension({
                     container.insertBefore(ui.row, bottom);
                     container.insertBefore(ui.alert, bottom);
                     ui.row.style.display = "flex";
+                    if (ui.archiveBtn) {
+                        // Boutons d'archives : seulement si la ligne de la variante affichee a "lists".
+                        ui.archiveBtn.style.display = r.lists ? "flex" : "none";
+                        ui.listsBtn.style.display = r.lists ? "flex" : "none";
+                    }
                     ui.icon.style.background = rowColor(s, r.id);
                     const arr = listOf(s, r.id);
                     const max = lim.counts[r.id];
@@ -5364,11 +5434,12 @@ app.registerExtension({
                     ui.trash.style.cursor = on ? "pointer" : "default";
                 }
 
+                paintListButtons();
                 const parts = shown.filter((r) => listOf(s, r.id).length)
                     .map((r) => listOf(s, r.id).length + "/" + lim.counts[r.id] + " " + r.label.toLowerCase());
                 const refText = parts.length ? parts.join(", ") : "Nothing selected yet";
                 summary.textContent = notice || refText;
-                summary.style.color = notice ? ORANGE : "#9fd6cf";
+                summary.style.color = notice ? (noticeColor || ORANGE) : "#9fd6cf";
                 summary.title = notice ? noticeTitle : "";
 
                 // Upload orange s'il ecrasera des references, couleur standard sinon.
@@ -5549,7 +5620,7 @@ export {
     TITLE_COLOR, BODY_COLOR, VIOLET, PINK, ORANGE, GREEN, MARK_RED, INACTIVE_BG, INACTIVE_FG,
     svg, iconBadge, hList, hSteps, hTip, hNote, hCard, FOLDER_ICON, REFRESH_ICON, CLOSE_ICON, GEAR_ICON,
     START_ICON, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, TRASH_ICON, EYE_ICON,
-    makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget,
+    makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, hideWidget, buildConfirmDialog,
     escapeHtml, buildHelpOverlay, vueMode, PROJECT_TYPE,
     FOLDER_OPEN_ICON, TREE_ICON, SIMPLE_COLOR, MULTI_COLOR, projectKind, buildIconPicker, THUMB_REVALIDATE,
     // MagicStudio Container (web/js/container_node.js)
