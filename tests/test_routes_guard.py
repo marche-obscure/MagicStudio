@@ -61,10 +61,29 @@ class RoutesGuardTest(unittest.TestCase):
                 "/mmproject/hashes", "/mmproject/config/check",
                 # Export de SelectMod : seulement un .json nomme par le noeud, dans le dossier de
                 # sauvegarde choisi, jamais par-dessus un fichier existant (select_mod.write_export).
-                "/mmselectmod/save_export"}
+                "/mmselectmod/save_export",
+                # Etoile de comparaison : projet retrouve depuis le chemin, `require_project` dans
+                # `stars.set_star` (`tests/test_stars.py`).
+                "/mmproject/star"}
         with open(INIT, encoding="utf-8") as f:
             posts = set(re.findall(r'@routes\.post\("([^"]+)"\)', f.read()))
         self.assertEqual(posts - free, set(GUARDED))
+
+    def test_star_route_derives_the_project(self):
+        # L'etoile ne recoit pas de projet : il est retrouve depuis le chemin du fichier.
+        bodies = route_bodies()
+        post = bodies["/mmproject/star"]
+        self.assertIn("stars.set_star", post)
+        self.assertIn("_star_roots()", post)
+        self.assertNotIn('body.get("project"', post)
+        get = bodies["/mmproject/stars"]
+        self.assertIn("stars.project_of(", get)
+        self.assertLess(get.index("stars.project_of("), get.index("require_project("))
+        for route, call in (("/mmproject/archive_files", "projects.archive_files"),
+                            ("/mmproject/import_files", "projects.import_files")):
+            body = bodies[route]
+            self.assertIn("stars.follow", body)
+            self.assertLess(body.index(call), body.index("stars.follow"))
 
     def test_copy_source_checked(self):
         # Copy lit un projet ou un dossier de projets (MultiProject), jamais un dossier ordinaire (30/10/2026).

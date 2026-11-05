@@ -24,6 +24,7 @@ from . import final_cut
 from . import load_media
 from . import select_mod
 from . import image_lists
+from . import stars
 from . import media_browser
 from .nodes import (MiniMaxH3RefLoader, MiniMaxH3Project, MiniMaxH3FinalCut, MiniMaxH3LoadMedia,
                     MagicStudioSelectMod, MagicStudioContainer, MagicStudioSaveVoice, default_projects_root, selectmod_roots)
@@ -518,9 +519,16 @@ try:
             paths = [os.path.join(project, folder, n) for n in names]
             held = set(await _in_executor(run_record.protected_files, project, paths))
             kept = [n for n, p in zip(names, paths) if p in held]
-            moved = await _in_executor(projects.archive_files, project, folder, [n for n in names if n not in kept])
+            done = [n for n in names if n not in kept]
+            moved = await _in_executor(projects.archive_files, project, folder, done)
         except Exception as e:
             return _project_error(e)
+        # Les etoiles de stars.json suivent le fichier archive ; une erreur n'annule pas le deplacement.
+        try:
+            await _in_executor(stars.follow, project,
+                               list(zip([os.path.join(project, folder, n) for n in done], moved)))
+        except Exception as e:
+            print("[MagicStudio] stars.follow: %s" % e)
         return web.json_response({"moved": moved, "kept": kept})
 
     @routes.post("/mmproject/import_files")
@@ -533,6 +541,12 @@ try:
                                       list(body.get("paths") or []))
         except Exception as e:
             return _project_error(e)
+        # Retour depuis Archives : l'etoile suit le fichier (une copie garde l'etoile de l'original).
+        try:
+            await _in_executor(stars.follow, body.get("project", ""),
+                               list(zip(list(body.get("paths") or []), dsts)))
+        except Exception as e:
+            print("[MagicStudio] stars.follow: %s" % e)
         return web.json_response({"dsts": dsts})
 
     @routes.get("/mmproject/folder_files")
@@ -921,6 +935,39 @@ try:
         except Exception as e:
             return _project_error(e)
         return web.json_response(data)
+
+    def _star_roots():
+        """Dossiers ou un fichier peut etre etoile : input et output de ComfyUI."""
+        import folder_paths
+        return [folder_paths.get_input_directory(), folder_paths.get_output_directory()]
+
+    @routes.post("/mmproject/star")
+    async def mmproject_star(request):
+        """
+        Etoile de comparaison : allume 'on', eteint 'off' (chemins de fichiers). Le projet est retrouve
+        depuis le chemin (jamais envoye) et verifie par stars.set_star.
+        """
+        try:
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise ValueError("Invalid request")
+            data = await _in_executor(stars.set_star, body.get("on", ""), body.get("off", ""), _star_roots())
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(data)
+
+    @routes.get("/mmproject/stars")
+    async def mmproject_stars(request):
+        """Fichiers etoiles du projet qui contient 'path' ({"project": "", "stars": []} hors projet)."""
+        try:
+            project = stars.project_of(request.rel_url.query.get("path", ""), _star_roots())
+            if not project:
+                return web.json_response({"project": "", "stars": []})
+            projects.require_project(project)
+            data = await _in_executor(stars.list_stars, project)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"project": project, "stars": data})
 
     @routes.post("/mmproject/image_lists/delete")
     async def mmproject_image_lists_delete(request):
