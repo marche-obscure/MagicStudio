@@ -1523,5 +1523,152 @@ class AttachPostTest(unittest.TestCase):
         self.assertEqual(os.path.normcase(outs[1]["post_workflow"]),
                          os.path.normcase(rr.run_workflow_path(self.p, "20261029_100000_run_post01.json")))
 
+class StarKeptTest(unittest.TestCase):
+    """Le champ `star` (etoile de comparaison) survit a toutes les reecritures du JSON de Run (05/11/2026)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.p = projects.create_project(self.root, "Clip")
+        self.out = os.path.join(self.root, "output")
+        self.when = time.mktime((2026, 11, 5, 10, 0, 0, 0, 0, -1))
+        self.n = 0
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def run_with(self, outputs, status="done"):
+        # Ecrit un Run directement ; chaque sortie recoit star=True sauf si elle le refuse deja.
+        self.n += 1
+        name = "20261105_1000%02d_run.json" % self.n
+        path = os.path.join(self.p, "04.Prompt", name)
+        for o in outputs:
+            o.setdefault("star", True)
+        rr._write(path, {"date": "2026-11-05 10:00:00", "prompt": "p", "duration": 5, "status": status,
+                         "outputs": outputs})
+        return name
+
+    def outs(self, name):
+        return read_json(os.path.join(self.p, "04.Prompt", name))["outputs"]
+
+    def test_star_kept_by_sort(self):
+        src = os.path.join(self.out, "a.png")
+        write(src, b"img")
+        name = self.run_with([{"source": src, "kind": "image", "copy": None}])
+        rr.sort_output(self.p, name, 0, "rejected")
+        self.assertIs(self.outs(name)[0]["star"], True)
+        rr.sort_output(self.p, name, 0, "validated")
+        self.assertIs(self.outs(name)[0]["star"], True)
+        self.assertIs(rr.list_runs(self.p)[0]["outputs"][0]["star"], True)
+
+    def test_star_kept_by_swap(self):
+        lock = os.path.join(self.p, "60.Rush Images", "Picture Lock", "a.png")
+        foot = os.path.join(self.p, "60.Rush Images", "Footage", "b.png")
+        write(lock, b"a")
+        write(foot, b"b")
+        a = self.run_with([{"source": lock, "kind": "image", "copy": None}])
+        b = self.run_with([{"source": foot, "kind": "image", "copy": None}])
+        rr.sort_output(self.p, b, 0, "picture_lock", swap=True)
+        self.assertIs(self.outs(a)[0]["star"], True)
+        self.assertIs(self.outs(b)[0]["star"], True)
+
+    def test_star_kept_by_tidy(self):
+        # Fichier laisse a la racine de 40 : tidy_rush le range dans Footage.
+        loose = os.path.join(self.p, "40.Rush Videos", "v.mp4")
+        write(loose, b"v")
+        name = self.run_with([{"source": loose, "kind": "video", "copy": "40.Rush Videos/v.mp4", "in_place": True}])
+        rr.tidy_rush(self.p)
+        o = self.outs(name)[0]
+        self.assertTrue(o["source"].endswith(os.path.join("Footage", "v.mp4")))
+        self.assertIs(o["star"], True)
+
+    def test_star_kept_by_relink(self):
+        # Projet renomme a la main : _relink_output corrige les chemins.
+        old = os.path.join(self.root, "Porjet", "Clip", "40.Rush Videos", "Footage", "c.mp4")
+        new = os.path.join(self.p, "40.Rush Videos", "Footage", "c.mp4")
+        write(new, b"v")
+        name = self.run_with([{"source": old, "kind": "video", "copy": "40.Rush Videos/Footage/c.mp4",
+                               "in_place": True}])
+        rr.tidy_rush(self.p)
+        o = self.outs(name)[0]
+        self.assertEqual(o["source"], new)
+        self.assertIs(o["star"], True)
+
+    def test_star_kept_by_migration(self):
+        shutil.rmtree(os.path.join(self.p, "60.Rush Images", "No Good"))
+        old = os.path.join(self.p, "60.Rush Images", "Rejected", "a.png")
+        write(old, b"a")
+        name = self.run_with([{"source": old, "kind": "image", "copy": None}])
+        rr.migrate_sort_folders(self.p)
+        rr.tidy_rush(self.p)
+        o = self.outs(name)[0]
+        self.assertIn("No Good", o["source"])
+        self.assertIs(o["star"], True)
+
+    def test_star_kept_by_delete_rush(self):
+        rej = os.path.join(self.p, "40.Rush Videos", "No Good", "v.mp4")
+        write(rej, b"v")
+        name = self.run_with([{"source": rej, "kind": "video", "copy": "40.Rush Videos/No Good/v.mp4",
+                               "in_place": True}])
+        rr.delete_rush(self.p, name, 0, trash_fn=lambda ps: os.remove(ps[0]), now="20261105_101010")
+        o = self.outs(name)[0]
+        self.assertIs(o["star"], True)
+        self.assertEqual(o["deleted"]["how"], "trash")
+
+    def test_star_kept_by_resolve_duplicate(self):
+        foot = os.path.join(self.p, "40.Rush Videos", "Footage", "v.mp4")
+        lock = os.path.join(self.p, "40.Rush Videos", "Picture Lock", "v.mp4")
+        write(foot, b"video")
+        write(lock, b"video")
+        name = self.run_with([{"source": foot, "kind": "video", "copy": "40.Rush Videos/Footage/v.mp4",
+                               "in_place": True}])
+        rr.resolve_duplicate(self.p, name, 0, lock, "orphan", lambda ps: os.remove(ps[0]))
+        o = self.outs(name)[0]
+        self.assertEqual(o["source"], lock)
+        self.assertIs(o["star"], True)
+
+    def test_star_kept_by_attach_post(self):
+        a = os.path.join(self.p, "40.Rush Videos", "Footage", "20261105_100001_run.mp4")
+        make_video(a, 64, 48)
+        name = self.run_with([{"source": a, "kind": "video", "copy": None, "in_place": True}])
+        b = os.path.join(self.out, "b.mp4")
+        make_video(b, 64, 48)
+        post = rr.attach_post(os.path.join(self.p, "04.Prompt", name), 0, 0, b, {}, None)
+        self.assertNotIn("star", post)
+        outs = self.outs(name)
+        self.assertIs(outs[0]["star"], True)
+        self.assertNotIn("star", outs[1])
+
+    def test_star_kept_by_finish_of_a_done_run(self):
+        src = os.path.join(self.out, "a.png")
+        write(src, b"img")
+        name = self.run_with([{"source": src, "kind": "image", "copy": None}])
+        path = os.path.join(self.p, "04.Prompt", name)
+        with open(path, "rb") as f:
+            before = f.read()
+        rr.finish_run(path, [{"filename": "a.png", "type": "output"}], "done", self.out)
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), before)
+
+    def test_old_run_has_no_star(self):
+        src = os.path.join(self.out, "a.png")
+        write(src, b"img")
+        name = self.run_with([{"source": src, "kind": "image", "copy": None, "star": None}])
+        o = self.outs(name)
+        o[0].pop("star")
+        data = read_json(os.path.join(self.p, "04.Prompt", name))
+        data["outputs"] = o
+        rr._write(os.path.join(self.p, "04.Prompt", name), data)
+        self.assertNotIn("star", rr.list_runs(self.p)[0]["outputs"][0])
+
+    def test_list_runs_exposes_star_without_writing(self):
+        src = os.path.join(self.out, "a.png")
+        write(src, b"img")
+        name = self.run_with([{"source": src, "kind": "image", "copy": None}])
+        path = os.path.join(self.p, "04.Prompt", name)
+        os.utime(path, (1000000000, 1000000000))
+        self.assertIs(rr.list_runs(self.p, tidy=False)[0]["outputs"][0]["star"], True)
+        self.assertEqual(os.path.getmtime(path), 1000000000)
+
+
 if __name__ == "__main__":
     unittest.main()

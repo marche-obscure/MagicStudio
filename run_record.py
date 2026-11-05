@@ -852,7 +852,7 @@ def list_runs(project, tidy=True):
                    "in_project": bool(src) and place is not None,
                    # Sous-dossier du fichier montre (pastille et bouton grise) : original, sinon copie video.
                    "place": place if place is not None else sort_of(project, kind, copy)}
-            out.update({k: o[k] for k in ("size", "copy_size", "in_place", "resize_error", "deleted") if o.get(k)})
+            out.update({k: o[k] for k in ("size", "copy_size", "in_place", "resize_error", "deleted", "star") if o.get(k)})
             if o.get("post_level"):
                 # Post-traitement (29/10/2026) : sortie source, niveau, date, reglages, workflow.
                 out.update({k: o.get(k) for k in ("post_of", "post_level", "post_date", "post_params")})
