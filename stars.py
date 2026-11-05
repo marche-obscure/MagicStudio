@@ -57,7 +57,12 @@ def _config_dir(project, create=False):
     if not os.path.lexists(path):
         if not create:
             return path
-        os.mkdir(path)
+        try:
+            os.mkdir(path)
+        except OSError as e:
+            raise ValueError("%s cannot be created: %s" % (CONFIG_DIR, e))
+    if not os.path.isdir(path):  # fichier ordinaire a la place du dossier
+        raise ValueError("%s is not a folder" % CONFIG_DIR)
     if os.path.normcase(os.path.realpath(path)) != os.path.normcase(expected):
         raise ValueError("%s is not inside the project" % CONFIG_DIR)
     return path
@@ -110,6 +115,11 @@ def _write_list(project, rels):
         seen.setdefault(os.path.normcase(r), r)
     data = {"format": FORMAT, "version": 1, "stars": sorted(seen.values(), key=lambda r: (r.lower(), r))}
     tmp = path + ".tmp"
+    if os.path.lexists(tmp):  # jamais suivre un lien / une jonction deposee a l'avance
+        try:
+            os.remove(tmp)
+        except OSError:
+            os.rmdir(tmp)
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     os.replace(tmp, path)
@@ -186,7 +196,7 @@ def set_star(on, off, roots):
                     out.pop("star", None)
                 where[state] = "run"
                 continue
-            _stars_path(project)  # refus (jonction) avant toute ecriture
+            _stars_path(project, create=True)  # dossier cree et verifie (jonction refusee) avant toute ecriture
             key = run_record._key(project)
             current = lists.setdefault(key, (project, read_list(project)))[1]
             rel = _rel(project, path)

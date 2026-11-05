@@ -144,6 +144,39 @@ class StarsTest(unittest.TestCase):
                 remove_link(cfg)
             shutil.rmtree(target, ignore_errors=True)
 
+    def test_config_dir_failure_leaves_run_unchanged(self):
+        x = write(os.path.join(self.p, "40.Rush Videos", "Footage", "x.mp4"))
+        run = self.run_with(self.p, [{"source": x, "kind": "video", "copy": None}])
+        p2 = projects.create_project(self.root, "Other")
+        cfg = os.path.join(p2, "99.Project-Config")
+        shutil.rmtree(cfg)
+        write(cfg, b"not a folder")
+        b = write(os.path.join(p2, "08.Images", "b.png"))
+        before = self.read_run(run)
+        with self.assertRaises(ValueError):
+            stars.set_star(x, b, self.roots)
+        self.assertEqual(self.read_run(run), before)
+
+    def test_stale_tmp_link_not_followed(self):
+        target = tempfile.mkdtemp()
+        try:
+            tmp = self.list_file + ".tmp"
+            os.makedirs(os.path.dirname(tmp), exist_ok=True)
+            victim = write(os.path.join(target, "victim.txt"), b"keep")
+            try:
+                os.symlink(victim, tmp)
+            except (OSError, NotImplementedError):
+                if not make_junction(tmp, target):
+                    self.skipTest("link not available")
+            a = write(os.path.join(self.p, "08.Images", "a.png"))
+            stars.set_star(a, "", self.roots)
+            with open(victim, "rb") as f:
+                self.assertEqual(f.read(), b"keep")
+            self.assertEqual(os.listdir(target), ["victim.txt"])
+            self.assertEqual(self.read_stars()["stars"], ["08.Images/a.png"])
+        finally:
+            shutil.rmtree(target, ignore_errors=True)
+
     def test_outside_the_project_stays_in_the_node(self):
         f = write(os.path.join(self.root, "Plain", "f.png"))
         self.assertEqual(stars.set_star(f, "", self.roots), {"on": "node", "off": ""})
