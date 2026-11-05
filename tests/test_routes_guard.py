@@ -116,6 +116,20 @@ class ExtractRoutesTest(unittest.TestCase):
             self.assertNotIn('get("roots"', bodies[route], route)
             self.assertIn("PermissionError", bodies[route], route)
 
+    def test_media_routes_read_only_server_roots(self):
+        # Fenetre Folder de MedLoad (05/11/2026) : racines lues par le serveur, refus 403, GET seulement.
+        bodies = route_bodies()
+        for route in ("/mmmedia/tree", "/mmmedia/files", "/mmmedia/search"):
+            self.assertIn(route, bodies, route)
+            self.assertIn("_media_roots()", bodies[route], route)
+            self.assertNotIn('get("roots"', bodies[route], route)
+        self.assertIn("/mmmedia/roots", bodies)
+        with open(INIT, encoding="utf-8") as f:
+            text = f.read()
+        self.assertNotRegex(text, r'@routes\.(?:post|put|delete)\("/mmmedia')
+        self.assertIn("status=403", text.split("async def _media_reply")[1].split("@routes")[0])
+
+
 class DisplayNamesTest(unittest.TestCase):
     def test_display_names_and_category(self):
         root = os.path.dirname(HERE)

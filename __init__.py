@@ -23,6 +23,7 @@ from . import run_tracker
 from . import final_cut
 from . import load_media
 from . import select_mod
+from . import media_browser
 from .nodes import (MiniMaxH3RefLoader, MiniMaxH3Project, MiniMaxH3FinalCut, MiniMaxH3LoadMedia,
                     MagicStudioSelectMod, MagicStudioContainer, MagicStudioSaveVoice, default_projects_root, selectmod_roots)
 
@@ -60,6 +61,51 @@ try:
 
     async def _in_executor(fn, *args):
         return await asyncio.get_event_loop().run_in_executor(None, fn, *args)
+
+    # ---- Fenetre Folder de MedLoad (05/11/2026) : lecture seule de input et output ----
+    def _media_roots():
+        import folder_paths
+        return media_browser.roots(folder_paths.get_input_directory(), folder_paths.get_output_directory())
+
+    def _media_kind(request):
+        k = request.rel_url.query.get("kind", "all")
+        return k if k in media_browser.KINDS else "all"
+
+    async def _media_reply(fn, key, *args):
+        try:
+            return web.json_response({key: await _in_executor(fn, *args)})
+        except PermissionError as e:
+            return web.json_response({"error": str(e)}, status=403)
+        except OSError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    @routes.get("/mmmedia/roots")
+    async def mmmedia_roots(request):
+        """Racines permises (input, output), lues par le serveur."""
+        return web.json_response({"roots": await _in_executor(_media_roots)})
+
+    @routes.get("/mmmedia/tree")
+    async def mmmedia_tree(request):
+        """Sous-dossiers d'un dossier permis (nombre de medias)."""
+        return await _media_reply(media_browser.tree, "dirs", request.rel_url.query.get("path", ""), _media_roots())
+
+    @routes.get("/mmmedia/files")
+    async def mmmedia_files(request):
+        """Medias d'un dossier permis (nom, type, taille, date)."""
+        return await _media_reply(media_browser.files, "files", request.rel_url.query.get("path", ""),
+                                  _media_roots(), _media_kind(request))
+
+    @routes.get("/mmmedia/search")
+    async def mmmedia_search(request):
+        """Recherche par nom dans un dossier permis et ses sous-dossiers."""
+        q = request.rel_url.query
+        try:
+            return web.json_response(await _in_executor(media_browser.search, q.get("path", ""), _media_roots(),
+                                                        q.get("q", ""), _media_kind(request)))
+        except PermissionError as e:
+            return web.json_response({"error": str(e)}, status=403)
+        except OSError as e:
+            return web.json_response({"error": str(e)}, status=400)
 
     # ---- MagicStudio SelectMod (29/10/2026) : lecture des dossiers de modeles seulement ----
     def _selectmod_roots():
