@@ -43,28 +43,30 @@ const postOn = (widget) => !!widget && widget.value === true;
  * quand Vue redessine le noeud (MutationObserver) ; sans effet en mode classique.
  */
 function hideVuePostRow(node) {
+    // Une seule surveillance pour toute la page (05/11/2026) : passer en Node 2.0 apres le
+    // chargement redessine les noeuds plus tard ; on cache alors la ligne de chaque MedLoad.
+    void node;
+    if (window.__mmPostRowObserver) return;
+    let pending = false;
     const apply = () => {
-        const el = document.querySelector('[data-node-id="' + node.id + '"]');
-        if (!el) return null;
-        for (const span of el.querySelectorAll(".text-node-component-slot-text")) {
+        pending = false;
+        for (const span of document.querySelectorAll("[data-node-id] .text-node-component-slot-text")) {
             if (span.textContent.trim() !== "post_processing") continue;
+            const host = span.closest("[data-node-id]");
+            const owner = host && app.graph && app.graph.getNodeById(Number(host.getAttribute("data-node-id")));
+            if (!owner || owner.type !== "MiniMaxH3LoadMedia") continue;
             const row = span.closest(".lg-slot");
             const box = row && row.parentElement;
             if (box && box.style.display !== "none") box.style.display = "none";
         }
-        return el;
     };
-    const watch = (tries) => {
-        const el = apply();
-        if (!el) {
-            if (tries > 0) setTimeout(() => watch(tries - 1), 500);
-            return;
-        }
-        if (el.__mmPostObserved) return;
-        el.__mmPostObserved = true;
-        new MutationObserver(() => apply()).observe(el, { childList: true, subtree: true });
-    };
-    watch(20);
+    window.__mmPostRowObserver = new MutationObserver(() => {
+        if (pending) return;
+        pending = true;
+        setTimeout(apply, 50);
+    });
+    window.__mmPostRowObserver.observe(document.body, { childList: true, subtree: true });
+    apply();
 }
 const mediaUrl = (path) => "/mmrefloader/media?file=" + encodeURIComponent(path);
 // Ordre des sorties, identique a RETURN_NAMES de nodes.py (choix utilisateur 24/10/2026 :
