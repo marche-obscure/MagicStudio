@@ -7,6 +7,7 @@ import {
 import { linkedProject, projectInputNames } from "./graph_links.js";
 import { buildFolderWindow } from "./media_browser.js";
 import { buildProjectWindow } from "./project_browser.js";
+import { stripProjectUsed } from "./prompt_strip_pure.js";
 
 // --------------------------------------------------------------------
 // Noeud MiniMax H3 Load Media (choix utilisateur, 24/10/2026) : on y depose
@@ -121,7 +122,8 @@ const HELP_SECTIONS = [
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
             "Open the window of <b>MagicStudio Final Cut</b> (<b>Images</b>, <b>Video</b> or <b>Audio</b>), or " +
-            "the window <b>40.Rush Videos</b> / <b>60.Rush Images</b> or <b>Processing</b> of the Project node.",
+            "the window <b>40.Rush Videos</b> / <b>60.Rush Images</b> or <b>Processing</b> of the Project node. " +
+            "Or click <b>Folder</b> or <b>Project</b> in the <b>Project | Folder</b> pill above the drop zone.",
             "Drag a file onto this node.",
             "Wire the outputs that match the file: <b>video</b>, <b>video_frames</b> or <b>audio_video</b> " +
             "for a video, <b>image</b> for an image, <b>audio</b> for an audio file.",
@@ -180,7 +182,7 @@ const HELP_SECTIONS = [
         id: "folderwin", title: "Folder window", icon: FOLDER_ICON, color: VIOLET,
         html: hList([
             "Roots: <b>input</b> and <b>output</b> of ComfyUI only; nothing outside can be opened.",
-            "Type buttons (all media, images, videos, audio), a folder tree and the list of files.",
+            "Type buttons <b>All</b>, <b>Video</b>, <b>Image</b> and <b>Son</b>, a folder tree and the list of files.",
             "<b>Search file</b>: looks in the chosen folder and its subfolders (500 results at most).",
             "<b>Click</b> a file: it plays in the player. <b>Drag</b> it onto this node to fill <b>file</b>.",
             "Read only: nothing is written or moved. <b>Close</b> (or Esc) closes the window.",
@@ -189,11 +191,11 @@ const HELP_SECTIONS = [
     {
         id: "projectwin", title: "Project window", icon: FOLDER_ICON, color: ORANGE,
         html: hList([
-            "Choose the project at the top (this does not change any node); buttons <b>Video</b> (default), " +
+            "Choose the project in the <b>Project name</b> menu at the top (this does not change any node); buttons <b>Video</b> (default), " +
             "<b>Image</b> and <b>Son</b> show the folders of that type, each with its thumbnails.",
             "<b>Archives</b> shows the Archives folders of the chosen type (click again to go back).",
             "<b>Extract Frames</b> shows the frames extracted from the Picture Lock videos (click again to go back).",
-            "In 40 / 60 only the originals are listed; the button <b>Processing</b> opens the tree of the " +
+            "In 40 / 60 only the originals are listed; the button <b>Processing (n)</b> opens the tree of the " +
             "post-processings, <b>read only</b> (no move, no delete).",
             "<b>Click</b> a thumbnail to play it, <b>drag</b> it onto this node to fill <b>file</b>. " +
             "<b>Close</b> (or Esc) closes the window.",
@@ -218,7 +220,8 @@ const HELP_SECTIONS_FR = [
         id: "start", title: "Démarrage rapide",
         html: hSteps([
             "Ouvrez la fenêtre de <b>MagicStudio Final Cut</b> (<b>Images</b>, <b>Video</b> ou <b>Audio</b>), ou " +
-            "la fenêtre <b>40.Rush Videos</b> / <b>60.Rush Images</b> ou <b>Processing</b> du nœud Project.",
+            "la fenêtre <b>40.Rush Videos</b> / <b>60.Rush Images</b> ou <b>Processing</b> du nœud Project. " +
+            "Ou cliquez sur <b>Folder</b> ou <b>Project</b> dans la pilule <b>Project | Folder</b> au-dessus de la zone de dépôt.",
             "Glissez un fichier sur ce nœud.",
             "Branchez les sorties qui correspondent au fichier : <b>video</b>, <b>video_frames</b> ou " +
             "<b>audio_video</b> pour une vidéo, <b>image</b> pour une image, <b>audio</b> pour un son.",
@@ -280,7 +283,7 @@ const HELP_SECTIONS_FR = [
         id: "folderwin", title: "Fenêtre Folder",
         html: hList([
             "Racines : <b>input</b> et <b>output</b> de ComfyUI seulement ; rien en dehors ne peut s'ouvrir.",
-            "Boutons de type (tous les médias, images, vidéos, sons), arbre des dossiers et liste des fichiers.",
+            "Boutons de type <b>All</b>, <b>Video</b>, <b>Image</b> et <b>Son</b>, arbre des dossiers et liste des fichiers.",
             "<b>Search file</b> : cherche dans le dossier choisi et ses sous-dossiers (500 résultats au plus).",
             "<b>Clic</b> sur un fichier : il se lit dans le lecteur. <b>Glisser</b> sur ce nœud : remplit <b>file</b>.",
             "Lecture seule : rien n'est écrit ni déplacé. <b>Close</b> (ou Échap) ferme la fenêtre.",
@@ -289,11 +292,11 @@ const HELP_SECTIONS_FR = [
     {
         id: "projectwin", title: "Fenêtre Project",
         html: hList([
-            "Choisissez le projet en haut (aucun nœud n'est modifié) ; les boutons <b>Video</b> (par défaut), " +
+            "Choisissez le projet dans le menu <b>Project name</b> en haut (aucun nœud n'est modifié) ; les boutons <b>Video</b> (par défaut), " +
             "<b>Image</b> et <b>Son</b> montrent les dossiers de ce type, avec leurs vignettes.",
             "<b>Archives</b> montre les dossiers Archives du type choisi (cliquez de nouveau pour revenir).",
             "<b>Extract Frames</b> montre les images extraites des vidéos du Picture Lock (cliquez de nouveau pour revenir).",
-            "Dans 40 / 60, seuls les originaux sont listés ; le bouton <b>Processing</b> ouvre l'arbre des " +
+            "Dans 40 / 60, seuls les originaux sont listés ; le bouton <b>Processing (n)</b> ouvre l'arbre des " +
             "post-traitements, en <b>lecture seule</b> (ni déplacement, ni suppression).",
             "<b>Clic</b> sur une vignette : lecture ; <b>glisser</b> sur ce nœud : remplit <b>file</b>. " +
             "<b>Close</b> (ou Échap) ferme la fenêtre.",
@@ -327,6 +330,20 @@ function droppedText(dt) {
     return dt.getData("text/uri-list") || dt.getData("text/plain") || "";
 }
 const carriesLink = (dt) => !!dt && Array.from(dt.types || []).some((t) => t === "text/uri-list" || t === "text/plain");
+
+// project_used sert a l'interface seulement (pilule Project | Folder) : il est retire du prompt d'API
+// envoye au serveur, sinon le Project (IS_CHANGED = NaN) invaliderait le cache du MedLoad et de sa chaine
+// et s'executerait (Run vide) lors d'un Run de branche. Le workflow garde le lien. graphToPrompt est le
+// chemin commun de queuePrompt (Run complet, branche, export API) ; enveloppe une seule fois.
+if (!app.__mmStripProjectUsed) {
+    app.__mmStripProjectUsed = true;
+    const graphToPrompt = app.graphToPrompt;
+    app.graphToPrompt = async function () {
+        const res = await graphToPrompt.apply(this, arguments);
+        if (res && res.output) stripProjectUsed(res.output);
+        return res;
+    };
+}
 
 app.registerExtension({
     name: "ComfyUI.MiniMaxH3LoadMedia",
@@ -624,6 +641,8 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function () {
             const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
             migrateOutputs(this);
+            // Ancien workflow (avant project_used) : l'entree est ajoutee en dernier si le frontend ne l'a pas creee.
+            if (!(this.inputs || []).some((i) => i && i.name === "project_used")) this.addInput("project_used", "MINIMAX_FINAL_CUT");
             // Ancien workflow : le widget post_processing a pu recevoir la valeur d'un autre widget
             // (texte vide) ; seul un booleen est gardé, sinon gris (False). "file" n'est pas touche.
             const pw = (this.widgets || []).find((w) => w.name === "post_processing");

@@ -226,7 +226,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 - **Linked in the input folder** of ComfyUI as `Final-Cut_<Name>`, so other nodes can pick the copies there.
 - **Sync:** the first sync runs when the node is wired. After that, the orange **Sync · n** button shows that a Picture Lock changed (its tooltip lists the changes); grey **Up to date** means nothing to do. A copy whose original was replaced or removed goes to the Recycle Bin, only after a click on Sync. A progress bar shows the work.
 - **Images / Video / Audio buttons:** each opens the copies of that type in a window that does not block the canvas: files grouped by project (newest first), **List | Thumbnails** (remembered), and on the right the clicked file with its player, **File**, **Path** and **Source**.
-- **Frames of a video (Video window):** a strip with a scissors icon and tiles **First**, **Last** and **N** (**◀ ▶** to go through the `FRAME_` images) appears for every video whose project has images in `Picture Lock/Extract Frame`; drag a tile onto MiniMax H3 Director or MagicStudio MedLoad (MedLoad needs the project inside the ComfyUI input folder), click it to see the image on the right. No Sync needed.
+- **Frames of a video (Video window):** a strip with a scissors icon and tiles **First**, **Last** and **N** (**◀ ▶** to go through the `FRAME_` images) appears for every video whose project has images in `Picture Lock/Extract Frame`; drag a tile onto MiniMax H3 Director or MagicStudio MedLoad (MedLoad needs the project inside the ComfyUI input or output folder), click it to see the image on the right. No Sync needed.
 - **Drag a thumbnail** onto MiniMax H3 Director, or onto **MagicStudio MedLoad**.
 - The node does nothing during a Run: everything happens in its interface.
 - The **?** button opens its help (Quick start, The window, The copies, Sync, Into H3 Director), in English or French.
@@ -249,7 +249,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 - **No copy:** the file is read where it is. It is loaded again only when the path changes or when the file is modified.
 - **Safety:** only files inside the input or output folder of ComfyUI (or their subfolders) are accepted; any other path is refused before the run, with a message on the node.
 - A file dragged from the Windows Explorer gives no path to the browser: drag it from Final Cut, or type its path.
-- The **?** button opens its help (Quick start, Outputs, Accepted files), in English or French.
+- The **?** button opens its help (Quick start, Outputs, Project / Folder, Folder window, Project window, Accepted files), in English or French.
 
 ## MagicStudio SelectMod node
 
@@ -287,7 +287,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 - Click a card to play it. The filter dots and the **Date** sort work as in 40 / 60 (the sort is the same global setting); a post that does not match the filter turns pale, the original is never filtered. A deleted post that still has posts is a grey **Deleted** card; a deleted post without posts is not shown.
 - The buttons **Picture Lock / Rough Cut / Footage / No Good** (with the total of each folder) move the checked files, like in 40 / 60: copy, SHA256 check, progress bar. Picture Lock keeps one file, with a **Swap** question when it is taken. **Delete** is under No Good. **Extract Frame** is under the card of the Picture Lock video.
 - Before a move, Swap or delete, the players are closed (Windows locks a file while it is played). **Esc** or ✕ closes the window; closing 40 / 60 or switching between 40 and 60 closes it too.
-- **Drag to MedLoad:** drag a Processing card, or a thumbnail of 40 / 60, onto **MagicStudio MedLoad**. The full-quality original is sent when it is in the project, otherwise the copy shown in 40. A **Deleted** card cannot be dragged. MedLoad still accepts only files of the ComfyUI input folder.
+- **Drag to MedLoad:** drag a Processing card, or a thumbnail of 40 / 60, onto **MagicStudio MedLoad**. The full-quality original is sent when it is in the project, otherwise the copy shown in 40. A **Deleted** card cannot be dragged. MedLoad still accepts only files of the ComfyUI input or output folder.
 
 ## Compatibility
 

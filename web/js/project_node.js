@@ -438,7 +438,7 @@ const HELP_SECTIONS = [
                     "A simple click still opens the player."],
                 ["File sent", "The <b>full-quality original</b> when it is in the project; otherwise the copy shown in 40. " +
                     "A grey <b>Deleted</b> card cannot be dragged."],
-                ["Rule", "MedLoad only accepts files of the input folder of ComfyUI."],
+                ["Rule", "MedLoad only accepts files of the input or output folder of ComfyUI."],
             ]) +
             hNote("before any move, Swap or delete, the players are closed (preview and Extract Frame), because Windows " +
                 "keeps a file locked while it is played.") +
@@ -971,7 +971,7 @@ const HELP_SECTIONS_FR = [
                     "Un simple clic ouvre toujours le lecteur."],
                 ["Fichier envoyé", "L'<b>original pleine qualité</b> quand il est dans le projet ; sinon la copie montrée dans 40. " +
                     "Une carte grise <b>Deleted</b> ne se glisse pas."],
-                ["Règle", "MedLoad n'accepte que les fichiers du dossier input de ComfyUI."],
+                ["Règle", "MedLoad n'accepte que les fichiers du dossier input ou output de ComfyUI."],
             ]) +
             hNote("avant tout déplacement, Swap ou suppression, les lecteurs sont fermés (aperçu et Extract Frame), car " +
                 "Windows garde un fichier verrouillé tant qu'il est lu.", "Remarque :") +

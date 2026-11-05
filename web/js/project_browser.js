@@ -397,6 +397,9 @@ export function buildProjectWindow(container, ops = {}) {
         /** Detruit la fenetre (couche dans document.body) : appele quand le noeud est supprime. */
         remove() {
             close();
+            // Lecteur, fenetre Processing (et son menu) retires de la page avec la fenetre.
+            preview.remove();
+            proc.remove();
             overlay.remove();
         },
         /** open({name, path}, ancre) : projet relie par defaut ; a droite de l'ancre (le noeud) s'il y a la place. */
