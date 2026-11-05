@@ -22,7 +22,7 @@ import {
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
     PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint,
 } from "./project_paths.js";
-import { STAR_GOLD, STAR_TIP, releaseComparePlayers } from "./compare_pure.js";
+import { STAR_GOLD, STAR_TIP, releaseComparePlayers, releaseComparePlayersOf } from "./compare_pure.js";
 import { DROP_TARGETS, dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 import { PROJECT_USED, renameLegacySlots, LEGACY_PROJECT_LINKS, promptSource, PROMPT_UNWIRED } from "./graph_links.js";
@@ -6014,6 +6014,7 @@ app.registerExtension({
             const rushOps = {
                 async move(run, out, key, swap) {
                     const path = getState().path;
+                    releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                     const data = await apiPost("/mmproject/sort_output",
                         { project: path, run: run.file, index: out.index, target: key, swap: !!swap });
                     if (data && data.extract_change) handleExtractChange(data.extract_change, path);
@@ -6030,8 +6031,11 @@ app.registerExtension({
                 // Bouton de l'en-tete de 40 : lu dans locked / overfull de /mmproject/runs (deja charges).
                 extractHeader: () => extractHeaderState(lockedFiles, lockOverfull),
                 busy: () => !!replaceAsking || extractWindow.isBusy(),
-                remove: (run, out, trash) => apiPost("/mmproject/delete_rush",
-                    { project: getState().path, run: run.file, index: out.index, trash }),
+                remove: (run, out, trash) => {
+                    releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
+                    return apiPost("/mmproject/delete_rush",
+                        { project: getState().path, run: run.file, index: out.index, trash });
+                },
                 async reload() {
                     await loadRuns(getState());
                     paintFolders();
@@ -6685,6 +6689,7 @@ app.registerExtension({
                             okLabel: "Replace", okColor: ORANGE, cancelLabel: "Keep",
                         });
                         try {
+                            releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                             const res = await apiPost("/mmproject/extract/replace", { project: path, keep: yes !== true });
                             notifyFinalCut();
                             const written = (res && res.written) || [];
@@ -6779,6 +6784,7 @@ app.registerExtension({
                 }
                 for (let attempt = 1; ; attempt++) {
                     try {
+                        releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                         const data = await apiPost("/mmproject/sort_output",
                             { project: s.path, run: run.file, index: out.index, target: key, swap: lock.swap });
                         // Extract Frame : son message suit celui du tri (sinon il serait remplace).
@@ -6859,6 +6865,7 @@ app.registerExtension({
                         let res = null;
                         let error = "";
                         try {
+                            releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                             res = await apiPost("/mmproject/resolve_duplicate", args);
                             error = res.trash_error || "";
                         } catch (e) {
@@ -7001,6 +7008,7 @@ app.registerExtension({
                 });
                 if (!ok) return;
                 try {
+                    releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                     const data = await apiPost("/mmproject/reset", { project: s.path });
                     const loader = linkedLoader(node);
                     if (loader) {
@@ -7089,6 +7097,7 @@ app.registerExtension({
                     const res = await duplicatesDialog.open(f, groups, s.path, trashOk, msg);
                     if (!res) return;
                     try {
+                        releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                         const data = await apiPost("/mmproject/delete_duplicates",
                             { project: s.path, folder: f, shas: res.shas, trash: res.trash });
                         msg = { text: data.deleted.length + " file(s) " + (res.trash ? "moved to the Recycle Bin"
@@ -7251,6 +7260,7 @@ app.registerExtension({
                 try {
                     // Archives d'abord : un fichier copie peut reprendre le nom d'un fichier archive.
                     if (unused.length) {
+                        releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                         const res = await apiPost("/mmproject/archive_files", { project: s.path, folder: f, names: unused.map(baseName) });
                         // Fichiers d'un Run (en cours ou cite) : le serveur les laisse en place.
                         kept = res.kept || [];
@@ -7589,6 +7599,7 @@ app.registerExtension({
             /** Renomme ou deplace le projet (deja confirme) ; le Reference Loader suit. */
             async function applyRenameMove(mode, value) {
                 const s = getState();
+                releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                 const data = await apiPost(mode === "rename" ? "/mmproject/rename" : "/mmproject/move",
                     mode === "rename" ? { path: s.path, name: value } : { path: s.path, dest: value });
                 const loader = linkedLoader(node);
@@ -7745,7 +7756,10 @@ app.registerExtension({
                 if (!checked) return;
                 try {
                     const items = restoreItems(report, checked);
-                    if (items.length) await apiPost("/mmproject/config/restore", { project: s.path, items });
+                    if (items.length) {
+                        releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
+                        await apiPost("/mmproject/config/restore", { project: s.path, items });
+                    }
                     const restored = items.length ? " " + items.length + " file(s) put back from Archives." : "";
                     const media = checked.filter((f) => UPDATE_FOLDERS.includes(f));
                     const wf = report.workflow;

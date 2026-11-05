@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import {
     COMPARE_CLASS, MODES, DEFAULT_STATE, STAR_GOLD, STAR_TIP, parseState, formatState, chosenSide, inputKind,
     effectiveKind, acceptKind, bodyDropSide, halfSide, wipePos, clipA, hintText, soundSide, syncFix, frameStep,
-    uiHeight, starPlan, initialStar, releaseComparePlayers, starKey, starSetOf, isStarred,
+    uiHeight, starPlan, initialStar, starAfterSet, syncShown, releaseComparePlayers, releaseComparePlayersOf, starKey, starSetOf, isStarred,
 } from "../web/js/compare_pure.js";
 
 const cases = JSON.parse(readFileSync(new URL("./compare_cases.json", import.meta.url), "utf8"));
@@ -100,6 +100,27 @@ test("starPlan", () => {
     assert.deepEqual(starPlan(st("A"), "A", none), { star: "", on: "", off: "a.png" });
     assert.equal(starPlan(st(""), "A", { A: "image", B: null }).on, "");
     assert.equal(starPlan(st(""), "A", { A: null, B: "image" }).off, "");
+    // cote vide (ni fichier ni entree) : rien ne change, rien n'est envoye
+    const emptyA = (star) => ({ star, a: { path: "" }, b: { path: "b.png" } });
+    assert.deepEqual(starPlan(emptyA("B"), "A", none), { star: "B", on: "", off: "" });
+    assert.deepEqual(starPlan(emptyA(""), "A", none), { star: "", on: "", off: "" });
+    // cote branche sans fichier : toujours actif
+    assert.deepEqual(starPlan(emptyA(""), "A", { A: "image", B: null }), { star: "A", on: "", off: "b.png" });
+});
+
+test("starAfterSet", () => {
+    assert.equal(starAfterSet({ star: "A" }, "A"), "");
+    assert.equal(starAfterSet({ star: "B" }, "A"), "B");
+    assert.equal(starAfterSet({ star: "" }, "B"), "");
+});
+
+test("syncShown", () => {
+    assert.equal(syncShown([]), true);
+    assert.equal(syncShown(["image"]), false);
+    assert.equal(syncShown(["image", "image"]), false);
+    assert.equal(syncShown(["video"]), true);
+    assert.equal(syncShown(["video", "video", ""]), true);
+    assert.equal(syncShown(["", null]), true);
 });
 
 test("initialStar", () => {
@@ -108,6 +129,11 @@ test("initialStar", () => {
     assert.equal(initialStar(s, false, true), "B");
     assert.equal(initialStar(s, true, true), "B");
     assert.equal(initialStar(s, false, false), "B");
+    // fichier pose sur A (etoile retiree par starAfterSet), les deux etoiles : A, son fichier l'est
+    assert.equal(initialStar({ star: "" }, true, true, "A"), "A");
+    assert.equal(initialStar({ star: "B" }, true, true, "A"), "B");
+    assert.equal(initialStar({ star: "" }, false, false, "A"), "");
+    assert.equal(initialStar({ star: "" }, true, true), "");
 });
 
 test("syncFix, frameStep, uiHeight", () => {
@@ -132,6 +158,12 @@ test("releaseComparePlayers", () => {
     const r = releaseComparePlayers([{ type: "MagicStudioCompare", mmCompareRelease: () => n++ }, { type: "X" }]);
     assert.equal(r, 1);
     assert.equal(n, 1);
+    // graphe entier (app.graph) ; graphe absent = rien
+    const g = { _nodes: [{ type: "MagicStudioCompare", mmCompareRelease: () => n++ }, null] };
+    assert.equal(releaseComparePlayersOf(g), 1);
+    assert.equal(n, 2);
+    assert.equal(releaseComparePlayersOf(null), 0);
+    assert.equal(releaseComparePlayersOf({}), 0);
 });
 
 test("tagCorner : coin de l'etiquette selon le mode", async () => {

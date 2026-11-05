@@ -6,6 +6,7 @@ import {
     makeOverlay, makeIconButton, makeTextButton, positionCardNextToNode, apiGet, escapeHtml, buildHelpOverlay,
 } from "./minimax_ref_loader.js";
 import { makeFileCache } from "./final_cut_cache.js";
+import { releaseComparePlayersOf } from "./compare_pure.js";
 import {
     linkedProject as linkedProjectOf, projectInputNames, renameLegacySlots, LEGACY_PROJECT_LINKS,
 } from "./graph_links.js";
@@ -1021,6 +1022,7 @@ app.registerExtension({
                 let text = "";
                 let ok = true;
                 try {
+                    releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                     const res = await apiPost("/mmproject/final_cut/sync", { project: path });
                     let n = 0;
                     for (const [kind] of KINDS) n += res.kinds[kind].add.length + res.kinds[kind].replace.length +

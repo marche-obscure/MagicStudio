@@ -408,12 +408,15 @@ class MagicStudioCompare:
                 "frames_a": ("IMAGE",),
                 "frames_b": ("IMAGE",),
             },
-            "hidden": {"unique_id": "UNIQUE_ID"},
+            "hidden": {"unique_id": "UNIQUE_ID", "prompt": "PROMPT"},
         }
 
     RETURN_TYPES = ("VIDEO", "IMAGE", "STRING", "STRING")
     RETURN_NAMES = ("video", "images", "path", "choice")
     FUNCTION = "run"
+    # Noeud de sortie (revue finale du 05/11/2026) : il tourne avec le workflow, meme sans sortie
+    # branchee, pour montrer les apercus des entrees branchees.
+    OUTPUT_NODE = True
     CATEGORY = "MagicStudio"
     DESCRIPTION = (
         "Compare two images or two videos (A / B: a wired input or a picked file) and keep the preferred one. "
@@ -427,13 +430,18 @@ class MagicStudioCompare:
         return compare.signature(state)
 
     def run(self, state, project_used=None, video_a=None, video_b=None, frames_a=None, frames_b=None,
-            unique_id=None):
+            unique_id=None, prompt=None):
         # project_used : sert a la fenetre de choix (interface), pas au Run.
         import folder_paths
         s = compare.parse_state(state)
         inputs = {"A": (video_a, frames_a), "B": (video_b, frames_b)}
         src = {side: compare.side_source(side, s, *inputs[side]) for side in compare.SIDES}
         compare.check_kinds(src["A"], src["B"])
+        if src["A"]["from"] is None and src["B"]["from"] is None:
+            # Sans source : erreur seulement si une sortie est branchee, sinon le Run continue.
+            if compare.outputs_used(prompt, unique_id):
+                raise ValueError("Pick or wire at least one source")
+            return {"ui": {"mmcompare": []}, "result": (None, None, "", "")}
         choice = compare.chosen_side(s["star"], src["A"]["from"] is not None, src["B"]["from"] is not None)
 
         # Apercus des cotes branches (choisis ou non) ; la video est lue une seule fois.

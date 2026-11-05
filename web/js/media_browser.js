@@ -117,7 +117,9 @@ export function buildFolderWindow(container, ops = {}) {
     let rootsError = ""; // erreur de /mmmedia/roots, gardee visible
     let current = "";
     let files = []; // tous les types du dossier (ou de la recherche) ; le filtre de type s'applique a l'affichage
-    let kind = readStore(KIND_KEY, "all");
+    // Cle du type retenu : ops.kindKey (fenetres du Compare), sinon celle de MedLoad.
+    const kindKey = ops.kindKey || KIND_KEY;
+    let kind = readStore(kindKey, "all");
     if (!KINDS.includes(kind)) kind = "all";
     let sortKey = "name";
     let sortDir = "asc";
@@ -415,7 +417,7 @@ export function buildFolderWindow(container, ops = {}) {
         kindBtns[k].addEventListener("click", () => {
             if (lockNow().off.includes(k)) return; // type grise par la comparaison
             kind = k;
-            writeStore(KIND_KEY, k);
+            writeStore(kindKey, k);
             paintKinds();
             renderTable();
         });

@@ -36,11 +36,15 @@ def project_of(path, roots):
     """
     Projet du fichier : None s'il n'est dans aucune racine (input / output), sinon le premier parent
     qui est un projet ; None encore si le vrai chemin (jonction) sort de ce projet.
+    Un dossier qui est lui-meme un projet (fenetre Project, ou fenetre Folder ouverte sur un projet)
+    est son propre projet ; son vrai chemin doit rester dans une racine (revue finale du 05/11/2026).
     """
     if not path or not str(path).strip():
         return None
     if not any(load_media.is_within_directory(r, path) for r in roots):
         return None
+    if os.path.isdir(path) and projects.is_project(path):
+        return os.path.abspath(path)
     project = post_process.project_of(path)
     if not project or not load_media.is_within_directory(project, path):
         return None

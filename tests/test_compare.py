@@ -199,9 +199,30 @@ class RunTest(unittest.TestCase):
         self.assertEqual(tuple(images.shape), (1, 12, 30, 3))
 
     def test_nothing(self):
+        # une sortie branchee ([unique_id, n] dans un autre noeud) : le Run s'arrete
+        prompt = {"7": {"class_type": "MagicStudioCompare", "inputs": {"state": "{}"}},
+                  "9": {"class_type": "PreviewImage", "inputs": {"images": ["7", 1]}}}
         with self.assertRaises(ValueError) as e:
-            self.nodes.MagicStudioCompare().run(self._st())
+            self.nodes.MagicStudioCompare().run(self._st(), unique_id="7", prompt=prompt)
         self.assertEqual(str(e.exception), "Pick or wire at least one source")
+
+    def test_nothing_unwired_keeps_the_run(self):
+        # noeud de sortie sans source et sans sortie branchee : rien, le Run continue
+        prompt = {"7": {"class_type": "MagicStudioCompare", "inputs": {"state": "{}"}},
+                  "9": {"class_type": "PreviewImage", "inputs": {"images": ["8", 1], "x": ["7", True]}}}
+        for p in (prompt, None, {}):
+            r = self.nodes.MagicStudioCompare().run(self._st(), unique_id="7", prompt=p)
+            self.assertEqual(r, {"ui": {"mmcompare": []}, "result": (None, None, "", "")})
+
+    def test_outputs_used(self):
+        oc = self.nodes.compare.outputs_used
+        self.assertTrue(oc({"1": {"inputs": {"a": [7, 0]}}}, "7"))
+        self.assertTrue(oc({"1": {"inputs": {"a": ["12:3", 2]}}}, "12:3"))
+        self.assertFalse(oc({"1": {"inputs": {"a": ["12", 2]}}}, "12:3"))
+        self.assertFalse(oc({"1": {"inputs": {"a": "7"}}}, "7"))
+        self.assertFalse(oc({"1": "bad", "2": {"inputs": None}}, "7"))
+        self.assertFalse(oc(None, "7"))
+        self.assertFalse(oc({"1": {"inputs": {"a": ["7", 0]}}}, None))
 
     def test_wired_frames_b_beats_file(self):
         fb = _frames(3, 8, 8)
@@ -258,7 +279,8 @@ class RunTest(unittest.TestCase):
         it = c.INPUT_TYPES()
         self.assertEqual(list(it["required"]), ["state"])
         self.assertEqual(list(it["optional"]), ["project_used", "video_a", "video_b", "frames_a", "frames_b"])
-        self.assertEqual(it["hidden"], {"unique_id": "UNIQUE_ID"})
+        self.assertEqual(it["hidden"], {"unique_id": "UNIQUE_ID", "prompt": "PROMPT"})
+        self.assertIs(c.OUTPUT_NODE, True)
         self.assertEqual(c.CATEGORY, "MagicStudio")
 
 

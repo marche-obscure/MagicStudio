@@ -8,7 +8,7 @@ import { buildFolderWindow } from "./media_browser.js";
 import { buildProjectWindow } from "./project_browser.js";
 import {
     COMPARE_CLASS, MODES, parseState, formatState, effectiveKind, acceptKind, bodyDropSide, halfSide, uiHeight,
-    initialStar, hintText, sideFps, starPlan, STAR_GOLD, STAR_TIP,
+    initialStar, hintText, sideFps, starPlan, starAfterSet, syncShown, STAR_GOLD, STAR_TIP,
 } from "./compare_pure.js";
 import { buildCompareViewer } from "./compare_viewer.js";
 
@@ -50,8 +50,11 @@ const HELP_SECTIONS = [
         hNote("a wired input wins over the file of the same side. The file stays in the node (shown in grey) and " +
             "comes back when you unwire the input.") +
         hNote("do not wire <b>video_a</b> and <b>frames_a</b> together (same for B): the link is refused.") +
-        hTip("a wired <b>frames_a</b> or <b>frames_b</b> has no known type until the first Run. Run once to " +
-            "preview: the viewer shows <b>Run once to preview</b> until the preview exists."),
+        hTip("a wired <b>frames_a</b> or <b>frames_b</b> has no known type until the first Run. Run the workflow " +
+            "once: the node runs with it, even when none of its outputs is wired. The viewer shows " +
+            "<b>Run once to preview</b> until the preview exists.") +
+        hNote("with no file and no wired input, the node does nothing and the Run goes on, unless one of its " +
+            "outputs is wired: then the Run stops with <b>Pick or wire at least one source</b>."),
     },
     {
         id: "viewer", title: "The viewer", icon: VIDEO_ICON, color: ORANGE,
@@ -73,7 +76,7 @@ const HELP_SECTIONS = [
             ["<b>Volume</b>", "sound level"],
             ["<b>Sync</b>", "on (default): one bar for A and B, B follows A. Off: one bar under each side, each side plays alone"],
         ]) +
-        hNote("images have no player and no <b>Sync</b>."),
+        hNote("images have no player: the <b>Sync</b> button is hidden for an image comparison."),
     },
     {
         id: "picking", title: "Picking files", icon: FOLDER_ICON, color: VIOLET,
@@ -85,7 +88,7 @@ const HELP_SECTIONS = [
         hCard("Good to know", [
             ["Drop", "drag a file from a window onto the viewer: it goes to the half under the mouse. Elsewhere on the node, it goes to the first free side"],
             ["Same type", "the first file sets the type: two images or two videos. The window greys the other type. Sound files are refused"],
-            ["<b>✕</b>", "removes the file of that side (and its star, if it had one)"],
+            ["<b>✕</b>", "removes the file from that side. The node forgets the star; the file keeps its saved star"],
             ["Wired input", "its button <b>A</b> / <b>B</b> is greyed: unwire the input to pick a file"],
         ]),
     },
@@ -103,7 +106,12 @@ const HELP_SECTIONS = [
         ]) +
         "<p>A gold <b>★</b> shows the preferred file in <b>40.Rush Videos</b> / <b>60.Rush Images</b>, " +
         "<b>Processing</b>, the <b>Project</b> window and the <b>Folder</b> window.</p>" +
-        hNote("the star follows the sorting and the archives done by MagicStudio. A file moved by hand loses its star."),
+        hNote("the star follows the sorting and the archives done by MagicStudio. A file moved by hand loses its star.") +
+        hCard("Good to know", [
+            ["New file on the starred side", "the node forgets the star, unless the new file is already starred"],
+            ["Empty side", "its star is greyed and does nothing"],
+            ["Opening a workflow", "the saved stars of the two files are read again; a star already in the node stays"],
+        ]),
     },
     {
         id: "outputs", title: "Outputs", icon: VIDEO_ICON, color: ORANGE,
@@ -114,8 +122,8 @@ const HELP_SECTIONS = [
             ["<b>path</b>", "the path of the file; empty for a wired input"],
             ["<b>choice</b>", "<b>A</b> or <b>B</b>"],
         ]) +
-        hNote("if the chosen side is empty, the other side is used. With no file and no input, the Run stops " +
-            "with <b>Pick or wire at least one source</b>."),
+        hNote("if the chosen side is empty, the other side is used. With no file and no input, the node does " +
+            "nothing, unless one of its outputs is wired: then the Run stops with <b>Pick or wire at least one source</b>."),
     },
 ];
 
@@ -148,7 +156,10 @@ const HELP_SECTIONS_FR = [
             "gris) et revient quand vous débranchez l'entrée.") +
         hNote("ne branchez pas <b>video_a</b> et <b>frames_a</b> ensemble (idem pour B) : le lien est refusé.") +
         hTip("une entrée <b>frames_a</b> ou <b>frames_b</b> branchée n'a pas de type connu avant le premier Run. " +
-            "Lancez un Run pour voir l'aperçu : le cadre affiche <b>Run once to preview</b> tant qu'il n'existe pas."),
+            "Lancez le workflow une fois : le nœud tourne avec lui, même si aucune de ses sorties n'est branchée. " +
+            "Le cadre affiche <b>Run once to preview</b> tant que l'aperçu n'existe pas.") +
+        hNote("sans fichier ni entrée branchée, le nœud ne fait rien et le Run continue, sauf si une de ses " +
+            "sorties est branchée : le Run s'arrête alors avec <b>Pick or wire at least one source</b>."),
     },
     {
         id: "viewer", title: "Le cadre",
@@ -170,7 +181,7 @@ const HELP_SECTIONS_FR = [
             ["<b>Volume</b>", "niveau du son"],
             ["<b>Sync</b>", "allumé (par défaut) : une seule barre pour A et B, B suit A. Éteint : une barre sous chaque côté, chacun joue seul"],
         ]) +
-        hNote("les images n'ont ni lecteur ni <b>Sync</b>."),
+        hNote("les images n'ont pas de lecteur : le bouton <b>Sync</b> est caché pour une comparaison d'images."),
     },
     {
         id: "picking", title: "Choisir les fichiers",
@@ -182,7 +193,7 @@ const HELP_SECTIONS_FR = [
         hCard("Bon à savoir", [
             ["Glisser", "glissez un fichier d'une fenêtre sur le cadre : il va à la moitié sous la souris. Ailleurs sur le nœud, il va au premier côté libre"],
             ["Même type", "le premier fichier fixe le type : deux images ou deux vidéos. La fenêtre grise l'autre type. Les sons sont refusés"],
-            ["<b>✕</b>", "retire le fichier de ce côté (et son étoile, s'il en avait une)"],
+            ["<b>✕</b>", "retire le fichier de ce côté. Le nœud oublie l'étoile ; le fichier garde son étoile enregistrée"],
             ["Entrée branchée", "son bouton <b>A</b> / <b>B</b> est grisé : débranchez l'entrée pour choisir un fichier"],
         ]),
     },
@@ -200,7 +211,12 @@ const HELP_SECTIONS_FR = [
         ]) +
         "<p>Une <b>★</b> dorée montre le fichier préféré dans <b>40.Rush Videos</b> / <b>60.Rush Images</b>, " +
         "<b>Processing</b>, la fenêtre <b>Project</b> et la fenêtre <b>Folder</b>.</p>" +
-        hNote("l'étoile suit les rangements et les archives faits par MagicStudio. Un fichier déplacé à la main perd son étoile."),
+        hNote("l'étoile suit les rangements et les archives faits par MagicStudio. Un fichier déplacé à la main perd son étoile.") +
+        hCard("Bon à savoir", [
+            ["Nouveau fichier du côté étoilé", "le nœud oublie l'étoile, sauf si le nouveau fichier est déjà étoilé"],
+            ["Côté vide", "son étoile est grisée et ne fait rien"],
+            ["Ouverture d'un workflow", "les étoiles enregistrées des deux fichiers sont relues ; une étoile déjà dans le nœud reste"],
+        ]),
     },
     {
         id: "outputs", title: "Sorties",
@@ -211,8 +227,8 @@ const HELP_SECTIONS_FR = [
             ["<b>path</b>", "le chemin du fichier ; vide pour une entrée branchée"],
             ["<b>choice</b>", "<b>A</b> ou <b>B</b>"],
         ]) +
-        hNote("si le côté choisi est vide, l'autre côté est utilisé. Sans fichier ni entrée, le Run s'arrête avec " +
-            "<b>Pick or wire at least one source</b>."),
+        hNote("si le côté choisi est vide, l'autre côté est utilisé. Sans fichier ni entrée, le nœud ne fait rien, " +
+            "sauf si une de ses sorties est branchée : le Run s'arrête alors avec <b>Pick or wire at least one source</b>."),
     },
 ];
 
@@ -481,12 +497,14 @@ app.registerExtension({
                 node.setDirtyCanvas(true, true);
             });
             modeRow.appendChild(syncBtn);
-            function paintSync(on, videos) {
+            function paintSync(on, kinds) {
                 syncBtn.style.borderColor = on ? GREEN : "#3a3a3a";
                 syncBtn.style.color = on ? GREEN : "#ddd";
                 syncBtn.style.fontWeight = on ? "bold" : "normal";
-                // Sans video, le bouton reste utilisable mais estompe (rien a lire).
-                syncBtn.style.opacity = videos ? "1" : "0.5";
+                // Sans cote rempli, le bouton reste utilisable mais estompe (rien a lire).
+                syncBtn.style.opacity = kinds.includes("video") ? "1" : "0.5";
+                // Comparaison d'images : bouton cache (revue finale), la ligne garde sa hauteur.
+                syncBtn.style.visibility = syncShown(kinds) ? "visible" : "hidden";
             }
             const hint = document.createElement("div");
             Object.assign(hint.style, { color: "#999", fontSize: "11px", height: "14px", lineHeight: "14px" });
@@ -557,8 +575,9 @@ app.registerExtension({
                     if (pickSide) pickFile(pickSide, p);
                 },
             };
-            const folderWin = buildFolderWindow(container, pickOps);
-            const projectWin = buildProjectWindow(container, pickOps);
+            // Type retenu sous des cles propres au Compare (celui de MedLoad n'est pas touche).
+            const folderWin = buildFolderWindow(container, { ...pickOps, kindKey: "mmcompare.folderKind" });
+            const projectWin = buildProjectWindow(container, { ...pickOps, kindKey: "mmcompare.projectKind" });
             const browserChoice = () => (node.properties[BROWSER_KEY] === "project" ? "project" : "folder");
             const activeBrowser = () => (projectWired ? browserChoice() : "folder");
             function paintPill() {
@@ -649,16 +668,24 @@ app.registerExtension({
                 }
                 const s = readState();
                 s[key(side)] = { path, kind };
+                // L'etoile appartient au fichier : elle part avec l'ancien (revue finale) ;
+                // applyStoredStars la rend si le nouveau fichier est deja etoile.
+                s.star = starAfterSet(s, side);
                 writeState(s);
                 message = null;
                 paint();
                 relockWindows();
-                await applyStoredStars();
+                await applyStoredStars({ placed: side });
                 return true;
             }
-            /** Etoile a la pose : un seul des deux fichiers deja etoile dans son projet -> ce cote. */
-            async function applyStoredStars() {
+            /**
+             * Etoile a la pose : un seul des deux fichiers deja etoile dans son projet -> ce cote.
+             * opts.placed = cote qui vient de recevoir un fichier ; opts.keep = ouverture d'un workflow :
+             * un etat qui a deja une etoile n'est pas touche.
+             */
+            async function applyStoredStars(opts = {}) {
                 const s0 = readState();
+                if (opts.keep && s0.star) return;
                 const w = wired();
                 const paths = SIDES.map((x) => (w[x] ? "" : s0[key(x)].path));
                 const lists = await Promise.all(paths.map(async (p) => {
@@ -672,8 +699,9 @@ app.registerExtension({
                 const s = readState();
                 // L'etat a pu changer pendant la lecture : seulement si les fichiers sont les memes.
                 if (SIDES.some((x, i) => (w[x] ? "" : s[key(x)].path) !== paths[i])) return;
+                if (opts.keep && s.star) return; // etoile posee pendant la lecture
                 const stored = paths.map((p, i) => !!p && lists[i].includes(normPath(p)));
-                const star = initialStar(s, stored[0], stored[1]);
+                const star = initialStar(s, stored[0], stored[1], opts.placed);
                 if (star !== s.star) {
                     s.star = star;
                     writeState(s);
@@ -766,7 +794,7 @@ app.registerExtension({
                 viewer.setStar(s.star);
                 viewer.setSync(s.sync);
                 viewer.setSources(sources);
-                paintSync(s.sync, SIDES.some((x) => sources[x] && sources[x].kind === "video"));
+                paintSync(s.sync, SIDES.map((x) => (sources[x] ? sources[x].kind : "")));
             }
             let renderer = defaultRenderer;
 
@@ -829,11 +857,17 @@ app.registerExtension({
                     b.style.color = on ? STAR_GOLD : STAR_OFF;
                     const src = sourceOf(side);
                     b.title = src.from === "input" ? "Input " + side : (src.path ? baseName(src.path) : STAR_TIP);
+                    // Cote vide : etoile grisee, sans effet.
+                    b.style.opacity = src.from ? "1" : "0.4";
+                    b.style.cursor = src.from ? "pointer" : "default";
                 }
             }
             api.onPaint.push(paintStars);
             /** Clic sur une etoile : l'etoile du noeud change tout de suite, le serveur garde celle du fichier. */
             async function clickStar(side) {
+                // Cote vide (ni fichier ni entree branchee) : rien (revue finale : sinon l'etoile
+                // enregistree du fichier de l'autre cote etait retiree).
+                if (!sourceOf(side).from) return;
                 const before = readState();
                 const plan = starPlan(before, side, wired());
                 const s = readState();
@@ -898,6 +932,8 @@ app.registerExtension({
                 }
             };
             node.mmComparePaint = () => paint();
+            // Ouverture d'un workflow : etoiles enregistrees relues, sans ecraser une etoile du noeud.
+            node.mmCompareStoredStars = () => applyStoredStars({ keep: true });
             node.mmComparePaintPill = () => paintPill();
             // Appele par le noeud Project quand son projet change (comme MedLoad).
             let pillTimer = null;
@@ -974,6 +1010,7 @@ app.registerExtension({
             if (this.mmComparePaint) setTimeout(() => {
                 this.mmComparePaintPill();
                 this.mmComparePaint();
+                if (this.mmCompareStoredStars) this.mmCompareStoredStars();
             }, 0);
             return r;
         };

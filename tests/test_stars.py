@@ -86,6 +86,34 @@ class StarsTest(unittest.TestCase):
         c = write(os.path.join(self.root, "Plain", "c.png"))
         self.assertIsNone(stars.project_of(c, self.roots))
 
+    def test_project_folder_is_its_own_project(self):
+        # revue finale : fenetre Project (dossier du projet) et fenetre Folder ouverte sur un projet
+        self.assertEqual(os.path.normcase(stars.project_of(self.p, self.roots)), os.path.normcase(self.p))
+        self.assertEqual(os.path.normcase(stars.project_of(self.p + os.sep, self.roots)),
+                         os.path.normcase(self.p))
+        a = write(os.path.join(self.p, "08.Images", "a.png"))
+        stars.set_star(a, "", self.roots)
+        project = stars.project_of(self.p, self.roots)
+        self.assertEqual(stars.list_stars(project), stars.list_stars(stars.project_of(a, self.roots)))
+        self.assertTrue(stars.list_stars(project))
+        # un dossier de projets n'est pas un projet ; un projet hors racine est refuse
+        projects.create_project(self.root, "Sub", group="Group", new_group=True)
+        group = os.path.join(self.root, "Group")
+        self.assertIsNone(stars.project_of(group, self.roots))
+        other = tempfile.mkdtemp()
+        try:
+            q = projects.create_project(other, "Away")
+            self.assertIsNone(stars.project_of(q, self.roots))
+            # jonction de la racine vers un projet du dehors : refusee aussi
+            link = os.path.join(self.root, "Linked")
+            if make_junction(link, q):
+                try:
+                    self.assertIsNone(stars.project_of(link, self.roots))
+                finally:
+                    remove_link(link)
+        finally:
+            shutil.rmtree(other, ignore_errors=True)
+
     def test_run_output_gets_the_star(self):
         x = write(os.path.join(self.p, "40.Rush Videos", "Footage", "x.mp4"))
         copy = write(os.path.join(self.p, "40.Rush Videos", "Footage", "x_small.mp4"))

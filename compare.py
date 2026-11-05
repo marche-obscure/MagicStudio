@@ -106,6 +106,26 @@ def chosen_side(star, has_a, has_b):
     return side
 
 
+def outputs_used(prompt, unique_id):
+    """
+    Vrai si un noeud du prompt lit une sortie de ce noeud (valeur d'entree [unique_id, n]).
+    Le noeud est un noeud de sortie (revue finale du 05/11/2026) : il tourne avec le workflow ; sans
+    source, il ne bloque le Run que si une de ses sorties est branchee.
+    """
+    if not isinstance(prompt, dict) or unique_id is None:
+        return False
+    me = str(unique_id)
+    for node in prompt.values():
+        inputs = node.get("inputs") if isinstance(node, dict) else None
+        if not isinstance(inputs, dict):
+            continue
+        for value in inputs.values():
+            if (isinstance(value, (list, tuple)) and len(value) == 2 and str(value[0]) == me
+                    and isinstance(value[1], int) and not isinstance(value[1], bool)):
+                return True
+    return False
+
+
 def signature(state_text):
     """Change avec les cotes, chemins, etoile et fichiers (date, taille) ; pas avec mode ni sync."""
     s = parse_state(state_text)

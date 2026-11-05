@@ -140,6 +140,15 @@ export function frameStep(t, fps, dir, duration) {
     return Math.min(duration, Math.max(0, next));
 }
 
+/**
+ * Bouton Sync visible ? Cache pour une comparaison d'images (kinds = types des cotes presents, tous
+ * "image") ; visible (estompe) tant qu'aucun cote n'est rempli. Revue finale du 05/11/2026.
+ */
+export function syncShown(kinds) {
+    const list = (kinds || []).filter((k) => k === "image" || k === "video");
+    return !(list.length && list.every((k) => k === "image"));
+}
+
 /** Hauteur de l'interface : une barre de temps (Sync) ou deux. */
 export function uiHeight(sync) {
     return sync ? 420 : 464;
@@ -148,20 +157,36 @@ export function uiHeight(sync) {
 /**
  * Plan d'un clic sur l'etoile du cote `side` : nouvelle etoile du noeud et fichiers a (de)marquer.
  * Une entree branchee ou un cote vide n'a pas de fichier (chaine vide).
+ * Cote vide (ni fichier ni entree branchee) : rien ne change, rien n'est envoye (revue finale :
+ * sinon l'etoile enregistree du fichier de l'autre cote etait retiree).
  */
 export function starPlan(state, side, wired) {
     const w = wired || {};
     const file = (s) => (w[s] ? "" : state[s === "A" ? "a" : "b"].path || "");
     const mine = file(side);
+    if (!w[side] && !mine) return { star: state.star, on: "", off: "" };
     if (state.star === side) return { star: "", on: "", off: mine };
     return { star: side, on: mine, off: file(side === "A" ? "B" : "A") };
 }
 
-/** Etoile a l'ouverture : un seul fichier deja etoile dans le projet -> ce cote ; sinon l'etat du noeud. */
-export function initialStar(state, storedA, storedB) {
+/**
+ * Etoile a l'ouverture : un seul fichier deja etoile dans le projet -> ce cote ; sinon l'etat du noeud.
+ * placed = cote qui vient de recevoir un fichier : si les deux sont etoiles et que le noeud n'a plus
+ * d'etoile (starAfterSet l'a retiree), elle revient sur ce cote (son fichier est etoile).
+ */
+export function initialStar(state, storedA, storedB, placed) {
     if (storedA && !storedB) return "A";
     if (storedB && !storedA) return "B";
+    if (storedA && storedB && !state.star && (placed === "A" || placed === "B")) return placed;
     return state.star;
+}
+
+/**
+ * Etoile du noeud quand un nouveau fichier est pose sur `side` : l'etoile appartient au fichier, elle
+ * part avec l'ancien (initialStar la rend si le nouveau fichier est lui-meme etoile). Revue finale.
+ */
+export function starAfterSet(state, side) {
+    return state.star === side ? "" : state.star;
 }
 
 /** Cle de comparaison d'un chemin (separateurs, casse Windows). */
@@ -189,6 +214,14 @@ export function releaseComparePlayers(nodes) {
         }
     }
     return n;
+}
+
+/**
+ * Lecteurs Compare de tout le graphe fermes (app.graph) : appele avant chaque deplacement, Swap,
+ * archivage ou suppression de fichiers (revue finale du 05/11/2026).
+ */
+export function releaseComparePlayersOf(graph) {
+    return releaseComparePlayers((graph && graph._nodes) || []);
 }
 
 /** Coin de l'etiquette A / B dans le cadre : "tl" (haut gauche), "tr" (haut droite), "bl" (bas gauche). */

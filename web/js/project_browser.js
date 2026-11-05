@@ -133,7 +133,9 @@ export function buildProjectWindow(container, ops = {}) {
     let projectPath = "";
     let rootPath = "";
     let tree = [];
-    let kind = readStore(KIND_KEY, "video");
+    // Cle du type retenu : ops.kindKey (fenetres du Compare), sinon celle de MedLoad.
+    const kindKey = ops.kindKey || KIND_KEY;
+    let kind = readStore(kindKey, "video");
     if (!PROJECT_KINDS.some(([k]) => k === kind)) kind = "video";
     let mode = "normal"; // normal | archives | extract
     let runs = [];
@@ -434,7 +436,7 @@ export function buildProjectWindow(container, ops = {}) {
         kindBtns[k].addEventListener("click", () => {
             if (lockNow().off.includes(k)) return; // type grise par la comparaison
             kind = k;
-            writeStore(KIND_KEY, k);
+            writeStore(kindKey, k);
             if (mode === "extract") mode = "normal"; // Extract Frames ne depend pas du type : un type choisi en sort
             preview.close();
             proc.close();

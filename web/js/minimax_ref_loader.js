@@ -6,6 +6,7 @@ import { LAST, secondsToFrame, guideMoments, checkMoment, sameFrameAs, stepFrame
     pruneVariantMoments, variantLayoutKeys, variantModeLinks, isOldLoaderOutputs, rewirePlan, outputKey,
     renumberOldName, renumberModeLinks, variantControls, countAlert, rowOutputName } from "./profiles.js";
 import { outputLinksOf } from "./graph_links.js";
+import { releaseComparePlayersOf } from "./compare_pure.js";
 import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { buildImageLists } from "./image_lists.js";
 import { ARCHIVE_ICON_BODY, LISTS_ICON_BODY } from "./image_lists_pure.js";
@@ -3191,6 +3192,8 @@ function buildGallery(container, ctx) {
         });
         const inProj = (p) => projFiles.some((f) => samePath(joinPath(projDir, f.name), p));
         const toArchive = unusedProjectFiles(items.map((it) => it.old).filter(inProj), s);
+        // Lecteurs Compare fermes avant de deplacer (verrou Windows, revue finale du 05/11/2026).
+        releaseComparePlayersOf(app.graph);
         // Anciens d'abord : un remplacant du meme nom garde ainsi son nom.
         if (toArchive.length) {
             await apiPost("/mmproject/archive_files", { project: project.path, folder: projFolder, names: toArchive.map(baseName) });
@@ -3638,6 +3641,7 @@ function buildGallery(container, ctx) {
                     render();
                     return;
                 }
+                releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
                 await apiPost("/mmproject/archive_files", {
                     project: project.path, folder: projFolder, names: unused.map(baseName),
                 });
@@ -3649,6 +3653,7 @@ function buildGallery(container, ctx) {
             const inDir = (p) => samePath(p.replace(/[\\/][^\\/]*$/, ""), projDir);
             const outside = list(s).filter((p) => !inDir(p));
             if (outside.length) {
+                releaseComparePlayersOf(app.graph); // import = deplacement depuis Archives (verrou Windows)
                 const data = await apiPost("/mmproject/import_files", { project: project.path, folder: projFolder,
                     paths: outside });
                 s = remapState(s, (p, l, v) => {
