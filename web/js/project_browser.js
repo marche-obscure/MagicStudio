@@ -394,6 +394,11 @@ export function buildProjectWindow(container, ops = {}) {
     return {
         isOpen,
         close,
+        /** Detruit la fenetre (couche dans document.body) : appele quand le noeud est supprime. */
+        remove() {
+            close();
+            overlay.remove();
+        },
         /** open({name, path}, ancre) : projet relie par defaut ; a droite de l'ancre (le noeud) s'il y a la place. */
         async open(info, anchor) {
             if (isOpen()) return;

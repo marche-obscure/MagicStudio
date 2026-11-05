@@ -4,6 +4,9 @@ import {
     iconBadge, hList, hSteps, hTip, hNote, hCard, IMAGE_ICON, VIDEO_ICON, AUDIO_ICON, START_ICON, FOLDER_ICON,
     apiGet, buildHelpOverlay, hideWidget, GREEN, INACTIVE_BG, INACTIVE_FG,
 } from "./minimax_ref_loader.js";
+import { linkedProject, projectInputNames } from "./graph_links.js";
+import { buildFolderWindow } from "./media_browser.js";
+import { buildProjectWindow } from "./project_browser.js";
 
 // --------------------------------------------------------------------
 // Noeud MiniMax H3 Load Media (choix utilisateur, 24/10/2026) : on y depose
@@ -16,7 +19,12 @@ import {
 
 const NODE_NAME = "MiniMaxH3LoadMedia";
 const MIN_WIDTH = 320;
-const UI_HEIGHT = 268;
+// 268 + la ligne de la pilule Project | Folder (05/11/2026).
+const UI_HEIGHT = 300;
+const PROJECT_NODE = "MiniMaxH3Project";
+// Infobulle exacte de la moitie Project quand rien n'est relie.
+const PROJECT_TIP = "Wire the project_used output of a MagicStudio Project node";
+const BROWSER_KEY = "mmloadmediaBrowser";
 const PREVIEW_HEIGHT = 180;
 const KINDS = {
     image: ["Image", IMAGE_ICON, VIOLET],
@@ -121,6 +129,7 @@ const HELP_SECTIONS = [
         hCard("Parts of the node", [
             ["<b>file</b>", "full path of the file; filled by the drop, or typed by hand"],
             ["<b>For post-processing</b>", "the <b>Yes</b> button: grey = the saved file is a new run, green = it is a post-processing"],
+            ["<b>Project | Folder</b>", "two buttons above the drop zone: open a window to pick the file to drag"],
             ["Drop zone", "shows the file (picture, video player or audio player)"],
             [iconBadge(VIDEO_ICON, ORANGE), "type and name of the file, or what is wrong in orange"],
         ]),
@@ -155,9 +164,46 @@ const HELP_SECTIONS = [
             "MedLoad that retouches a file of a run."),
     },
     {
+        id: "browser", title: "Project / Folder", icon: FOLDER_ICON, color: GREEN,
+        html: hSteps([
+            "Click <b>Folder</b> to browse the <b>input</b> and <b>output</b> folders of ComfyUI.",
+            "Or wire the <b>project_used</b> output of a <b>MagicStudio Project</b> node to the <b>project_used</b> " +
+            "input of this node, then click <b>Project</b> to browse the files of that project.",
+            "Click a file to see it in the player; drag it onto the drop zone of this node.",
+        ]) +
+        hNote("<b>Project</b> is grey until <b>project_used</b> is wired. The half you used last stays active, " +
+            "and the windows do not block the workflow.") +
+        hNote("an old workflow keeps its <b>file</b> and its <b>For post-processing</b> button; <b>project_used</b> " +
+            "is optional and not used to load the file."),
+    },
+    {
+        id: "folderwin", title: "Folder window", icon: FOLDER_ICON, color: VIOLET,
+        html: hList([
+            "Roots: <b>input</b> and <b>output</b> of ComfyUI only; nothing outside can be opened.",
+            "Type buttons (all media, images, videos, audio), a folder tree and the list of files.",
+            "<b>Search file</b>: looks in the chosen folder and its subfolders (500 results at most).",
+            "<b>Click</b> a file: it plays in the player. <b>Drag</b> it onto this node to fill <b>file</b>.",
+            "Read only: nothing is written or moved. <b>Close</b> (or Esc) closes the window.",
+        ]),
+    },
+    {
+        id: "projectwin", title: "Project window", icon: FOLDER_ICON, color: ORANGE,
+        html: hList([
+            "Choose the project at the top (this does not change any node); buttons <b>Video</b> (default), " +
+            "<b>Image</b> and <b>Son</b> show the folders of that type, each with its thumbnails.",
+            "<b>Archives</b> shows the Archives folders of the chosen type (click again to go back).",
+            "<b>Extract Frames</b> shows the frames extracted from the Picture Lock videos (click again to go back).",
+            "In 40 / 60 only the originals are listed; the button <b>Processing</b> opens the tree of the " +
+            "post-processings, <b>read only</b> (no move, no delete).",
+            "<b>Click</b> a thumbnail to play it, <b>drag</b> it onto this node to fill <b>file</b>. " +
+            "<b>Close</b> (or Esc) closes the window.",
+        ]) +
+        hNote("an empty section shows its title in grey with <b>empty</b>."),
+    },
+    {
         id: "files", title: "Accepted files", icon: FOLDER_ICON, color: VIOLET,
         html: hList([
-            "Only files <b>in the input folder of ComfyUI</b> (or its subfolders) are loaded.",
+            "Only files <b>in the input or output folder of ComfyUI</b> (or their subfolders) are loaded.",
             "The file is read where it is: <b>no copy</b> is made.",
             "Types: images, videos and audio files (the same as the RefLoader).",
         ]) +
@@ -180,6 +226,7 @@ const HELP_SECTIONS_FR = [
         hCard("Parties du nœud", [
             ["<b>file</b>", "chemin complet du fichier ; rempli par le dépôt, ou tapé à la main"],
             ["<b>For post-processing</b>", "le bouton <b>Yes</b> : gris = le fichier enregistré est un nouveau Run, vert = c'est un post-traitement"],
+            ["<b>Project | Folder</b>", "deux boutons au-dessus de la zone de dépôt : ouvrent une fenêtre pour choisir le fichier à glisser"],
             ["Zone de dépôt", "montre le fichier (image, lecteur vidéo ou lecteur audio)"],
             [iconBadge(VIDEO_ICON, ORANGE), "type et nom du fichier, ou ce qui ne va pas, en orange"],
         ]),
@@ -217,9 +264,46 @@ const HELP_SECTIONS_FR = [
             "de nouveau sur le MedLoad qui retouche un fichier d'un Run.", "Remarque :"),
     },
     {
+        id: "browser", title: "Project / Folder",
+        html: hSteps([
+            "Cliquez sur <b>Folder</b> pour parcourir les dossiers <b>input</b> et <b>output</b> de ComfyUI.",
+            "Ou reliez la sortie <b>project_used</b> d'un nœud <b>MagicStudio Project</b> à l'entrée " +
+            "<b>project_used</b> de ce nœud, puis cliquez sur <b>Project</b> pour parcourir les fichiers de ce projet.",
+            "Cliquez un fichier pour le voir dans le lecteur ; glissez-le sur la zone de dépôt de ce nœud.",
+        ]) +
+        hNote("<b>Project</b> est grisé tant que <b>project_used</b> n'est pas relié. La moitié utilisée en dernier " +
+            "reste active, et les fenêtres ne bloquent pas le workflow.", "Remarque :") +
+        hNote("un ancien workflow garde son <b>file</b> et son bouton <b>For post-processing</b> ; <b>project_used</b> " +
+            "est facultative et ne sert pas à charger le fichier.", "Remarque :"),
+    },
+    {
+        id: "folderwin", title: "Fenêtre Folder",
+        html: hList([
+            "Racines : <b>input</b> et <b>output</b> de ComfyUI seulement ; rien en dehors ne peut s'ouvrir.",
+            "Boutons de type (tous les médias, images, vidéos, sons), arbre des dossiers et liste des fichiers.",
+            "<b>Search file</b> : cherche dans le dossier choisi et ses sous-dossiers (500 résultats au plus).",
+            "<b>Clic</b> sur un fichier : il se lit dans le lecteur. <b>Glisser</b> sur ce nœud : remplit <b>file</b>.",
+            "Lecture seule : rien n'est écrit ni déplacé. <b>Close</b> (ou Échap) ferme la fenêtre.",
+        ]),
+    },
+    {
+        id: "projectwin", title: "Fenêtre Project",
+        html: hList([
+            "Choisissez le projet en haut (aucun nœud n'est modifié) ; les boutons <b>Video</b> (par défaut), " +
+            "<b>Image</b> et <b>Son</b> montrent les dossiers de ce type, avec leurs vignettes.",
+            "<b>Archives</b> montre les dossiers Archives du type choisi (cliquez de nouveau pour revenir).",
+            "<b>Extract Frames</b> montre les images extraites des vidéos du Picture Lock (cliquez de nouveau pour revenir).",
+            "Dans 40 / 60, seuls les originaux sont listés ; le bouton <b>Processing</b> ouvre l'arbre des " +
+            "post-traitements, en <b>lecture seule</b> (ni déplacement, ni suppression).",
+            "<b>Clic</b> sur une vignette : lecture ; <b>glisser</b> sur ce nœud : remplit <b>file</b>. " +
+            "<b>Close</b> (ou Échap) ferme la fenêtre.",
+        ]) +
+        hNote("une section vide montre son titre en gris avec <b>empty</b>.", "Remarque :"),
+    },
+    {
         id: "files", title: "Fichiers acceptés",
         html: hList([
-            "Seuls les fichiers <b>du dossier input de ComfyUI</b> (ou de ses sous-dossiers) sont chargés.",
+            "Seuls les fichiers <b>du dossier input ou output de ComfyUI</b> (ou de leurs sous-dossiers) sont chargés.",
             "Le fichier est lu là où il est : <b>aucune copie</b>.",
             "Types : images, vidéos et sons (les mêmes que le RefLoader).",
         ]) +
@@ -329,7 +413,70 @@ app.registerExtension({
             });
             node.mmLoadMediaPaintPost = paintPost;
             paintPost();
-            container.append(top, postRow, zone);
+            // Pilule Project | Folder (style de la pilule List | Thumbnails du Final Cut) : une moitie
+            // active (retenue dans node.properties), un clic ouvre sa fenetre. Project grise sans lien.
+            const pillRow = document.createElement("div");
+            Object.assign(pillRow.style, { display: "flex", gap: "4px", alignItems: "center" });
+            const pillBtns = {};
+            for (const [value, text] of [["project", "Project"], ["folder", "Folder"]]) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.textContent = text;
+                Object.assign(b.style, {
+                    background: "#252525", color: "#ddd", border: "1px solid #3a3a3a", borderRadius: "6px",
+                    padding: "4px 12px", cursor: "pointer", fontSize: "12px",
+                });
+                pillBtns[value] = b;
+                pillRow.appendChild(b);
+            }
+            const browserChoice = () => {
+                const v = node.properties && node.properties[BROWSER_KEY];
+                return v === "project" ? "project" : "folder";
+            };
+            const linkState = () => linkedProject(node, projectInputNames(NODE_NAME), PROJECT_NODE);
+            let projectWired = false;
+            const folderWin = buildFolderWindow(container, {});
+            const projectWin = buildProjectWindow(container, {});
+            const paintPill = () => {
+                const link = linkState();
+                projectWired = !!link.wired;
+                const active = projectWired ? browserChoice() : "folder";
+                for (const value of ["project", "folder"]) {
+                    const b = pillBtns[value];
+                    const on = value === active;
+                    const off = value === "project" && !projectWired;
+                    b.style.borderColor = on ? GREEN : "#3a3a3a";
+                    b.style.color = on ? GREEN : "#ddd";
+                    b.style.fontWeight = on ? "bold" : "normal";
+                    b.style.opacity = off ? "0.4" : "1";
+                    b.style.cursor = off ? "default" : "pointer";
+                    b.title = off ? PROJECT_TIP : value === "project"
+                        ? "Browse the files of the wired project" : "Browse the input and output folders of ComfyUI";
+                }
+                if (!projectWired && projectWin.isOpen()) projectWin.close();
+            };
+            const chooseBrowser = (value) => {
+                if (value === "project" && !projectWired) return;
+                if (!node.properties) node.properties = {};
+                node.properties[BROWSER_KEY] = value;
+                paintPill();
+                const other = value === "project" ? folderWin : projectWin;
+                if (other.isOpen()) other.close();
+                if (value === "project") projectWin.open(linkState().info, container);
+                else folderWin.open(container);
+            };
+            pillBtns.project.addEventListener("click", () => chooseBrowser("project"));
+            pillBtns.folder.addEventListener("click", () => chooseBrowser("folder"));
+            node.mmLoadMediaPaintPill = paintPill;
+            // Appele par le noeud Project quand son projet change (comme SaveVoice).
+            let pillTimer = null;
+            node.mmProjectRefresh = () => {
+                clearTimeout(pillTimer);
+                pillTimer = setTimeout(paintPill, 100);
+            };
+            node.__mmloadmediaWindows = [folderWin, projectWin];
+            paintPill();
+            container.append(top, postRow, pillRow, zone);
 
             const help = buildHelpOverlay(container, {
                 sectionsFor: helpSections, nodeTitle: "MagicStudio MedLoad", sectionKey: "mmloadmedia.helpSection",
@@ -482,6 +629,7 @@ app.registerExtension({
             const pw = (this.widgets || []).find((w) => w.name === "post_processing");
             if (pw && typeof pw.value !== "boolean") pw.value = false;
             if (this.mmLoadMediaPaintPost) this.mmLoadMediaPaintPost();
+            if (this.mmLoadMediaPaintPill) setTimeout(() => this.mmLoadMediaPaintPill(), 0);
             if (this.mmLoadMediaRender) setTimeout(() => this.mmLoadMediaRender(), 0);
             return r;
         };
@@ -497,9 +645,18 @@ app.registerExtension({
             return true;
         };
 
+        // Branchement ou debranchement de project_used : moitie Project relue.
+        const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+        nodeType.prototype.onConnectionsChange = function () {
+            const r = onConnectionsChange ? onConnectionsChange.apply(this, arguments) : undefined;
+            if (this.mmProjectRefresh) this.mmProjectRefresh();
+            return r;
+        };
+
         const onRemoved = nodeType.prototype.onRemoved;
         nodeType.prototype.onRemoved = function () {
             (this.__mmloadmediaOverlays || []).forEach((o) => o.remove());
+            (this.__mmloadmediaWindows || []).forEach((w) => w.remove());
             return onRemoved ? onRemoved.apply(this, arguments) : undefined;
         };
     },

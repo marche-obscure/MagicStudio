@@ -420,6 +420,11 @@ export function buildFolderWindow(container, ops = {}) {
     return {
         isOpen,
         close,
+        /** Detruit la fenetre (couche dans document.body) : appele quand le noeud est supprime. */
+        remove() {
+            close();
+            overlay.remove();
+        },
         /** open(ancre) : a droite de l'element donne (le noeud) s'il y a la place, sinon au centre. */
         open(anchor) {
             if (isOpen()) return;

@@ -234,6 +234,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 ## MagicStudio MedLoad node
 
 - **Drop a file from the Final Cut window, from 40.Rush Videos / 60.Rush Images or from Processing** onto the node (on its preview area or anywhere on the node): its full path goes into the `file` field, and the node shows the picture, a video player or an audio player. You can also type or paste the path in `file`.
+- **Project | Folder** pill (above the preview): **Folder** opens a read-only window on the `input` and `output` folders of ComfyUI (type buttons, folder tree, search, player, drag); **Project** opens a window on the files of the project wired to the optional `project_used` input (**Video** / **Image** / **Son**, **Archives**, **Extract Frames**, read-only **Processing** tree). Click = player, drag a file onto the node = it fills `file`. **Project** is greyed until `project_used` is wired (tooltip: `Wire the project_used output of a MagicStudio Project node`). The half used last is remembered. `project_used` is not used to load the file; older workflows keep their `file` and button.
 - **For post-processing : Yes** button (above the preview): grey (default) = the file saved after this node is a new run; green = it is a post-processing of the loaded file's run. Click it to switch. Workflows saved before this button open with it grey.
 - **Outputs:**
 
@@ -246,7 +247,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
   An empty output is ignored by the optional inputs of the native nodes. `video_frames` holds every frame in memory: for a long or large video, prefer `video`.
 - **`name`** (last output, `STRING`): the name of the loaded file, with its extension (for example `LAST_FRAME_Clip.png`), for an image, a video or an audio file.
 - **No copy:** the file is read where it is. It is loaded again only when the path changes or when the file is modified.
-- **Safety:** only files inside the input folder of ComfyUI (or its subfolders) are accepted; any other path is refused before the run, with a message on the node.
+- **Safety:** only files inside the input or output folder of ComfyUI (or their subfolders) are accepted; any other path is refused before the run, with a message on the node.
 - A file dragged from the Windows Explorer gives no path to the browser: drag it from Final Cut, or type its path.
 - The **?** button opens its help (Quick start, Outputs, Accepted files), in English or French.
 

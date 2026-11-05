@@ -229,3 +229,26 @@ class LoadTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MedLoadBrowserPillTextTest(unittest.TestCase):
+    """Texte de load_media_node.js : pilule Project | Folder, infobulle, aide EN / FR (05/11/2026)."""
+
+    def setUp(self):
+        import os
+        p = os.path.join(os.path.dirname(__file__), "..", "web", "js", "load_media_node.js")
+        with open(p, encoding="utf-8") as f:
+            self.js = f.read()
+
+    def test_tooltip_and_property(self):
+        self.assertIn("Wire the project_used output of a MagicStudio Project node", self.js)
+        self.assertIn("mmloadmediaBrowser", self.js)
+        self.assertIn("onConnectionsChange", self.js)
+        self.assertIn("mmProjectRefresh", self.js)
+
+    def test_help_sections_in_both_languages(self):
+        for sid in ("browser", "folderwin", "projectwin"):
+            self.assertEqual(self.js.count('id: "%s"' % sid), 2, sid)
+
+    def test_old_widgets_logic_kept(self):
+        self.assertIn('w.name === "post_processing"', self.js)
