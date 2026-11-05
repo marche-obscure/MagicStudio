@@ -637,6 +637,9 @@ try:
         """Runs enregistres du projet (04.Prompt), le plus recent d'abord."""
         try:
             project = request.rel_url.query.get("project", "").strip()
+            if request.rel_url.query.get("readonly") == "1":
+                # Lecture pure (fenetre Project de MedLoad) : ni rangement, ni controle d'Extract Frame, rien d'ecrit.
+                return web.json_response({"runs": await _in_executor(run_record.list_runs, project, False)})
             change = await _in_executor(_extract_change, project)  # Extract Frame : regles du changement de video
             runs = await _in_executor(run_record.list_runs, project)
             sets = await _in_executor(run_record.registry_sets, project)

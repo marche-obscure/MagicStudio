@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -689,6 +690,32 @@ class RunFileTest(unittest.TestCase):
         self.assertEqual((o["source"], o["copy"]), (fimg, "60.Rush Images/Footage/20261017_153000_run.png"))
         self.assertEqual(files_in(os.path.join(self.p, "60.Rush Images")), ["mine.png"])
         self.assertEqual(rr.tidy_rush(self.p), 0)
+
+    def test_list_runs_readonly_writes_nothing(self):
+        # Lecture pure : le meme cas que test_root_files_go_to_footage, mais ni fichier deplace ni JSON reecrit.
+        vid = os.path.join(self.p, "40.Rush Videos", "20261017_153000_run.mp4")
+        write(vid, b"v")
+        name = self._run_with([{"source": "Z:/gone.mp4", "kind": "video", "copy": "40.Rush Videos/20261017_153000_run.mp4"}])
+        jpath = os.path.join(self.p, "04.Prompt", name)
+        os.utime(jpath, (1000000000, 1000000000))
+        before = (Path(jpath).read_bytes(), os.stat(jpath).st_mtime, files_in(os.path.join(self.p, "40.Rush Videos")))
+        runs = rr.list_runs(self.p, tidy=False)
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["outputs"][0]["kind"], "video")
+        after = (Path(jpath).read_bytes(), os.stat(jpath).st_mtime, files_in(os.path.join(self.p, "40.Rush Videos")))
+        self.assertEqual(before, after)
+        self.assertTrue(os.path.isfile(vid))
+        self.assertFalse(os.path.exists(os.path.join(self.p, "40.Rush Videos", "Footage", "20261017_153000_run.mp4")))
+        # Par defaut, la lecture range toujours.
+        out = rr.list_runs(self.p)[0]["outputs"][0]
+        self.assertEqual(out["copy"], os.path.join(self.p, "40.Rush Videos", "Footage", "20261017_153000_run.mp4"))
+        self.assertFalse(os.path.exists(vid))
+
+    def test_runs_route_readonly_flag_in_source(self):
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "__init__.py"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn('query.get("readonly") == "1"', src)
+        self.assertIn("run_record.list_runs, project, False", src)
 
     def _status_run(self, when, status):
         path = rr.start_run(self.p, "p", PROMPT, when, workflow={"nodes": []})

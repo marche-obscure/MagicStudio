@@ -267,10 +267,13 @@ export function buildProjectWindow(container, ops = {}) {
 
     // ---- Chargement et dessin ----
     async function loadRuns() {
-        if (runsFor === projectPath) return;
-        const data = await apiGet("/mmproject/runs?project=" + encodeURIComponent(projectPath));
+        const p = projectPath; // le projet peut changer pendant le chargement : ses Runs ne sont gardes que pour p
+        if (runsFor === p) return;
+        // readonly=1 : lecture pure, la fenetre ne range, ne deplace ni n'ecrit rien dans un projet qu'elle parcourt.
+        const data = await apiGet("/mmproject/runs?readonly=1&project=" + encodeURIComponent(p));
+        if (p !== projectPath) return;
         runs = data.runs || [];
-        runsFor = projectPath;
+        runsFor = p;
     }
 
     async function render() {
@@ -278,9 +281,11 @@ export function buildProjectWindow(container, ops = {}) {
         paintHead();
         body.innerHTML = "";
         if (!projectPath) {
-            note.textContent = "Wire the project_used output of a MagicStudio Project node, then choose a project.";
+            note.textContent = projectName ? "Cannot find the folder of this project: choose a project in the menu."
+                : "Wire the project_used output of a MagicStudio Project node, then choose a project.";
             return;
         }
+        const path = projectPath;
         const sections = projectSections(kind, mode);
         const secKind = mode === "extract" ? "image" : kind;
         const rushNormal = mode === "normal";
@@ -294,7 +299,7 @@ export function buildProjectWindow(container, ops = {}) {
         try {
             if (needRuns) await loadRuns();
             if (bases.length) {
-                const data = await apiGet("/mmproject/folder_files?project=" + encodeURIComponent(projectPath) +
+                const data = await apiGet("/mmproject/folder_files?project=" + encodeURIComponent(path) +
                     "&folders=" + encodeURIComponent(bases.join("|")) + (archives ? "&archives=1" : "") + "&dates=1");
                 files = (archives ? data.archives : data.files) || {};
                 mtimes = data.mtimes || {};
@@ -302,7 +307,7 @@ export function buildProjectWindow(container, ops = {}) {
         } catch (e) {
             error = e.message || String(e);
         }
-        if (mine !== seq) return; // un choix plus recent a pris la place
+        if (mine !== seq || path !== projectPath) return; // un choix plus recent (ou la fermeture) a pris la place
         body.innerHTML = "";
         if (error) {
             note.textContent = error;
@@ -363,6 +368,7 @@ export function buildProjectWindow(container, ops = {}) {
     select.addEventListener("change", () => chooseProject(select.value));
 
     function close() {
+        seq++; // un chargement en cours ne repeuple pas la fenetre fermee
         preview.close();
         proc.close();
         shownPath = "";
@@ -425,6 +431,7 @@ export function buildProjectWindow(container, ops = {}) {
             } catch (e) {
                 tree = [];
             }
+            if (!isOpen()) return; // fermee pendant le chargement de la liste
             fillSelect();
             await render();
         },

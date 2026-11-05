@@ -794,18 +794,21 @@ def output_kind(output):
     return "video" if ext in VIDEO_EXTS else "image" if ext in IMAGE_EXTS else None
 
 
-def list_runs(project):
+def list_runs(project, tidy=True):
     """
     Runs du projet, le plus recent d'abord (fenetres 04.Prompt, 40.Rush Videos,
     60.Rush Images) : JSON de 04.Prompt avec, pour chaque sortie, kind,
     source et son dossier, copy en chemin complet, et si ces fichiers existent.
+    tidy=False : lecture pure (fenetre Project de MedLoad) : ni rangement, ni
+    reecriture de JSON, rien n'est ecrit ni deplace.
     """
     if not project or not os.path.isdir(project):
         raise FileNotFoundError("Project folder not found: %s" % project)
-    try:
-        tidy_rush(project)
-    except OSError:  # fichier verrouille : range a la prochaine ouverture
-        pass
+    if tidy:
+        try:
+            tidy_rush(project)
+        except OSError:  # fichier verrouille : range a la prochaine ouverture
+            pass
     folder = os.path.join(project, PROMPT_FOLDER)
     names = sorted((n for n in os.listdir(folder) if _RUN_NAME.match(n)), reverse=True) if os.path.isdir(folder) else []
     runs = []
@@ -858,7 +861,7 @@ def list_runs(project):
                 pwf = run_workflow_path(project, o["post_workflow"]) if o.get("post_workflow") else ""
                 out["post_workflow"] = pwf if pwf and os.path.isfile(pwf) else None
             outs.append(out)
-        if restored:
+        if restored and tidy:
             try:
                 _write(os.path.join(folder, name), data)
             except OSError:
