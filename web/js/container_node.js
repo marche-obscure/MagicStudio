@@ -105,6 +105,7 @@ const HELP_SECTIONS = [
             "One output per file of the variant, with its name and its type: " +
             iconBadge(IMAGE_ICON, VIOLET) + " images and video frames (IMAGE), " +
             iconBadge(AUDIO_ICON, TITLE_COLOR) + " sounds (AUDIO), frame numbers and settings (INT).",
+            iconBadge(IMAGE_ICON, VIOLET) + " Image: <b>image_0</b>, <b>image_1</b>... (IMAGE), one per image.",
             "A row of the RefLoader always has at least one output, empty while nothing is picked.",
             "Ref2VA: a video and its soundtrack of the same number have the same dot color.",
             "Double-click the name of an output (or right-click the node) to rename it.",
@@ -150,6 +151,7 @@ const HELP_SECTIONS_FR = [
             "Une sortie par fichier de la variante, avec son nom et son type : " +
             iconBadge(IMAGE_ICON, VIOLET) + " images et images de vidéo (IMAGE), " +
             iconBadge(AUDIO_ICON, TITLE_COLOR) + " sons (AUDIO), numéros d'image et réglages (INT).",
+            iconBadge(IMAGE_ICON, VIOLET) + " Image : <b>image_0</b>, <b>image_1</b>... (IMAGE), une par image.",
             "Une ligne du RefLoader a toujours au moins une sortie, vide tant que rien n'est choisi.",
             "Ref2VA : une vidéo et sa bande-son du même numéro ont la même couleur de point.",
             "Double-cliquez sur le nom d'une sortie (ou clic droit sur le nœud) pour la renommer.",

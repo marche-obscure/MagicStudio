@@ -317,9 +317,9 @@ const HELP_SECTIONS = [
     {
         id: "start", title: "Quick start", icon: START_ICON, color: TITLE_COLOR,
         html: hSteps([
-            "Choose the model in the <b>Model</b> list at the top left: <b>MiniMax H3</b> (default) or <b>LTX</b>.",
+            "Choose the model in the <b>Model</b> list at the top left: <b>MiniMax H3</b> (default), <b>LTX</b> or <b>Image</b>.",
             "Choose the variant with the pills next to it: <b>Ref2VA</b> or <b>F2VA / FL2VA</b> with MiniMax H3, " +
-            "<b>LTX 2.3</b> or <b>LTX 2.5</b> with LTX.",
+            "<b>LTX 2.3</b> or <b>LTX 2.5</b> with LTX. The <b>Image</b> model has no variant.",
             "Click a row button (" + iconBadge(IMAGE_ICON, VIOLET) + " Images, " + iconBadge(VIDEO_ICON, ORANGE) +
             " Video...) and click files in the gallery. Click order sets the number.",
             "Wire the <b>package</b> output to a <b>MagicStudio Container</b>: it gives one output per file, " +
@@ -328,7 +328,7 @@ const HELP_SECTIONS = [
             "(<b>ref_image_0</b> goes to <b>ref_image_0</b>). For LTX, see the <b>LTX 2.3 / 2.5</b> section.",
         ]) +
         hCard("Buttons of the node", [
-            ["Model", "the list at the top left: <b>MiniMax H3</b> or <b>LTX</b>"],
+            ["Model", "the list at the top left: <b>MiniMax H3</b>, <b>LTX</b> or <b>Image</b>"],
             ["Variants", "the pills next to the list (hidden when the model has only one variant)"],
             ["Limits", "maximums of the variant shown"],
             [iconBadge(EYE_ICON, VIOLET), "View, reorder, delete and trim the files of a row"],
@@ -350,6 +350,8 @@ const HELP_SECTIONS = [
                 ["MiniMax H3 · F2VA / FL2VA", "rows <b>First frame</b> and <b>Last frame</b> (MiniMax H3 Image to Video)."],
                 ["LTX · LTX 2.3", "rows <b>Guide images</b>, <b>Guide video</b>, <b>Soundtrack</b>, <b>Voice</b>."],
                 ["LTX · LTX 2.5", "the same rows as LTX 2.3, with its own selection."],
+                ["Image · Image", "one row <b>Images</b> (15 at most, orange from 12, red at 15); <b>Limits</b> and the " +
+                    "variant pills are greyed."],
             ]) +
             hSteps([
                 "Click the <b>Model</b> list and pick the model: the node shows the last variant you used with it.",
@@ -588,11 +590,32 @@ const HELP_SECTIONS = [
             hTip("Reorder, delete and trim with the " + iconBadge(EYE_ICON, VIOLET) + " of each row."),
     },
     {
+        id: "image_lists", title: "Image lists", icon: IMAGE_ICON, color: GREEN,
+        html: "<p>With the <b>Image</b> model, you can keep a list of images under a name and bring it back later.</p>" +
+            hSteps([
+                "Wire the <b>project_used</b> output of <b>MagicStudio Project</b>: without a project, the buttons are greyed.",
+                "Pick your images in the <b>Images</b> row.",
+                "Click the <b>Archive</b> button (tooltip <b>Archive this image list</b>), type a <b>Name</b>, then confirm.",
+                "To bring a list back, click the <b>Lists</b> button (tooltip <b>Archived image lists</b>) and click the list.",
+            ]) +
+            hCard("Good to know", [
+                ["Where", "the lists are saved in <b>99.Project-Config/Image-Lists</b> of the project."],
+                ["Number", "no limit on the number of archived lists."],
+                ["Load", "a click on a list replaces the current one. If the current list is not empty, a " +
+                    "confirmation asks first (<b>Load</b>)."],
+                ["Missing images", "an image not found on disk is removed from the list and reported."],
+                ["Delete", "tick one or more lists, click <b>Delete</b>, then confirm. The images themselves are not deleted."],
+                ["Empty list", "<b>Archive</b> is greyed while the row has no image."],
+            ]) +
+            hTip("the list is full at 15 images (<b>The list is full (15 images)</b>)."),
+    },
+    {
         id: "config", title: "Save and load", icon: DOWNLOAD_ICON, color: PINK,
         html: hCard("Configuration files", [
             [iconBadge(DOWNLOAD_ICON, PINK), "Saves the variant shown in its own .json file: " +
                 "<b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b>, <b>FL2VA_minimax_config_...json</b>, " +
-                "<b>LTX23_magicstudio_config_...json</b> or <b>LTX25_magicstudio_config_...json</b>. Greyed out " +
+                "<b>LTX23_magicstudio_config_...json</b>, <b>LTX25_magicstudio_config_...json</b> or " +
+                "<b>IMAGE_magicstudio_config_...json</b>. Greyed out " +
                 "while the variant has no reference (the root folder alone does not count)."],
             [iconBadge(UPLOAD_ICON, PINK), "Loads a .json file of the variant shown. It turns " +
                 iconBadge(UPLOAD_ICON, ORANGE) + " when the variant already has references, and then asks a " +
@@ -623,7 +646,7 @@ const HELP_SECTIONS = [
             ]) +
             hCard("Outputs of the MagicStudio Container", [
                 ["One per file", "with the names of the variant: <b>ref_image_N</b>, <b>ref_video_N</b>... " +
-                    "(Ref2VA), <b>first_frame</b> / <b>last_frame</b> (F2VA / FL2VA), <b>guide_image_N</b>... (LTX)."],
+                    "(Ref2VA), <b>first_frame</b> / <b>last_frame</b> (F2VA / FL2VA), <b>guide_image_N</b>... (LTX), <b>image_N</b> (Image)."],
                 ["Rename", "double-click an output name on the Container (empty = default name), or use the " +
                     "right-click menu."],
                 ["Numbers", "MiniMax outputs start at 0, like the inputs of MiniMax: <b>ref_image_0</b> goes to " +
@@ -664,9 +687,9 @@ const HELP_SECTIONS_FR = [
         id: "start", title: "Démarrage rapide",
         html: hSteps([
             "Choisissez le modèle dans la liste <b>Model</b> en haut à gauche : <b>MiniMax H3</b> (par défaut) ou " +
-            "<b>LTX</b>.",
+            "<b>LTX</b> ou <b>Image</b>.",
             "Choisissez la variante avec les pilules à côté : <b>Ref2VA</b> ou <b>F2VA / FL2VA</b> avec MiniMax H3, " +
-            "<b>LTX 2.3</b> ou <b>LTX 2.5</b> avec LTX.",
+            "<b>LTX 2.3</b> ou <b>LTX 2.5</b> avec LTX. Le modèle <b>Image</b> n'a pas de variante.",
             "Cliquez sur le bouton d'une ligne (" + iconBadge(IMAGE_ICON, VIOLET) + " Images, " +
             iconBadge(VIDEO_ICON, ORANGE) + " Video...) puis sur des fichiers dans la galerie. L'ordre des " +
             "clics donne le numéro.",
@@ -676,7 +699,7 @@ const HELP_SECTIONS_FR = [
             "(<b>ref_image_0</b> va sur <b>ref_image_0</b>). Pour LTX, voir la rubrique <b>LTX 2.3 / 2.5</b>.",
         ]) +
         hCard("Boutons du nœud", [
-            ["Model", "la liste en haut à gauche : <b>MiniMax H3</b> ou <b>LTX</b>"],
+            ["Model", "la liste en haut à gauche : <b>MiniMax H3</b>, <b>LTX</b> ou <b>Image</b>"],
             ["Variantes", "les pilules à côté de la liste (cachées quand le modèle n'a qu'une variante)"],
             ["Limits", "maximums de la variante affichée"],
             [iconBadge(EYE_ICON, VIOLET), "Voir, réordonner, supprimer et rogner les fichiers d'une ligne"],
@@ -699,6 +722,8 @@ const HELP_SECTIONS_FR = [
                     "Video)."],
                 ["LTX · LTX 2.3", "lignes <b>Guide images</b>, <b>Guide video</b>, <b>Soundtrack</b>, <b>Voice</b>."],
                 ["LTX · LTX 2.5", "les mêmes lignes que LTX 2.3, avec sa propre sélection."],
+                ["Image · Image", "une ligne <b>Images</b> (15 au plus, orange dès 12, rouge à 15) ; <b>Limits</b> et " +
+                    "les pilules de variante sont grisés."],
             ]) +
             hSteps([
                 "Cliquez sur la liste <b>Model</b> et choisissez le modèle : le nœud affiche la dernière variante " +
@@ -948,11 +973,32 @@ const HELP_SECTIONS_FR = [
             hTip("Réordonnez, supprimez et rognez avec l'" + iconBadge(EYE_ICON, VIOLET) + " de chaque ligne.", TIP_FR),
     },
     {
+        id: "image_lists", title: "Listes d'images",
+        html: "<p>Avec le modèle <b>Image</b>, vous pouvez garder une liste d'images sous un nom et la retrouver plus tard.</p>" +
+            hSteps([
+                "Branchez la sortie <b>project_used</b> de <b>MagicStudio Project</b> : sans projet, les boutons sont grisés.",
+                "Choisissez vos images dans la ligne <b>Images</b>.",
+                "Cliquez sur le bouton <b>Archive</b> (infobulle <b>Archive this image list</b>), tapez un <b>Name</b>, puis confirmez.",
+                "Pour retrouver une liste, cliquez sur le bouton <b>Lists</b> (infobulle <b>Archived image lists</b>) puis sur la liste.",
+            ]) +
+            hCard("Bon à savoir", [
+                ["Où", "les listes sont enregistrées dans <b>99.Project-Config/Image-Lists</b> du projet."],
+                ["Nombre", "pas de limite au nombre de listes archivées."],
+                ["Load", "un clic sur une liste remplace la liste actuelle. Si elle n'est pas vide, une " +
+                    "confirmation est demandée d'abord (<b>Load</b>)."],
+                ["Images absentes", "une image introuvable sur le disque est retirée de la liste et signalée."],
+                ["Delete", "cochez une ou plusieurs listes, cliquez sur <b>Delete</b>, puis confirmez. Les images elles-mêmes ne sont pas supprimées."],
+                ["Liste vide", "<b>Archive</b> est grisé tant que la ligne n'a aucune image."],
+            ]) +
+            hTip("la liste est pleine à 15 images (<b>The list is full (15 images)</b>).", TIP_FR),
+    },
+    {
         id: "config", title: "Sauvegarder et charger",
         html: hCard("Fichiers de configuration", [
             [iconBadge(DOWNLOAD_ICON, PINK), "Sauvegarde la variante affichée dans son propre fichier .json : " +
                 "<b>REF2VA_minimax_config_yyyyMMdd-HHmmss.json</b>, <b>FL2VA_minimax_config_...json</b>, " +
-                "<b>LTX23_magicstudio_config_...json</b> ou <b>LTX25_magicstudio_config_...json</b>. Grisé tant " +
+                "<b>LTX23_magicstudio_config_...json</b>, <b>LTX25_magicstudio_config_...json</b> ou " +
+                "<b>IMAGE_magicstudio_config_...json</b>. Grisé tant " +
                 "que la variante n'a aucune référence (le dossier racine seul ne compte pas)."],
             [iconBadge(UPLOAD_ICON, PINK), "Charge un fichier .json de la variante affichée. Il devient " +
                 iconBadge(UPLOAD_ICON, ORANGE) + " quand la variante a déjà des références, et demande alors une " +
@@ -983,7 +1029,7 @@ const HELP_SECTIONS_FR = [
             ]) +
             hCard("Sorties du MagicStudio Container", [
                 ["Une par fichier", "avec les noms de la variante : <b>ref_image_N</b>, <b>ref_video_N</b>... " +
-                    "(Ref2VA), <b>first_frame</b> / <b>last_frame</b> (F2VA / FL2VA), <b>guide_image_N</b>... (LTX)."],
+                    "(Ref2VA), <b>first_frame</b> / <b>last_frame</b> (F2VA / FL2VA), <b>guide_image_N</b>... (LTX), <b>image_N</b> (Image)."],
                 ["Renommer", "double-cliquez sur le nom d'une sortie du Container (vide = nom par défaut), ou utilisez " +
                     "le menu du clic droit."],
                 ["Numéros", "les sorties MiniMax partent de 0, comme les entrées de MiniMax : <b>ref_image_0</b> va sur " +

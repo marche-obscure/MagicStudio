@@ -19,7 +19,7 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 |---|---|
 | 🖼️ **Thumbnail galleries** | Images, videos, video soundtracks and audio, with a large preview |
 | 🔢 **Click order = number** | The first image clicked is `ref_image_0`, i.e. `<Picture 1>` in the prompt; a warning lists the references that change number |
-| 🧩 **Models and variants** | **MiniMax H3** (**Ref2VA**, **F2VA / FL2VA**) and **LTX** (**LTX 2.3**, **LTX 2.5**): each variant keeps its selection and its limits |
+| 🧩 **Models and variants** | **MiniMax H3** (**Ref2VA**, **F2VA / FL2VA**) and **LTX** (**LTX 2.3**, **LTX 2.5**), plus the **Image** model: each variant keeps its selection and its limits |
 | 📦 **Container** | The RefLoader sends one **package**; a **MagicStudio Container** gives the outputs of the variant and keeps the wires of each variant |
 | ⏱️ **Guide moments (LTX)** | Seconds, **First** / **Last**, and the frame number computed for you |
 | 🎚️ **Limits** | A **Limits** button per variant: files per row, duration, size, frames per second |
@@ -34,7 +34,7 @@ https://github.com/user-attachments/assets/d474d73d-f563-4665-97e9-bbfcc9241294
 ## Quick start
 
 1. Copy this folder into `ComfyUI/custom_nodes/` and restart ComfyUI.
-2. Add **MagicStudio RefLoader**, choose the model (**MiniMax H3** or **LTX**) and its variant (**Ref2VA**, **F2VA / FL2VA**, **LTX 2.3**, **LTX 2.5**), click a row (Images, Video…) and pick files in the gallery.
+2. Add **MagicStudio RefLoader**, choose the model (**MiniMax H3**, **LTX** or **Image**) and its variant (**Ref2VA**, **F2VA / FL2VA**, **LTX 2.3**, **LTX 2.5**; **Image** has none), click a row (Images, Video…) and pick files in the gallery.
 3. Add **MagicStudio Container** and wire the `package` output of the RefLoader to its `package` input. Wire the outputs of the Container in order to the video model (**MiniMax H3 Reference to Video**: same numbers as its inputs, `ref_image_0` → `ref_image_0`, and so on).
 4. Optional: add **MagicStudio Project**, wire the `project` output of the RefLoader to its `project` input, then click **+** to create a project. A picked project is enough to record every run; wire your final prompt to `text_prompt` to keep the prompt in each run.
 5. Optional: add **MagicStudio Final Cut** and wire the `project_used` output of the Project node to it. Open its window and drag a file onto **MagicStudio MedLoad** to use it in a workflow.
@@ -49,6 +49,7 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 | MiniMax H3 · **F2VA / FL2VA** | First frame, Last frame | 15 s | 768×1344 at most | none |
 | LTX · **LTX 2.3** | Guide images (1-9), Guide video (0-1), Soundtrack (0-1), Voice (0-1) | 20 s | 768×1344 at most, sides multiples of 32 | `fps`, `width`, `height`, `length` |
 | LTX · **LTX 2.5** | the same rows as LTX 2.3 | 20 s | same | same |
+| Image · **Image** | Images (15) | — | original size | none |
 
 - **Each variant keeps its own selection and its own limits.** Changing the model shows the last variant used with it. LTX 2.3 and LTX 2.5 have the same rows and wiring, with separate selections.
 - **Limits** (button next to the list): one field per row (number of files), **Max duration (s)** (**Duration (s)** with LTX: it sets the length of the video), **Max size** (width × height), **Frames per second**. **Reset** puts back the values of the variant, **Cancel** closes, **OK** saves. A counter shows `n / max` and turns orange when there are more files than the maximum; the files over the limit are not sent.
