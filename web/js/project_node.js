@@ -586,7 +586,16 @@ const HELP_SECTIONS = [
                 "To add a project later: pick the folder in <b>Folder of projects</b>.",
                 "In the <b>Project name</b> list, the folder is a title and its projects are under it.",
             ]) +
-            hNote("the tooltip of a folder row gives its path; the bottom line of the node only shows messages."),
+            hTitle(TREE_ICON, MULTI_COLOR, "Sub-project number") +
+            hList([
+                "New sub-projects of a MultiProject are named <b>NN-name</b> (01 to 99), in the order they are created.",
+                "<b>Rename</b> keeps the number; <b>Move</b> to another MultiProject gives its next number; " +
+                    "<b>Move</b> out of a MultiProject removes it.",
+                "Lists show the sub-projects in this order. Older sub-projects keep their name. " +
+                    "A number is never used again.",
+            ]) +
+            hNote("the New project window shows <b>Will be created as: NN-name</b>, and the Move window " +
+                "<b>Will become: ...</b>; past 99 sub-projects, creation is refused."),
     },
     {
         id: "save", title: "Load and Save", icon: SAVE_ICON, color: PINK,
@@ -1123,8 +1132,16 @@ const HELP_SECTIONS_FR = [
                 "Pour ajouter un projet plus tard : choisissez le dossier dans <b>Folder of projects</b>.",
                 "Dans la liste <b>Project name</b>, le dossier est un titre et ses projets sont en dessous.",
             ]) +
-            hNote("l'infobulle d'une ligne de dossier donne son chemin ; la ligne du bas du nœud ne montre que " +
-                "les messages.", "Remarque :"),
+            hTitle(TREE_ICON, MULTI_COLOR, "Numéro des sous-projets") +
+            hList([
+                "Les nouveaux sous-projets d'un MultiProject sont nommés <b>NN-nom</b> (01 à 99), dans leur ordre de création.",
+                "<b>Rename</b> garde le numéro ; <b>Move</b> vers un autre MultiProject donne son numéro suivant ; " +
+                    "<b>Move</b> hors d'un MultiProject le retire.",
+                "Les listes montrent les sous-projets dans cet ordre. Les anciens sous-projets gardent leur nom. " +
+                    "Un numéro n'est jamais repris.",
+            ]) +
+            hNote("la fenêtre New project montre <b>Will be created as: NN-nom</b>, et la fenêtre Move " +
+                "<b>Will become: ...</b> ; au-delà de 99 sous-projets, la création est refusée.", "Remarque :"),
     },
     {
         id: "save", title: "Load et Save",
