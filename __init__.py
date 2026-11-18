@@ -410,6 +410,30 @@ try:
                                   "name": os.path.basename(os.path.dirname(path)) + projects.GROUP_SEP + name
                                   if group else name})
 
+    @routes.get("/mmproject/next_number")
+    async def mmproject_next_number(request):
+        """
+        Numero que recevrait le prochain sous-projet (lecture seule, rien n'est reserve) :
+        group = MultiProject de la racine, ou dest = dossier d'arrivee d'un Move (meme regle que
+        move_project : numero seulement si la marque de MultiProject y est).
+        """
+        query = request.rel_url.query
+        try:
+            if query.get("dest"):
+                dest = query.get("dest")
+                if not (os.path.isdir(dest) and projects.is_group(dest)):
+                    return web.json_response({"number": None})
+                info = await _in_executor(final_cut.number_info, dest)
+            elif query.get("group"):
+                root = await _in_executor(_projects_root, query.get("root", ""))
+                group = os.path.join(root, projects.validate_name(query.get("group")))
+                info = await _in_executor(final_cut.number_info, group)
+            else:
+                return web.json_response({"number": None})
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response(info)
+
     @routes.post("/mmproject/open")
     async def mmproject_open(request):
         """Chemin du projet 'name' de 'root' ; ses sous-dossiers manquants sont recrees."""

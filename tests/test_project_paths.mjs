@@ -14,7 +14,7 @@ import {
     switchSourceInput, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey, relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, FINAL_CUT_SUBS, durationText,
     folderMax, hiddenFolderItems, rowFolder, withoutFolderPaths, withoutReferences,
     frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState, runSourcePaths, PICKUP_DIR, PICKUP_SUBS, pickupPath,
-    orderOutputs, postLabel, postTags, postHint,
+    orderOutputs, postLabel, postTags, postHint, splitNumber, numberedName,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -764,4 +764,13 @@ test("Final-Cut folders in the gallery Subfolder list (02/11/2026)", () => {
     assert.ok(!inProjectFilter("H/Final-Cut_H/Images", "G/P"));
     assert.ok(!inProjectFilter("G/Q/08.Images", "G/P"));
     assert.equal(FINAL_CUT_SUBS.image, "Images");
+});
+
+test("numéro des sous-projets : découpe et nom", () => {
+    assert.deepEqual(splitNumber("03-Danse"), { number: "03", rest: "Danse" });
+    assert.deepEqual(splitNumber("003-Danse"), { number: null, rest: "003-Danse" });
+    assert.deepEqual(splitNumber("Danse"), { number: null, rest: "Danse" });
+    assert.deepEqual(splitNumber("03-"), { number: null, rest: "03-" });
+    assert.deepEqual(splitNumber(""), { number: null, rest: "" });
+    assert.equal(numberedName("03", "Danse"), "03-Danse");
 });

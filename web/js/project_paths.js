@@ -1032,3 +1032,16 @@ export function durationText(seconds) {
     if (m) return m + " min " + two(s) + " s";
     return s + " s";
 }
+
+// Numero des sous-projets d'un MultiProject (01/11/2026) : "NN-<nom>", NN = 2 chiffres.
+// Meme regle que projects.split_number (Python).
+const SUB_NUMBER = /^(\d{2})-(.+)$/;
+
+export function splitNumber(name) {
+    const m = SUB_NUMBER.exec(String(name == null ? "" : name));
+    return m ? { number: m[1], rest: m[2] } : { number: null, rest: name == null ? "" : String(name) };
+}
+
+export function numberedName(number, name) {
+    return number + "-" + name;
+}

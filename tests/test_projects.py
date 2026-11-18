@@ -945,5 +945,35 @@ class SameAsJsTest(unittest.TestCase):
         self.assertEqual(set(re.findall(r'"([^"]*)"', m.group(1))), set(run_record.VIDEO_EXTS))
 
 
+class NextNumberRouteTest(unittest.TestCase):
+    """Route GET /mmproject/next_number : lecture seule (texte de __init__.py + aide pure de final_cut)."""
+
+    def route_text(self):
+        with open(os.path.join(os.path.dirname(HERE), "__init__.py"), encoding="utf-8") as f:
+            text = f.read()
+        m = re.search(r'@routes\.(get|post)\("/mmproject/next_number"\)(.*?)(?=\n    @routes\.|\Z)', text, re.S)
+        self.assertIsNotNone(m, "route absente")
+        return m.group(1), m.group(2)
+
+    def test_next_number_route_reads_only(self):
+        verb, body = self.route_text()
+        self.assertEqual(verb, "get")
+        self.assertIn("next_number", body)
+        self.assertNotIn("claim_number", body)
+        self.assertIn("is_group", body)  # dest= : meme regle que move_project (marque seulement)
+
+    def test_number_info(self):
+        import final_cut
+        tmp = tempfile.mkdtemp()
+        try:
+            self.assertEqual(final_cut.number_info(os.path.join(tmp, "Nouveau")), {"number": "01"})
+            group = os.path.join(tmp, "G")
+            os.makedirs(os.path.join(group, "a", "00.Workflows"))
+            projects.mark_group(group)
+            self.assertEqual(final_cut.number_info(group), {"number": "02"})
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

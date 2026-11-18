@@ -20,7 +20,7 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, NO_PROMPT, promptMissing, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
-    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint,
+    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint, splitNumber, numberedName,
 } from "./project_paths.js";
 import { STAR_GOLD, STAR_TIP, releaseComparePlayers, releaseComparePlayersOf } from "./compare_pure.js";
 import { DROP_TARGETS, dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
@@ -1373,16 +1373,61 @@ function buildCreateDialog(container, ctx) {
     Object.assign(input.style, fieldStyle, { width: "100%", flex: "0 0 auto" });
     const error = document.createElement("div");
     Object.assign(error.style, { color: ORANGE, minHeight: "14px", margin: "6px 0 0" });
+    // Numero du sous-projet (01/11/2026) : ligne grise sous le nom, seulement en MultiProject.
+    const numberLine = document.createElement("div");
+    Object.assign(numberLine.style, { display: "none", color: "#999", margin: "6px 0 0", wordBreak: "break-all" });
 
     const footer = document.createElement("div");
     Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" });
     const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
     const createBtn = makeTextButton("Create", GREEN);
     footer.append(cancelBtn, createBtn);
-    card.append(title, where, folderBox, warning, modeRow, groupBox, input, error, footer);
+    card.append(title, where, folderBox, warning, modeRow, groupBox, input, numberLine, error, footer);
 
     let info = null; // {root, exists, fixed, fallback}
     let checkId = 0;
+    let numInfo = null; // {number: "03"} | {number: null, full: true} | null (pas encore lu)
+    let numberId = 0;
+
+    /** Ligne "Will be created as: 03-<nom>", relue a chaque frappe (le numero, lui, une fois par groupe). */
+    function paintNumber() {
+        const full = multi && !!numInfo && numInfo.full === true;
+        numberLine.style.display = multi && numInfo ? "block" : "none";
+        createBtn.disabled = full;
+        if (!multi || !numInfo) return;
+        if (full) {
+            numberLine.style.color = ORANGE;
+            numberLine.textContent = "This folder of projects already has 99 sub-projects.";
+        } else if (numInfo.number) {
+            const typed = input.value.trim();
+            numberLine.style.color = "#999";
+            numberLine.textContent = "Will be created as: " + numberedName(numInfo.number, typed || "<name>");
+        } else {
+            numberLine.style.display = "none";
+        }
+    }
+    /** Lit le numero du groupe choisi (nouveau groupe : 01, sans appel au serveur). */
+    async function loadNumber() {
+        const id = ++numberId;
+        numInfo = null;
+        paintNumber();
+        if (!multi) return;
+        if (!groupSelect.value) {
+            numInfo = { number: "01" };
+            paintNumber();
+            return;
+        }
+        try {
+            const data = await apiGet("/mmproject/next_number?root=" + encodeURIComponent(destination()) +
+                "&group=" + encodeURIComponent(groupSelect.value));
+            if (id !== numberId) return;
+            numInfo = data;
+        } catch (e) {
+            if (id !== numberId) return;
+            numInfo = null; // le serveur refusera a la creation avec son message
+        }
+        paintNumber();
+    }
 
     function paintMode() {
         simpleBtn.style.background = multi ? INACTIVE_BG : PINK;
@@ -1390,6 +1435,7 @@ function buildCreateDialog(container, ctx) {
         groupBox.style.display = multi ? "block" : "none";
         groupInput.style.display = multi && !groupSelect.value ? "block" : "none";
         input.placeholder = multi ? "Project name (inside the folder of projects)" : "Project name";
+        loadNumber();
     }
     /** Dossiers de projets de la destination : (new), puis les existants. */
     function fillGroups(list) {
@@ -1430,6 +1476,7 @@ function buildCreateDialog(container, ctx) {
     }
 
     async function create() {
+        if (multi && numInfo && numInfo.full === true) return; // 99 sous-projets : refus deja affiche
         const name = input.value.trim();
         const err = projectNameError(name);
         if (err) {
@@ -1462,7 +1509,7 @@ function buildCreateDialog(container, ctx) {
             error.textContent = e.message;
             input.style.borderColor = ORANGE;
         } finally {
-            createBtn.disabled = false;
+            createBtn.disabled = multi && !!numInfo && numInfo.full === true;
         }
     }
 
@@ -1507,6 +1554,7 @@ function buildCreateDialog(container, ctx) {
     input.addEventListener("input", () => {
         error.textContent = "";
         input.style.borderColor = "#0c3833";
+        paintNumber();
     });
     folderInput.addEventListener("input", () => {
         error.textContent = "";
@@ -1970,11 +2018,18 @@ function buildRenameMoveDialog(container, ctx) {
     };
     const row = document.createElement("div");
     Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center" });
+    // Numero fixe d'un sous-projet numerote ("03-") : devant le champ, jamais modifiable (01/11/2026).
+    const prefixLab = document.createElement("span");
+    Object.assign(prefixLab.style, {
+        display: "none", color: "#9fd6cf", fontWeight: "bold", whiteSpace: "nowrap", background: "#161616",
+        border: "1px solid #2c2c2c", borderRadius: "10px", padding: "6px 8px", fontSize: "12px",
+    });
+    prefixLab.title = "The number of the sub-project cannot be changed";
     const input = document.createElement("input");
     input.type = "text";
     Object.assign(input.style, fieldStyle);
     const browseBtn = makeIconButton(VIOLET, FOLDER_ICON, "Browse");
-    row.append(input, browseBtn);
+    row.append(prefixLab, input, browseBtn);
 
     // Nom / dossier actuel -> nouveau.
     const summary = document.createElement("div");
@@ -1982,6 +2037,9 @@ function buildRenameMoveDialog(container, ctx) {
         margin: "10px 0 0", padding: "8px 10px", background: "#161616", border: "1px solid #2c2c2c",
         borderRadius: "8px", lineHeight: "1.6", wordBreak: "break-all",
     });
+    // Move : nom que le projet aura a l'arrivee (numero du MultiProject d'arrivee, ou sans numero).
+    const becomeLine = document.createElement("div");
+    Object.assign(becomeLine.style, { display: "none", color: "#999", margin: "6px 0 0", wordBreak: "break-all" });
     const error = document.createElement("div");
     Object.assign(error.style, { color: ORANGE, minHeight: "14px", margin: "6px 0 0" });
 
@@ -1990,17 +2048,64 @@ function buildRenameMoveDialog(container, ctx) {
     const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
     const goBtn = makeTextButton("Rename...", ORANGE);
     footer.append(cancelBtn, goBtn);
-    card.append(title, pill, row, summary, error, footer);
+    card.append(title, pill, row, summary, becomeLine, error, footer);
 
     let mode = "rename";
     let current = "";   // chemin actuel du projet
     let values = { rename: "", move: "" };
+    let prefix = "";    // "03-" : numero fixe d'un sous-projet numerote (Rename)
+    let inGroup = false; // le projet est un sous-projet d'un MultiProject
+    let become = null;  // {dest, number, full} lu pour le Move
+    let becomeId = 0;
+    let becomeTimer = 0;
+
+    /** Nom sans numero du projet actuel (celui qu'il aura s'il quitte son MultiProject). */
+    const plainName = () => (inGroup ? splitNumber(baseOf(current)).rest : baseOf(current));
 
     /** Nouveau chemin du projet ("" si la saisie ne change rien ou est invalide). */
     function target() {
         const v = input.value.trim();
         if (!v) return "";
-        return mode === "rename" ? joinDir(parentOf(current), v) : joinDir(v, baseOf(current));
+        if (mode === "rename") return joinDir(parentOf(current), prefix + v);
+        const name = become && become.dest === v && become.number ? numberedName(become.number, plainName())
+            : plainName();
+        return joinDir(v, name);
+    }
+
+    /** Move : lit le numero du dossier d'arrivee (apres une courte pause de frappe). */
+    function loadBecome() {
+        clearTimeout(becomeTimer);
+        const id = ++becomeId;
+        const v = input.value.trim();
+        become = null;
+        if (mode === "move" && v) {
+            becomeTimer = setTimeout(async () => {
+                let data = { number: null };
+                try {
+                    data = await apiGet("/mmproject/next_number?dest=" + encodeURIComponent(v));
+                } catch (e) {
+                    data = { number: null };
+                }
+                if (id !== becomeId) return;
+                become = { dest: v, number: data.number || null, full: data.full === true };
+                update();
+            }, 250);
+        }
+        paintBecome();
+    }
+
+    function paintBecome() {
+        const v = input.value.trim();
+        const show = mode === "move" && !!v && !!become && become.dest === v;
+        becomeLine.style.display = show ? "block" : "none";
+        if (!show) return;
+        if (become.full) {
+            becomeLine.style.color = ORANGE;
+            becomeLine.textContent = "This folder of projects already has 99 sub-projects.";
+        } else {
+            becomeLine.style.color = "#999";
+            becomeLine.textContent = "Will become: " + (become.number ? numberedName(become.number, plainName()) : plainName());
+        }
     }
 
     function update() {
@@ -2010,6 +2115,8 @@ function buildRenameMoveDialog(container, ctx) {
         moveTab.style.background = rename ? INACTIVE_BG : GREEN;
         moveTab.style.color = rename ? "#888" : "white";
         browseBtn.style.display = rename ? "none" : "flex";
+        prefixLab.style.display = rename && prefix ? "inline-block" : "none";
+        prefixLab.textContent = prefix;
         input.placeholder = rename ? "New name" : "New folder (the project folder goes inside)";
         goBtn.textContent = rename ? "Rename..." : "Move...";
         goBtn.style.background = rename ? ORANGE : GREEN;
@@ -2017,6 +2124,7 @@ function buildRenameMoveDialog(container, ctx) {
         const label = (k) => '<span style="color:#888">' + k + "</span> ";
         summary.innerHTML = label(rename ? "Current name:" : "Current folder:") + escapeHtml(current) + "<br>" +
             label("→ New:") + (t ? '<b style="color:#9fd6cf">' + escapeHtml(t) + "</b>" : '<span style="color:#888">-</span>');
+        paintBecome();
     }
 
     function setMode(m) {
@@ -2026,6 +2134,7 @@ function buildRenameMoveDialog(container, ctx) {
         error.textContent = "";
         input.style.borderColor = "#0c3833";
         update();
+        loadBecome();
         setTimeout(() => input.focus(), 0);
     }
 
@@ -2033,11 +2142,13 @@ function buildRenameMoveDialog(container, ctx) {
         const v = input.value.trim();
         let err = "";
         if (mode === "rename") {
-            err = projectNameError(v) || (v === baseOf(current) ? "The new name is the current name." : "");
+            err = projectNameError(prefix + v) || (prefix + v === baseOf(current) ? "The new name is the current name." : "");
         } else if (!v) {
             err = "Choose the destination folder.";
         } else if (samePath(v, parentOf(current))) {
             err = "The project is already in this folder.";
+        } else if (become && become.dest === v && become.full) {
+            err = "This folder of projects already has 99 sub-projects.";
         }
         if (err) {
             error.textContent = err;
@@ -2076,6 +2187,7 @@ function buildRenameMoveDialog(container, ctx) {
             if (data.path) input.value = data.path;
             error.textContent = "";
             update();
+            loadBecome();
         } catch (e) {
             error.textContent = e.message;
         } finally {
@@ -2109,6 +2221,7 @@ function buildRenameMoveDialog(container, ctx) {
         error.textContent = "";
         input.style.borderColor = "#0c3833";
         update();
+        loadBecome();
     });
     renameTab.addEventListener("click", () => setMode("rename"));
     moveTab.addEventListener("click", () => setMode("move"));
@@ -2118,13 +2231,18 @@ function buildRenameMoveDialog(container, ctx) {
     overlay.addEventListener("mousedown", close);
 
     return {
-        open(path) {
+        /** inGroupNow = le projet est dans un MultiProject (un sous-projet numerote garde son numero au Rename). */
+        open(path, inGroupNow) {
             current = path;
-            values = { rename: baseOf(path), move: parentOf(path) };
+            inGroup = !!inGroupNow;
+            const split = inGroup ? splitNumber(baseOf(path)) : { number: null, rest: baseOf(path) };
+            prefix = split.number ? split.number + "-" : "";
+            values = { rename: split.rest, move: parentOf(path) };
             mode = "rename";
             input.value = values.rename;
             error.textContent = "";
             input.style.borderColor = "#0c3833";
+            become = null;
             update();
             overlay.style.display = "block";
             window.addEventListener("keydown", onKey, true);
@@ -7661,7 +7779,7 @@ app.registerExtension({
             });
             editBtn.addEventListener("click", () => {
                 const s = getState();
-                if (inProject(s.name)) renameDialog.open(s.path);
+                if (inProject(s.name)) renameDialog.open(s.path, s.name.includes(GROUP_SEP));
             });
             // ---- Configuration du projet (99.Project-Config) ----
 

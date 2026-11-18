@@ -110,6 +110,17 @@ def next_number(group):
     last = max([int(k) for k in numbers if k.isdigit()] + [int(_read_mark(group).get("last") or 0)])
     return last + 1
 
+def number_info(group):
+    """
+    Numero que recevrait le prochain sous-projet du dossier `group`, sans rien reserver :
+    {"number": "03"}, "01" si le dossier n'existe pas (nouveau MultiProject),
+    {"number": None, "full": True} au-dela de 99.
+    """
+    n = next_number(group)
+    if n > projects.MAX_SUB_NUMBER:
+        return {"number": None, "full": True}
+    return {"number": "%02d" % n}
+
 
 def claim_number(group, name, expected=None):
     """
