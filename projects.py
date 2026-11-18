@@ -186,11 +186,14 @@ def ordered_children(group):
     prefixe NN- et des copies _NN_ du Final Cut), puis ceux sans numero par nom.
     Separe de project_children : group_numbers l'appelle, un tri dedans ferait une boucle.
     """
+    children = project_children(group)
+    if not children:
+        return []  # ni projet Simple ni dossier ordinaire : ne jamais ecrire de marque
     import final_cut  # import tardif : final_cut importe projects
     with _NUMBER_LOCK:
         numbers = final_cut.group_numbers(group)
     rank = {v: int(k) for k, v in numbers.items() if k != "00" and k.isdigit()}
-    return sorted(project_children(group),
+    return sorted(children,
                   key=lambda n: (0, rank[n], "") if n in rank else (1, 0, n.lower()))
 
 

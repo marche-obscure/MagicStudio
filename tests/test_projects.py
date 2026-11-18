@@ -506,6 +506,21 @@ class SubNumberRenameMoveTest(unittest.TestCase):
         self.assertEqual(projects.list_projects(self.root), ["Film/Zeta", "Film/Alpha", "Film/03-Mid"])
         self.assertEqual(projects.ordered_children(os.path.join(self.root, "Film")), ["Zeta", "Alpha", "03-Mid"])
 
+    def test_listing_never_marks_simple_projects_or_plain_folders(self):
+        r = self.root
+        projects.create_project(r, "Solo")
+        os.makedirs(os.path.join(r, "Videos"))
+        open(os.path.join(r, "Videos", "a.mp4"), "w").close()
+        self._hand_group()
+        projects.project_tree(r)
+        projects.list_projects(r)
+        for n in ("Solo", "Videos"):
+            self.assertFalse(os.path.exists(os.path.join(r, n, projects.GROUP_MARK)), n)
+            self.assertFalse(projects.is_group(os.path.join(r, n)), n)
+        self.assertEqual(projects.ordered_children(os.path.join(r, "Solo")), [])
+        self.assertTrue(projects.is_group(os.path.join(r, "Film")))
+        self.assertTrue(os.path.isfile(os.path.join(r, "Film", projects.GROUP_MARK)))
+
     def _two_groups(self):
         a = projects.create_project(self.root, "Intro", group="Film", new_group=True)
         projects.create_project(self.root, "X", group="Clip", new_group=True)

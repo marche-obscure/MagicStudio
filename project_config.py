@@ -412,7 +412,7 @@ def sub_projects(path, exclude=None):
     skip = os.path.normcase(os.path.abspath(exclude)) if exclude else None
     out = []
     # MultiProject : ordre des numeros du compteur ; sinon tri par nom
-    if projects.is_group(path) or projects.project_children(path):
+    if projects.project_children(path):
         names = projects.ordered_children(path)
     else:
         names = sorted(os.listdir(path), key=str.lower)

@@ -302,7 +302,6 @@ class FinalCutTest(unittest.TestCase):
         self.assertEqual(num, "00")
         self.assertEqual([f["name"] for f in fc.plan(p)["frames"][num]], ["FRAME_0003_x.png"])
 
-
     def test_final_cut_plan_projects_by_number(self):
         g = os.path.join(self.root, "Film")
         for n in ("Zeta", "Alpha"):

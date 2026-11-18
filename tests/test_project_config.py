@@ -653,10 +653,6 @@ class StructureTest(unittest.TestCase):
         self.assertFalse(d["same"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class SubProjectsOrderTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
@@ -679,3 +675,7 @@ class SubProjectsOrderTest(unittest.TestCase):
                 f.write(b"x")
         self.assertEqual(pc.sub_projects(g), ["Zeta", "Alpha", "03-Mid"])
         self.assertEqual(pc.sub_projects(g, exclude=os.path.join(g, "Alpha")), ["Zeta", "03-Mid"])
+
+
+if __name__ == "__main__":
+    unittest.main()
