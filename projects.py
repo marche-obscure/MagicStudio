@@ -36,9 +36,22 @@ PROJECT_CONFIG_DIR = "99.Project-Config"
 DEFAULT_ROOT_NAME = "Projets"
 
 MAX_NAME_LENGTH = 100
+# Sous-projet d'un MultiProject : "NN-<nom>", NN = numero du compteur du Final Cut (01 a 99).
+SUB_NUMBER = re.compile(r"^(\d{2})-(.+)$")
+MAX_SUB_NUMBER = 99
 _INVALID_CHARS = set('<>:"/\\|?*')
 # Noms reserves de Windows (avec ou sans extension).
 _RESERVED = {"CON", "PRN", "AUX", "NUL"} | {"COM%d" % i for i in range(1, 10)} | {"LPT%d" % i for i in range(1, 10)}
+
+
+def split_number(name):
+    """("03", "Danse") pour "03-Danse", sinon (None, nom)."""
+    m = SUB_NUMBER.match(name or "")
+    return (m.group(1), m.group(2)) if m else (None, name)
+
+
+def numbered_name(number, name):
+    return "%02d-%s" % (number, name)
 
 
 def validate_name(name):
@@ -268,14 +281,29 @@ def create_project(root, name, create_root=False, group=None, new_group=False):
             raise FileNotFoundError('Folder of projects "%s" not found in %s' % (group, root))
         elif not project_children(where) and _has_parts(where):
             raise ValueError('"%s" is a project: a project cannot hold another project.' % group)
+    final_cut = None
+    if group is not None:
+        # Sous-projet numere (choix utilisateur 01/11/2026) : "NN-<nom>", NN = numero du compteur du Final Cut.
+        # Le groupe est cree et marque AVANT de lire le numero ; le compteur est mis a jour en dernier.
+        try:
+            from . import final_cut
+        except ImportError:
+            import final_cut
+        if new_group:
+            os.makedirs(where)
+        mark_group(where)
+        n = final_cut.next_number(where)
+        if n > MAX_SUB_NUMBER:
+            raise ValueError("This folder of projects already has 99 sub-projects.")
+        name = validate_name(numbered_name(n, name))
     # Comparaison sans casse : sous Windows, "Clip" et "clip" sont le meme dossier.
     if os.path.isdir(where) and _taken(where, name):
         raise FileExistsError('A project or file named "%s" already exists.' % name)
     path = os.path.join(where, name)
     os.makedirs(path)
     ensure_project(path)
-    if group is not None:
-        mark_group(where)
+    if final_cut is not None:
+        final_cut.claim_number(where, name)
     return path
 
 

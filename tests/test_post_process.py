@@ -160,7 +160,7 @@ class FindMotherTest(unittest.TestCase):
         time.sleep(0.05)
         b = projects.create_project(self.root, "B", group="Serie")
         group = os.path.dirname(b)
-        num = [k for k, v in fc.group_numbers(group).items() if v == "B"][0]
+        num = [k for k, v in fc.group_numbers(group).items() if v == "02-B"][0]
         self.assertNotEqual(num, "00")
         lock = os.path.join(b, "40.Rush Videos", "Picture Lock", "20261029_120000_run.mp4")
         write(lock, b"video B")

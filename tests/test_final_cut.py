@@ -112,7 +112,7 @@ class FinalCutTest(unittest.TestCase):
         time.sleep(0.05)
         b = projects.create_project(self.root, "Walk", group="Yacht")
         group = os.path.join(self.root, "Yacht")
-        self.assertEqual(fc.group_numbers(group), {"00": "Yacht", "01": "Speech", "02": "Walk"})
+        self.assertEqual(fc.group_numbers(group), {"00": "Yacht", "01": "01-Speech", "02": "02-Walk"})
         self.assertEqual((fc.project_number(a), fc.project_number(b)), ("01", "02"))
         self.assertTrue(projects.is_group(group))                   # la marque reste une marque
         write(os.path.join(a, "40.Rush Videos", "Picture Lock", "shot.mp4"), b"a")
@@ -121,7 +121,7 @@ class FinalCutTest(unittest.TestCase):
         dest = os.path.join(group, "Final-Cut_Yacht")
         self.assertEqual(files_in(os.path.join(dest, "Video")), ["_01_shot.mp4", "_02_shot.mp4"])
         # Le dossier des copies n'est pas pris pour un sous-projet.
-        self.assertEqual(projects.project_children(group), ["Speech", "Walk"])
+        self.assertEqual(projects.project_children(group), ["01-Speech", "02-Walk"])
         # Renommage : le numero suit ; un numero n'est jamais reattribue.
         new = projects.rename_project(a, "Speech-01")
         self.assertEqual(fc.project_number(new), "01")
@@ -131,6 +131,24 @@ class FinalCutTest(unittest.TestCase):
         fc.sync(new, self.trash, self.input)
         self.assertEqual(files_in(os.path.join(dest, "Video")), ["_01_shot.mp4"])
         self.assertEqual(self.trashed, ["_02_shot.mp4"])
+
+    def test_next_and_claim_number(self):
+        projects.create_project(self.root, "A", group="G", new_group=True)
+        projects.create_project(self.root, "B", group="G")
+        g = os.path.join(self.root, "G")
+        self.assertEqual(fc.next_number(g), 3)
+        self.assertEqual(fc.claim_number(g, "03-C"), 3)
+        self.assertEqual(fc.group_numbers(g)["03"], "03-C")
+        self.assertEqual(fc.next_number(g), 4)
+        self.assertEqual(fc.next_number(os.path.join(self.root, "Absent")), 1)
+
+    def test_claim_number_refuses_after_99(self):
+        g = os.path.join(self.root, "G")
+        os.makedirs(g)
+        fc._write_mark(g, {"numbers": {"00": "G"}, "last": 99})
+        with self.assertRaises(ValueError) as cm:
+            fc.claim_number(g, "100-X")
+        self.assertEqual(str(cm.exception), "This folder of projects already has 99 sub-projects.")
 
     def test_link_never_replaces_a_real_folder(self):
         p = projects.create_project(self.root, "Solo")
@@ -146,7 +164,7 @@ class FinalCutTest(unittest.TestCase):
         folder = fc.target(p1)[0]
         before = fc.plan(p1)
         self.assertIsNone(before["last_sync"])
-        self.assertEqual(before["projects"], {"01": "Part1"})
+        self.assertEqual(before["projects"], {"01": "01-Part1"})
         self.assertIsNone(fc.progress(p1))
         seen = []
 

@@ -102,6 +102,34 @@ def group_numbers(group):
     return numbers
 
 
+def next_number(group):
+    """Prochain numero libre du MultiProject (les sous-projets sans numero sont ranges d'abord) ; 1 si rien."""
+    if not os.path.isdir(group):
+        return 1
+    numbers = group_numbers(group)
+    last = max([int(k) for k in numbers if k.isdigit()] + [int(_read_mark(group).get("last") or 0)])
+    return last + 1
+
+
+def claim_number(group, name):
+    """
+    Reserve le prochain numero pour le sous-projet `name` (marque du MultiProject) ; renvoie le numero.
+    Si le dossier `name` existe deja, group_numbers l'a deja range : on renvoie son numero.
+    """
+    numbers = group_numbers(group)
+    for k, v in numbers.items():
+        if k != "00" and v == name:
+            return int(k)
+    n = next_number(group)
+    if n > projects.MAX_SUB_NUMBER:
+        raise ValueError("This folder of projects already has 99 sub-projects.")
+    data = _read_mark(group)
+    numbers["%02d" % n] = name
+    data.update({"note": "Folder of projects of the MagicStudio Project node.", "numbers": numbers, "last": n})
+    _write_mark(group, data)
+    return n
+
+
 def rename_in_group(group, old, new):
     """Sous-projet renomme : il garde son numero."""
     data = _read_mark(group)

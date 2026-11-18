@@ -112,16 +112,18 @@ class ProjectFoldersTest(unittest.TestCase):
     def test_create_multi_project(self):
         r = self.root
         first = projects.create_project(r, "Shot1", group="Film", new_group=True)
-        self.assertEqual(first, os.path.join(r, "Film", "Shot1"))
+        self.assertEqual(first, os.path.join(r, "Film", "01-Shot1"))
         self.assertTrue(projects.is_project(first))
         self.assertFalse(projects.is_project(os.path.join(r, "Film")))
         second = projects.create_project(r, "Shot2", group="Film")
-        self.assertEqual(projects.list_projects(r), ["Film/Shot1", "Film/Shot2"])
+        self.assertEqual(projects.list_projects(r), ["Film/01-Shot1", "Film/02-Shot2"])
         self.assertTrue(os.path.isdir(os.path.join(second, "08.Images")))
         with self.assertRaises(FileExistsError):      # dossier de projets deja pris
             projects.create_project(r, "X", group="film", new_group=True)
+        with open(os.path.join(r, "Film", "03-shot3"), "w") as f:   # nom d'arrivee deja pris (sans casse)
+            f.write("x")
         with self.assertRaises(FileExistsError):      # sous-projet deja pris
-            projects.create_project(r, "shot1", group="Film")
+            projects.create_project(r, "Shot3", group="Film")
         with self.assertRaises(FileNotFoundError):
             projects.create_project(r, "X", group="Nope")
         simple = projects.create_project(r, "Simple")
@@ -132,7 +134,7 @@ class ProjectFoldersTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             projects.create_project(simple, "X", group="G", new_group=True)
         with self.assertRaises(ValueError):           # un seul niveau : pas de separateur
-            projects.create_project(r, "X", group="Film/Shot1")
+            projects.create_project(r, "X", group="Film/01-Shot1")
         self.assertFalse(os.path.exists(os.path.join(r, "G")))
 
     def test_anchor_root_on_the_parent_folder(self):
@@ -143,7 +145,7 @@ class ProjectFoldersTest(unittest.TestCase):
         self.assertTrue(projects.is_group(group))                    # marque posee a la creation
         self.assertEqual(projects.anchor_root(r), (r, ""))            # racine normale : inchangee
         self.assertEqual(projects.anchor_root(group), (r, "Yacht"))
-        self.assertEqual(projects.anchor_root(sub), (r, "Yacht/Speech"))
+        self.assertEqual(projects.anchor_root(sub), (r, "Yacht/01-Speech"))
         self.assertEqual(projects.anchor_root(solo), (r, "Solo"))
         # Groupe cree a la main : marque quand la racine le liste.
         other = os.path.join(r, "Old")
@@ -151,20 +153,66 @@ class ProjectFoldersTest(unittest.TestCase):
         self.assertEqual(projects.anchor_root(other), (other, ""))
         projects.project_tree(r)
         self.assertEqual(projects.anchor_root(other), (r, "Old"))
-        self.assertEqual(projects.list_projects(r), ["Old/Shot", "Solo", "Yacht/Speech"])
+        self.assertEqual(projects.list_projects(r), ["Old/Shot", "Solo", "Yacht/01-Speech"])
 
     def test_folder_of_projects_with_stray_parts_stays_a_group(self):
         r = self.root
         projects.create_project(r, "Shot1", group="Film", new_group=True)
         os.makedirs(os.path.join(r, "Film", "08.Images"))      # cree par erreur (ancienne version)
         self.assertFalse(projects.is_project(os.path.join(r, "Film")))
-        self.assertEqual(projects.project_tree(r), [{"name": "Film", "projects": ["Shot1"]}])
-        self.assertEqual(projects.project_children(os.path.join(r, "Film")), ["Shot1"])
+        self.assertEqual(projects.project_tree(r), [{"name": "Film", "projects": ["01-Shot1"]}])
+        self.assertEqual(projects.project_children(os.path.join(r, "Film")), ["01-Shot1"])
         projects.create_project(r, "Shot2", group="Film")       # on peut toujours y ajouter un projet
         with self.assertRaises(ValueError):                      # jamais complete en projet
             projects.ensure_project(os.path.join(r, "Film"))
         self.assertFalse(os.path.isdir(os.path.join(r, "Film", "00.Workflows")))
-        self.assertEqual(projects.list_projects(r), ["Film/Shot1", "Film/Shot2"])
+        self.assertEqual(projects.list_projects(r), ["Film/01-Shot1", "Film/02-Shot2"])
+
+    def test_split_and_numbered_name(self):
+        self.assertEqual(projects.split_number("03-Danse"), ("03", "Danse"))
+        self.assertEqual(projects.split_number("003-Danse"), (None, "003-Danse"))
+        self.assertEqual(projects.split_number("Danse"), (None, "Danse"))
+        self.assertEqual(projects.numbered_name(3, "Danse"), "03-Danse")
+
+    def test_create_sub_project_numbered(self):
+        first = projects.create_project(self.root, "Intro", group="Film", new_group=True)
+        self.assertEqual(os.path.basename(first), "01-Intro")
+        second = projects.create_project(self.root, "05-Danse", group="Film")
+        self.assertEqual(os.path.basename(second), "02-05-Danse")
+        simple = projects.create_project(self.root, "Solo")
+        self.assertEqual(os.path.basename(simple), "Solo")
+        self.assertTrue(os.path.isdir(os.path.join(self.root, "Film")))   # le groupe n'a pas de numero
+
+    def test_create_numbers_after_existing_subs(self):
+        import final_cut
+        for n in ("A", "B"):
+            os.makedirs(os.path.join(self.root, "G", n, "00.Workflows"))
+        c = projects.create_project(self.root, "C", group="G")
+        self.assertEqual(os.path.basename(c), "03-C")
+        self.assertTrue(os.path.isdir(os.path.join(self.root, "G", "A")))
+        self.assertTrue(os.path.isdir(os.path.join(self.root, "G", "B")))
+        self.assertEqual(final_cut.group_numbers(os.path.join(self.root, "G"))["03"], "03-C")
+
+    def test_create_refuses_after_99(self):
+        import final_cut
+        g = os.path.join(self.root, "G")
+        os.makedirs(g)
+        final_cut._write_mark(g, {"numbers": {"00": "G"}, "last": 99})
+        with self.assertRaises(ValueError) as cm:
+            projects.create_project(self.root, "X", group="G")
+        self.assertEqual(str(cm.exception), "This folder of projects already has 99 sub-projects.")
+        self.assertEqual(projects.project_children(g), [])
+
+    def test_create_prefix_counts_in_length(self):
+        import final_cut
+        projects.create_project(self.root, "A", group="G", new_group=True)
+        g = os.path.join(self.root, "G")
+        before = final_cut.next_number(g)
+        with self.assertRaises(ValueError) as cm:
+            projects.create_project(self.root, "x" * 98, group="G")
+        self.assertIn("too long", str(cm.exception))
+        self.assertEqual(projects.project_children(g), ["01-A"])
+        self.assertEqual(final_cut.next_number(g), before)
 
     def test_create_existing_project_refused(self):
         projects.create_project(self.root, "Clip")
