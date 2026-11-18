@@ -181,5 +181,33 @@ class DisplayNamesTest(unittest.TestCase):
                     self.assertNotIn('"[MiniMaxRefLoader]', text, fn)
 
 
+class PackageImportTest(unittest.TestCase):
+    """Dans ComfyUI, le paquet est importe comme paquet : un import tardif nu (`import final_cut`)
+    echoue (cas reel du 18/11/2026, /mmproject/list : No module named 'final_cut'). Chaque import
+    tardif d'un module du paquet doit d'abord essayer l'import relatif."""
+
+    MODULES = ("final_cut", "projects", "run_record", "extract_frame", "post_process", "media")
+
+    def test_late_imports_try_relative_first(self):
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        bad = []
+        for name in os.listdir(here):
+            if not name.endswith(".py"):
+                continue
+            with open(os.path.join(here, name), encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            for i, line in enumerate(lines):
+                m = re.match(r"^(\s+)import (\w+)\b", line)
+                if not m or m.group(2) not in self.MODULES:
+                    continue
+                j = i - 1  # remonte les imports qui se suivent jusqu'a la ligne d'avant
+                while j >= 0 and re.match(r"^\s+(import|from) ", lines[j]):
+                    j -= 1
+                prev = lines[j].strip() if j >= 0 else ""
+                if not prev.startswith("except ImportError"):
+                    bad.append("%s:%d %s" % (name, i + 1, line.strip()))
+        self.assertEqual(bad, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -190,7 +190,10 @@ def ordered_children(group, write=True):
     children = project_children(group)
     if not children:
         return []  # ni projet Simple ni dossier ordinaire : ne jamais ecrire de marque
-    import final_cut  # import tardif : final_cut importe projects
+    try:  # import tardif : final_cut importe projects (dans ComfyUI : paquet, import relatif)
+        from . import final_cut
+    except ImportError:
+        import final_cut
     with _NUMBER_LOCK:
         numbers = final_cut.group_numbers(group) if write else final_cut._numbers_of(group)[1]
     rank = {v: int(k) for k, v in numbers.items() if k != "00" and k.isdigit()}
