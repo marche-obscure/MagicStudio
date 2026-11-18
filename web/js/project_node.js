@@ -2089,6 +2089,7 @@ function buildRenameMoveDialog(container, ctx) {
         const v = input.value.trim();
         if (!v) return "";
         if (mode === "rename") return joinDir(parentOf(current), prefix + v);
+        if (become && become.dest === v && become.same) return current;
         const name = become && become.dest === v && become.number ? numberedName(become.number, plainName())
             : plainName();
         return joinDir(v, name);
@@ -2102,6 +2103,12 @@ function buildRenameMoveDialog(container, ctx) {
         become = null;
         paintBecome();
         if (mode !== "move" || !v) return Promise.resolve();
+        if (samePath(v, parentOf(current))) {
+            // Deja dans ce dossier : pas de nouveau numero a annoncer (le Move sera refuse).
+            become = { dest: v, number: null, full: false, same: true };
+            update();
+            return Promise.resolve();
+        }
         const fetchIt = async () => {
             let data = { number: null };
             try {
@@ -2126,6 +2133,9 @@ function buildRenameMoveDialog(container, ctx) {
         if (become.full) {
             becomeLine.style.color = ORANGE;
             becomeLine.textContent = "This folder of projects already has 99 sub-projects.";
+        } else if (become.same) {
+            becomeLine.style.color = "#999";
+            becomeLine.textContent = "The project is already in this folder.";
         } else {
             becomeLine.style.color = "#999";
             becomeLine.textContent = "Will become: " + (become.number ? numberedName(become.number, plainName()) : plainName());
