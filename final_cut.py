@@ -111,7 +111,7 @@ def next_number(group):
     return last + 1
 
 
-def claim_number(group, name):
+def claim_number(group, name, expected=None):
     """
     Reserve le prochain numero pour le sous-projet `name` (marque du MultiProject) ; renvoie le numero.
     Si le dossier `name` existe deja, group_numbers l'a deja range : on renvoie son numero.
@@ -119,8 +119,12 @@ def claim_number(group, name):
     numbers = group_numbers(group)
     for k, v in numbers.items():
         if k != "00" and v == name:
+            if expected is not None and int(k) != expected:
+                raise ValueError("Sub-project number changed during creation: expected %02d, got %s." % (expected, k))
             return int(k)
     n = next_number(group)
+    if expected is not None and n != expected:
+        raise ValueError("Sub-project number changed during creation: expected %02d, got %02d." % (expected, n))
     if n > projects.MAX_SUB_NUMBER:
         raise ValueError("This folder of projects already has 99 sub-projects.")
     data = _read_mark(group)

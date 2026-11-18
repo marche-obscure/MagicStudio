@@ -214,6 +214,34 @@ class ProjectFoldersTest(unittest.TestCase):
         self.assertEqual(projects.project_children(g), ["01-A"])
         self.assertEqual(final_cut.next_number(g), before)
 
+    def test_refused_new_group_leaves_nothing(self):
+        with self.assertRaises(ValueError) as cm:
+            projects.create_project(self.root, "x" * 99, group="G", new_group=True)
+        self.assertIn("too long", str(cm.exception))
+        self.assertFalse(os.path.exists(os.path.join(self.root, "G")))
+
+    def test_parallel_creations_get_different_numbers(self):
+        import threading
+        import final_cut
+        projects.create_project(self.root, "A", group="G", new_group=True)
+        g = os.path.join(self.root, "G")
+        out, errs = [], []
+
+        def make(n):
+            try:
+                out.append(os.path.basename(projects.create_project(self.root, n, group="G")))
+            except Exception as e:  # noqa: BLE001
+                errs.append(e)
+
+        ts = [threading.Thread(target=make, args=(n,)) for n in ("B", "C")]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        self.assertEqual(errs, [])
+        self.assertEqual(sorted(out), ["02-B", "03-C"] if "02-B" in out else ["02-C", "03-B"])
+        nums = final_cut.group_numbers(g)
+        self.assertEqual(sorted(k for k in nums if k != "00"), ["01", "02", "03"])
+        self.assertEqual({nums["02"], nums["03"]}, set(out))
+
     def test_create_existing_project_refused(self):
         projects.create_project(self.root, "Clip")
         with self.assertRaises(FileExistsError):
