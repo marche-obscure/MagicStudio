@@ -411,7 +411,12 @@ def sub_projects(path, exclude=None):
         return []
     skip = os.path.normcase(os.path.abspath(exclude)) if exclude else None
     out = []
-    for n in sorted(os.listdir(path), key=str.lower):
+    # MultiProject : ordre des numeros du compteur ; sinon tri par nom
+    if projects.is_group(path) or projects.project_children(path):
+        names = projects.ordered_children(path)
+    else:
+        names = sorted(os.listdir(path), key=str.lower)
+    for n in names:
         p = os.path.join(path, n)
         if os.path.isdir(p) and os.path.normcase(os.path.abspath(p)) != skip and _has_media(p):
             out.append(n)

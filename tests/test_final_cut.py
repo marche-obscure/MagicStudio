@@ -303,5 +303,18 @@ class FinalCutTest(unittest.TestCase):
         self.assertEqual([f["name"] for f in fc.plan(p)["frames"][num]], ["FRAME_0003_x.png"])
 
 
+    def test_final_cut_plan_projects_by_number(self):
+        g = os.path.join(self.root, "Film")
+        for n in ("Zeta", "Alpha"):
+            os.makedirs(os.path.join(g, n))
+            projects.ensure_project(os.path.join(g, n))
+            time.sleep(0.05)
+        projects.mark_group(g)
+        p = projects.create_project(self.root, "Mid", group="Film")
+        write(os.path.join(p, "60.Rush Images", "Picture Lock", "a.png"), b"image")
+        self.assertEqual(list(fc.plan(p)["projects"].items()),
+                         [("01", "Zeta"), ("02", "Alpha"), ("03", "03-Mid")])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -180,6 +180,20 @@ def anchor_root(root):
     return p, "/".join(parts)
 
 
+def ordered_children(group):
+    """
+    Sous-projets d'un dossier de projets ranges par numero du compteur (celui du
+    prefixe NN- et des copies _NN_ du Final Cut), puis ceux sans numero par nom.
+    Separe de project_children : group_numbers l'appelle, un tri dedans ferait une boucle.
+    """
+    import final_cut  # import tardif : final_cut importe projects
+    with _NUMBER_LOCK:
+        numbers = final_cut.group_numbers(group)
+    rank = {v: int(k) for k, v in numbers.items() if k != "00" and k.isdigit()}
+    return sorted(project_children(group),
+                  key=lambda n: (0, rank[n], "") if n in rank else (1, 0, n.lower()))
+
+
 def project_tree(root):
     """
     Projets de la racine (choix utilisateur 22/10/2026) : [{name, projects}] ;
@@ -194,7 +208,7 @@ def project_tree(root):
         if _PROJECT_PART.match(n):
             continue
         p = os.path.join(root, n)
-        subs = project_children(p)
+        subs = ordered_children(p)
         if subs:
             mark_group(p)
             out.append({"name": n, "projects": subs})

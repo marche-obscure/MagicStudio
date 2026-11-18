@@ -655,3 +655,27 @@ class StructureTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SubProjectsOrderTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_sub_projects_copy_list_by_number(self):
+        import time
+        g = os.path.join(self.root, "Film")
+        for n in ("Zeta", "Alpha"):
+            os.makedirs(os.path.join(g, n))
+            projects.ensure_project(os.path.join(g, n))
+            time.sleep(0.05)
+        projects.mark_group(g)
+        projects.create_project(self.root, "Mid", group="Film")
+        for n in ("Zeta", "Alpha", "03-Mid"):
+            p = os.path.join(g, n, "08.Images", "a.png")
+            with open(p, "wb") as f:
+                f.write(b"x")
+        self.assertEqual(pc.sub_projects(g), ["Zeta", "Alpha", "03-Mid"])
+        self.assertEqual(pc.sub_projects(g, exclude=os.path.join(g, "Alpha")), ["Zeta", "03-Mid"])

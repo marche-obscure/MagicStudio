@@ -279,9 +279,10 @@ class ProjectFoldersTest(unittest.TestCase):
         open(os.path.join(r, "Videos", "a.mp4"), "w").close()
         os.makedirs(os.path.join(r, "12.Video"))                   # racine = un projet : ses dossiers masques
         self.assertFalse(projects.is_project(os.path.join(r, "Videos")))
+        # ordre = numero du compteur (Two cree avant one), plus l'ordre alphabetique
         self.assertEqual(projects.project_tree(r), [
-            {"name": "Group", "projects": ["one", "Two"]}, {"name": "Solo", "projects": None}])
-        self.assertEqual(projects.list_projects(r), ["Group/one", "Group/Two", "Solo"])
+            {"name": "Group", "projects": ["Two", "one"]}, {"name": "Solo", "projects": None}])
+        self.assertEqual(projects.list_projects(r), ["Group/Two", "Group/one", "Solo"])
         self.assertEqual(projects.project_path(r, "Group/one"), os.path.join(r, "Group", "one"))
         self.assertEqual(projects.project_path(r, " Solo "), os.path.join(r, "Solo"))
         for bad in ("a/b/c", "Group/", "Group/x:y"):
@@ -486,6 +487,24 @@ class SubNumberRenameMoveTest(unittest.TestCase):
         self.assertEqual(os.path.basename(projects.rename_project(old, "Older")), "Older")
         s = projects.create_project(self.root, "Simple")
         self.assertEqual(os.path.basename(projects.rename_project(s, "Plain")), "Plain")
+
+    def _hand_group(self):
+        # groupe fait a la main : Zeta cree avant Alpha, puis Mid cree par le noeud
+        g = os.path.join(self.root, "Film")
+        for n in ("Zeta", "Alpha"):
+            os.makedirs(os.path.join(g, n))
+            projects.ensure_project(os.path.join(g, n))
+            time.sleep(0.05)
+        projects.mark_group(g)
+        projects.create_project(self.root, "Mid", group="Film")
+        return g
+
+    def test_tree_orders_sub_projects_by_number(self):
+        self._hand_group()
+        tree = {e["name"]: e["projects"] for e in projects.project_tree(self.root)}
+        self.assertEqual(tree["Film"], ["Zeta", "Alpha", "03-Mid"])
+        self.assertEqual(projects.list_projects(self.root), ["Film/Zeta", "Film/Alpha", "Film/03-Mid"])
+        self.assertEqual(projects.ordered_children(os.path.join(self.root, "Film")), ["Zeta", "Alpha", "03-Mid"])
 
     def _two_groups(self):
         a = projects.create_project(self.root, "Intro", group="Film", new_group=True)
