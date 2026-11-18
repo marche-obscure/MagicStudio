@@ -457,6 +457,81 @@ class RenameMoveTest(unittest.TestCase):
             projects.move_project(self.project, os.path.join(self.project, "08.Images"))  # dans lui-meme
 
 
+class SubNumberRenameMoveTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        import final_cut
+        self.fc = final_cut
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_rename_keeps_number(self):
+        p = projects.create_project(self.root, "Intro", group="Film", new_group=True)
+        write(os.path.join(p, "00.Workflows", "workflows_01-Intro.json"), b"{}")
+        new = projects.rename_project(p, "Opening")
+        self.assertEqual(os.path.basename(new), "01-Opening")
+        self.assertEqual(self.fc.group_numbers(os.path.dirname(new))["01"], "01-Opening")
+        self.assertTrue(os.path.isfile(os.path.join(new, "00.Workflows", "workflows_01-Opening.json")))
+        with self.assertRaises(ValueError):
+            projects.rename_project(new, "  ")
+        self.assertEqual(os.path.basename(projects.rename_project(new, "02-X")), "01-02-X")
+
+    def test_rename_unnumbered_unchanged(self):
+        g = os.path.join(self.root, "Film")
+        old = os.path.join(g, "Old")
+        os.makedirs(old)
+        projects.ensure_project(old)
+        projects.mark_group(g)
+        self.assertEqual(os.path.basename(projects.rename_project(old, "Older")), "Older")
+        s = projects.create_project(self.root, "Simple")
+        self.assertEqual(os.path.basename(projects.rename_project(s, "Plain")), "Plain")
+
+    def _two_groups(self):
+        a = projects.create_project(self.root, "Intro", group="Film", new_group=True)
+        projects.create_project(self.root, "X", group="Clip", new_group=True)
+        return a, os.path.join(self.root, "Clip")
+
+    def test_move_to_other_group(self):
+        a, clip = self._two_groups()
+        new = projects.move_project(a, clip)
+        self.assertEqual(new, os.path.join(clip, "02-Intro"))
+        self.assertEqual(self.fc.group_numbers(clip)["02"], "02-Intro")
+
+    def test_move_keeps_old_number_taken(self):
+        a, clip = self._two_groups()
+        projects.move_project(a, clip)
+        n = projects.create_project(self.root, "New", group="Film")
+        self.assertEqual(os.path.basename(n), "02-New")
+
+    def test_move_to_root_drops_number(self):
+        a, _ = self._two_groups()
+        new = projects.move_project(a, self.root)
+        self.assertEqual(new, os.path.join(self.root, "Intro"))
+
+    def test_move_collision_takes_no_number(self):
+        a, clip = self._two_groups()
+        projects.create_project(self.root, "Intro")
+        with self.assertRaises(FileExistsError):
+            projects.move_project(a, self.root)
+        self.assertTrue(os.path.isdir(a))
+        s = projects.create_project(self.root, "y" * 99)
+        before = self.fc.next_number(clip)
+        with self.assertRaises(ValueError) as cm:
+            projects.move_project(s, clip)
+        self.assertIn("too long", str(cm.exception))
+        self.assertTrue(os.path.isdir(s))
+        self.assertEqual(self.fc.next_number(clip), before)
+
+    def test_move_renames_project_files(self):
+        a, _ = self._two_groups()
+        write(os.path.join(a, "00.Workflows", "workflows_01-Intro.json"), b"{}")
+        write(os.path.join(a, "99.Project-Config", "config_projets_01-Intro.json"), b"{}")
+        new = projects.move_project(a, self.root)
+        self.assertTrue(os.path.isfile(os.path.join(new, "00.Workflows", "workflows_Intro.json")))
+        self.assertTrue(os.path.isfile(os.path.join(new, "99.Project-Config", "config_projets_Intro.json")))
+
+
 class WorkflowTest(unittest.TestCase):
     """Sauvegarde du workflow dans 00.Workflows, archives yyyyMMdd-HHmmss_nom.json."""
 

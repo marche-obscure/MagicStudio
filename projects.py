@@ -439,38 +439,61 @@ def write_config(project, filename, content):
 # ----------------------------------------------------------------------
 # Renommer / deplacer un projet
 # ----------------------------------------------------------------------
+def _final_cut():
+    try:
+        from . import final_cut
+    except ImportError:
+        import final_cut
+    return final_cut
+
+
+def _follow_project_files(new_path, old_name, new_name):
+    """Les fichiers nommes d'apres le projet (workflows_<nom>.json, config_projets_<nom>.json) suivent son nom."""
+    migrate_project_names(new_path)
+    for folder, fn in ((CONFIG_FOLDER, project_workflow_name), (PROJECT_CONFIG_DIR, project_config_name)):
+        _rename_if_free(os.path.join(new_path, folder), fn(old_name), fn(new_name))
+
+
 def rename_project(path, new_name):
-    """Renomme le dossier du projet ; renvoie le nouveau chemin."""
+    """
+    Renomme le dossier du projet ; renvoie le nouveau chemin. Un sous-projet numerote d'un
+    MultiProject garde son numero (choix utilisateur 01/11/2026) : le client envoie la partie
+    sans numero, le prefixe d'origine est remis ici (un numero tape reste du texte).
+    """
     if not path or not os.path.isdir(path):
         raise FileNotFoundError("Project folder not found: %s" % path)
-    new_name = validate_name(new_name)
     parent = os.path.dirname(os.path.abspath(path))
-    if new_name == os.path.basename(os.path.abspath(path)):
+    old_name = os.path.basename(os.path.abspath(path))
+    new_name = (new_name or "").strip()
+    if not new_name:
+        raise ValueError("The project name is empty.")
+    number = split_number(old_name)[0] if is_group(parent) else None
+    if number is not None:
+        new_name = numbered_name(int(number), new_name)
+    new_name = validate_name(new_name)
+    if new_name == old_name:
         raise ValueError("The new name is the current name.")
     # Sous Windows, changer seulement la casse vise le meme dossier : autorise.
-    others = [n for n in os.listdir(parent) if n.lower() == new_name.lower()
-              and n != os.path.basename(os.path.abspath(path))]
+    others = [n for n in os.listdir(parent) if n.lower() == new_name.lower() and n != old_name]
     if others:
         raise FileExistsError('A project or file named "%s" already exists.' % new_name)
     new_path = os.path.join(parent, new_name)
     os.rename(path, new_path)
     # Sous-projet d'un MultiProject : il garde son numero (Final Cut, 22/10/2026).
     if is_group(parent):
-        try:
-            from . import final_cut
-        except ImportError:
-            import final_cut
-        final_cut.rename_in_group(parent, os.path.basename(os.path.abspath(path)), new_name)
-    # Les fichiers nommes d'apres le projet suivent son nouveau nom.
-    old_name = os.path.basename(os.path.abspath(path))
-    migrate_project_names(new_path)
-    for folder, fn in ((CONFIG_FOLDER, project_workflow_name), (PROJECT_CONFIG_DIR, project_config_name)):
-        _rename_if_free(os.path.join(new_path, folder), fn(old_name), fn(new_name))
+        with _NUMBER_LOCK:
+            _final_cut().rename_in_group(parent, old_name, new_name)
+    _follow_project_files(new_path, old_name, new_name)
     return new_path
 
 
 def move_project(path, dest_parent):
-    """Deplace le dossier du projet dans dest_parent (cree si besoin) ; renvoie le nouveau chemin."""
+    """
+    Deplace le dossier du projet dans dest_parent (cree si besoin) ; renvoie le nouveau chemin.
+    Vers un MultiProject : numero suivant de ce groupe ; ailleurs : prefixe de numero retire
+    (choix utilisateur 01/11/2026). Tout est verifie avant de deplacer : refus = ni deplacement
+    ni numero consomme.
+    """
     if not path or not os.path.isdir(path):
         raise FileNotFoundError("Project folder not found: %s" % path)
     dest_parent = (dest_parent or "").strip()
@@ -478,15 +501,39 @@ def move_project(path, dest_parent):
         raise ValueError("Choose the destination folder.")
     src = _norm(path)
     dst_parent = _norm(dest_parent)
-    if dst_parent == _norm(os.path.dirname(os.path.abspath(path))):
+    src_parent = os.path.dirname(os.path.abspath(path))
+    if dst_parent == _norm(src_parent):
         raise ValueError("The project is already in this folder.")
     if dst_parent == src or dst_parent.startswith(src + os.sep):
         raise ValueError("A project cannot be moved into itself.")
-    new_path = os.path.join(dest_parent, os.path.basename(os.path.abspath(path)))
-    if os.path.exists(new_path):
-        raise FileExistsError("This folder already exists: %s" % new_path)
-    os.makedirs(dest_parent, exist_ok=True)
-    shutil.move(path, new_path)
+    old_name = os.path.basename(os.path.abspath(path))
+    rest = split_number(old_name)[1] if is_group(src_parent) else old_name
+    # Seule la marque dit qu'un dossier est un MultiProject : sans elle il ressemble a une racine
+    # (une racine qui contient des projets Simple a aussi des project_children), donc pas de numero.
+    dest_is_group = os.path.isdir(dest_parent) and is_group(dest_parent)
+    final_cut = _final_cut()
+    with _NUMBER_LOCK:
+        n = None
+        if dest_is_group:
+            mark_group(dest_parent)
+            n = final_cut.next_number(dest_parent)
+            if n > MAX_SUB_NUMBER:
+                raise ValueError("This folder of projects already has 99 sub-projects.")
+            new_name = validate_name(numbered_name(n, rest))
+        else:
+            new_name = validate_name(rest)
+        new_path = os.path.join(dest_parent, new_name)
+        if os.path.exists(new_path) or (os.path.isdir(dest_parent) and _taken(dest_parent, new_name)):
+            raise FileExistsError("This folder already exists: %s" % new_path)
+        os.makedirs(dest_parent, exist_ok=True)
+        shutil.move(path, new_path)
+        if n is not None:
+            try:
+                final_cut.claim_number(dest_parent, new_name, n)
+            except BaseException:
+                shutil.move(new_path, path)  # numero refuse : le projet revient ou il etait
+                raise
+    _follow_project_files(new_path, old_name, new_name)
     return new_path
 
 
