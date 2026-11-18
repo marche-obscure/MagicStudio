@@ -488,6 +488,96 @@ class SubNumberRenameMoveTest(unittest.TestCase):
         s = projects.create_project(self.root, "Simple")
         self.assertEqual(os.path.basename(projects.rename_project(s, "Plain")), "Plain")
 
+    def test_hand_made_prefix_is_not_the_number(self):
+        # "01-Intro" fait a la main, mais le compteur lui donne 03 : le prefixe est du texte
+        g = os.path.join(self.root, "Film")
+        for n in ("Zeta", "Alpha", "01-Intro"):
+            os.makedirs(os.path.join(g, n))
+            projects.ensure_project(os.path.join(g, n))
+            time.sleep(0.05)
+        projects.mark_group(g)
+        self.fc.group_numbers(g)
+        intro = os.path.join(g, "01-Intro")
+        self.assertEqual(projects.sub_number(intro), (None, "01-Intro"))
+        self.assertEqual(os.path.basename(projects.rename_project(intro, "X")), "X")
+        self.assertFalse(os.path.exists(os.path.join(g, projects.GROUP_MARK + ".tmp")))
+        # un numero du compteur reste reconnu
+        mid = projects.create_project(self.root, "Mid", group="Film")
+        self.assertEqual(projects.sub_number(mid), ("04", "Mid"))
+        # sortie du groupe : le nom nu garde son prefixe tape a la main
+        g2 = os.path.join(self.root, "Film2")
+        hand = os.path.join(g2, "02-Hand")
+        os.makedirs(hand)
+        projects.ensure_project(hand)
+        projects.mark_group(g2)
+        self.assertEqual(os.path.basename(projects.move_project(hand, self.root)), "02-Hand")
+
+    def test_create_existing_group_validates_before_writing(self):
+        plain = os.path.join(self.root, "Plain")
+        os.makedirs(os.path.join(plain, "Sub"))  # dossier ordinaire avec un sous-dossier
+        os.makedirs(os.path.join(plain, "Sub", "08.Images"))
+        with self.assertRaises(ValueError):
+            projects.create_project(self.root, "bad:name", group="Plain")
+        self.assertFalse(os.path.exists(os.path.join(plain, projects.GROUP_MARK)))
+        self.assertEqual(os.listdir(plain), ["Sub"])
+
+    def test_create_failure_removes_the_new_folder(self):
+        projects.create_project(self.root, "Intro", group="Film", new_group=True)
+        g = os.path.join(self.root, "Film")
+        real = projects.ensure_project
+
+        def boom(path):
+            raise OSError("disk full")
+        projects.ensure_project = boom
+        try:
+            with self.assertRaises(OSError):
+                projects.create_project(self.root, "Two", group="Film")
+        finally:
+            projects.ensure_project = real
+        self.assertEqual(os.listdir(g).count("02-Two"), 0)
+        self.assertEqual(self.fc.next_number(g), 2)
+
+    def test_create_claim_failure_removes_the_new_folder(self):
+        projects.create_project(self.root, "Intro", group="Film", new_group=True)
+        g = os.path.join(self.root, "Film")
+        real = self.fc.claim_number
+
+        def boom(*a, **k):
+            raise ValueError("number changed")
+        self.fc.claim_number = boom
+        try:
+            with self.assertRaises(ValueError):
+                projects.create_project(self.root, "Two", group="Film")
+        finally:
+            self.fc.claim_number = real
+        self.assertFalse(os.path.exists(os.path.join(g, "02-Two")))
+        self.assertTrue(os.path.isdir(os.path.join(g, "01-Intro")))
+
+    def test_mark_write_is_atomic_and_stays_hidden(self):
+        g = os.path.join(self.root, "Film")
+        os.makedirs(os.path.join(g, "A"))
+        projects.ensure_project(os.path.join(g, "A"))
+        projects.mark_group(g)
+        self.fc.group_numbers(g)
+        self.fc._write_mark(g, {"numbers": {"00": "Film"}, "last": 0})
+        self.assertEqual(sorted(os.listdir(g)), [projects.GROUP_MARK, "A"])
+        if sys.platform == "win32":
+            import ctypes
+            attrs = ctypes.windll.kernel32.GetFileAttributesW(os.path.join(g, projects.GROUP_MARK))
+            self.assertTrue(attrs & 2)
+        real = os.replace
+
+        def boom(a, b):
+            raise OSError("locked")
+        os.replace = boom
+        try:
+            with self.assertRaises(OSError):
+                self.fc._write_mark(g, {"numbers": {}})
+        finally:
+            os.replace = real
+        self.assertEqual(sorted(os.listdir(g)), [projects.GROUP_MARK, "A"])  # pas de .tmp, marque intacte
+        self.assertEqual(self.fc._read_mark(g)["numbers"], {"00": "Film"})
+
     def _hand_group(self):
         # groupe fait a la main : Zeta cree avant Alpha, puis Mid cree par le noeud
         g = os.path.join(self.root, "Film")

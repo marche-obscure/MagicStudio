@@ -413,7 +413,7 @@ def sub_projects(path, exclude=None):
     out = []
     # MultiProject : ordre des numeros du compteur ; sinon tri par nom
     if projects.project_children(path):
-        names = projects.ordered_children(path)
+        names = projects.ordered_children(path, write=False)  # Copy ne doit rien ecrire dans la source
     else:
         names = sorted(os.listdir(path), key=str.lower)
     for n in names:

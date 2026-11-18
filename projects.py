@@ -180,21 +180,39 @@ def anchor_root(root):
     return p, "/".join(parts)
 
 
-def ordered_children(group):
+def ordered_children(group, write=True):
     """
     Sous-projets d'un dossier de projets ranges par numero du compteur (celui du
     prefixe NN- et des copies _NN_ du Final Cut), puis ceux sans numero par nom.
     Separe de project_children : group_numbers l'appelle, un tri dedans ferait une boucle.
+    write=False : lecture seule (aucune marque ni numerotation ecrite).
     """
     children = project_children(group)
     if not children:
         return []  # ni projet Simple ni dossier ordinaire : ne jamais ecrire de marque
     import final_cut  # import tardif : final_cut importe projects
     with _NUMBER_LOCK:
-        numbers = final_cut.group_numbers(group)
+        numbers = final_cut.group_numbers(group) if write else final_cut._numbers_of(group)[1]
     rank = {v: int(k) for k, v in numbers.items() if k != "00" and k.isdigit()}
     return sorted(children,
                   key=lambda n: (0, rank[n], "") if n in rank else (1, 0, n.lower()))
+
+
+def sub_number(path):
+    """
+    (numero, reste) d'un sous-projet d'un MultiProject : le prefixe "NN-" n'est le numero que s'il
+    est celui du compteur de ce dossier (lecture seule) ; sinon (None, nom entier) : un dossier
+    nomme a la main "01-Intro" qui porte le numero 03 reste un nom comme les autres.
+    """
+    path = os.path.abspath(path)
+    name = os.path.basename(path)
+    number, rest = split_number(name)
+    parent = os.path.dirname(path)
+    if number is None or number == "00" or not is_group(parent):
+        return None, name
+    if _final_cut()._numbers_of(parent)[1].get(number) == name:
+        return number, rest
+    return None, name
 
 
 def project_tree(root):
@@ -320,26 +338,32 @@ def create_project(root, name, create_root=False, group=None, new_group=False):
         if new_group:
             n = 1  # groupe pas encore sur le disque : premier numero
         else:
-            mark_group(where)
-            n = final_cut.next_number(where)
+            n = final_cut.number_info(where)["number"]  # lecture seule : rien n'est ecrit avant les verifications
+            n = MAX_SUB_NUMBER + 1 if n is None else int(n)
         if n > MAX_SUB_NUMBER:
             raise ValueError("This folder of projects already has 99 sub-projects.")
         name = validate_name(numbered_name(n, name))
         if not new_group and _taken(where, name):
             raise FileExistsError('A project or file named "%s" already exists.' % name)
         made_group = False
+        made_path = False
+        path = os.path.join(where, name)
         try:
             if new_group:
                 os.makedirs(where)
                 made_group = True
                 mark_group(where)
-            path = os.path.join(where, name)
             os.makedirs(path)
+            made_path = True
             ensure_project(path)
+            if not new_group:
+                mark_group(where)
             final_cut.claim_number(where, name, n)
         except BaseException:
             if made_group:
                 shutil.rmtree(where, ignore_errors=True)  # le groupe cree par cet appel ne reste pas vide
+            elif made_path:
+                shutil.rmtree(path, ignore_errors=True)  # le dossier cree par cet appel ne reste pas
             raise
     return path
 
@@ -484,7 +508,7 @@ def rename_project(path, new_name):
     new_name = (new_name or "").strip()
     if not new_name:
         raise ValueError("The project name is empty.")
-    number = split_number(old_name)[0] if is_group(parent) else None
+    number = sub_number(path)[0]  # seulement si le prefixe est le numero du compteur
     if number is not None:
         new_name = numbered_name(int(number), new_name)
     new_name = validate_name(new_name)
@@ -524,7 +548,7 @@ def move_project(path, dest_parent):
     if dst_parent == src or dst_parent.startswith(src + os.sep):
         raise ValueError("A project cannot be moved into itself.")
     old_name = os.path.basename(os.path.abspath(path))
-    rest = split_number(old_name)[1] if is_group(src_parent) else old_name
+    rest = sub_number(path)[1]
     # Seule la marque dit qu'un dossier est un MultiProject : sans elle il ressemble a une racine
     # (une racine qui contient des projets Simple a aussi des project_children), donc pas de numero.
     dest_is_group = os.path.isdir(dest_parent) and is_group(dest_parent)

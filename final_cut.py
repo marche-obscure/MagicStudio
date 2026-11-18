@@ -66,15 +66,22 @@ def _read_mark(group):
 
 
 def _write_mark(group, data):
+    """Ecriture atomique : fichier temporaire du meme dossier puis os.replace (un lecteur ne voit jamais un fichier tronque)."""
     mark = os.path.join(group, projects.GROUP_MARK)
-    if sys.platform == "win32" and os.path.isfile(mark):
-        import ctypes
-        ctypes.windll.kernel32.SetFileAttributesW(mark, 0x80)  # NORMAL : un fichier cache refuse "w"
-    with open(mark, "w", encoding="utf-8") as f:
-        f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-    if sys.platform == "win32":
-        import ctypes
-        ctypes.windll.kernel32.SetFileAttributesW(mark, 2)  # FILE_ATTRIBUTE_HIDDEN
+    tmp = mark + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.kernel32.SetFileAttributesW(tmp, 2)  # FILE_ATTRIBUTE_HIDDEN (la marque l'etait deja)
+        os.replace(tmp, mark)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _numbers_of(group):
@@ -106,11 +113,12 @@ def group_numbers(group):
     sous-projet sans numero prend le suivant (ordre de creation des dossiers) ;
     un numero n'est jamais reattribue.
     """
-    data, numbers, last, changed = _numbers_of(group)
-    if changed:
-        data.update({"note": "Folder of projects of the MagicStudio Project node.", "numbers": numbers, "last": last})
-        _write_mark(group, data)
-    return numbers
+    with projects._NUMBER_LOCK:  # meme verrou que la creation / le Move (RLock : appels imbriques)
+        data, numbers, last, changed = _numbers_of(group)
+        if changed:
+            data.update({"note": "Folder of projects of the MagicStudio Project node.", "numbers": numbers, "last": last})
+            _write_mark(group, data)
+        return numbers
 
 
 def next_number(group):

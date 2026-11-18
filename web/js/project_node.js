@@ -2076,12 +2076,13 @@ function buildRenameMoveDialog(container, ctx) {
     let values = { rename: "", move: "" };
     let prefix = "";    // "03-" : numero fixe d'un sous-projet numerote (Rename)
     let inGroup = false; // le projet est un sous-projet d'un MultiProject
+    let plain = "";     // nom sans numero (le serveur dit si le prefixe est le numero du compteur)
     let become = null;  // {dest, number, full} lu pour le Move
     let becomeId = 0;
     let becomeTimer = 0;
 
     /** Nom sans numero du projet actuel (celui qu'il aura s'il quitte son MultiProject). */
-    const plainName = () => (inGroup ? splitNumber(baseOf(current)).rest : baseOf(current));
+    const plainName = () => plain;
 
     /** Nouveau chemin du projet ("" si la saisie ne change rien ou est invalide). */
     function target() {
@@ -2259,10 +2260,21 @@ function buildRenameMoveDialog(container, ctx) {
 
     return {
         /** inGroupNow = le projet est dans un MultiProject (un sous-projet numerote garde son numero au Rename). */
-        open(path, inGroupNow) {
+        async open(path, inGroupNow) {
             current = path;
             inGroup = !!inGroupNow;
-            const split = inGroup ? splitNumber(baseOf(path)) : { number: null, rest: baseOf(path) };
+            let split = { number: null, rest: baseOf(path) };
+            if (inGroup) {
+                // Le prefixe NN- n'est le numero que s'il est celui du compteur du dossier (lu par le serveur).
+                try {
+                    const data = await apiGet("/mmproject/sub_number?path=" + encodeURIComponent(path));
+                    split = { number: data.number || null, rest: data.rest || baseOf(path) };
+                } catch (e) {
+                    split = { number: null, rest: baseOf(path) };
+                }
+                if (current !== path) return; // une autre ouverture a pris la suite
+            }
+            plain = split.rest;
             prefix = split.number ? split.number + "-" : "";
             values = { rename: split.rest, move: parentOf(path) };
             mode = "rename";

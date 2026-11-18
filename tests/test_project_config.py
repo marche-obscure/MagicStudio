@@ -676,6 +676,15 @@ class SubProjectsOrderTest(unittest.TestCase):
         self.assertEqual(pc.sub_projects(g), ["Zeta", "Alpha", "03-Mid"])
         self.assertEqual(pc.sub_projects(g, exclude=os.path.join(g, "Alpha")), ["Zeta", "03-Mid"])
 
+    def test_sub_projects_does_not_write_the_mark(self):
+        g = os.path.join(self.root, "Folder")
+        for n in ("A", "B"):
+            os.makedirs(os.path.join(g, n))
+            projects.ensure_project(os.path.join(g, n))
+            os.makedirs(os.path.join(g, n, "08.Images"), exist_ok=True)
+        self.assertEqual(pc.sub_projects(g), ["A", "B"])
+        self.assertFalse(os.path.exists(os.path.join(g, projects.GROUP_MARK)))
+
 
 if __name__ == "__main__":
     unittest.main()

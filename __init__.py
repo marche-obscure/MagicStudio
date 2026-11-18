@@ -410,6 +410,18 @@ try:
                                   "name": os.path.basename(os.path.dirname(path)) + projects.GROUP_SEP + name
                                   if group else name})
 
+    @routes.get("/mmproject/sub_number")
+    async def mmproject_sub_number(request):
+        """Numero (lecture seule) d'un sous-projet : "NN" si son prefixe est celui du compteur, sinon null ; reste = nom sans numero."""
+        path = request.rel_url.query.get("path", "")
+        if not path or not os.path.isdir(path):
+            return web.json_response({"error": "Project folder not found: %s" % path}, status=400)
+        try:
+            number, rest = await _in_executor(projects.sub_number, path)
+        except Exception as e:
+            return _project_error(e)
+        return web.json_response({"number": number, "rest": rest})
+
     @routes.get("/mmproject/next_number")
     async def mmproject_next_number(request):
         """
