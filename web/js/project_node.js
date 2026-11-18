@@ -1388,12 +1388,13 @@ function buildCreateDialog(container, ctx) {
     let checkId = 0;
     let numInfo = null; // {number: "03"} | {number: null, full: true} | null (pas encore lu)
     let numberId = 0;
+    let creating = false; // creation en cours : Create reste grise meme si on tape
 
     /** Ligne "Will be created as: 03-<nom>", relue a chaque frappe (le numero, lui, une fois par groupe). */
     function paintNumber() {
         const full = multi && !!numInfo && numInfo.full === true;
         numberLine.style.display = multi && numInfo ? "block" : "none";
-        createBtn.disabled = full;
+        createBtn.disabled = full || creating;
         if (!multi || !numInfo) return;
         if (full) {
             numberLine.style.color = ORANGE;
@@ -1476,6 +1477,7 @@ function buildCreateDialog(container, ctx) {
     }
 
     async function create() {
+        if (creating) return;
         if (multi && numInfo && numInfo.full === true) return; // 99 sous-projets : refus deja affiche
         const name = input.value.trim();
         const err = projectNameError(name);
@@ -1500,6 +1502,7 @@ function buildCreateDialog(container, ctx) {
                 return;
             }
         }
+        creating = true;
         createBtn.disabled = true;
         error.textContent = "";
         try {
@@ -1509,6 +1512,7 @@ function buildCreateDialog(container, ctx) {
             error.textContent = e.message;
             input.style.borderColor = ORANGE;
         } finally {
+            creating = false;
             createBtn.disabled = multi && !!numInfo && numInfo.full === true;
         }
     }
@@ -2073,25 +2077,27 @@ function buildRenameMoveDialog(container, ctx) {
     }
 
     /** Move : lit le numero du dossier d'arrivee (apres une courte pause de frappe). */
-    function loadBecome() {
+    function loadBecome(now) {
         clearTimeout(becomeTimer);
         const id = ++becomeId;
         const v = input.value.trim();
         become = null;
-        if (mode === "move" && v) {
-            becomeTimer = setTimeout(async () => {
-                let data = { number: null };
-                try {
-                    data = await apiGet("/mmproject/next_number?dest=" + encodeURIComponent(v));
-                } catch (e) {
-                    data = { number: null };
-                }
-                if (id !== becomeId) return;
-                become = { dest: v, number: data.number || null, full: data.full === true };
-                update();
-            }, 250);
-        }
         paintBecome();
+        if (mode !== "move" || !v) return Promise.resolve();
+        const fetchIt = async () => {
+            let data = { number: null };
+            try {
+                data = await apiGet("/mmproject/next_number?dest=" + encodeURIComponent(v));
+            } catch (e) {
+                data = { number: null };
+            }
+            if (id !== becomeId) return;
+            become = { dest: v, number: data.number || null, full: data.full === true };
+            update();
+        };
+        if (now === true) return fetchIt(); // Move demande avant la fin de la pause : lecture immediate
+        becomeTimer = setTimeout(fetchIt, 250);
+        return Promise.resolve();
     }
 
     function paintBecome() {
@@ -2142,13 +2148,17 @@ function buildRenameMoveDialog(container, ctx) {
         const v = input.value.trim();
         let err = "";
         if (mode === "rename") {
-            err = projectNameError(prefix + v) || (prefix + v === baseOf(current) ? "The new name is the current name." : "");
+            err = (!v ? "The project name is empty." : projectNameError(prefix + v)) || (prefix + v === baseOf(current) ? "The new name is the current name." : "");
         } else if (!v) {
             err = "Choose the destination folder.";
         } else if (samePath(v, parentOf(current))) {
             err = "The project is already in this folder.";
-        } else if (become && become.dest === v && become.full) {
-            err = "This folder of projects already has 99 sub-projects.";
+        }
+        if (!err && mode === "move") {
+            // Le nom d'arrivee vient du serveur : on attend la lecture en cours, ou on la fait tout de suite.
+            if (!(become && become.dest === v)) await loadBecome(true);
+            if (input.value.trim() !== v) return; // la saisie a change pendant l'attente
+            if (become && become.dest === v && become.full) err = "This folder of projects already has 99 sub-projects.";
         }
         if (err) {
             error.textContent = err;

@@ -962,6 +962,69 @@ class NextNumberRouteTest(unittest.TestCase):
         self.assertNotIn("claim_number", body)
         self.assertIn("is_group", body)  # dest= : meme regle que move_project (marque seulement)
 
+    def test_route_refuses_non_multiproject_group(self):
+        _, body = self.route_text()
+        self.assertIn("project_children", body)
+
+    def snapshot(self, folder):
+        mark = os.path.join(folder, projects.GROUP_MARK)
+        if not os.path.exists(mark):
+            return None
+        with open(mark, "rb") as f:
+            return f.read()
+
+    def test_number_info_writes_nothing(self):
+        import final_cut
+        tmp = tempfile.mkdtemp()
+        try:
+            simple = os.path.join(tmp, "Simple")
+            os.makedirs(os.path.join(simple, "00.Workflows"))
+            plain = os.path.join(tmp, "Plain")
+            os.makedirs(os.path.join(plain, "docs"))
+            marked = os.path.join(tmp, "Marked")
+            for n in ("a", "b"):
+                os.makedirs(os.path.join(marked, n, "00.Workflows"))
+            projects.mark_group(marked)
+            final_cut.group_numbers(marked)  # a = 01, b = 02 (ecrit ici, avant la mesure)
+            os.makedirs(os.path.join(marked, "c", "00.Workflows"))  # pas encore numerote
+            old = os.path.join(tmp, "Old")
+            os.makedirs(os.path.join(old, "x", "00.Workflows"))
+            projects.mark_group(old)  # marque au vieux format texte
+            before = {f: self.snapshot(f) for f in (simple, plain, marked, old)}
+            self.assertEqual(final_cut.number_info(marked), {"number": "04"})
+            self.assertEqual(final_cut.number_info(old), {"number": "02"})
+            final_cut.number_info(simple)
+            final_cut.number_info(plain)
+            after = {f: self.snapshot(f) for f in (simple, plain, marked, old)}
+            self.assertEqual(before, after)
+            self.assertIsNone(after[simple])
+            self.assertIsNone(after[plain])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_number_info_equals_next_number(self):
+        import final_cut
+        tmp = tempfile.mkdtemp()
+        try:
+            hand = os.path.join(tmp, "Hand")  # marque faite a la main, un numero saute
+            for n in ("a", "b", "c"):
+                os.makedirs(os.path.join(hand, n, "00.Workflows"))
+            with open(os.path.join(hand, projects.GROUP_MARK), "w", encoding="utf-8") as f:
+                f.write('{"numbers": {"00": "Hand", "05": "a"}, "last": 6}')
+            old = os.path.join(tmp, "Old")
+            os.makedirs(os.path.join(old, "x", "00.Workflows"))
+            projects.mark_group(old)
+            new = os.path.join(tmp, "New")
+            os.makedirs(os.path.join(new, "x", "00.Workflows"))
+            projects.mark_group(new)
+            final_cut.group_numbers(new)
+            os.makedirs(os.path.join(new, "y", "00.Workflows"))
+            for g in (hand, old, new):
+                read_only = final_cut.number_info(g)["number"]
+                self.assertEqual(read_only, "%02d" % final_cut.next_number(g), g)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_number_info(self):
         import final_cut
         tmp = tempfile.mkdtemp()

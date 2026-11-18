@@ -427,6 +427,9 @@ try:
             elif query.get("group"):
                 root = await _in_executor(_projects_root, query.get("root", ""))
                 group = os.path.join(root, projects.validate_name(query.get("group")))
+                # Un projet Simple ou un dossier ordinaire n'est pas un MultiProject : pas de numero.
+                if os.path.isdir(group) and not (projects.is_group(group) or projects.project_children(group)):
+                    return web.json_response({"number": None})
                 info = await _in_executor(final_cut.number_info, group)
             else:
                 return web.json_response({"number": None})

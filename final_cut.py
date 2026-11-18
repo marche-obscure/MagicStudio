@@ -77,11 +77,10 @@ def _write_mark(group, data):
         ctypes.windll.kernel32.SetFileAttributesW(mark, 2)  # FILE_ATTRIBUTE_HIDDEN
 
 
-def group_numbers(group):
+def _numbers_of(group):
     """
-    Numeros d'un MultiProject : {"00": projet mere, "01": sous-projet...}. Un
-    sous-projet sans numero prend le suivant (ordre de creation des dossiers) ;
-    un numero n'est jamais reattribue.
+    Numeros d'un MultiProject, calcules sans rien ecrire : (data, numbers, last, changed).
+    Un sous-projet sans numero prend le suivant (ordre de creation des dossiers).
     """
     data = _read_mark(group)
     numbers = data.get("numbers") if isinstance(data.get("numbers"), dict) else {}
@@ -97,6 +96,18 @@ def group_numbers(group):
         numbers["%02d" % last] = n
         changed = True
     if changed or data.get("last") != last:
+        changed = True
+    return data, numbers, last, changed
+
+
+def group_numbers(group):
+    """
+    Numeros d'un MultiProject : {"00": projet mere, "01": sous-projet...}. Un
+    sous-projet sans numero prend le suivant (ordre de creation des dossiers) ;
+    un numero n'est jamais reattribue.
+    """
+    data, numbers, last, changed = _numbers_of(group)
+    if changed:
         data.update({"note": "Folder of projects of the MagicStudio Project node.", "numbers": numbers, "last": last})
         _write_mark(group, data)
     return numbers
@@ -112,11 +123,14 @@ def next_number(group):
 
 def number_info(group):
     """
-    Numero que recevrait le prochain sous-projet du dossier `group`, sans rien reserver :
+    Numero que recevrait le prochain sous-projet du dossier `group`, SANS rien ecrire
+    (ni marque, ni numerotation des sous-projets sans numero) :
     {"number": "03"}, "01" si le dossier n'existe pas (nouveau MultiProject),
-    {"number": None, "full": True} au-dela de 99.
+    {"number": None, "full": True} au-dela de 99. Meme valeur que next_number.
     """
-    n = next_number(group)
+    n = 1
+    if os.path.isdir(group):
+        n = _numbers_of(group)[2] + 1
     if n > projects.MAX_SUB_NUMBER:
         return {"number": None, "full": True}
     return {"number": "%02d" % n}
