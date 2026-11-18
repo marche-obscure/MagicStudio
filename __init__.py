@@ -414,8 +414,10 @@ try:
     async def mmproject_sub_number(request):
         """Numero (lecture seule) d'un sous-projet : "NN" si son prefixe est celui du compteur, sinon null ; reste = nom sans numero."""
         path = request.rel_url.query.get("path", "")
-        if not path or not os.path.isdir(path):
-            return web.json_response({"error": "Project folder not found: %s" % path}, status=400)
+        try:
+            projects.require_project(path)  # seulement un vrai projet : sinon rien a dire
+        except (ValueError, FileNotFoundError):
+            return web.json_response({"number": None})
         try:
             number, rest = await _in_executor(projects.sub_number, path)
         except Exception as e:

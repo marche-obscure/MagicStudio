@@ -556,8 +556,8 @@ def move_project(path, dest_parent):
     with _NUMBER_LOCK:
         n = None
         if dest_is_group:
-            mark_group(dest_parent)
-            n = final_cut.next_number(dest_parent)
+            n = final_cut.number_info(dest_parent)["number"]  # lecture seule : rien n'est ecrit avant les verifications
+            n = MAX_SUB_NUMBER + 1 if n is None else int(n)
             if n > MAX_SUB_NUMBER:
                 raise ValueError("This folder of projects already has 99 sub-projects.")
             new_name = validate_name(numbered_name(n, rest))
@@ -567,6 +567,8 @@ def move_project(path, dest_parent):
         if os.path.exists(new_path) or (os.path.isdir(dest_parent) and _taken(dest_parent, new_name)):
             raise FileExistsError("This folder already exists: %s" % new_path)
         os.makedirs(dest_parent, exist_ok=True)
+        if n is not None:
+            mark_group(dest_parent)
         shutil.move(path, new_path)
         if n is not None:
             try:

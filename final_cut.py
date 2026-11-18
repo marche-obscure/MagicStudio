@@ -84,10 +84,11 @@ def _write_mark(group, data):
         raise
 
 
-def _numbers_of(group):
+def _numbers_of(group, skip=None):
     """
     Numeros d'un MultiProject, calcules sans rien ecrire : (data, numbers, last, changed).
-    Un sous-projet sans numero prend le suivant (ordre de creation des dossiers).
+    Un sous-projet sans numero prend le suivant (ordre de creation des dossiers) ;
+    skip = dossier laisse de cote (le nouveau sous-projet, numerote en dernier).
     """
     data = _read_mark(group)
     numbers = data.get("numbers") if isinstance(data.get("numbers"), dict) else {}
@@ -95,7 +96,7 @@ def _numbers_of(group):
     changed = numbers.get("00") != os.path.basename(os.path.abspath(group))
     numbers["00"] = os.path.basename(os.path.abspath(group))
     known = {v for k, v in numbers.items() if k != "00"}
-    subs = [n for n in projects.project_children(group) if n not in known]
+    subs = [n for n in projects.project_children(group) if n not in known and n != skip]
     subs.sort(key=lambda n: (os.path.getctime(os.path.join(group, n)), n.lower()))
     last = max([int(k) for k in numbers if k.isdigit()] + [int(data.get("last") or 0)])
     for n in subs:
@@ -149,22 +150,25 @@ def claim_number(group, name, expected=None):
     Reserve le prochain numero pour le sous-projet `name` (marque du MultiProject) ; renvoie le numero.
     Si le dossier `name` existe deja, group_numbers l'a deja range : on renvoie son numero.
     """
-    numbers = group_numbers(group)
-    for k, v in numbers.items():
-        if k != "00" and v == name:
-            if expected is not None and int(k) != expected:
-                raise ValueError("Sub-project number changed during creation: expected %02d, got %s." % (expected, k))
-            return int(k)
-    n = next_number(group)
-    if expected is not None and n != expected:
-        raise ValueError("Sub-project number changed during creation: expected %02d, got %02d." % (expected, n))
-    if n > projects.MAX_SUB_NUMBER:
-        raise ValueError("This folder of projects already has 99 sub-projects.")
-    data = _read_mark(group)
-    numbers["%02d" % n] = name
-    data.update({"note": "Folder of projects of the MagicStudio Project node.", "numbers": numbers, "last": n})
-    _write_mark(group, data)
-    return n
+    with projects._NUMBER_LOCK:
+        known = _read_mark(group).get("numbers")
+        if isinstance(known, dict):
+            for k, v in known.items():
+                if k != "00" and v == name and k.isdigit():
+                    if expected is not None and int(k) != expected:
+                        raise ValueError("Sub-project number changed during creation: expected %02d, got %s." % (expected, k))
+                    return int(k)
+        # Les autres sous-projets sans numero sont ranges d'abord (ordre habituel) ; `name` prend le dernier.
+        data, numbers, last, _ = _numbers_of(group, skip=name)
+        n = last + 1
+        if expected is not None and n != expected:
+            raise ValueError("Sub-project number changed during creation: expected %02d, got %02d." % (expected, n))
+        if n > projects.MAX_SUB_NUMBER:
+            raise ValueError("This folder of projects already has 99 sub-projects.")
+        numbers["%02d" % n] = name
+        data.update({"note": "Folder of projects of the MagicStudio Project node.", "numbers": numbers, "last": n})
+        _write_mark(group, data)
+        return n
 
 
 def rename_in_group(group, old, new):

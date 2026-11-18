@@ -633,6 +633,25 @@ class SubNumberRenameMoveTest(unittest.TestCase):
         new = projects.move_project(a, self.root)
         self.assertEqual(new, os.path.join(self.root, "Intro"))
 
+    def test_refused_move_writes_nothing_in_destination(self):
+        a, _ = self._two_groups()
+        # destination sans marque : jamais marquee par un Move refuse
+        plain = os.path.join(self.root, "Plain")
+        os.makedirs(os.path.join(plain, "Intro"))
+        with self.assertRaises(FileExistsError):
+            projects.move_project(a, plain)
+        self.assertFalse(os.path.exists(os.path.join(plain, projects.GROUP_MARK)))
+        # destination marquee (ancienne marque texte) : sous-projets sans numero non numerotes par un refus
+        g = os.path.join(self.root, "Hand")
+        for n in ("Zeta", "Alpha", "04-Intro"):
+            os.makedirs(os.path.join(g, n, "00.Workflows"))
+        projects.mark_group(g)
+        before = open(os.path.join(g, projects.GROUP_MARK), "rb").read()
+        with self.assertRaises(FileExistsError):
+            projects.move_project(a, g)
+        self.assertEqual(open(os.path.join(g, projects.GROUP_MARK), "rb").read(), before)
+        self.assertTrue(os.path.isdir(a))
+
     def test_move_collision_takes_no_number(self):
         a, clip = self._two_groups()
         projects.create_project(self.root, "Intro")

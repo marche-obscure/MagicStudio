@@ -20,7 +20,7 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, NO_PROMPT, promptMissing, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
-    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint, splitNumber, numberedName,
+    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint, numberedName,
 } from "./project_paths.js";
 import { STAR_GOLD, STAR_TIP, releaseComparePlayers, releaseComparePlayersOf } from "./compare_pure.js";
 import { DROP_TARGETS, dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
