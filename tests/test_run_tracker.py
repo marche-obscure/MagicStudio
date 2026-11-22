@@ -115,6 +115,29 @@ class TrackerTest(unittest.TestCase):
         self.assertTrue(called.wait(5))
         self.assertEqual(seen, [("r.json", "error", self.out, None)])
 
+    def test_busy_while_a_run_is_being_recorded(self):
+        # Archive de projet (22/11/2026) : rien n'est supprime tant qu'une fin de Run s'enregistre.
+        entered, release = threading.Event(), threading.Event()
+
+        def slow_finish(run_file, files, status, output_dir, now, duration):
+            entered.set()
+            release.wait(5)
+            return {"status": status}
+
+        t = rt.RunTracker(lambda: self.out, slow_finish)
+        self.assertFalse(t.busy())
+        t.handle("execution_start", {"prompt_id": "b"})
+        t.handle("executed", {"prompt_id": "b", "output": {"mmrun": ["r.json"]}})
+        t.handle("execution_success", {"prompt_id": "b"})
+        self.assertTrue(t.busy())  # des l'evenement de fin, avant meme que le fil prenne le verrou
+        self.assertTrue(entered.wait(5))
+        self.assertTrue(t.busy())
+        release.set()
+        deadline = time.time() + 5
+        while t.busy() and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertFalse(t.busy())
+
     def test_only_the_last_runs_are_kept(self):
         for i in range(rt.KEEP + 5):
             self.tracker.on_message("execution_start", {"prompt_id": str(i)})

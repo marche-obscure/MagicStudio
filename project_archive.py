@@ -32,6 +32,13 @@ class BusyError(Exception):
     """Un autre travail d'archive est deja en cours."""
 
 
+class RunBusyError(ValueError):
+    """Un Run de ComfyUI tourne ou attend : rien n'est supprime (la route repond 409)."""
+
+    def __init__(self, msg="Wait for the end of the run."):
+        super().__init__(msg)
+
+
 # ---- travail unique et progression -------------------------------------------------
 
 _JOB = threading.Lock()
@@ -230,7 +237,7 @@ def make_zip(project, scope, mode, folder, now=None):
                     "files": len(files), "size": size, "source": t["folder"]}
         _report("zip", 0, len(files), t["name"])
         try:
-            with zipfile.ZipFile(part, "w", allowZip64=True) as zf:
+            with zipfile.ZipFile(part, "w", allowZip64=True, strict_timestamps=False) as zf:
                 info = zipfile.ZipInfo(MANIFEST, now.timetuple()[:6])
                 zf.writestr(info, json.dumps(manifest, ensure_ascii=False, indent=2),
                             compress_type=zipfile.ZIP_DEFLATED)
@@ -260,12 +267,22 @@ def verify(zip_path, folder):
         except (OSError, zipfile.BadZipFile) as e:
             raise ValueError("The zip is incomplete: cannot be read (%s)." % e)
         with zf:
-            _report("verify", 0, len(zf.infolist()), os.path.basename(zip_path))
-            bad = zf.testzip()
-            if bad is not None:
-                raise ValueError("The zip is incomplete: damaged entry %s." % bad)
+            entries = zf.infolist()
+            name = os.path.basename(zip_path)
+            _report("verify", 0, len(entries), name)
+            # Relecture complete par blocs (CRC verifie a la fin de chaque entree), avec progression ;
+            # toute erreur (zlib.error, EOFError, BadZipFile...) = zip incomplet.
+            for i, zi in enumerate(entries, 1):
+                if not zi.is_dir():
+                    try:
+                        with zf.open(zi) as src:
+                            while src.read(1024 * 1024):
+                                pass
+                    except Exception as e:
+                        raise ValueError("The zip is incomplete: damaged entry %s (%s)." % (zi.filename, e))
+                _report("verify", i, len(entries), name)
             got, got_dirs = set(), set()
-            for zi in zf.infolist():
+            for zi in entries:
                 if zi.filename == MANIFEST:
                     continue
                 if not zi.filename.startswith(prefix):
@@ -353,6 +370,29 @@ def _writable_then_retry(func, path, _exc):
     func(path)
 
 
+CHECK_SUFFIX = ".mmarchive-check"
+
+
+def _check_not_open(folder):
+    """Un fichier ouvert (lecteur d'un autre noeud, Explorateur...) bloque le renommage du dossier
+    sous Windows : on le renomme puis on le remet tout de suite, AVANT de toucher a quoi que ce soit,
+    pour ne jamais laisser un projet a moitie supprime."""
+    probe = folder + CHECK_SUFFIX
+    if os.path.lexists(probe):
+        raise ValueError("A folder named %s already exists: nothing was deleted; the verified zip is kept."
+                         % os.path.basename(probe))
+    try:
+        os.rename(folder, probe)
+    except OSError:
+        raise ValueError("A file of the project is open (player, Explorer\u2026): close it and try again. "
+                         "Nothing was deleted; the verified zip is kept.")
+    try:
+        os.rename(probe, folder)
+    except OSError as e:
+        raise ValueError("The project folder could not be renamed back (%s): it is now %s. "
+                         "Nothing was deleted; the verified zip is kept." % (e, probe))
+
+
 def remove_target(t, how, input_dir, trash_fn, fits_fn=trash_fits):
     """Retire le lien Final-Cut_<nom> (projet entier seulement) puis le dossier."""
     if how not in ("trash", "permanent"):
@@ -370,14 +410,19 @@ def remove_target(t, how, input_dir, trash_fn, fits_fn=trash_fits):
         if fits is None:  # Windows supprimerait pour de bon, sans le dire : on refuse
             raise ValueError("Windows does not tell whether the Recycle Bin can hold this project: "
                              "nothing was deleted. Choose Delete permanently to free the space.")
+    _check_not_open(folder)
     try:
         try:
             from . import final_cut
         except ImportError:
             import final_cut
         if t["kind"] == "project":
-            link = os.path.join(input_dir, "Final-Cut_" + t["name"])
-            if os.path.lexists(link) and final_cut._is_link(link):
+            # Seulement le lien qui mene au dossier Final-Cut_ de ce projet (jamais celui d'un autre
+            # projet du meme nom, jamais un vrai dossier).
+            link = os.path.join(input_dir, final_cut.PREFIX + t["name"])
+            own = os.path.join(folder, final_cut.PREFIX + t["name"])
+            if (os.path.lexists(link) and final_cut._is_link(link)
+                    and os.path.normcase(os.path.realpath(link)) == os.path.normcase(os.path.realpath(own))):
                 final_cut.remove_link(link)
         if how == "trash":
             trash_fn([folder])
@@ -390,19 +435,33 @@ def remove_target(t, how, input_dir, trash_fn, fits_fn=trash_fits):
     return {"removed": True, "how": how}
 
 
-def archive(project, scope, how, folder, input_dir, trash_fn, now=None, fits_fn=trash_fits):
-    """zip -> relecture -> suppression, sous un seul travail. Zip garde si la suppression echoue."""
+def make_verified(project, scope, mode, folder, now=None):
+    """make_zip puis verify ; toute erreur de relecture retire le zip (jamais un zip douteux garde)."""
     t = target_of(project, scope)
+    made = make_zip(project, scope, mode, folder, now)
+    try:
+        verify(made["zip"], t["folder"])
+    except Exception as e:
+        with contextlib.suppress(OSError):
+            os.remove(made["zip"])
+        if isinstance(e, ValueError):
+            raise
+        raise ValueError("The zip could not be checked (%s): nothing was deleted." % e)
+    return made
+
+
+def archive(project, scope, how, folder, input_dir, trash_fn, now=None, fits_fn=trash_fits, busy_fn=None):
+    """zip -> relecture -> suppression, sous un seul travail. Zip garde si la suppression echoue.
+    busy_fn() vrai = un Run tourne ou attend : verifie au debut et juste avant la suppression."""
+    t = target_of(project, scope)
+    if busy_fn and busy_fn():
+        raise RunBusyError()
     with job("zip", 0, t["name"]):
-        made = make_zip(project, scope, "archive", folder, now)
-        try:
-            verify(made["zip"], t["folder"])
-        except (ValueError, OSError) as e:
-            with contextlib.suppress(OSError):
-                os.remove(made["zip"])
-            if isinstance(e, ValueError):
-                raise
-            raise ValueError("The zip could not be checked (%s): nothing was deleted." % e)
+        made = make_verified(project, scope, "archive", folder, now)
+        if busy_fn and busy_fn():
+            # Un Run a pu commencer pendant le zip : on ne supprime rien, le zip verifie reste.
+            raise RunBusyError("Wait for the end of the run. Nothing was deleted; the verified zip is kept: %s"
+                               % os.path.basename(made["zip"]))
         _report("remove", 0, 0, t["name"])
         remove_target(t, how, input_dir, trash_fn, fits_fn)
     return {"zip": made["zip"], "size": made["size"], "files": made["files"], "removed": True}
@@ -492,7 +551,8 @@ def restore_target(zip_path, root, name=None, independent=False):
         mother = os.path.join(root, group)
         dest = os.path.join(mother, final)
         if projects.is_group(mother):
-            if independent and number is not None and _number_taken(mother, number)                     and not os.path.lexists(dest):
+            if (independent and number is not None and _number_taken(mother, number)
+                    and not os.path.lexists(dest)):
                 dest = os.path.join(root, final)
             elif (not os.path.lexists(dest) and number is not None and not independent
                     and _number_taken(mother, number)):

@@ -671,7 +671,8 @@ try:
         return project_archive
 
     def _archive_error(e):
-        if isinstance(e, _archive_mod().BusyError):
+        pa = _archive_mod()
+        if isinstance(e, (pa.BusyError, pa.RunBusyError)):
             return web.json_response({"error": str(e)}, status=409)
         return _project_error(e)
 
@@ -726,7 +727,7 @@ try:
         try:
             body = await request.json()
             projects.require_project(body.get("project", ""))  # vrai projet seulement
-            if _comfy_busy():
+            if _archive_busy():
                 return web.json_response({"error": "Wait for the end of the run."}, status=409)
             pa = _archive_mod()
             project, scope, mode = body.get("project", ""), body.get("scope", ""), body.get("mode", "")
@@ -736,17 +737,8 @@ try:
             def work():
                 if mode == "backup":
                     with pa.job("zip"):  # rien ne passe entre l'ecriture et la relecture
-                        made = pa.make_zip(project, scope, "backup", folder)
-                        try:
-                            pa.verify(made["zip"], pa.target_of(project, scope)["folder"])
-                        except (ValueError, OSError) as e:
-                            try:
-                                os.remove(made["zip"])
-                            except OSError:
-                                pass
-                            if isinstance(e, ValueError):
-                                raise
-                            raise ValueError("The zip could not be checked (%s)." % e)
+                        # make_verified retire le zip sur toute erreur de relecture (zlib.error, EOFError...)
+                        made = pa.make_verified(project, scope, "backup", folder)
                     return {"zip": made["zip"], "size": made["size"], "files": made["files"], "removed": False}
                 if mode == "archive":
                     how = body.get("how", "")
@@ -754,7 +746,9 @@ try:
                     if how == "trash" and trash_fn is None:
                         raise ValueError("The Recycle Bin is not available here.")
                     import folder_paths
-                    return pa.archive(project, scope, how, folder, folder_paths.get_input_directory(), trash_fn)
+                    # Run lance ou fin de Run qui s'enregistre : verifie aussi juste avant la suppression.
+                    return pa.archive(project, scope, how, folder, folder_paths.get_input_directory(), trash_fn,
+                                      busy_fn=_archive_busy)
                 raise ValueError("Unknown mode: %s" % mode)
             data = await _in_executor(work)
         except Exception as e:
@@ -788,7 +782,7 @@ try:
         """Restaure un zip du dossier des archives dans un NOUVEAU dossier (rien n'est ecrase)."""
         try:
             body = await request.json()
-            if _comfy_busy():
+            if _archive_busy():
                 return web.json_response({"error": "Wait for the end of the run."}, status=409)
             pa = _archive_mod()
             zip_path = pa.zip_in_folder(body.get("zip", ""), pa.load_settings()["folder"])  # zip du dossier des archives
@@ -876,6 +870,20 @@ try:
             return bool(running)
         except Exception:
             return True  # file illisible : on garde les Runs "running"
+
+    def _archive_busy():
+        """Archive / restauration (22/11/2026) : un Run tourne (_comfy_busy()), attend dans la file,
+        ou sa fin s'enregistre encore (run_tracker : copie / reduction video vers le projet)."""
+        if _comfy_busy():
+            return True
+        try:
+            _running, pending = PromptServer.instance.prompt_queue.get_current_queue()
+            if pending:
+                return True
+        except Exception:
+            return True
+        tracker = globals().get("_run_tracker")
+        return bool(tracker is not None and tracker.busy())
 
     @routes.post("/mmproject/purge")
     async def mmproject_purge(request):

@@ -130,6 +130,16 @@ class ZipTest(ArchiveBase):
                          ("sub", "01-A", "G", "01", "backup"))
         self.assertEqual(os.path.basename(res["zip"]), "G - 01-A_20261122-090507.zip")
 
+    def test_make_zip_accepts_pre_1980_file(self):
+        old = self.put(self.simple, "08.Images/old.png", b"old")
+        ts = datetime(1975, 1, 1).timestamp()
+        try:
+            os.utime(old, (ts, ts))
+        except (OSError, OverflowError):
+            self.skipTest("cannot date a file before 1980 here")
+        made = pa.make_zip(self.simple, "whole", "backup", self.arch, now=NOW)
+        pa.verify(made["zip"], self.simple)
+
     def test_make_zip_never_overwrites(self):
         first = pa.make_zip(self.simple, "whole", "archive", self.arch, now=NOW)
         second = pa.make_zip(self.simple, "whole", "archive", self.arch, now=NOW)
@@ -250,6 +260,68 @@ class VerifyTest(ArchiveBase):
         with self.assertRaises(ValueError):
             pa.verify(res["zip"], self.simple)
 
+    def corrupt_deflate(self, z, rel):
+        """Abime les donnees compressees de l'entree rel (en-tetes intacts)."""
+        with zipfile.ZipFile(z) as zf:
+            zi = zf.getinfo(rel)
+            self.assertEqual(zi.compress_type, zipfile.ZIP_DEFLATED)
+            off, size = zi.header_offset, zi.compress_size
+        with open(z, "r+b") as f:
+            f.seek(off + 26)
+            n, m = int.from_bytes(f.read(2), "little"), int.from_bytes(f.read(2), "little")
+            start = off + 30 + n + m
+            f.seek(start)
+            f.write(bytes((b ^ 0xA5) for b in f.read(size))[:size])
+
+    def test_verify_corrupt_deflate_data(self):
+        self.put(self.simple, "00.Workflows/w.json", b"{" + b"abc" * 5000 + b"}")
+        made = pa.make_zip(self.simple, "whole", "backup", self.arch, now=NOW)
+        self.corrupt_deflate(made["zip"], "P/00.Workflows/w.json")
+        with self.assertRaises(ValueError) as cm:
+            pa.verify(made["zip"], self.simple)
+        self.assertIn("The zip is incomplete", str(cm.exception))
+
+    def test_archive_removes_corrupt_zip(self):
+        self.put(self.simple, "00.Workflows/w.json", b"{" + b"abc" * 5000 + b"}")
+        real = pa.make_zip
+
+        def make_then_break(*a, **k):
+            made = real(*a, **k)
+            self.corrupt_deflate(made["zip"], "P/00.Workflows/w.json")
+            return made
+        with mock.patch.object(pa, "make_zip", side_effect=make_then_break):
+            with self.assertRaises(ValueError) as cm:
+                pa.archive(self.simple, "whole", "permanent", self.arch, os.path.join(self.tmp, "in"),
+                           fake_trash(), now=NOW)
+        self.assertIn("The zip is incomplete", str(cm.exception))
+        self.assertTrue(os.path.isdir(self.simple))
+        self.assertEqual(os.listdir(self.arch), [])
+
+    def test_archive_removes_zip_on_unexpected_error(self):
+        with mock.patch.object(pa, "verify", side_effect=EOFError("eof")):
+            with self.assertRaises(ValueError) as cm:
+                pa.archive(self.simple, "whole", "permanent", self.arch, os.path.join(self.tmp, "in"),
+                           fake_trash(), now=NOW)
+        self.assertIn("could not be checked", str(cm.exception))
+        self.assertTrue(os.path.isdir(self.simple))
+        self.assertEqual(os.listdir(self.arch), [])
+
+    def test_verify_reports_progress(self):
+        made = pa.make_zip(self.simple, "whole", "backup", self.arch, now=NOW)
+        seen = []
+        real = pa._report
+
+        def spy(step, done, total, name=""):
+            if step == "verify":
+                seen.append((done, total))
+            return real(step, done, total, name)
+        with mock.patch.object(pa, "_report", side_effect=spy):
+            pa.verify(made["zip"], self.simple)
+        with zipfile.ZipFile(made["zip"]) as zf:
+            n = len(zf.infolist())
+        self.assertEqual(seen[-1], (n, n))
+        self.assertEqual([d for d, _t in seen if d], list(range(1, n + 1)))
+
     def test_verify_bad_zip(self):
         bad = os.path.join(self.arch, "bad.zip")
         with open(bad, "wb") as f:
@@ -299,8 +371,11 @@ class RemoveTest(ArchiveBase):
         self.input = os.path.join(self.tmp, "input")
         os.makedirs(self.input)
 
-    def make_link(self, name, target):
+    def make_link(self, name, owner):
+        """Jonction input/Final-Cut_<name> -> <owner>/Final-Cut_<name> (comme final_cut.ensure_link)."""
         link = os.path.join(self.input, "Final-Cut_" + name)
+        target = os.path.join(owner, "Final-Cut_" + name)
+        os.makedirs(target, exist_ok=True)
         if sys.platform == "win32":
             r = subprocess.run(["cmd", "/c", "mklink", "/J", link, target], capture_output=True)
             if r.returncode != 0:
@@ -402,6 +477,80 @@ class RemoveTest(ArchiveBase):
         self.assertFalse(os.path.exists(self.group))
         self.assertFalse(os.path.lexists(link))
 
+    def test_link_to_another_project_not_removed(self):
+        other = os.path.join(self.tmp, "Ailleurs", "P")
+        os.makedirs(other)
+        link = self.make_link("P", other)
+        pa.archive(self.simple, "whole", "permanent", self.arch, self.input, fake_trash(), now=NOW)
+        self.assertFalse(os.path.exists(self.simple))
+        self.assertTrue(os.path.lexists(link))  # Final-Cut_P d'un autre projet du meme nom
+        self.assertTrue(os.path.isdir(os.path.join(other, "Final-Cut_P")))
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows only")
+    def test_open_file_blocks_removal_before_anything(self):
+        link = self.make_link("P", self.simple)
+        held = self.put(self.simple, "08.Images/held.png", b"held")
+        called = []
+        with open(held, "rb"):
+            try:  # le renommage est-il vraiment refuse sur ce volume ?
+                os.rename(self.simple, self.simple + ".probe")
+                os.rename(self.simple + ".probe", self.simple)
+                self.skipTest("rename not blocked by an open file on this volume")
+            except OSError:
+                pass
+            with self.assertRaises(ValueError) as cm:
+                pa.archive(self.simple, "whole", "trash", self.arch, self.input, fake_trash(called),
+                           now=NOW, fits_fn=lambda f, s: True)
+        self.assertIn("is open", str(cm.exception))
+        self.assertIn("verified zip is kept", str(cm.exception))
+        self.assertEqual(called, [])
+        self.assertTrue(os.path.isfile(held))
+        self.assertTrue(os.path.lexists(link))  # la jonction n'a pas ete retiree
+        self.assertFalse(os.path.exists(self.simple + pa.CHECK_SUFFIX))
+        self.assertEqual(len(pa.list_archives(self.arch)), 1)
+
+    def test_rename_back_failure_names_folder(self):
+        real = os.rename
+        calls = []
+
+        def flaky(a, b):
+            calls.append((a, b))
+            if len(calls) == 2:
+                raise OSError("locked")
+            return real(a, b)
+        with mock.patch.object(pa.os, "rename", side_effect=flaky):
+            with self.assertRaises(ValueError) as cm:
+                pa.remove_target(pa.target_of(self.simple, "whole"), "permanent", self.input, fake_trash())
+        self.assertIn(self.simple + pa.CHECK_SUFFIX, str(cm.exception))
+        self.assertTrue(os.path.isdir(self.simple + pa.CHECK_SUFFIX))
+
+    def test_busy_at_start_does_nothing(self):
+        with self.assertRaises(pa.RunBusyError) as cm:
+            pa.archive(self.simple, "whole", "permanent", self.arch, self.input, fake_trash(),
+                       now=NOW, busy_fn=lambda: True)
+        self.assertIn("Wait for the end of the run", str(cm.exception))
+        self.assertTrue(os.path.isdir(self.simple))
+        self.assertEqual(os.listdir(self.arch), [])
+
+    def test_busy_after_verify_keeps_zip_and_project(self):
+        state = {"busy": False}
+        real = pa.verify
+
+        def verify_then_run(*a, **k):
+            real(*a, **k)
+            state["busy"] = True  # un Run commence pendant la relecture
+        removed = []
+        with mock.patch.object(pa, "verify", side_effect=verify_then_run), \
+                mock.patch.object(pa, "remove_target", side_effect=lambda *a, **k: removed.append(a)):
+            with self.assertRaises(pa.RunBusyError) as cm:
+                pa.archive(self.simple, "whole", "permanent", self.arch, self.input, fake_trash(),
+                           now=NOW, busy_fn=lambda: state["busy"])
+        self.assertIn("Wait for the end of the run", str(cm.exception))
+        self.assertIsInstance(cm.exception, ValueError)
+        self.assertEqual(removed, [])
+        self.assertTrue(os.path.isdir(self.simple))
+        self.assertEqual(len(pa.list_archives(self.arch)), 1)
+
     def test_real_folder_of_same_name_not_removed(self):
         real = os.path.join(self.input, "Final-Cut_P")
         os.makedirs(real)
@@ -493,10 +642,6 @@ class TrashFitsTest(unittest.TestCase):
             self.assertTrue(pa.trash_fits(path, 10 * MB))
         with mock.patch.object(pa, "_bin_settings", return_value=None):
             self.assertIsNone(pa.trash_fits(path, 1))
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class RestoreTest(ArchiveBase):
@@ -656,3 +801,7 @@ class RestoreTest(ArchiveBase):
         self.assertEqual(res["dest"], os.path.join(self.root, base.split("-")[0] + "-Other"))
         self.assertTrue(os.path.isdir(res["dest"]))
         self.assertEqual(pa.restore_target(z, self.root)["needs"], "name")
+
+
+if __name__ == "__main__":
+    unittest.main()

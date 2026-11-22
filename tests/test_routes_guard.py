@@ -92,7 +92,13 @@ class RoutesGuardTest(unittest.TestCase):
     def test_archive_routes_refuse_during_run(self):
         bodies = route_bodies()
         for route in ("/mmproject/archive/make", "/mmproject/archive/restore"):
-            self.assertIn("_comfy_busy()", bodies[route], route)
+            self.assertIn("_archive_busy()", bodies[route], route)
+        # Verifie aussi juste avant la suppression (Run lance pendant le zip, fin de Run qui s'enregistre).
+        self.assertIn("busy_fn=_archive_busy", bodies["/mmproject/archive/make"])
+        text = open(INIT, encoding="utf-8").read()
+        helper = text[text.index("def _archive_busy():"):text.index('@routes.post("/mmproject/purge")')]
+        for needed in ("_comfy_busy()", "pending", "tracker.busy()"):
+            self.assertIn(needed, helper)
         for route in ("/mmproject/archive/restore", "/mmproject/archive/restore_target"):
             self.assertIn("pa.zip_in_folder(", bodies[route], route)
 

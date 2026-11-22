@@ -66,6 +66,8 @@ class RunTracker:
         self.ended = {}  # prompt_id -> execution terminee avec des fichiers (a classer par settle)
         self.settled = {}  # prompt_id -> sources rattachees (normcase)
         self.run_pids = {}  # JSON du Run (normcase) -> prompt_id
+        self.pending = 0  # fils de fin de Run lances et pas encore termines (archive de projet)
+        self.pending_lock = threading.Lock()
 
     @staticmethod
     def _keep(d):
@@ -186,23 +188,48 @@ class RunTracker:
                 self.done.pop(next(iter(self.done)))
             return data
 
+    def busy(self):
+        """Vrai tant qu'une fin de Run s'enregistre (copie / reduction video vers le projet) :
+        l'archive de projet ne supprime rien pendant ce temps (22/11/2026)."""
+        with self.pending_lock:
+            if self.pending:
+                return True
+        return self.finish_lock.locked()
+
+    def _start(self, target, args):
+        with self.pending_lock:
+            self.pending += 1
+        try:
+            threading.Thread(target=target, args=args, daemon=True).start()
+        except BaseException:
+            self._done_one()
+            raise
+
+    def _done_one(self):
+        with self.pending_lock:
+            self.pending = max(0, self.pending - 1)
+
     def handle(self, event, data):
         """A appeler pour chaque message : fin d'un Run -> enregistrement dans un fil a part."""
         end = self.on_message(event, data)
         if end:
-            threading.Thread(target=self._finish_quietly, args=end, daemon=True).start()
+            self._start(self._finish_quietly, end)
         elif event in END_EVENTS and isinstance(data, dict) and data.get("prompt_id") in self.ended:
             # Sans noeud Project : seulement les post-traitements.
-            threading.Thread(target=self._settle_quietly, args=(data["prompt_id"],), daemon=True).start()
+            self._start(self._settle_quietly, (data["prompt_id"],))
 
     def _settle_quietly(self, pid):
         try:
             self.settle(pid)
         except Exception as e:
             print("[MagicStudio Project] Post-processing not recorded: %s" % e)
+        finally:
+            self._done_one()
 
     def _finish_quietly(self, run_file, files, status, duration):
         try:
             self.finish(run_file, files, status, duration)
         except Exception as e:
             print("[MagicStudio Project] Run not recorded (%s): %s" % (run_file, e))
+        finally:
+            self._done_one()
