@@ -186,7 +186,7 @@ class PackageImportTest(unittest.TestCase):
     echoue (cas reel du 18/11/2026, /mmproject/list : No module named 'final_cut'). Chaque import
     tardif d'un module du paquet doit d'abord essayer l'import relatif."""
 
-    MODULES = ("final_cut", "projects", "run_record", "extract_frame", "post_process", "media")
+    MODULES = ("final_cut", "projects", "run_record", "extract_frame", "post_process", "media", "project_archive")
 
     def test_late_imports_try_relative_first(self):
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
