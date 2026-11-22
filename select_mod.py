@@ -196,40 +196,6 @@ def join_path(origin, subdir, file_name, mode):
     return "" if path == "." else path
 
 
-# Nom produit par le JS : date en prefixe, ex. "20261029-143000_selectmod_fields.json".
-EXPORT_NAME_RE = re.compile(r"^\d{8}-\d{6}_selectmod_fields\.json$")
-
-
-def _free_path(folder, name):
-    path = os.path.join(folder, name)
-    base, ext = os.path.splitext(name)
-    n = 2
-    while os.path.exists(path):
-        path = os.path.join(folder, "%s (%d)%s" % (base, n, ext))
-        n += 1
-    return path
-
-
-def write_export(folder, name, content):
-    """Export des champs (.json) dans le dossier de sauvegarde ; jamais par-dessus un fichier existant."""
-    import json
-    folder = (folder or "").strip()
-    if not folder:
-        raise ValueError("No save folder.")
-    if not EXPORT_NAME_RE.match(name or ""):
-        raise ValueError("Invalid export file name.")
-    try:
-        json.loads(content)
-    except (TypeError, ValueError):
-        raise ValueError("The export is not valid JSON.")
-    if not os.path.isdir(folder):
-        raise FileNotFoundError("Folder not found: %s" % folder)
-    path = _free_path(folder, name)
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(content)
-    return path
-
-
 def list_dirs(origin, roots_):
     """Sous-dossiers de l'origine qui contiennent des fichiers visibles (chemins relatifs, "/"), comme MultiFiles Select."""
     folder = _check(origin, roots_)
@@ -296,7 +262,7 @@ def clean_name(name):
         base = base[:-5]
     bad = (not base or base != base.strip() or base.endswith(".")
            or any(c in '\\/:*?"<>|' or ord(c) < 32 for c in base)
-           or base.split(".")[0].lower() in _RESERVED_NAMES)
+           or base.split(".")[0].rstrip().lower() in _RESERVED_NAMES)
     if bad:
         raise ValueError("Invalid file name.")
     return base + ".json"
@@ -310,7 +276,7 @@ def is_fields_file(path):
             return False
         with open(path, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return False
     return isinstance(data, dict) and data.get("format") in FIELDS_FORMATS and isinstance(data.get("fields"), list)
 
@@ -348,7 +314,9 @@ def _scan_sub(path, exts):
 
 def list_dir(path, kind):
     """Contenu d'un dossier pour la fenetre d'exploration : sous-dossiers visibles et fichiers du kind."""
-    exts = _KIND_EXTS.get(kind, _KIND_EXTS["save"])
+    if kind not in _KIND_EXTS:
+        raise ValueError("Unknown kind.")
+    exts = _KIND_EXTS[kind]
     folder = os.path.abspath(str(path or ""))
     if not os.path.isdir(folder):
         raise FileNotFoundError("Folder not found: %s" % folder)
@@ -404,7 +372,7 @@ def write_fields(folder, name, content, replace=False):
         raise FileNotFoundError("Folder not found: %s" % folder)
     try:
         data = json.loads(content)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):
         data = None
     if not isinstance(data, dict) or data.get("format") != FIELDS_FORMATS[0]:
         raise ValueError("The export is not a SelectMod fields file.")

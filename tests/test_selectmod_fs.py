@@ -53,9 +53,21 @@ class SelectModFsTest(unittest.TestCase):
     def test_clean_name(self):
         self.assertEqual(sm.clean_name("  wan v1 "), "wan v1.json")
         self.assertEqual(sm.clean_name("wan.JSON"), "wan.json")
-        for bad in ("", "  ", ".", "..", "a/b", "a\\b", "a:b", "a*b", "a?b", 'a"b', "a<b", "a>b", "a|b", "a.", "a\x01"):
+        for bad in ("", "  ", ".", "..", "a/b", "a\\b", "a:b", "a*b", "a?b", 'a"b', "a<b", "a>b", "a|b", "a.", "a\x01",
+                    "con", "NUL.json", "com1", "lpt9.txt", "CON .x"):
             with self.assertRaises(ValueError, msg=bad):
                 sm.clean_name(bad)
+
+    def test_list_dir_unknown_kind(self):
+        with self.assertRaises(ValueError):
+            sm.list_dir(self.root, "bogus")
+
+    def test_deeply_nested_json(self):
+        deep = "[" * 100000 + "]" * 100000
+        write(self.p("deep.json"), deep.encode())
+        self.assertFalse(sm.is_fields_file(self.p("deep.json")))
+        with self.assertRaises(ValueError):
+            sm.write_fields(self.root, "x", deep)
 
     def test_list_dir_kinds_and_counts(self):
         write(self.p("a.json"))

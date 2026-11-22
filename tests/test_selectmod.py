@@ -150,16 +150,5 @@ class SelectModTest(unittest.TestCase):
         self.assertEqual(sm.join_path(self.models, "vae", "v.safetensors", "Relative").replace("\\", "/"), "vae/v.safetensors")
         self.assertEqual(sm.join_path("", "", "", "Absolute"), "")
 
-    def test_write_export(self):
-        name = "20261029-143000_selectmod_fields.json"
-        p1 = sm.write_export(self.other, name, '{"format": "MagicStudio SelectMod"}')
-        p2 = sm.write_export(self.other, name, "{}")
-        self.assertNotEqual(p1, p2)
-        self.assertTrue(p2.endswith(" (2).json"))
-        with self.assertRaises(ValueError):
-            sm.write_export(self.other, "../x.json", "{}")
-        with self.assertRaises(ValueError):
-            sm.write_export(self.other, name, "not json")
-
 if __name__ == "__main__":
     unittest.main()

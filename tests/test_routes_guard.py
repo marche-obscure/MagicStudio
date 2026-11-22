@@ -60,9 +60,9 @@ class RoutesGuardTest(unittest.TestCase):
         # Une nouvelle route POST doit etre classee ici : controlee, ou volontairement libre.
         free = {"/mmproject/create", "/mmproject/open", "/mmproject/save_plan", "/mmproject/run_done",
                 "/mmproject/hashes", "/mmproject/config/check",
-                # Export de SelectMod : seulement un .json nomme par le noeud, dans le dossier de
-                # sauvegarde choisi, jamais par-dessus un fichier existant (select_mod.write_export).
-                "/mmselectmod/save_export",
+                # Explorateur de champs SelectMod : seulement un .json de champs SelectMod, jamais par-dessus
+                # un autre fichier, ordinateur de ComfyUI seulement (select_mod.write_fields).
+                "/mmselectmod/fs/write",
                 # Etoile de comparaison : projet retrouve depuis le chemin, `require_project` dans
                 # `stars.set_star` (`tests/test_stars.py`).
                 "/mmproject/star",
@@ -72,6 +72,13 @@ class RoutesGuardTest(unittest.TestCase):
         with open(INIT, encoding="utf-8") as f:
             posts = set(re.findall(r'@routes\.post\("([^"]+)"\)', f.read()))
         self.assertEqual(posts - free, set(GUARDED))
+
+    def test_selectmod_fs_routes_are_local_only(self):
+        bodies = route_bodies()
+        for route in ("/mmselectmod/fs/drives", "/mmselectmod/fs/list", "/mmselectmod/fs/read", "/mmselectmod/fs/write"):
+            self.assertIn(route, bodies, route)
+            self.assertIn("_selectmod_local(request)", bodies[route], route)
+        self.assertNotIn("/mmselectmod/save_export", bodies)
 
     def test_star_route_derives_the_project(self):
         # L'etoile ne recoit pas de projet : il est retrouve depuis le chemin du fichier.

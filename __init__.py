@@ -196,14 +196,75 @@ try:
         return web.json_response({"path": select_mod.join_path(q.get("origin", "").strip(), q.get("dir", "").strip(),
                                                                q.get("file", "").strip(), q.get("mode", "Absolute"))})
 
-    @routes.post("/mmselectmod/save_export")
-    async def mmselectmod_save_export(request):
-        """Export des champs (.json) dans le dossier de sauvegarde ; jamais par-dessus un fichier existant."""
+    # ---- Explorateur de champs SelectMod (22/11/2026) : ordinateur de ComfyUI seulement ----
+    def _selectmod_local(request):
+        """Refus (403) si la requete ne vient pas de la machine de ComfyUI, sinon None."""
+        if select_mod.is_local_address(request.remote):
+            return None
+        return web.json_response({"error": "Only available on the computer running ComfyUI.", "remote": True},
+                                 status=403)
+
+    @routes.get("/mmselectmod/fs/drives")
+    async def mmselectmod_fs_drives(request):
+        """Lecteurs de la machine."""
+        refused = _selectmod_local(request)
+        if refused:
+            return refused
+        return web.json_response({"drives": await _in_executor(select_mod.drives)})
+
+    @routes.get("/mmselectmod/fs/list")
+    async def mmselectmod_fs_list(request):
+        """Sous-dossiers et fichiers de champs d'un dossier (kind : save / folder / open)."""
+        refused = _selectmod_local(request)
+        if refused:
+            return refused
+        q = request.rel_url.query
+        try:
+            return web.json_response(await _in_executor(select_mod.list_dir, q.get("path", ""), q.get("kind", "save")))
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        except FileNotFoundError as e:
+            return web.json_response({"error": str(e)}, status=404)
+        except PermissionError as e:
+            return web.json_response({"error": str(e)}, status=403)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    @routes.get("/mmselectmod/fs/read")
+    async def mmselectmod_fs_read(request):
+        """Texte d'un fichier de champs (.json / .txt, 1 Mo max)."""
+        refused = _selectmod_local(request)
+        if refused:
+            return refused
+        path = request.rel_url.query.get("path", "")
+        try:
+            text = await _in_executor(select_mod.read_fields, path)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        except FileNotFoundError as e:
+            return web.json_response({"error": str(e)}, status=404)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"text": text, "name": os.path.basename(path), "path": path})
+
+    @routes.post("/mmselectmod/fs/write")
+    async def mmselectmod_fs_write(request):
+        """Enregistre un fichier de champs ; ne remplace jamais un autre fichier (replace seulement un fichier de champs)."""
+        refused = _selectmod_local(request)
+        if refused:
+            return refused
         try:
             data = await request.json()
-            path = await _in_executor(select_mod.write_export, data.get("folder", ""), data.get("name", ""),
-                                      data.get("content", ""))
-        except (ValueError, FileNotFoundError) as e:
+            if not isinstance(data, dict):
+                raise ValueError("Invalid request.")
+            path = await _in_executor(select_mod.write_fields, data.get("folder", ""), data.get("name", ""),
+                                      data.get("content", ""), bool(data.get("replace", False)))
+        except FileExistsError as e:
+            return web.json_response({"error": "A file with this name already exists.", "exists": True,
+                                      "path": str(e)}, status=409)
+        except FileNotFoundError as e:
+            return web.json_response({"error": str(e)}, status=404)
+        except ValueError as e:
             return web.json_response({"error": str(e)}, status=400)
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
