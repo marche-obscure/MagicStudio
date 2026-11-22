@@ -83,6 +83,7 @@ const ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect>
 // Meme boite, plus grande : bouton Archive / Backup du projet (22/11/2026).
 const PROJECT_ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect>' +
     '<path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><line x1="10" y1="12" x2="14" y2="12"></line>', 15);
+const ARCHIVE_BROWN = "#a0703a"; // bouton / fenetres Archive du projet
 // Archives : 5 au plus par projet (comme projects.MAX_ARCHIVES) ; rouge = suppression.
 const TRASH_RED = "#d32f2f";
 const MAX_ARCHIVES = 5;
@@ -600,6 +601,56 @@ const HELP_SECTIONS = [
             ]) +
             hNote("the New project window shows <b>Will be created as: NN-name</b>, and the Move window " +
                 "<b>Will become: ...</b>; past 99 sub-projects, creation is refused."),
+    },
+    {
+        id: "archive", title: "Archive and backup", icon: PROJECT_ARCHIVE_ICON, color: ARCHIVE_BROWN,
+        html: "<p>The " + iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN) + " button (right of " +
+            iconBadge(PLUS_ICON, PINK) + ") zips a project into one file. With no project picked, it opens " +
+            "<b>Restore an archive</b> directly. It is greyed during a Run.</p>" +
+            hSteps([
+                "Click " + iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN) + ": the window <b>Archive or back up the project</b> opens.",
+                "Click <b>Browse</b> and choose the <b>Archives folder</b> (first time only).",
+                "Pick <b>Archive</b> or <b>Backup</b>. For a sub-project, pick <b>Whole project</b> or <b>This sub-project</b>.",
+                "For <b>Archive</b>, pick <b>Recycle Bin</b> or <b>Delete permanently</b>.",
+                "Click <b>Archive</b> (or <b>Backup</b>) and answer the question. A progress bar shows the work.",
+            ]) +
+            hCard("Archive or Backup", [
+                ["Archive", "zips the project, <b>checks the zip</b>, then the project leaves the list."],
+                ["Backup", "zips the project and keeps it in the list. The zip is a copy."],
+            ]) +
+            hCard("Whole project or This sub-project", [
+                ["Whole project", "the whole folder of projects, with all its sub-projects and its Final Cut."],
+                ["This sub-project", "only this sub-project. The Final Cut stays in the mother project."],
+            ]) +
+            hCard("Recycle Bin or Delete permanently", [
+                ["Recycle Bin", "the project goes to the Windows Recycle Bin after the check. " +
+                    "The disk space is freed only when you <b>empty the Bin</b>."],
+                ["Delete permanently", "the project is destroyed after the check. Type <b>CONFIRMER</b> to accept. " +
+                    "This cannot be undone."],
+            ]) +
+            hNote("nothing is deleted before the zip has been read again <b>in full</b> and found good.") +
+            hNote("with <b>Recycle Bin</b>, the archive is refused (nothing deleted) if Windows cannot hold the " +
+                "project in the Bin, or does not say. Empty the Bin, or choose <b>Delete permanently</b>.") +
+            hTitle(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN, "The Archives folder") +
+            hList([
+                "It must be <b>outside the projects folder</b>. Another disk is fine.",
+                "Videos and images are stored as they are. Text files are compressed.",
+                "If the disk is too full, the window says so and <b>Archive</b> stays greyed.",
+            ]) +
+            hTitle(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN, "Restore an archive") +
+            hSteps([
+                "Click <b>Restore an archive…</b> (or the " + iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN) +
+                    " button with no project).",
+                "Pick a zip in the list. The window shows where it will go.",
+                "Click <b>Restore</b>.",
+            ]) +
+            hList([
+                "The zip <b>always stays</b> in the Archives folder.",
+                "If the name is taken, type a <b>New name</b>. Nothing is overwritten. A sub-project keeps its " +
+                    "<b>NN-</b> number.",
+                "If the mother project is missing, or its number is already used, the sub-project can be restored " +
+                    "as an <b>independent project</b> (a question asks first).",
+            ]),
     },
     {
         id: "save", title: "Load and Save", icon: SAVE_ICON, color: PINK,
@@ -1146,6 +1197,57 @@ const HELP_SECTIONS_FR = [
             ]) +
             hNote("la fenêtre New project montre <b>Will be created as: NN-nom</b>, et la fenêtre Move " +
                 "<b>Will become: ...</b> ; au-delà de 99 sous-projets, la création est refusée.", "Remarque :"),
+    },
+    {
+        id: "archive", title: "Archiver et sauvegarder",
+        html: "<p>Le bouton " + iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN) + " (à droite de " +
+            iconBadge(PLUS_ICON, PINK) + ") met un projet dans un seul fichier zip. Sans projet choisi, il ouvre " +
+            "directement <b>Restore an archive</b>. Il est grisé pendant un Run.</p>" +
+            hSteps([
+                "Cliquez sur " + iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN) + " : la fenêtre <b>Archive or back up the project</b> s'ouvre.",
+                "Cliquez sur <b>Browse</b> et choisissez le <b>dossier des archives</b> (la première fois seulement).",
+                "Choisissez <b>Archive</b> ou <b>Backup</b>. Pour un sous-projet, choisissez <b>Whole project</b> ou <b>This sub-project</b>.",
+                "Pour <b>Archive</b>, choisissez <b>Recycle Bin</b> ou <b>Delete permanently</b>.",
+                "Cliquez sur <b>Archive</b> (ou <b>Backup</b>) et répondez à la question. Une barre montre le travail.",
+            ]) +
+            hCard("Archive ou Backup", [
+                ["Archive", "crée le zip, <b>vérifie le zip</b>, puis le projet quitte la liste."],
+                ["Backup", "crée le zip et garde le projet dans la liste. Le zip est une copie."],
+            ]) +
+            hCard("Whole project ou This sub-project", [
+                ["Whole project", "tout le dossier de projets, avec tous ses sous-projets et son Final Cut."],
+                ["This sub-project", "seulement ce sous-projet. Le Final Cut reste dans le projet mère."],
+            ]) +
+            hCard("Recycle Bin ou Delete permanently", [
+                ["Recycle Bin", "le projet va dans la Corbeille de Windows après la vérification. " +
+                    "La place sur le disque n'est libérée que quand vous <b>videz la Corbeille</b>."],
+                ["Delete permanently", "le projet est détruit après la vérification. Tapez <b>CONFIRMER</b> pour accepter. " +
+                    "C'est définitif."],
+            ]) +
+            hNote("rien n'est supprimé avant que le zip ait été relu <b>en entier</b> et trouvé bon.", "Remarque :") +
+            hNote("avec <b>Recycle Bin</b>, l'archivage est refusé (rien n'est supprimé) si Windows ne peut pas " +
+                "garder le projet dans la Corbeille, ou ne le dit pas. Videz la Corbeille, ou choisissez " +
+                "<b>Delete permanently</b>.", "Remarque :") +
+            hTitle(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN, "Le dossier des archives") +
+            hList([
+                "Il doit être <b>hors du dossier des projets</b>. Un autre disque convient.",
+                "Les vidéos et les images sont rangées telles quelles. Les fichiers texte sont compressés.",
+                "Si le disque est trop plein, la fenêtre le dit et <b>Archive</b> reste grisé.",
+            ]) +
+            hTitle(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN, "Restaurer une archive") +
+            hSteps([
+                "Cliquez sur <b>Restore an archive…</b> (ou sur le bouton " + iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN) +
+                    " sans projet).",
+                "Choisissez un zip dans la liste. La fenêtre montre où il ira.",
+                "Cliquez sur <b>Restore</b>.",
+            ]) +
+            hList([
+                "Le zip <b>reste toujours</b> dans le dossier des archives.",
+                "Si le nom est pris, tapez un <b>New name</b>. Rien n'est écrasé. Un sous-projet garde son numéro " +
+                    "<b>NN-</b>.",
+                "Si le projet mère est absent, ou si son numéro est déjà pris, le sous-projet peut être restauré " +
+                    "comme <b>projet indépendant</b> (une question le demande d'abord).",
+            ]),
     },
     {
         id: "save", title: "Load et Save",
@@ -2319,7 +2421,6 @@ function buildRenameMoveDialog(container, ctx) {
 // puis retrait du projet pour Archive) et fenetre "Restore an archive" (zip -> nouveau dossier).
 // Routes /mmproject/archive/* ; chaque requete porte la racine des projets du noeud (root).
 // --------------------------------------------------------------------
-const ARCHIVE_BROWN = "#a0703a";
 const ARCHIVE_PROGRESS_MS = 250;
 
 /** Texte de la progression d'un travail d'archive ({step, done, total, name}). */
