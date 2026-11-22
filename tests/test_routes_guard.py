@@ -25,6 +25,7 @@ GUARDED = {
     "/mmproject/copy_media": ["project"],
     "/mmproject/purge": ["project"],
     "/mmproject/sort_output": ["project"],
+    "/mmproject/archive/make": ["project"],
     "/mmproject/final_cut/sync": ["project"],
     "/mmproject/resolve_duplicate": ["project"],
     "/mmproject/delete_rush": ["project"],
@@ -64,7 +65,10 @@ class RoutesGuardTest(unittest.TestCase):
                 "/mmselectmod/save_export",
                 # Etoile de comparaison : projet retrouve depuis le chemin, `require_project` dans
                 # `stars.set_star` (`tests/test_stars.py`).
-                "/mmproject/star"}
+                "/mmproject/star",
+                # Archive de projet : le dossier des archives est controle par `check_folder` ; la
+                # restauration est limitee a un zip du dossier des archives et ne cree qu'un nouveau dossier.
+                "/mmproject/archive/settings", "/mmproject/archive/restore"}
         with open(INIT, encoding="utf-8") as f:
             posts = set(re.findall(r'@routes\.post\("([^"]+)"\)', f.read()))
         self.assertEqual(posts - free, set(GUARDED))
@@ -84,6 +88,13 @@ class RoutesGuardTest(unittest.TestCase):
             body = bodies[route]
             self.assertIn("stars.follow", body)
             self.assertLess(body.index(call), body.index("stars.follow"))
+
+    def test_archive_routes_refuse_during_run(self):
+        bodies = route_bodies()
+        for route in ("/mmproject/archive/make", "/mmproject/archive/restore"):
+            self.assertIn("_comfy_busy()", bodies[route], route)
+        for route in ("/mmproject/archive/restore", "/mmproject/archive/restore_target"):
+            self.assertIn("realpath", bodies[route], route)
 
     def test_copy_source_checked(self):
         # Copy lit un projet ou un dossier de projets (MultiProject), jamais un dossier ordinaire (30/10/2026).

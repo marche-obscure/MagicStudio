@@ -661,6 +661,151 @@ try:
             return _project_error(e)
         return web.json_response(data)
 
+    # ---- Archive de projet (22/11/2026) : zip, copie de sauvegarde, restauration ----------------------
+
+    def _archive_mod():
+        try:
+            from . import project_archive
+        except ImportError:
+            import project_archive
+        return project_archive
+
+    def _archive_error(e):
+        if isinstance(e, _archive_mod().BusyError):
+            return web.json_response({"error": str(e)}, status=409)
+        return _project_error(e)
+
+    def _archive_root(root):
+        """Racine ancree des projets (comme /mmproject/list) ; sans `root`, la racine par defaut."""
+        return projects.anchor_root(_projects_root(root))[0]
+
+    def _archive_folder(root):
+        """Dossier des archives enregistre, re-controle (il ne doit pas etre entre-temps dans les projets)."""
+        pa = _archive_mod()
+        folder = pa.load_settings()["folder"]
+        if not folder:
+            raise ValueError("Choose the archives folder first.")
+        return pa.check_folder(folder, root)
+
+    def _archive_zip(zip_path, folder):
+        """Un zip a restaurer doit etre dans le dossier des archives (realpath : pas de .. ni de jonction)."""
+        real = os.path.normcase(os.path.realpath(str(zip_path or "")))
+        base = os.path.normcase(os.path.realpath(folder)) if folder else ""
+        if not base or os.path.dirname(real) != base or not real.lower().endswith(".zip"):
+            raise ValueError("The archive must be in the archives folder.")
+        return os.path.realpath(str(zip_path))
+
+    @routes.get("/mmproject/archive/settings")
+    async def mmproject_archive_settings(request):
+        return web.json_response(_archive_mod().load_settings())
+
+    @routes.post("/mmproject/archive/settings")
+    async def mmproject_archive_settings_save(request):
+        try:
+            body = await request.json()
+            root = await _in_executor(_archive_root, body.get("root", ""))
+            data = await _in_executor(_archive_mod().save_settings, body.get("folder", ""), root)
+        except Exception as e:
+            return _archive_error(e)
+        return web.json_response(data)
+
+    @routes.get("/mmproject/archive/plan")
+    async def mmproject_archive_plan(request):
+        q = request.rel_url.query
+        try:
+            project = q.get("project", "")
+            projects.require_project(project)
+            root = await _in_executor(_archive_root, q.get("root", ""))
+            folder = await _in_executor(_archive_folder, root)
+            data = await _in_executor(_archive_mod().plan, project, q.get("scope", ""), folder)
+            data["sub"] = projects.is_group(os.path.dirname(os.path.abspath(project).rstrip("\\/")))
+        except Exception as e:
+            return _archive_error(e)
+        return web.json_response(data)
+
+    @routes.post("/mmproject/archive/make")
+    async def mmproject_archive_make(request):
+        """Archive (zip, relecture, suppression) ou copie de sauvegarde (zip, relecture) d'un projet."""
+        try:
+            body = await request.json()
+            projects.require_project(body.get("project", ""))  # vrai projet seulement
+            if _comfy_busy():
+                return web.json_response({"error": "Wait for the end of the run."}, status=409)
+            pa = _archive_mod()
+            project, scope, mode = body.get("project", ""), body.get("scope", ""), body.get("mode", "")
+            root = await _in_executor(_archive_root, body.get("root", ""))
+            folder = await _in_executor(_archive_folder, root)
+
+            def work():
+                if mode == "backup":
+                    with pa.job("zip"):  # rien ne passe entre l'ecriture et la relecture
+                        made = pa.make_zip(project, scope, "backup", folder)
+                        try:
+                            pa.verify(made["zip"], pa.target_of(project, scope)["folder"])
+                        except (ValueError, OSError) as e:
+                            try:
+                                os.remove(made["zip"])
+                            except OSError:
+                                pass
+                            if isinstance(e, ValueError):
+                                raise
+                            raise ValueError("The zip could not be checked (%s)." % e)
+                    return {"zip": made["zip"], "size": made["size"], "files": made["files"], "removed": False}
+                if mode == "archive":
+                    how = body.get("how", "")
+                    trash_fn = projects._to_recycle_bin if projects.TRASH_AVAILABLE else None
+                    if how == "trash" and trash_fn is None:
+                        raise ValueError("The Recycle Bin is not available here.")
+                    import folder_paths
+                    return pa.archive(project, scope, how, folder, folder_paths.get_input_directory(), trash_fn)
+                raise ValueError("Unknown mode: %s" % mode)
+            data = await _in_executor(work)
+        except Exception as e:
+            return _archive_error(e)
+        return web.json_response(data)
+
+    @routes.get("/mmproject/archive/list")
+    async def mmproject_archive_list(request):
+        try:
+            pa = _archive_mod()
+            data = await _in_executor(pa.list_archives, pa.load_settings()["folder"])
+        except Exception as e:
+            return _archive_error(e)
+        return web.json_response(data)
+
+    @routes.get("/mmproject/archive/restore_target")
+    async def mmproject_archive_restore_target(request):
+        q = request.rel_url.query
+        try:
+            pa = _archive_mod()
+            zip_path = _archive_zip(q.get("zip", ""), pa.load_settings()["folder"])  # realpath dans le dossier
+            root = await _in_executor(_archive_root, q.get("root", ""))
+            data = await _in_executor(pa.restore_target, zip_path, root, q.get("name") or None,
+                                      q.get("independent") in ("1", "true"))
+        except Exception as e:
+            return _archive_error(e)
+        return web.json_response(data)
+
+    @routes.post("/mmproject/archive/restore")
+    async def mmproject_archive_restore(request):
+        """Restaure un zip du dossier des archives dans un NOUVEAU dossier (rien n'est ecrase)."""
+        try:
+            body = await request.json()
+            if _comfy_busy():
+                return web.json_response({"error": "Wait for the end of the run."}, status=409)
+            pa = _archive_mod()
+            zip_path = _archive_zip(body.get("zip", ""), pa.load_settings()["folder"])  # realpath dans le dossier
+            root = await _in_executor(_archive_root, body.get("root", ""))
+            data = await _in_executor(pa.restore, zip_path, root, body.get("name") or None,
+                                      bool(body.get("independent")))
+        except Exception as e:
+            return _archive_error(e)
+        return web.json_response(data)
+
+    @routes.get("/mmproject/archive/progress")
+    async def mmproject_archive_progress(request):
+        return web.json_response(_archive_mod().progress())
+
     @routes.post("/mmproject/run_done")
     async def mmproject_run_done(request):
         """Fin d'un Run enregistre : fichiers generes copies dans les rushs et listes dans son JSON."""
