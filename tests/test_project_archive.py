@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 import zipfile
 from datetime import datetime
@@ -259,6 +260,200 @@ class BusyTest(ArchiveBase):
         self.assertIsNone(pa.progress())
         with pa.job("zip"):
             pass  # le verrou est bien relache
+
+
+def fake_trash(log=None):
+    def fn(paths):
+        for p in paths:
+            if log is not None:
+                log.append(p)
+            shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+    return fn
+
+
+class RemoveTest(ArchiveBase):
+    def setUp(self):
+        super().setUp()
+        self.put(self.simple, "40.Rush Videos/a.mp4", b"video")
+        self.put(self.sub, "08.Images/b.png", b"img")
+        self.input = os.path.join(self.tmp, "input")
+        os.makedirs(self.input)
+
+    def make_link(self, name, target):
+        link = os.path.join(self.input, "Final-Cut_" + name)
+        if sys.platform == "win32":
+            r = subprocess.run(["cmd", "/c", "mklink", "/J", link, target], capture_output=True)
+            if r.returncode != 0:
+                self.skipTest("junction not available")
+        else:
+            os.symlink(target, link)
+        return link
+
+    def test_archive_trash_removes_project_and_link(self):
+        link = self.make_link("P", self.simple)
+        log = []
+        res = pa.archive(self.simple, "whole", "trash", self.arch, self.input, fake_trash(log),
+                         now=NOW, fits_fn=lambda f, s: True)
+        self.assertTrue(res["removed"])
+        self.assertFalse(os.path.exists(self.simple))
+        self.assertFalse(os.path.lexists(link))
+        self.assertEqual(log, [self.simple])
+        listed = pa.list_archives(self.arch)
+        self.assertEqual([a["name"] for a in listed], ["P"])
+        self.assertEqual(listed[0]["kind"], "project")
+
+    def test_archive_refuses_when_bin_too_small(self):
+        called = []
+        with self.assertRaises(ValueError) as cm:
+            pa.archive(self.simple, "whole", "trash", self.arch, self.input, fake_trash(called),
+                       now=NOW, fits_fn=lambda f, s: False)
+        self.assertIn("Recycle Bin cannot hold", str(cm.exception))
+        self.assertTrue(os.path.isdir(self.simple))
+        self.assertEqual(called, [])
+        self.assertEqual(len(pa.list_archives(self.arch)), 1)
+
+    def test_fits_gets_folder_and_size(self):
+        seen = []
+        pa.remove_target(pa.target_of(self.simple, "whole"), "trash", self.input, fake_trash(),
+                         lambda f, s: seen.append((f, s)) or True)
+        self.assertEqual(seen, [(self.simple, 5)])
+
+    def test_unknown_bin_flagged(self):
+        res = pa.remove_target(pa.target_of(self.simple, "whole"), "trash", self.input,
+                               fake_trash(), lambda f, s: None)
+        self.assertTrue(res["unknown_bin"])
+        res = pa.remove_target(pa.target_of(self.sub, "sub"), "trash", self.input,
+                               fake_trash(), lambda f, s: True)
+        self.assertNotIn("unknown_bin", res)
+
+    def test_archive_trash_failure_keeps_everything(self):
+        def boom(paths):
+            raise OSError("denied")
+        with self.assertRaises(ValueError):
+            pa.archive(self.simple, "whole", "trash", self.arch, self.input, boom, now=NOW,
+                       fits_fn=lambda f, s: True)
+        self.assertTrue(os.path.isdir(self.simple))
+        self.assertEqual(len(pa.list_archives(self.arch)), 1)
+
+    def test_archive_permanent(self):
+        called = []
+        ro = self.put(self.simple, "08.Images/ro.png")
+        os.chmod(ro, 0o444)
+        res = pa.archive(self.simple, "whole", "permanent", self.arch, self.input,
+                         fake_trash(called), now=NOW)
+        self.assertTrue(res["removed"])
+        self.assertFalse(os.path.exists(self.simple))
+        self.assertEqual(called, [])
+
+    def test_archive_sub_keeps_mother(self):
+        res = pa.archive(self.sub, "sub", "permanent", self.arch, self.input, fake_trash(), now=NOW)
+        self.assertTrue(res["removed"])
+        self.assertFalse(os.path.exists(self.sub))
+        self.assertTrue(os.path.isdir(self.group))
+        self.assertTrue(os.path.exists(os.path.join(self.group, ".mmproject-group")))
+
+    def test_sub_does_not_touch_link(self):
+        link = self.make_link(os.path.basename(self.group), self.group)
+        pa.archive(self.sub, "sub", "permanent", self.arch, self.input, fake_trash(), now=NOW)
+        self.assertTrue(os.path.lexists(link))
+
+    def test_whole_of_sub_removes_mother_and_its_link(self):
+        link = self.make_link(os.path.basename(self.group), self.group)
+        pa.archive(self.sub, "whole", "permanent", self.arch, self.input, fake_trash(), now=NOW)
+        self.assertFalse(os.path.exists(self.group))
+        self.assertFalse(os.path.lexists(link))
+
+    def test_real_folder_of_same_name_not_removed(self):
+        real = os.path.join(self.input, "Final-Cut_P")
+        os.makedirs(real)
+        pa.archive(self.simple, "whole", "permanent", self.arch, self.input, fake_trash(), now=NOW)
+        self.assertTrue(os.path.isdir(real))
+
+    def test_verify_failure_removes_zip(self):
+        with mock.patch.object(pa, "verify", side_effect=ValueError("The zip is incomplete")):
+            with self.assertRaises(ValueError):
+                pa.archive(self.simple, "whole", "permanent", self.arch, self.input,
+                           fake_trash(), now=NOW)
+        self.assertTrue(os.path.isdir(self.simple))
+        self.assertEqual(os.listdir(self.arch), [])
+
+    def test_removal_failure_keeps_verified_zip(self):
+        with mock.patch.object(pa.shutil, "rmtree", side_effect=OSError("locked")):
+            with self.assertRaises(ValueError) as cm:
+                pa.archive(self.simple, "whole", "permanent", self.arch, self.input,
+                           fake_trash(), now=NOW)
+        self.assertIn("verified zip is kept", str(cm.exception))
+        self.assertTrue(os.path.isdir(self.simple))
+        self.assertEqual(len(pa.list_archives(self.arch)), 1)
+
+    def test_archive_reports_remove_step_and_holds_job(self):
+        steps, busy = [], []
+        real = pa.remove_target
+
+        def spy(*a, **k):
+            steps.append(pa.progress()["step"])
+            th = threading.Thread(target=lambda: self._try(busy))
+            th.start()
+            th.join()
+            return real(*a, **k)
+        with mock.patch.object(pa, "remove_target", side_effect=spy):
+            pa.archive(self.simple, "whole", "permanent", self.arch, self.input, fake_trash(),
+                       now=NOW)
+        self.assertEqual(steps, ["remove"])
+        self.assertEqual(len(busy), 1)  # autre fil : verrou pris pendant la suppression
+
+    def _try(self, out):
+        try:
+            with pa.job("zip"):
+                pass
+        except pa.BusyError as e:
+            out.append(e)
+
+
+class ListTest(ArchiveBase):
+    def test_list_ignores_foreign_zips_and_cleans_part(self):
+        self.put(self.simple, "a.txt")
+        pa.make_zip(self.simple, "whole", "archive", self.arch, now=NOW)
+        pa.make_zip(self.sub, "sub", "backup", self.arch, now=datetime(2026, 11, 23, 8, 0, 0))
+        with zipfile.ZipFile(os.path.join(self.arch, "plain.zip"), "w") as zf:
+            zf.writestr("x.txt", "x")
+        old = os.path.join(self.arch, "old.zip.part")
+        new = os.path.join(self.arch, "new.zip.part")
+        for p in (old, new):
+            open(p, "wb").close()
+        t = datetime.now().timestamp() - 7200
+        os.utime(old, (t, t))
+        listed = pa.list_archives(self.arch)
+        self.assertEqual([a["name"] for a in listed], ["01-A", "P"])  # le plus recent d'abord
+        self.assertEqual(listed[0]["kind"], "sub")
+        self.assertEqual(listed[0]["group"], "G")
+        self.assertEqual(listed[0]["mode"], "backup")
+        self.assertEqual(listed[1]["files"], 1)
+        self.assertEqual(listed[1]["size"], os.path.getsize(listed[1]["zip"]))
+        self.assertEqual(listed[1]["file"], os.path.basename(listed[1]["zip"]))
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.exists(new))
+
+    def test_list_missing_folder(self):
+        self.assertEqual(pa.list_archives(os.path.join(self.tmp, "nope")), [])
+
+
+class TrashFitsTest(unittest.TestCase):
+    @unittest.skipIf(sys.platform == "win32", "off Windows only")
+    def test_unknown_off_windows(self):
+        self.assertIsNone(pa.trash_fits(tempfile.gettempdir(), 10))
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows only")
+    def test_settings_rules(self):
+        path = tempfile.gettempdir()
+        MB = 1024 * 1024
+        with mock.patch.object(pa, "_bin_settings", return_value=(True, 100 * MB, 0)):
+            self.assertFalse(pa.trash_fits(path, 1))
+        with mock.patch.object(pa, "_bin_settings", return_value=(False, 100 * MB, 90 * MB)):
+            self.assertFalse(pa.trash_fits(path, 20 * MB))
+            self.assertTrue(pa.trash_fits(path, 10 * MB))
+        with mock.patch.object(pa, "_bin_settings", return_value=None):
+            self.assertIsNone(pa.trash_fits(path, 1))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import contextlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 import threading
 import zipfile
@@ -267,3 +268,165 @@ def verify(zip_path, folder):
         missing = sorted(set(dirs) - got_dirs)
         if missing:
             raise ValueError("The zip is incomplete: folder(s) missing (%s)." % ", ".join(missing[:3]))
+
+
+# ---- Corbeille : place disponible --------------------------------------------------
+
+def _bin_settings(path):
+    """(nuke, max_bytes, used_bytes) de la Corbeille du volume de path, ou None si inconnu.
+    Lu dans le registre (NukeOnDelete, MaxCapacity en Mo) et par SHQueryRecycleBinW."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        import winreg
+        from ctypes import wintypes
+        drive = os.path.splitdrive(os.path.abspath(path))[0]
+        if not drive or drive.startswith("\\\\"):
+            return None
+        root = drive + "\\"
+        buf = ctypes.create_unicode_buffer(260)
+        if not ctypes.windll.kernel32.GetVolumeNameForVolumeMountPointW(root, buf, 260):
+            return None
+        guid = "{" + buf.value.split("{", 1)[-1].split("}", 1)[0] + "}"  # \\?\Volume{GUID}\
+        key = r"Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket\Volume\%s" % guid
+        nuke, max_mb = 0, None
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as k:
+                for name in ("NukeOnDelete", "MaxCapacity"):
+                    try:
+                        value = winreg.QueryValueEx(k, name)[0]
+                    except FileNotFoundError:
+                        continue
+                    if name == "NukeOnDelete":
+                        nuke = int(value)
+                    else:
+                        max_mb = int(value)
+        except FileNotFoundError:
+            return None
+
+        class RBINFO(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("i64Size", ctypes.c_int64),
+                        ("i64NumItems", ctypes.c_int64)]
+        info = RBINFO()
+        info.cbSize = ctypes.sizeof(RBINFO)
+        if ctypes.windll.shell32.SHQueryRecycleBinW(root, ctypes.byref(info)) != 0:
+            return None
+        if nuke == 1:
+            return (True, 0, int(info.i64Size))
+        if max_mb is None:
+            return None
+        return (False, max_mb * 1024 * 1024, int(info.i64Size))
+    except Exception:
+        return None
+
+
+def trash_fits(path, size):
+    """False = la Corbeille ne peut pas garder `size` octets (Windows supprimerait pour de bon) ;
+    None = inconnu (hors Windows ou reglage illisible)."""
+    settings = _bin_settings(path)
+    if settings is None:
+        return None
+    nuke, max_bytes, used = settings
+    if nuke or used + size > max_bytes:
+        return False
+    return True
+
+
+# ---- suppression et archive complete -----------------------------------------------
+
+def _writable_then_retry(func, path, _exc):
+    os.chmod(path, 0o700)
+    func(path)
+
+
+def remove_target(t, how, input_dir, trash_fn, fits_fn=trash_fits):
+    """Retire le lien Final-Cut_<nom> (projet entier seulement) puis le dossier."""
+    if how not in ("trash", "permanent"):
+        raise ValueError("Unknown removal: %s" % how)
+    folder = t["folder"]
+    result = {"removed": True, "how": how}
+    if how == "trash":
+        fits = fits_fn(folder, walk(folder)[2])
+        if fits is False:
+            raise ValueError("The Recycle Bin cannot hold this project: nothing was deleted. "
+                             "Choose Delete permanently to free the space.")
+        if fits is None:
+            result["unknown_bin"] = True
+    try:
+        from . import final_cut
+    except ImportError:
+        import final_cut
+    if t["kind"] == "project":
+        link = os.path.join(input_dir, "Final-Cut_" + t["name"])
+        if os.path.lexists(link) and final_cut._is_link(link):
+            final_cut.remove_link(link)
+    try:
+        if how == "trash":
+            trash_fn([folder])
+            if os.path.exists(folder):
+                raise OSError("the folder is still there")
+        else:
+            shutil.rmtree(folder, onerror=_writable_then_retry)
+    except Exception as e:
+        raise ValueError("The project could not be deleted (%s). Its verified zip is kept." % e)
+    return result
+
+
+def archive(project, scope, how, folder, input_dir, trash_fn, now=None, fits_fn=trash_fits):
+    """zip -> relecture -> suppression, sous un seul travail. Zip garde si la suppression echoue."""
+    t = target_of(project, scope)
+    with job("zip", 0, t["name"]):
+        made = make_zip(project, scope, "archive", folder, now)
+        try:
+            verify(made["zip"], t["folder"])
+        except (ValueError, OSError) as e:
+            with contextlib.suppress(OSError):
+                os.remove(made["zip"])
+            if isinstance(e, ValueError):
+                raise
+            raise ValueError("The zip could not be checked (%s): nothing was deleted." % e)
+        _report("remove", 0, 0, t["name"])
+        res = remove_target(t, how, input_dir, trash_fn, fits_fn)
+    out = {"zip": made["zip"], "size": made["size"], "files": made["files"], "removed": True}
+    if res.get("unknown_bin"):
+        out["unknown_bin"] = True
+    return out
+
+
+# ---- liste des archives ------------------------------------------------------------
+
+STALE_PART_SECONDS = 3600
+
+
+def list_archives(folder):
+    """Archives valides du dossier (plus recente d'abord) ; efface les .zip.part vieux de plus d'une heure."""
+    if not folder or not os.path.isdir(folder):
+        return []
+    now = datetime.now().timestamp()
+    found = []
+    for n in os.listdir(folder):
+        path = os.path.join(folder, n)
+        low = n.lower()
+        if low.endswith(".zip.part"):
+            try:
+                if now - os.path.getmtime(path) > STALE_PART_SECONDS:
+                    os.remove(path)
+            except OSError:
+                pass
+            continue
+        if not low.endswith(".zip"):
+            continue
+        try:
+            with zipfile.ZipFile(path, "r") as zf:
+                m = json.loads(zf.read(MANIFEST).decode("utf-8"))
+            if not isinstance(m, dict) or m.get("format") != FORMAT:
+                continue
+            found.append({"zip": path, "file": n, "kind": m.get("kind"), "name": m.get("name"),
+                          "group": m.get("group"), "number": m.get("number"),
+                          "created": m.get("created"), "mode": m.get("mode"),
+                          "size": os.path.getsize(path), "files": m.get("files")})
+        except (OSError, KeyError, ValueError, zipfile.BadZipFile):
+            continue
+    found.sort(key=lambda a: (a["created"] or "", a["file"]), reverse=True)
+    return found
