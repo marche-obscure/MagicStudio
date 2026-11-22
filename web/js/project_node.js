@@ -217,6 +217,7 @@ const HELP_SECTIONS = [
         hCard("Buttons of the node", [
             [iconBadge(PENCIL_ICON, VIOLET), "Rename or move the project"],
             [iconBadge(PLUS_ICON, PINK), "New project"],
+            [iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN), "Archive or back up the project in a zip, or restore it (see Archive and backup)"],
             [textBadge("Load"), "Put the project back (see <b>Load and Save</b>)"],
             [textBadge("Save"), "Record the project (see <b>Load and Save</b>)"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]) + " " +
@@ -806,6 +807,7 @@ const HELP_SECTIONS_FR = [
         hCard("Boutons du nœud", [
             [iconBadge(PENCIL_ICON, VIOLET), "Renommer ou déplacer le projet"],
             [iconBadge(PLUS_ICON, PINK), "Nouveau projet"],
+            [iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN), "Archiver ou sauvegarder le projet dans un zip, ou le restaurer (voir Archiver et sauvegarder)"],
             [textBadge("Load"), "Remettre le projet en place (voir <b>Load et Save</b>)"],
             [textBadge("Save"), "Enregistrer le projet (voir <b>Load et Save</b>)"],
             [iconBadge(FOLDER_ICONS["08.Images"], FOLDER_COLORS["08.Images"]) + " " +
