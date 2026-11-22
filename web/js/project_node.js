@@ -80,9 +80,9 @@ const DUP_ICON = svg('<rect x="8" y="8" width="13" height="13" rx="2"></rect>' +
     '<path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path>', 12);
 const ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path>' +
     '<line x1="10" y1="12" x2="14" y2="12"></line>', 12);
-// Meme boite, plus grande : bouton Archive / Backup du projet (22/11/2026).
-const PROJECT_ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect>' +
-    '<path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><line x1="10" y1="12" x2="14" y2="12"></line>', 15);
+// Bouton Archive / Backup du projet : le carton 📦 de la maquette (choix utilisateur, 22/11/2026).
+const PROJECT_ARCHIVE_ICON = '<span style="font-size:15px;line-height:1;font-family:\'Segoe UI Emoji\',\'Apple Color Emoji\',' +
+    '\'Noto Color Emoji\',sans-serif">\u{1F4E6}</span>';
 const ARCHIVE_BROWN = "#a0703a"; // bouton / fenetres Archive du projet
 // Archives : 5 au plus par projet (comme projects.MAX_ARCHIVES) ; rouge = suppression.
 const TRASH_RED = "#d32f2f";
