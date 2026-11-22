@@ -174,6 +174,38 @@ class ZipTest(ArchiveBase):
         self.assertNotIn("Link", dirs)
 
 
+class UnreadableTest(ArchiveBase):
+    def test_walk_raises_on_unlistable_dir(self):
+        self.put(self.simple, "12.Video/a.mp4")
+        bad = os.path.join(self.simple, "12.Video")
+        real = os.scandir
+
+        def scandir(path="."):
+            if os.path.normcase(os.fspath(path)) == os.path.normcase(bad):
+                raise PermissionError("denied")
+            return real(path)
+
+        with mock.patch("os.scandir", scandir):
+            with self.assertRaises(OSError):
+                pa.walk(self.simple)
+            with self.assertRaises(OSError):
+                pa.make_zip(self.simple, "whole", "archive", self.arch, now=NOW)
+        self.assertEqual(os.listdir(self.arch), [])
+
+    def test_walk_raises_on_unreadable_file(self):
+        target = self.put(self.simple, "a.json")
+        real = os.lstat
+
+        def lstat(path, *a, **k):
+            if os.path.normcase(os.fspath(path)) == os.path.normcase(target):
+                raise PermissionError("denied")
+            return real(path, *a, **k)
+
+        with mock.patch("os.lstat", lstat):
+            with self.assertRaises(OSError):
+                pa.walk(self.simple)
+
+
 class VerifyTest(ArchiveBase):
     def test_verify_detects_missing_file(self):
         self.put(self.simple, "a.json", b"abc")

@@ -145,18 +145,20 @@ def target_of(project, scope):
 
 
 def _is_link(path):
-    try:
-        st = os.lstat(path)
-    except OSError:
-        return True
+    st = os.lstat(path)  # une erreur remonte : jamais un fichier illisible traite comme un lien
     return os.path.islink(path) or bool(getattr(st, "st_file_attributes", 0) & _REPARSE)
 
 
+def _raise(err):
+    raise err
+
+
 def walk(folder):
-    """(fichiers [(abs, rel)], dossiers [rel], taille) ; liens et jonctions ni suivis ni gardes."""
+    """(fichiers [(abs, rel)], dossiers [rel], taille) ; liens et jonctions ni suivis ni gardes.
+    Un dossier ou fichier illisible leve OSError (rien n'est omis en silence)."""
     files, dirs, size = [], [], 0
     folder = os.path.abspath(folder)
-    for cur, subs, names in os.walk(folder, followlinks=False):
+    for cur, subs, names in os.walk(folder, followlinks=False, onerror=_raise):
         subs[:] = sorted(d for d in subs if not _is_link(os.path.join(cur, d)))
         for d in subs:
             dirs.append(os.path.relpath(os.path.join(cur, d), folder).replace(os.sep, "/"))
