@@ -483,6 +483,12 @@ export function buildFieldsExplorer() {
                 await renderTree();
                 renderTable();
                 paintFoot();
+            } else if (!keep && seq === openSeq) {
+                // ↺ sur la liste des disques : on redessine l'arbre (disques relus).
+                await renderTree();
+                renderTable();
+                paintFoot();
+                paintMain();
             }
             return;
         }
@@ -531,6 +537,9 @@ export function buildFieldsExplorer() {
         if (c.error) return setMsg(c.error);
         if (!current) return setMsg("Choose a folder first.");
         const folder = current;
+        // Une reponse arrivee apres fermeture / reouverture est ignoree (seq) ; le fichier etant
+        // deja ecrit, on previent quand meme le noeud avec le onDone de cette ouverture.
+        const seq = openSeq, done = opts && opts.onDone;
         busy = true;
         paintMain();
         try {
@@ -540,10 +549,15 @@ export function buildFieldsExplorer() {
                     const data = await fsCall("/mmselectmod/fs/write",
                         { folder, name: c.name, content: (opts && opts.content) || "", replace });
                     writeStore(EXPLORER_DIR_KEY, folder);
+                    if (seq !== openSeq) {
+                        if (done) done({ path: data.path });
+                        return;
+                    }
                     busy = false;
                     finish({ path: data.path });
                     return;
                 } catch (e) {
+                    if (seq !== openSeq) return;
                     if (e.status === 409 && e.data && e.data.exists && !replace) {
                         if (!(await ask("Replace " + c.name + " ?"))) return;
                         replace = true;
@@ -563,21 +577,25 @@ export function buildFieldsExplorer() {
         if (busy || !selected) return;
         setMsg("");
         const folder = current;
+        // Reponse arrivee apres fermeture / reouverture : ignoree (rien n'est rempli).
+        const seq = openSeq, done = opts && opts.onDone;
         busy = true;
         paintMain();
         try {
             const data = await fsCall("/mmselectmod/fs/read?path=" + encodeURIComponent(selected.path));
-            // onDone analyse le fichier : une erreur (autre format) reste affichee ici, fenetre ouverte.
+            if (seq !== openSeq) return;
+            // onDone analyse le fichier : une erreur (autre format), meme d'un onDone asynchrone,
+            // reste affichee ici, fenetre ouverte.
             try {
-                if (opts && opts.onDone) opts.onDone(data);
+                if (done) await done(data);
             } catch (e) {
-                setMsg(e.message);
+                if (seq === openSeq) setMsg(e.message);
                 return;
             }
             writeStore(EXPLORER_DIR_KEY, folder);
-            close();
+            if (seq === openSeq) close();
         } catch (e) {
-            report(e);
+            if (seq === openSeq) report(e);
         } finally {
             busy = false;
             if (isOpen()) paintMain();
@@ -603,8 +621,17 @@ export function buildFieldsExplorer() {
         load(false);
     });
     field.addEventListener("input", () => {
-        if (mode === "save") paintFoot();
-        else renderTable();
+        if (mode === "save") {
+            paintFoot();
+            return;
+        }
+        // Open : le fichier choisi cache par la recherche n'est plus choisi (Load grise).
+        if (mode === "open" && selected && !matchesSearch(selected.name, field.value.trim())) {
+            selected = null;
+            paintFoot();
+            paintMain();
+        }
+        renderTable();
     });
     replaceBtn.addEventListener("click", () => answer(true));
     cancelAsk.addEventListener("click", () => answer(false));

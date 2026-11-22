@@ -5,7 +5,8 @@
 // ouvre une fenetre MagicStudio (arbre + tableau des fichiers, buildModelPicker).
 import { app } from "../../scripts/app.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
-import { exportFileName, buildExport, parseFieldsFile, sortFiles, sizeText, pickTarget } from "./select_mod.js";
+import { buildExport, parseFieldsFile, sortFiles, sizeText, pickTarget, explorerStart } from "./select_mod.js";
+import { buildFieldsExplorer, lastExplorerDir } from "./fields_explorer.js";
 
 const NODE_NAME = "MagicStudioSelectMod";
 
@@ -194,9 +195,9 @@ const HELP_SECTIONS = [
         ]) +
         hCard("Buttons of the node", [
             [B_FOLDER, "Open the window of the models folders (tree and files)"],
-            [B_DOWNLOAD, "Export the filled fields (.json)"],
-            [B_UPLOAD, "Import a fields file (SelectMod or MultiFiles Select)"],
-            [B_GEAR, "Choose the save folder of the exports"],
+            [B_DOWNLOAD, "Export the filled fields (.json): a window opens, you type the name"],
+            [B_UPLOAD, "Import a fields file chosen in the same window (SelectMod or MultiFiles Select)"],
+            [B_GEAR, "Choose the default folder where Export and Import open"],
             [B_TRASH, "Clear a field and its Type"],
             [B_PLUS + " " + B_MINUS, "Add / remove the optional fields 6 and 7"],
             [B_C, "Turn the overwrite confirmation back on"],
@@ -247,10 +248,28 @@ const HELP_SECTIONS = [
     },
     {
         id: "export", title: "Export / Import", icon: DOWNLOAD_ICON, color: PINK,
-        html: hCard("Fields file (.json)", [
-            [B_DOWNLOAD, "Exports the filled fields to <b>yyyyMMdd-HHmmss_selectmod_fields.json</b>."],
-            [B_GEAR, "Sets the <b>save folder</b>: the export is written there; without it, the browser downloads it."],
-            [B_UPLOAD, "Imports a SelectMod file, or a file exported by <b>MultiFiles Select</b> (.json or old .txt)."],
+        html: hCard("Export (.json)", [
+            [B_DOWNLOAD, "Opens the file window on the default folder. In the tree on the left, you can go to another " +
+                "folder or another drive."],
+            ["✏️", "Type the name in the top bar (proposed: <b>yyyyMMdd-HHmmss_selectmod_fields</b>; <b>.json</b> is " +
+                "added). A click on a file of the list copies its name."],
+            ["💾", "<b>Save</b> (or Enter) writes the file in the open folder."],
+            ["⚠️", "If the file already exists, <b>Replace</b> is asked first. A .json that is not a fields file is " +
+                "never replaced: choose another name."],
+        ]) +
+        hCard("Import", [
+            [B_UPLOAD, "Opens the same window. The top bar searches the file names of the open folder."],
+            ["👆", "Click a file, then <b>Load</b> (or double-click the file): the fields are filled."],
+            ["📄", "Reads SelectMod files and files of <b>MultiFiles Select</b> (.json or old .txt). Another file is " +
+                "refused with a message; the fields do not change."],
+        ]) +
+        hCard("Default folder", [
+            [B_GEAR, "Sets the folder where Export and Import open. Without it, they open on the last folder used."],
+            [B_FOLDER, "In the gear window, opens the file window: choose a folder, click <b>Select folder</b>, then <b>OK</b>."],
+        ]) +
+        hList([
+            "<b>↺</b> reads the folder again. The orange <b>Close</b> button (or Esc) closes the window without doing anything.",
+            "The file window only works on the computer that runs ComfyUI.",
         ]) +
         hTip("to move from MultiFiles Select to SelectMod: export from MultiFiles Select, import in SelectMod."),
     },
@@ -289,9 +308,9 @@ const HELP_SECTIONS_FR = [
         ]) +
         hCard("Boutons du nœud", [
             [B_FOLDER, "Ouvrir la fenêtre des dossiers de modèles (arbre et fichiers)"],
-            [B_DOWNLOAD, "Exporter les champs remplis (.json)"],
-            [B_UPLOAD, "Importer un fichier de champs (SelectMod ou MultiFiles Select)"],
-            [B_GEAR, "Choisir le dossier de sauvegarde des exports"],
+            [B_DOWNLOAD, "Exporter les champs remplis (.json) : une fenêtre s'ouvre, vous tapez le nom"],
+            [B_UPLOAD, "Importer un fichier de champs choisi dans la même fenêtre (SelectMod ou MultiFiles Select)"],
+            [B_GEAR, "Choisir le dossier par défaut où s'ouvrent Export et Import"],
             [B_TRASH, "Vider un champ et son Type"],
             [B_PLUS + " " + B_MINUS, "Ajouter / retirer les champs optionnels 6 et 7"],
             [B_C, "Réactiver la confirmation avant écrasement"],
@@ -342,10 +361,29 @@ const HELP_SECTIONS_FR = [
     },
     {
         id: "export", title: "Export / Import",
-        html: hCard("Fichier de champs (.json)", [
-            [B_DOWNLOAD, "Exporte les champs remplis dans <b>yyyyMMdd-HHmmss_selectmod_fields.json</b>."],
-            [B_GEAR, "Fixe le <b>dossier de sauvegarde</b> : l'export y est écrit ; sans lui, le navigateur le télécharge."],
-            [B_UPLOAD, "Importe un fichier SelectMod, ou un fichier exporté par <b>MultiFiles Select</b> (.json ou ancien .txt)."],
+        html: hCard("Export (.json)", [
+            [B_DOWNLOAD, "Ouvre la fenêtre des fichiers sur le dossier par défaut. Dans l'arbre à gauche, vous pouvez " +
+                "aller dans un autre dossier ou sur un autre disque."],
+            ["✏️", "Tapez le nom dans le bandeau du haut (proposé : <b>yyyyMMdd-HHmmss_selectmod_fields</b> ; <b>.json</b> " +
+                "est ajouté). Un clic sur un fichier de la liste recopie son nom."],
+            ["💾", "<b>Save</b> (ou Entrée) écrit le fichier dans le dossier ouvert."],
+            ["⚠️", "Si le fichier existe déjà, <b>Replace</b> est demandé d'abord. Un .json qui n'est pas un fichier de " +
+                "champs n'est jamais remplacé : choisissez un autre nom."],
+        ]) +
+        hCard("Import", [
+            [B_UPLOAD, "Ouvre la même fenêtre. Le bandeau du haut cherche dans les noms des fichiers du dossier ouvert."],
+            ["👆", "Cliquez sur un fichier, puis sur <b>Load</b> (ou double-cliquez sur le fichier) : les champs se remplissent."],
+            ["📄", "Lit les fichiers SelectMod et ceux de <b>MultiFiles Select</b> (.json ou ancien .txt). Un autre fichier " +
+                "est refusé avec un message ; les champs ne changent pas."],
+        ]) +
+        hCard("Dossier par défaut", [
+            [B_GEAR, "Fixe le dossier où s'ouvrent Export et Import. Sans lui, ils s'ouvrent sur le dernier dossier utilisé."],
+            [B_FOLDER, "Dans la fenêtre de la roue, ouvre la fenêtre des fichiers : choisissez un dossier, cliquez sur " +
+                "<b>Select folder</b>, puis sur <b>OK</b>."],
+        ]) +
+        hList([
+            "<b>↺</b> relit le dossier. Le bouton orange <b>Close</b> (ou Échap) ferme la fenêtre sans rien faire.",
+            "La fenêtre des fichiers ne marche que sur l'ordinateur où tourne ComfyUI.",
         ]) +
         hTip("pour passer de MultiFiles Select à SelectMod : exportez depuis MultiFiles Select, importez dans SelectMod.", TIP_FR),
     },
@@ -1246,12 +1284,13 @@ function buildSimpleConfirmOverlay(container) {
 }
 
 /**
- * Fenetre "Save folder" (roue crantee) : chemin modifiable, Browse
- * (explorateur Windows), effacer, Cancel / OK. Avertit si le dossier
- * n'existe pas. show(actuel, onOk(dossier)) ; dossier vide = pas de
- * dossier de sauvegarde (l'export est telecharge par le navigateur).
+ * Fenetre "Save folder" (roue crantee) : chemin modifiable, 📁 (explorateur
+ * des fichiers de champs en mode dossier, getExplorer() = instance du noeud),
+ * effacer, Cancel / OK. Avertit si le dossier n'existe pas.
+ * show(actuel, onOk(dossier)) ; dossier vide = pas de dossier par defaut
+ * (Export / Import s'ouvrent sur le dernier dossier utilise).
  */
-function buildSaveFolderDialog(container) {
+function buildSaveFolderDialog(container, getExplorer) {
     const overlay = document.createElement("div");
     Object.assign(overlay.style, {
         position: "fixed", inset: "0", background: "transparent", zIndex: "10001", display: "none",
@@ -1269,16 +1308,16 @@ function buildSaveFolderDialog(container) {
     title.innerHTML = iconBadge(GEAR_ICON, SETTINGS_BG, true) + " Save folder";
     Object.assign(title.style, { fontWeight: "700", fontSize: "14px", color: TITLE_COLOR, marginBottom: "6px" });
     const info = document.createElement("div");
-    info.textContent = "Exports (.json) are written in this folder. Empty: the browser downloads them.";
+    info.textContent = "Exports and imports open in this folder. You can go elsewhere from the window.";
     Object.assign(info.style, { color: "#aaa", lineHeight: "1.4", marginBottom: "10px" });
 
     const row = document.createElement("div");
     Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center" });
-    const input = makeTextInput("No save folder (download)", false);
+    const input = makeTextInput("No default folder", false);
     const browseBtn = makeIconButton(VIOLET, FOLDER_ICON);
     browseBtn.title = "Browse...";
     const clearBtn = makeIconButton("#6b2b2b", CLOSE_ICON);
-    clearBtn.title = "Clear (no save folder)";
+    clearBtn.title = "Clear (no default folder)";
     row.append(input, browseBtn, clearBtn);
 
     const warn = document.createElement("div");
@@ -1332,8 +1371,11 @@ function buildSaveFolderDialog(container) {
         if (cb) cb(value);
     }
     // Les touches ne vont pas au canvas (Suppr effacerait le noeud).
+    // Explorateur ouvert par 📁 (au-dessus) : il gere lui-meme ses touches (Echap le ferme).
+    let explorer = null;
     const onKey = (e) => {
         if (overlay.style.display === "none") return;
+        if (explorer && explorer.isOpen()) return;
         if (e.key === "Escape") {
             e.preventDefault();
             e.stopImmediatePropagation();
@@ -1352,24 +1394,21 @@ function buildSaveFolderDialog(container) {
         input.value = "";
         check();
     });
-    browseBtn.addEventListener("click", async () => {
-        browseBtn.disabled = true;
-        browseBtn.style.opacity = "0.5";
-        try {
-            const initial = input.value.trim();
-            const data = await apiGet(
-                "/mmrefloader/browse_dir" + (initial ? "?initial=" + encodeURIComponent(initial) : "")
-            );
-            if (data && data.path) {
-                input.value = data.path;
+    // 📁 : explorateur des fichiers de champs, mode dossier ; Select folder
+    // remplit le champ (OK l'enregistre ensuite comme avant).
+    browseBtn.addEventListener("click", () => {
+        const current = input.value.trim();
+        explorer = getExplorer();
+        explorer.open({
+            mode: "folder",
+            start: explorerStart(current, lastExplorerDir()),
+            defaultFolder: current,
+            onDone: ({ path }) => {
+                if (overlay.style.display === "none") return;
+                input.value = path;
                 check();
-            }
-        } catch (e) {
-            warn.textContent = "Error: " + e.message;
-        } finally {
-            browseBtn.disabled = false;
-            browseBtn.style.opacity = "1";
-        }
+            },
+        });
     });
     cancelBtn.addEventListener("click", close);
     okBtn.addEventListener("click", confirm);
@@ -2243,9 +2282,9 @@ app.registerExtension({
                 status.textContent = "Confirmation turned back on before overwriting a field.";
             });
 
-            // Bouton "telechargement" : exporte dans un fichier .txt une
-            // ligne par champ numerote rempli, au format "N - <model_type> :
-            // <field_N>" (champs vides ignores). Place juste a gauche du
+            // Bouton Export : enregistre les champs remplis dans un fichier
+            // .json (format MagicStudio SelectMod, champs vides ignores) par
+            // l'explorateur des fichiers de champs. Place juste a gauche du
             // bouton d'aide "?". S'appuie sur fieldInputs/modelTypeInputs,
             // remplis plus bas dans cette meme fonction : sans risque, le
             // gestionnaire de clic ne s'execute qu'apres coup (l'utilisateur
@@ -2269,9 +2308,21 @@ app.registerExtension({
             saveBtn.style.justifyContent = "center";
             toggleRow.appendChild(saveBtn);
 
-            // Export JSON : ecrit dans le dossier de sauvegarde (roue
-            // crantee) s'il est choisi, sinon telecharge par le navigateur.
-            saveBtn.addEventListener("click", async () => {
+            // Explorateur des fichiers de champs (fields_explorer.js) : une
+            // instance par noeud, creee au premier clic (Export, Import ou 📁
+            // de la roue), detruite dans onRemoved.
+            let fieldsExplorer = null;
+            const getExplorer = () => fieldsExplorer || (fieldsExplorer = buildFieldsExplorer());
+            node.mmRemoveFieldsExplorer = () => {
+                if (fieldsExplorer) fieldsExplorer.remove();
+                fieldsExplorer = null;
+            };
+            const defaultFolder = () => (node.properties.mmselectmodSaveFolder || "").trim();
+
+            // Export JSON : l'explorateur s'ouvre sur le dossier par defaut
+            // (roue crantee), sinon sur le dernier dossier utilise ; le
+            // bandeau du haut donne le nom du fichier.
+            saveBtn.addEventListener("click", () => {
                 const rows = [];
                 for (let i = 1; i <= fieldCount(); i++) {
                     const path = (fieldInputs[i].value || "").trim();
@@ -2282,49 +2333,47 @@ app.registerExtension({
                     status.textContent = "No filled field to export.";
                     return;
                 }
-                const text = buildExport(rows);
-                const name = exportFileName(new Date());
-                const folder = (node.properties.mmselectmodSaveFolder || "").trim();
-                if (folder) {
-                    try {
-                        const res = await fetch("/mmselectmod/save_export", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ folder, name, content: text }),
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok) throw new Error(data.error || `HTTP error ${res.status}`);
-                        status.textContent = `Exported (${rows.length} field(s)): ${data.path}`;
-                    } catch (e) {
-                        status.textContent = "Error: " + e.message;
-                    }
-                    return;
-                }
-                const blob = new Blob([text], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = name;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                URL.revokeObjectURL(url);
-                status.textContent = `File downloaded (${rows.length} field(s)).`;
+                const folder = defaultFolder();
+                getExplorer().open({
+                    mode: "save",
+                    start: explorerStart(folder, lastExplorerDir()),
+                    defaultFolder: folder,
+                    content: buildExport(rows),
+                    onDone: ({ path }) => {
+                        status.textContent = `Exported (${rows.length} field(s)): ${path}`;
+                    },
+                });
             });
 
-            // Bouton "televersement" : recharge un fichier .txt au meme
-            // format que l'export ("N - <model_type> : <field_N>", une
-            // ligne par numero) pour remplir automatiquement les champs
-            // Type et principal correspondants. S'appuie sur setFieldValue/
-            // setModelTypeValue, definies plus bas dans cette meme fonction
-            // (meme raisonnement de securite que pour saveBtn ci-dessus :
-            // le gestionnaire de clic/changement ne s'execute qu'apres
-            // interaction de l'utilisateur, une fois ces fonctions definies).
-            const uploadInput = document.createElement("input");
-            uploadInput.type = "file";
-            uploadInput.accept = ".json,.txt,application/json,text/plain";
-            uploadInput.style.display = "none";
-            toggleRow.appendChild(uploadInput);
+            // Remplit les champs avec le texte d'un fichier de champs (JSON
+            // SelectMod / MultiFiles Select ou ancien .txt, voir select_mod.js).
+            // Le fichier est analyse d'abord : en cas d'erreur, aucun champ
+            // n'est touche, le message va dans le noeud et l'erreur remonte
+            // (l'explorateur l'affiche et reste ouvert). Numero absent ou
+            // valeur vide -> champ vide ; un champ 6 ou 7 rempli ajoute l'option.
+            // S'appuie sur setFieldValue / setModelTypeValue, definies plus bas
+            // dans cette fonction : appelee seulement apres un clic, une fois
+            // ces fonctions definies.
+            function applyFieldsText(text, name) {
+                let parsed;
+                try {
+                    parsed = parseFieldsFile(String(text || ""), MAX_FIELDS);
+                } catch (e) {
+                    status.textContent = "Error: " + e.message;
+                    throw e;
+                }
+                for (let i = MAX_FIELDS; i > BASE_FIELDS; i--) {
+                    if (parsed[i].fieldValue || parsed[i].modelType) {
+                        while (fieldCount() < i) addOption();
+                        break;
+                    }
+                }
+                for (let i = 1; i <= fieldCount(); i++) {
+                    setFieldValue(i, parsed[i].fieldValue);
+                    setModelTypeValue(i, parsed[i].modelType);
+                }
+                status.textContent = `File imported: ${name}.`;
+            }
 
             const uploadBtn = document.createElement("button");
             uploadBtn.type = "button";
@@ -2345,48 +2394,21 @@ app.registerExtension({
             uploadBtn.style.justifyContent = "center";
             toggleRow.appendChild(uploadBtn);
 
-            uploadBtn.addEventListener("click", () => uploadInput.click());
-
-            uploadInput.addEventListener("change", () => {
-                const file = uploadInput.files && uploadInput.files[0];
-                // Reinitialise tout de suite pour pouvoir reselectionner le
-                // meme fichier une seconde fois (sinon "change" ne se
-                // redeclenche pas).
-                uploadInput.value = "";
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = () => {
-                    // JSON (export actuel) ou ancien .txt ("N - Type : chemin") :
-                    // voir fields_format.js. Numero absent ou valeur vide ->
-                    // champ vide ; un champ 6 ou 7 rempli ajoute l'option.
-                    let parsed;
-                    try {
-                        parsed = parseFieldsFile(String(reader.result || ""), MAX_FIELDS);
-                    } catch (e) {
-                        status.textContent = "Error: " + e.message;
-                        return;
-                    }
-                    for (let i = MAX_FIELDS; i > BASE_FIELDS; i--) {
-                        if (parsed[i].fieldValue || parsed[i].modelType) {
-                            while (fieldCount() < i) addOption();
-                            break;
-                        }
-                    }
-                    for (let i = 1; i <= fieldCount(); i++) {
-                        setFieldValue(i, parsed[i].fieldValue);
-                        setModelTypeValue(i, parsed[i].modelType);
-                    }
-                    status.textContent = `File imported: ${file.name}.`;
-                };
-                reader.onerror = () => {
-                    status.textContent = "Error reading the file.";
-                };
-                reader.readAsText(file);
+            // Import : meme explorateur, Load (ou double-clic) lit le fichier
+            // par le serveur puis applyFieldsText remplit les champs.
+            uploadBtn.addEventListener("click", () => {
+                const folder = defaultFolder();
+                getExplorer().open({
+                    mode: "open",
+                    start: explorerStart(folder, lastExplorerDir()),
+                    defaultFolder: folder,
+                    onDone: ({ text, name }) => applyFieldsText(text, name),
+                });
             });
 
-            // Roue crantee : dossier de sauvegarde des exports
-            // (node.properties.mmselectmodSaveFolder, garde avec le workflow).
+            // Roue crantee : dossier par defaut ou s'ouvrent Export et Import
+            // (node.properties.mmselectmodSaveFolder, garde avec le workflow,
+            // envoye aussi sur la sortie model_link).
             const settingsBtn = document.createElement("button");
             settingsBtn.type = "button";
             settingsBtn.innerHTML = GEAR_ICON;
@@ -2402,18 +2424,20 @@ app.registerExtension({
                 // Valeur envoyee a l'execution sur la sortie model_link.
                 if (saveFolderWidget) saveFolderWidget.value = folder;
                 settingsBtn.title = folder
-                    ? "Save folder: " + folder
-                    : "Save folder: none (exports are downloaded)";
+                    ? "Default folder: " + folder
+                    : "Default folder: none";
             }
             updateSettingsBtn();
 
             let saveFolderDialog = null;
             settingsBtn.addEventListener("click", () => {
-                if (!saveFolderDialog) saveFolderDialog = buildSaveFolderDialog(container);
+                if (!saveFolderDialog) saveFolderDialog = buildSaveFolderDialog(container, getExplorer);
                 saveFolderDialog.show(node.properties.mmselectmodSaveFolder || "", (folder) => {
                     node.properties.mmselectmodSaveFolder = folder;
                     updateSettingsBtn();
-                    status.textContent = folder ? "Save folder: " + folder : "No save folder: exports are downloaded.";
+                    status.textContent = folder
+                        ? "Default folder: " + folder
+                        : "No default folder: the window opens on the last folder used.";
                 });
             });
 
@@ -3142,6 +3166,7 @@ app.registerExtension({
             }
             vueNodes.delete(this);
             if (this.mmCloseModelPicker) this.mmCloseModelPicker();
+            if (this.mmRemoveFieldsExplorer) this.mmRemoveFieldsExplorer();
             return onRemoved ? onRemoved.apply(this, arguments) : undefined;
         };
 
