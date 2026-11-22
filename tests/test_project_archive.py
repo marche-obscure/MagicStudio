@@ -477,3 +477,137 @@ class TrashFitsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RestoreTest(ArchiveBase):
+    def setUp(self):
+        super().setUp()
+        self.input = os.path.join(self.tmp, "input")
+        os.makedirs(self.input)
+
+    def zap(self, project, scope):
+        res = pa.archive(project, scope, "permanent", self.arch, self.input, lambda p: None, now=NOW)
+        return res["zip"]
+
+    def test_restore_whole_round_trip(self):
+        sub2 = projects.create_project(self.root, "B", group="G")
+        self.put(self.sub, "08.Images/a.png", b"aaa")
+        self.put(sub2, "12.Video/b.mp4", b"bbbb")
+        self.put(self.group, "Final-Cut_G/Video/_00_v.mp4", b"cc")
+        os.makedirs(os.path.join(self.sub, "empty dir"))
+        before = pa.walk(self.group)
+        z = self.zap(self.sub, "whole")
+        self.assertFalse(os.path.exists(self.group))
+        res = pa.restore(z, self.root)
+        self.assertEqual(res["dest"], self.group)
+        after = pa.walk(self.group)
+        self.assertEqual(sorted((r, os.path.getsize(p)) for p, r in before[0]),
+                         sorted((r, os.path.getsize(p)) for p, r in after[0]))
+        self.assertEqual(sorted(before[1]), sorted(after[1]))
+        self.assertTrue(projects.is_group(self.group))
+        self.assertTrue(os.path.exists(z))
+        self.assertFalse(os.path.exists(self.group + ".part"))
+        self.assertEqual(res["files"], len(after[0]))
+
+    def test_restore_name_taken(self):
+        self.put(self.simple, "08.Images/a.png")
+        z = self.zap(self.simple, "whole")
+        os.makedirs(self.simple)
+        self.assertEqual(pa.restore_target(z, self.root)["needs"], "name")
+        with self.assertRaises(ValueError):
+            pa.restore(z, self.root)
+        res = pa.restore(z, self.root, name="P2")
+        self.assertEqual(res["dest"], os.path.join(self.root, "P2"))
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "P2", "08.Images", "a.png")))
+        self.assertEqual(pa.restore_target(z, self.root, name="P2")["needs"], "name")
+        with self.assertRaises(ValueError):
+            pa.restore(z, self.root, name="a/b")
+
+    def test_restore_sub_into_mother_keeps_number(self):
+        sub = projects.create_project(self.root, "B", group="G")
+        base = os.path.basename(sub)
+        self.assertRegex(base, r"^\d\d-B$")
+        self.put(sub, "08.Images/a.png", b"z")
+        z = self.zap(sub, "sub")
+        t = pa.restore_target(z, self.root)
+        self.assertEqual((t["dest"], t["needs"]), (os.path.join(self.group, base), None))
+        pa.restore(z, self.root)
+        self.assertTrue(os.path.isfile(os.path.join(self.group, base, "08.Images", "a.png")))
+        shutil.rmtree(os.path.join(self.group, base))
+        number = base.split("-")[0]
+        res = pa.restore(z, self.root, name="Other")
+        self.assertEqual(res["dest"], os.path.join(self.group, number + "-Other"))
+        self.assertTrue(os.path.isdir(res["dest"]))
+
+    def test_restore_sub_without_mother(self):
+        sub = projects.create_project(self.root, "B", group="G")
+        base = os.path.basename(sub)
+        z = self.zap(sub, "sub")
+        shutil.rmtree(self.group)
+        self.assertEqual(pa.restore_target(z, self.root)["needs"], "independent")
+        with self.assertRaises(ValueError):
+            pa.restore(z, self.root)
+        res = pa.restore(z, self.root, independent=True)
+        self.assertEqual(res["dest"], os.path.join(self.root, base))
+        self.assertTrue(os.path.isdir(os.path.join(self.root, base, "08.Images")))
+
+    def hand_zip(self, members, manifest=None):
+        manifest = manifest or {"format": pa.FORMAT, "version": 1, "kind": "project", "name": "P",
+                                "group": None, "number": None}
+        z = os.path.join(self.arch, "hand.zip")
+        with zipfile.ZipFile(z, "w") as zf:
+            zf.writestr(pa.MANIFEST, json.dumps(manifest))
+            for m in members:
+                zf.writestr(m, b"evil")
+        return z
+
+    def test_restore_refuses_unsafe_paths(self):
+        dest_root = os.path.join(self.tmp, "R2")
+        os.makedirs(dest_root)
+        for bad in ("P/../../evil.txt", "/abs/evil.txt", "C:/evil.txt", "Other/evil.txt", "P/../evil.txt"):
+            z = self.hand_zip(["P/ok.txt", bad])
+            with self.assertRaises(ValueError, msg=bad) as cm:
+                pa.restore(z, dest_root)
+            self.assertIn("Unsafe path in the archive", str(cm.exception))
+            self.assertEqual(os.listdir(dest_root), [])
+            self.assertFalse(os.path.exists(os.path.join(self.tmp, "evil.txt")))
+
+    def test_restore_refuses_foreign_zip(self):
+        z = os.path.join(self.arch, "foreign.zip")
+        with zipfile.ZipFile(z, "w") as zf:
+            zf.writestr("a.txt", b"x")
+        with self.assertRaises(ValueError) as cm:
+            pa.restore(z, self.root)
+        self.assertEqual(str(cm.exception), "Not a MagicStudio archive.")
+        z2 = self.hand_zip([], {"format": "other"})
+        with self.assertRaises(ValueError):
+            pa.read_manifest(z2)
+
+    def test_restore_removes_stale_part_and_cleans_on_error(self):
+        self.put(self.simple, "08.Images/a.png")
+        z = self.zap(self.simple, "whole")
+        stale = self.simple + ".part"
+        os.makedirs(stale)
+        self.put(stale, "junk.txt")
+        pa.restore(z, self.root)
+        self.assertFalse(os.path.exists(stale))
+        shutil.rmtree(self.simple)
+        with mock.patch.object(projects, "ensure_project", side_effect=OSError("boom")):
+            with self.assertRaises(OSError):
+                pa.restore(z, self.root)
+        self.assertFalse(os.path.exists(stale))
+        self.assertFalse(os.path.exists(self.simple))
+
+    def test_restore_reports_progress_and_holds_job(self):
+        self.put(self.simple, "08.Images/a.png")
+        z = self.zap(self.simple, "whole")
+        seen = []
+        real = pa._report
+
+        def spy(*a):
+            seen.append(a[0])
+            real(*a)
+        with mock.patch.object(pa, "_report", spy):
+            pa.restore(z, self.root)
+        self.assertIn("restore", seen)
+        self.assertIsNone(pa.progress())

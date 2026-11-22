@@ -431,3 +431,112 @@ def list_archives(folder):
             continue
     found.sort(key=lambda a: (a["created"] or "", a["file"]), reverse=True)
     return found
+
+
+# ---- restauration ------------------------------------------------------------------
+
+def read_manifest(zip_path):
+    """Manifeste d'une archive MagicStudio ; ValueError("Not a MagicStudio archive.") sinon."""
+    msg = "Not a MagicStudio archive."
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            m = json.loads(zf.read(MANIFEST).decode("utf-8"))
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile):
+        raise ValueError(msg)
+    if not isinstance(m, dict) or m.get("format") != FORMAT:
+        raise ValueError(msg)
+    return m
+
+
+def restore_target(zip_path, root, name=None, independent=False):
+    """Destination de la restauration et ce qui manque : needs = None | "name" | "independent"."""
+    m = read_manifest(zip_path)
+    kind = m.get("kind")
+    base = projects.validate_name(m.get("name"))  # le manifeste n'est pas digne de confiance
+    if name is not None and str(name).strip() == "":
+        name = None
+    if kind == "project":
+        final = projects.validate_name(name) if name is not None else base
+        dest = os.path.join(root, final)
+    elif kind == "sub":
+        group = projects.validate_name(m.get("group"))
+        number, plain = projects.split_number(base)
+        if name is not None:
+            plain = projects.validate_name(name)
+            final = projects.numbered_name(int(number), plain) if number is not None else plain
+        else:
+            final = base
+        mother = os.path.join(root, group)
+        if projects.is_group(mother):
+            dest = os.path.join(mother, final)
+        elif independent:
+            dest = os.path.join(root, final)
+        else:
+            return {"dest": os.path.join(root, final), "needs": "independent"}
+    else:
+        raise ValueError("Not a MagicStudio archive.")
+    if os.path.lexists(dest):
+        return {"dest": dest, "needs": "name"}
+    return {"dest": dest, "needs": None}
+
+
+def _unsafe(member, top):
+    """True si le nom du membre sort du dossier de tete (chemin absolu, lecteur, .. ou autre dossier)."""
+    n = member.replace("\\", "/")
+    if n.startswith("/") or os.path.splitdrive(n)[0] or ":" in n.split("/")[0]:
+        return True
+    parts = n.split("/")
+    if ".." in parts or "." in parts[:-1] or "" in parts[:-1]:
+        return True
+    return parts[0] != top
+
+
+def restore(zip_path, root, name=None, independent=False):
+    """Extrait l'archive dans <destination>.part puis le renomme ; le zip n'est jamais supprime."""
+    m = read_manifest(zip_path)
+    t = restore_target(zip_path, root, name, independent)
+    if t["needs"] is not None:
+        raise ValueError("Cannot restore yet: %s is needed." % t["needs"])
+    dest = t["dest"]
+    top = m["name"]
+    part = dest + ".part"
+    with job("restore", 0, top):
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            members = [zi for zi in zf.infolist() if zi.filename != MANIFEST]
+            for zi in members:  # tout est verifie avant d'ecrire quoi que ce soit
+                if _unsafe(zi.filename, top):
+                    raise ValueError("Unsafe path in the archive: %s" % zi.filename)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            if os.path.lexists(part):
+                shutil.rmtree(part, onerror=_writable_then_retry)
+            count = 0
+            try:
+                os.makedirs(part)
+                _report("restore", 0, len(members), top)
+                for i, zi in enumerate(members, 1):
+                    rel = zi.filename.replace("\\", "/")[len(top) + 1:]
+                    if rel:
+                        out = os.path.join(part, *rel.rstrip("/").split("/"))
+                        if not _inside(out, part):
+                            raise ValueError("Unsafe path in the archive: %s" % zi.filename)
+                        if zi.is_dir():
+                            os.makedirs(out, exist_ok=True)
+                        else:
+                            os.makedirs(os.path.dirname(out), exist_ok=True)
+                            with zf.open(zi) as src, open(out, "wb") as dst:
+                                shutil.copyfileobj(src, dst, 1024 * 1024)
+                            with contextlib.suppress(OSError, ValueError, OverflowError):
+                                ts = datetime(*zi.date_time).timestamp()
+                                os.utime(out, (ts, ts))
+                            count += 1
+                    _report("restore", i, len(members), top)
+                # Sous-dossiers manquants : le projet lui-meme, ou chacun des projets d'un MultiProject
+                # (avant le renommage : une erreur ne laisse rien a la destination).
+                kids = projects.project_children(part)
+                for p in ([os.path.join(part, k) for k in kids] if kids else [part]):
+                    projects.ensure_project(p)
+                os.rename(part, dest)
+            except BaseException:
+                shutil.rmtree(part, onerror=_writable_then_retry)
+                raise
+    return {"dest": dest, "files": count}
