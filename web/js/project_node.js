@@ -612,7 +612,8 @@ const HELP_SECTIONS = [
                 "Click <b>Browse</b> and choose the <b>Archives folder</b> (first time only).",
                 "Pick <b>Archive</b> or <b>Backup</b>. For a sub-project, pick <b>Whole project</b> or <b>This sub-project</b>.",
                 "For <b>Archive</b>, pick <b>Recycle Bin</b> or <b>Delete permanently</b>.",
-                "Click <b>Archive</b> (or <b>Backup</b>) and answer the question. A progress bar shows the work.",
+                "Click <b>Archive</b> and answer the question, or click <b>Backup</b> (no question). " +
+                    "A progress bar shows the work.",
             ]) +
             hCard("Archive or Backup", [
                 ["Archive", "zips the project, <b>checks the zip</b>, then the project leaves the list."],
@@ -635,12 +636,13 @@ const HELP_SECTIONS = [
             hList([
                 "It must be <b>outside the projects folder</b>. Another disk is fine.",
                 "Videos and images are stored as they are. Text files are compressed.",
-                "If the disk is too full, the window says so and <b>Archive</b> stays greyed.",
+                "If the disk is too full, the window says so and <b>Archive</b> or <b>Backup</b> stays greyed.",
             ]) +
             hTitle(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN, "Restore an archive") +
             hSteps([
                 "Click <b>Restore an archive…</b> (or the " + iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN) +
                     " button with no project).",
+                "The <b>Archives folder:</b> row shows where the zips are. Click <b>Browse</b> to pick another folder.",
                 "Pick a zip in the list. The window shows where it will go.",
                 "Click <b>Restore</b>.",
             ]) +
@@ -1208,7 +1210,8 @@ const HELP_SECTIONS_FR = [
                 "Cliquez sur <b>Browse</b> et choisissez le <b>dossier des archives</b> (la première fois seulement).",
                 "Choisissez <b>Archive</b> ou <b>Backup</b>. Pour un sous-projet, choisissez <b>Whole project</b> ou <b>This sub-project</b>.",
                 "Pour <b>Archive</b>, choisissez <b>Recycle Bin</b> ou <b>Delete permanently</b>.",
-                "Cliquez sur <b>Archive</b> (ou <b>Backup</b>) et répondez à la question. Une barre montre le travail.",
+                "Cliquez sur <b>Archive</b> et répondez à la question, ou cliquez sur <b>Backup</b> (pas de question). " +
+                    "Une barre montre le travail.",
             ]) +
             hCard("Archive ou Backup", [
                 ["Archive", "crée le zip, <b>vérifie le zip</b>, puis le projet quitte la liste."],
@@ -1232,12 +1235,13 @@ const HELP_SECTIONS_FR = [
             hList([
                 "Il doit être <b>hors du dossier des projets</b>. Un autre disque convient.",
                 "Les vidéos et les images sont rangées telles quelles. Les fichiers texte sont compressés.",
-                "Si le disque est trop plein, la fenêtre le dit et <b>Archive</b> reste grisé.",
+                "Si le disque est trop plein, la fenêtre le dit et <b>Archive</b> ou <b>Backup</b> reste grisé.",
             ]) +
             hTitle(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN, "Restaurer une archive") +
             hSteps([
                 "Cliquez sur <b>Restore an archive…</b> (ou sur le bouton " + iconBadge(PROJECT_ARCHIVE_ICON, ARCHIVE_BROWN) +
                     " sans projet).",
+                "La ligne <b>Archives folder:</b> montre où sont les zips. Cliquez sur <b>Browse</b> pour choisir un autre dossier.",
                 "Choisissez un zip dans la liste. La fenêtre montre où il ira.",
                 "Cliquez sur <b>Restore</b>.",
             ]) +
@@ -2962,6 +2966,7 @@ function buildRestoreDialog(container, ctx) {
                 (independent ? "&independent=1" : ""));
             if (id !== targetId) return;
             target = data;
+            setMessage("", true); // ancienne erreur effacee : la destination est maintenant connue
             if (data.needs === "name" && !nameShown()) showName();
         } catch (e) {
             if (id !== targetId) return;
