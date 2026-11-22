@@ -78,6 +78,19 @@ class RoutesGuardTest(unittest.TestCase):
         for route in ("/mmselectmod/fs/drives", "/mmselectmod/fs/list", "/mmselectmod/fs/read", "/mmselectmod/fs/write"):
             self.assertIn(route, bodies, route)
             self.assertIn("_selectmod_local(request)", bodies[route], route)
+
+    def test_selectmod_local_checks_host_and_headers(self):
+        # Revue finale du 22/11/2026 : adresse TCP ET en-tete Host (rebinding DNS), en-tetes de relais refuses.
+        with open(INIT, encoding="utf-8") as f:
+            text = f.read()
+        self.assertRegex(text, r"select_mod\.is_local_request\(request\.remote, request\.host, request\.headers\)")
+
+    def test_selectmod_fs_permission_error_is_403(self):
+        bodies = route_bodies()
+        for route in ("/mmselectmod/fs/list", "/mmselectmod/fs/read", "/mmselectmod/fs/write"):
+            body = bodies[route]
+            self.assertIn("except PermissionError", body, route)
+            self.assertLess(body.index("except PermissionError"), body.index("except Exception"), route)
         self.assertNotIn("/mmselectmod/save_export", bodies)
 
     def test_star_route_derives_the_project(self):

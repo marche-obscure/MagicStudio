@@ -186,6 +186,97 @@ class SelectModFsTest(unittest.TestCase):
         self.assertFalse(sm.is_fields_file(mk("h.json", big)))
         self.assertFalse(sm.is_fields_file(self.p("missing.json")))
 
+    # ---- Revue finale du 22/11/2026 ----
+    def test_is_local_request(self):
+        ok = [("127.0.0.1", "127.0.0.1:8188"), ("127.0.0.1", "localhost:8188"), ("::1", "[::1]:8188"),
+              ("127.0.0.1", "localhost"), ("::1", "::1"), ("127.0.0.1", "127.3.2.1"), ("127.0.0.1", "LOCALHOST:8188"),
+              ("::ffff:127.0.0.1", "127.0.0.1:8188")]
+        for remote, host in ok:
+            self.assertTrue(sm.is_local_request(remote, host, {}), host)
+            self.assertTrue(sm.is_local_request(remote, host, {"Sec-Fetch-Site": "same-origin"}), host)
+            self.assertTrue(sm.is_local_request(remote, host, None), host)
+        # Rebinding DNS : un nom qui pointe sur 127.0.0.1 reste refuse (aucune resolution de nom).
+        for host in ("evil.com", "evil.com:8188", "127.0.0.1.nip.io:8188", "", None, "[::1", "192.168.1.2:8188",
+                     "localhost.evil.com", "[evil.com]:8188"):
+            self.assertFalse(sm.is_local_request("127.0.0.1", host, {}), host)
+        self.assertFalse(sm.is_local_request("192.168.1.20", "127.0.0.1:8188", {}))
+        self.assertFalse(sm.is_local_request(None, "127.0.0.1:8188", {}))
+        self.assertFalse(sm.is_local_request("127.0.0.1", "127.0.0.1:8188", {"Sec-Fetch-Site": "cross-site"}))
+        self.assertFalse(sm.is_local_request("127.0.0.1", "127.0.0.1:8188", {"sec-fetch-site": "Cross-Site"}))
+        self.assertFalse(sm.is_local_request("127.0.0.1", "127.0.0.1:8188", {"X-Forwarded-For": "1.2.3.4"}))
+        self.assertFalse(sm.is_local_request("127.0.0.1", "127.0.0.1:8188", {"forwarded": "for=1.2.3.4"}))
+
+    def test_write_fields_unique_temp_file(self):
+        other = self.p("wan.json.part")
+        write(other, b"unrelated")
+        p = sm.write_fields(self.root, "wan", CONTENT)
+        with open(other, "rb") as f:
+            self.assertEqual(f.read(), b"unrelated")
+        self.assertEqual(sorted(os.listdir(self.root)), ["wan.json", "wan.json.part"])
+        with mock.patch("select_mod.os.replace", side_effect=OSError("boom")):
+            with self.assertRaises(OSError):
+                sm.write_fields(self.root, "wan", CONTENT, replace=True)
+        self.assertEqual(sorted(os.listdir(self.root)), ["wan.json", "wan.json.part"])
+        self.assertTrue(os.path.isfile(p))
+
+    def test_write_fields_requires_list_and_size(self):
+        with self.assertRaises(ValueError) as c:
+            sm.write_fields(self.root, "x", '{"format": "MagicStudio SelectMod", "fields": 3}')
+        self.assertEqual(str(c.exception), "The export is not a SelectMod fields file.")
+        with self.assertRaises(ValueError):
+            sm.write_fields(self.root, "x", '{"format": "MagicStudio SelectMod"}')
+        # Texte court en caracteres mais trop gros en octets UTF-8.
+        big = json.dumps({"format": "MagicStudio SelectMod", "fields": [],
+                          "pad": "é" * (sm.FIELDS_MAX_BYTES // 2 + 1)}, ensure_ascii=False)
+        self.assertLessEqual(len(big), sm.FIELDS_MAX_BYTES)
+        with self.assertRaises(ValueError) as c:
+            sm.write_fields(self.root, "x", big)
+        self.assertEqual(str(c.exception), "File too large.")
+        self.assertEqual(os.listdir(self.root), [])
+
+    def test_list_dir_empty_path(self):
+        for path in ("", "   ", None):
+            with self.assertRaises(ValueError) as c:
+                sm.list_dir(path, "save")
+            self.assertEqual(str(c.exception), "No folder.")
+
+    def test_list_dir_count_capped(self):
+        sub = self.p("big")
+        for i in range(5):
+            write(os.path.join(sub, "f%d.json" % i), CONTENT.encode())
+        small = self.p("small")
+        write(os.path.join(small, "one.json"), CONTENT.encode())
+        with mock.patch.object(sm, "SCAN_SUB_MAX", 3):
+            res = {d["name"]: d for d in sm.list_dir(self.root, "save")["dirs"]}
+        self.assertIsNone(res["big"]["count"])
+        self.assertEqual(res["small"]["count"], 1)
+        self.assertFalse(res["small"]["has_dirs"])
+
+    def test_scan_sub_keeps_has_dirs_before_cap(self):
+        class Entry:
+            def __init__(self, name, is_dir):
+                self.name, self._d = name, is_dir
+
+            def is_dir(self):
+                return self._d
+
+            def is_file(self):
+                return not self._d
+
+        class It(list):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        entries = [Entry("d", True)] + [Entry("f%d.json" % i, False) for i in range(10)]
+        with mock.patch.object(sm, "_hidden_dir", return_value=False):
+            with mock.patch.object(sm, "SCAN_SUB_MAX", 4), mock.patch.object(sm.os, "scandir", return_value=It(entries)):
+                self.assertEqual(sm._scan_sub("x", (".json",)), (True, None))
+            with mock.patch.object(sm, "SCAN_SUB_MAX", 100), mock.patch.object(sm.os, "scandir", return_value=It(entries)):
+                self.assertEqual(sm._scan_sub("x", (".json",)), (True, 10))
+
 
 if __name__ == "__main__":
     unittest.main()

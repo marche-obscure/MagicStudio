@@ -243,6 +243,63 @@ def is_local_address(remote):
     return ip.is_loopback
 
 
+def _header(headers, name):
+    """Valeur d'un en-tete, sans tenir compte des majuscules ("" si absent)."""
+    if not headers:
+        return ""
+    try:
+        value = headers.get(name)
+    except Exception:
+        value = None
+    if value is None:
+        for key in list(headers.keys()):
+            if str(key).lower() == name.lower():
+                value = headers[key]
+                break
+    return str(value or "").strip()
+
+
+def _local_host(host):
+    """Vrai si le nom de l'en-tete Host est localhost, 127.x.x.x ou ::1 (port retire, aucune resolution DNS)."""
+    import ipaddress
+    text = str(host or "").strip()
+    if not text:
+        return False
+    if text.startswith("["):
+        end = text.find("]")
+        if end < 0:
+            return False
+        rest = text[end + 1:]
+        if rest and not (rest.startswith(":") and rest[1:].isdigit()):
+            return False
+        text = text[1:end]
+    elif text.count(":") == 1:
+        text, port = text.split(":")
+        if not port.isdigit():
+            return False
+    if text.lower() == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    if getattr(ip, "ipv4_mapped", None) is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback
+
+
+def is_local_request(remote, host, headers):
+    """Requete du navigateur de la machine de ComfyUI : adresse TCP locale, en-tete Host local (contre le
+    rebinding DNS), pas de requete d'un autre site (Sec-Fetch-Site) ni passee par un relais (Forwarded)."""
+    if not is_local_address(remote) or not _local_host(host):
+        return False
+    if _header(headers, "Sec-Fetch-Site").lower() == "cross-site":
+        return False
+    if _header(headers, "X-Forwarded-For") or _header(headers, "Forwarded"):
+        return False
+    return True
+
+
 def drives():
     """Windows : lettres presentes ("C:\\") ; ailleurs ["/"]."""
     if os.name != "nt":
@@ -293,12 +350,19 @@ def _hidden_dir(entry):
     return bool(attrs & (stat.FILE_ATTRIBUTE_HIDDEN | stat.FILE_ATTRIBUTE_SYSTEM))
 
 
+# Nombre maximum d'elements lus par sous-dossier (dossier enorme : count None, le nom s'affiche sans "(n)").
+SCAN_SUB_MAX = 1000
+
+
 def _scan_sub(path, exts):
-    """(has_dirs, count) d'un sous-dossier, ou None s'il est illisible."""
-    has_dirs, count = False, 0
+    """(has_dirs, count) d'un sous-dossier, ou None s'il est illisible ; count None au-dela de SCAN_SUB_MAX."""
+    has_dirs, count, seen = False, 0, 0
     try:
         with os.scandir(path) as it:
             for e in it:
+                seen += 1
+                if seen > SCAN_SUB_MAX:
+                    return has_dirs, None
                 try:
                     if e.is_dir():
                         if not has_dirs and not _hidden_dir(e):
@@ -317,7 +381,10 @@ def list_dir(path, kind):
     if kind not in _KIND_EXTS:
         raise ValueError("Unknown kind.")
     exts = _KIND_EXTS[kind]
-    folder = os.path.abspath(str(path or ""))
+    if not str(path or "").strip():
+        # Chemin vide : ne jamais lister le dossier de travail de ComfyUI.
+        raise ValueError("No folder.")
+    folder = os.path.abspath(str(path))
     if not os.path.isdir(folder):
         raise FileNotFoundError("Folder not found: %s" % folder)
     dirs, found = [], []
@@ -374,17 +441,22 @@ def write_fields(folder, name, content, replace=False):
         data = json.loads(content)
     except (TypeError, ValueError, RecursionError):
         data = None
-    if not isinstance(data, dict) or data.get("format") != FIELDS_FORMATS[0]:
+    if (not isinstance(data, dict) or data.get("format") != FIELDS_FORMATS[0]
+            or not isinstance(data.get("fields"), list)):
         raise ValueError("The export is not a SelectMod fields file.")
+    if len(content.encode("utf-8")) > FIELDS_MAX_BYTES:
+        raise ValueError("File too large.")
     path = os.path.join(folder, clean_name(name))
     if os.path.exists(path):
         if not is_fields_file(path):
             raise ValueError("This file is not a fields file: choose another name.")
         if not replace:
             raise FileExistsError(path)
-    part = path + ".part"
+    # Fichier temporaire unique dans le meme dossier : jamais un "<nom>.json.part" deja present.
+    import tempfile
+    fd, part = tempfile.mkstemp(dir=folder, prefix=".mmselectmod_", suffix=".part")
     try:
-        with open(part, "w", encoding="utf-8", newline="\n") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(content)
         os.replace(part, path)
     except BaseException:

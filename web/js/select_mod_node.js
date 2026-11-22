@@ -18,7 +18,7 @@ const ORANGE = "#e0793c";
 const GREEN = "#43a047";
 const INACTIVE_BG = "#2a2a2a";
 const INACTIVE_FG = "#888";
-// Fond des boutons ronds discrets (aide "?", roue du dossier de sauvegarde).
+// Fond des boutons ronds discrets (aide "?", roue du dossier par defaut).
 const SETTINGS_BG = "#0c3833";
 
 // 5 champs de base + 2 champs optionnels ajoutes a la demande (bouton
@@ -26,7 +26,7 @@ const SETTINGS_BG = "#0c3833";
 const BASE_FIELDS = 5;
 const MAX_FIELDS = 7;
 const OPTION_OUTPUT_NAMES = ["Option 1", "Option 2"];
-// Sortie "model_link" (dossier de sauvegarde) : toujours presente, juste
+// Sortie "model_link" (dossier par defaut) : toujours presente, juste
 // apres les 5 sorties de base et avant les options.
 const LINK_OUTPUT = BASE_FIELDS;
 const LINK_OUTPUT_NAME = "model_link";
@@ -213,7 +213,7 @@ const HELP_SECTIONS = [
             "A field can be typed or edited by hand.",
             B_TRASH + " clears the field and its <b>Type</b> at once.",
             B_PLUS + " adds field 6 (<b>Option 1</b>), then field 7 (<b>Option 2</b>); " + B_MINUS + " removes the last one.",
-            "Outputs: <b>unused 1</b> to <b>unused 5</b> (fields 1 to 5), <b>model_link</b> (the save folder), " +
+            "Outputs: <b>unused 1</b> to <b>unused 5</b> (fields 1 to 5), <b>model_link</b> (the default folder), " +
                 "<b>Option 1</b> / <b>Option 2</b>. A double-click on an output name renames it.",
         ]) +
         hCard("Overwriting a filled field", [
@@ -269,7 +269,7 @@ const HELP_SECTIONS = [
         ]) +
         hList([
             "<b>↺</b> reads the folder again. The orange <b>Close</b> button (or Esc) closes the window without doing anything.",
-            "The file window only works on the computer that runs ComfyUI.",
+            "The file window only works on the computer that runs ComfyUI, with ComfyUI opened at <b>localhost</b> or <b>127.0.0.1</b>.",
         ]) +
         hTip("to move from MultiFiles Select to SelectMod: export from MultiFiles Select, import in SelectMod."),
     },
@@ -277,7 +277,7 @@ const HELP_SECTIONS = [
         id: "project", title: "Link to the Project node", icon: OUTPUT_ICON, color: GREEN,
         html: hSteps([
             "Wire the <b>model_link</b> output to the <b>models_link</b> input of <b>MagicStudio Project</b>.",
-            "Without a save folder, the Project node sets it to <b>02.Models</b> of the project.",
+            "Without a default folder, the Project node sets it to <b>02.Models</b> of the project.",
             "Each run then records the models of the fields (window <b>02.Models</b> of the Project node).",
         ]) +
         hNote("it works like MultiFiles Select: old workflows with MultiFiles Select keep working."),
@@ -326,7 +326,7 @@ const HELP_SECTIONS_FR = [
             "Un champ peut être tapé ou modifié à la main.",
             B_TRASH + " vide le champ et son <b>Type</b> d'un coup.",
             B_PLUS + " ajoute le champ 6 (<b>Option 1</b>), puis le champ 7 (<b>Option 2</b>) ; " + B_MINUS + " retire le dernier.",
-            "Sorties : <b>unused 1</b> à <b>unused 5</b> (champs 1 à 5), <b>model_link</b> (le dossier de sauvegarde), " +
+            "Sorties : <b>unused 1</b> à <b>unused 5</b> (champs 1 à 5), <b>model_link</b> (le dossier par défaut), " +
                 "<b>Option 1</b> / <b>Option 2</b>. Un double-clic sur le nom d'une sortie la renomme.",
         ]) +
         hCard("Écraser un champ rempli", [
@@ -383,7 +383,7 @@ const HELP_SECTIONS_FR = [
         ]) +
         hList([
             "<b>↺</b> relit le dossier. Le bouton orange <b>Close</b> (ou Échap) ferme la fenêtre sans rien faire.",
-            "La fenêtre des fichiers ne marche que sur l'ordinateur où tourne ComfyUI.",
+            "La fenêtre des fichiers ne marche que sur l'ordinateur où tourne ComfyUI, avec ComfyUI ouvert par <b>localhost</b> ou <b>127.0.0.1</b>.",
         ]) +
         hTip("pour passer de MultiFiles Select à SelectMod : exportez depuis MultiFiles Select, importez dans SelectMod.", TIP_FR),
     },
@@ -391,7 +391,7 @@ const HELP_SECTIONS_FR = [
         id: "project", title: "Lien avec le nœud Project",
         html: hSteps([
             "Branchez la sortie <b>model_link</b> sur l'entrée <b>models_link</b> de <b>MagicStudio Project</b>.",
-            "Sans dossier de sauvegarde, le nœud Project le règle sur <b>02.Models</b> du projet.",
+            "Sans dossier par défaut, le nœud Project le règle sur <b>02.Models</b> du projet.",
             "Chaque Run enregistre alors les modèles des champs (fenêtre <b>02.Models</b> du nœud Project).",
         ]) +
         hNote("cela marche comme MultiFiles Select : les anciens workflows avec MultiFiles Select continuent de marcher.", NOTE_FR),
@@ -1284,7 +1284,7 @@ function buildSimpleConfirmOverlay(container) {
 }
 
 /**
- * Fenetre "Save folder" (roue crantee) : chemin modifiable, 📁 (explorateur
+ * Fenetre "Default folder" (roue crantee) : chemin modifiable, 📁 (explorateur
  * des fichiers de champs en mode dossier, getExplorer() = instance du noeud),
  * effacer, Cancel / OK. Avertit si le dossier n'existe pas.
  * show(actuel, onOk(dossier)) ; dossier vide = pas de dossier par defaut
@@ -1305,7 +1305,7 @@ function buildSaveFolderDialog(container, getExplorer) {
     card.addEventListener("mousedown", (e) => e.stopPropagation());
 
     const title = document.createElement("div");
-    title.innerHTML = iconBadge(GEAR_ICON, SETTINGS_BG, true) + " Save folder";
+    title.innerHTML = iconBadge(GEAR_ICON, SETTINGS_BG, true) + " Default folder";
     Object.assign(title.style, { fontWeight: "700", fontSize: "14px", color: TITLE_COLOR, marginBottom: "6px" });
     const info = document.createElement("div");
     info.textContent = "Exports and imports open in this folder. You can go elsewhere from the window.";

@@ -198,8 +198,9 @@ try:
 
     # ---- Explorateur de champs SelectMod (22/11/2026) : ordinateur de ComfyUI seulement ----
     def _selectmod_local(request):
-        """Refus (403) si la requete ne vient pas de la machine de ComfyUI, sinon None."""
-        if select_mod.is_local_address(request.remote):
+        """Refus (403) si la requete ne vient pas du navigateur de la machine de ComfyUI, sinon None
+        (adresse TCP + en-tete Host local, sans Sec-Fetch-Site cross-site ni en-tete de relais)."""
+        if select_mod.is_local_request(request.remote, request.host, request.headers):
             return None
         return web.json_response({"error": "Only available on the computer running ComfyUI.", "remote": True},
                                  status=403)
@@ -243,6 +244,8 @@ try:
             return web.json_response({"error": str(e)}, status=400)
         except FileNotFoundError as e:
             return web.json_response({"error": str(e)}, status=404)
+        except PermissionError as e:
+            return web.json_response({"error": str(e)}, status=403)
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
         return web.json_response({"text": text, "name": os.path.basename(path), "path": path})
@@ -266,6 +269,8 @@ try:
             return web.json_response({"error": str(e)}, status=404)
         except ValueError as e:
             return web.json_response({"error": str(e)}, status=400)
+        except PermissionError as e:
+            return web.json_response({"error": str(e)}, status=403)
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
         return web.json_response({"path": path})

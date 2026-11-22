@@ -156,3 +156,17 @@ test("help arrays no longer name the link final_cut", () => {
         }
     }
 });
+
+// --- SelectMod (revue finale du 22/11/2026) : la roue regle le dossier par defaut, plus de "save folder" ---
+test("SelectMod help names the default folder, not the save folder", () => {
+    const en = helpText("select_mod_node.js", "HELP_SECTIONS");
+    const fr = helpText("select_mod_node.js", "HELP_SECTIONS_FR");
+    assert.ok(!/save folder/i.test(en), "EN : save folder encore cite");
+    assert.ok(!/dossier de sauvegarde/i.test(fr), "FR : dossier de sauvegarde encore cite");
+    assert.ok(en.includes("default folder"), "EN : default folder absent");
+    assert.ok(fr.includes("dossier par défaut"), "FR : dossier par défaut absent");
+    assert.deepEqual(helpIds("select_mod_node.js", "HELP_SECTIONS_FR"), helpIds("select_mod_node.js", "HELP_SECTIONS"));
+    const src = readFileSync(fileURLToPath(new URL("../web/js/select_mod_node.js", import.meta.url)), "utf8");
+    assert.ok(!src.includes(" Save folder\";"), "titre de la fenetre de la roue encore Save folder");
+    assert.ok(src.includes(" Default folder\";"), "titre Default folder absent");
+});

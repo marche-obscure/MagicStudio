@@ -568,8 +568,11 @@ export function buildFieldsExplorer() {
                 }
             }
         } finally {
-            busy = false;
-            if (isOpen()) paintMain();
+            // Une ouverture plus recente garde son propre etat busy (elle a pu lancer sa propre action).
+            if (seq === openSeq) {
+                busy = false;
+                if (isOpen()) paintMain();
+            }
         }
     }
 
@@ -597,8 +600,11 @@ export function buildFieldsExplorer() {
         } catch (e) {
             if (seq === openSeq) report(e);
         } finally {
-            busy = false;
-            if (isOpen()) paintMain();
+            // Une ouverture plus recente garde son propre etat busy (elle a pu lancer sa propre action).
+            if (seq === openSeq) {
+                busy = false;
+                if (isOpen()) paintMain();
+            }
         }
     }
 
@@ -648,6 +654,9 @@ export function buildFieldsExplorer() {
         } else if (e.type === "keydown" && e.key === "Enter" && e.target === field && mode === "save" && !askResolve) {
             e.preventDefault();
             doSave();
+        } else if (e.type === "keydown" && (e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === "s") {
+            // Ctrl / Cmd+S : ni la fenetre "Enregistrer la page" du navigateur, ni la sauvegarde du workflow.
+            e.preventDefault();
         }
         e.stopImmediatePropagation();
     }
