@@ -9,11 +9,39 @@ const MFS_FORMAT = "MultiFiles Select";
 
 const pad = (n) => String(n).padStart(2, "0");
 
-/** Nom de l'export, date en prefixe : "20261029-143000_selectmod_fields.json". */
-export function exportFileName(date) {
+/** Nom propose dans l'explorateur, sans extension : "20261122-143005_selectmod_fields". */
+export function defaultSaveName(date) {
     const d = date || new Date();
     return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" +
-        pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + "_selectmod_fields.json";
+        pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + "_selectmod_fields";
+}
+
+/** Nom de l'export, date en prefixe : "20261029-143000_selectmod_fields.json". */
+export function exportFileName(date) {
+    return defaultSaveName(date) + ".json";
+}
+
+// Noms reserves de Windows (memes que select_mod._RESERVED_NAMES en Python).
+const RESERVED_NAMES = new Set(["con", "prn", "aux", "nul",
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((i) => ["com" + i, "lpt" + i])]);
+
+/**
+ * Nom tape dans l'explorateur -> {name} (".json" ajoute) ou {error}. Memes regles que
+ * select_mod.clean_name (Python) : vide, point final, caracteres interdits par Windows,
+ * caracteres de controle et noms reserves (CON, NUL, COM1... avant le premier point) refuses.
+ */
+export function checkSaveName(text) {
+    let base = String(text || "").trim();
+    if (base.toLowerCase().endsWith(".json")) base = base.slice(0, -5);
+    const bad = !base || base !== base.trim() || base.endsWith(".")
+        || [...base].some((c) => '\\/:*?"<>|'.includes(c) || c.charCodeAt(0) < 32)
+        || RESERVED_NAMES.has(base.split(".")[0].trimEnd().toLowerCase());
+    return bad ? { error: "Invalid file name." } : { name: base + ".json" };
+}
+
+/** Dossier d'ouverture de l'explorateur : dossier par defaut, sinon dernier dossier, sinon "" (disques). */
+export function explorerStart(defaultFolder, lastDir) {
+    return String(defaultFolder || "").trim() || String(lastDir || "").trim() || "";
 }
 
 /** Texte JSON de l'export ; rows = [{field, type, path}] (champs remplis, dans l'ordre). */

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
     EXPORT_FORMAT, exportFileName, buildExport, parseFieldsFile, sortFiles, sizeText, matchesSearch, pickTarget,
+    defaultSaveName, checkSaveName, explorerStart,
 } from "../web/js/select_mod.js";
 
 test("SelectMod : export puis import = memes champs", () => {
@@ -78,3 +79,25 @@ test("SelectMod : clic dans la fenetre, chemin relatif depuis le dossier de type
     assert.deepEqual(pickTarget("F:/C/models/", "F:/C/models/loras/a/b.safetensors"), { origin: "F:/C/models/loras", subdir: "a" });
 });
 
+test("SelectMod : nom de sauvegarde", () => {
+    assert.equal(defaultSaveName(new Date(2026, 10, 22, 14, 30, 5)), "20261122-143005_selectmod_fields");
+    assert.deepEqual(checkSaveName("  wan v1 "), { name: "wan v1.json" });
+    assert.deepEqual(checkSaveName("wan.JSON"), { name: "wan.json" });
+    for (const bad of ["", " ", ".", "..", "a/b", "a\\b", "a:b", "a*b", "a?b", 'a"b', "a<b", "a>b", "a|b", "a."]) {
+        assert.deepEqual(checkSaveName(bad), { error: "Invalid file name." }, bad);
+    }
+    // Noms reserves de Windows (memes regles que select_mod.clean_name).
+    for (const bad of ["CON", "con.json", "nul.json", "CON .x", "Prn", "aux.txt", "COM1", "lpt9.json", "a\tb", "a .json"]) {
+        assert.deepEqual(checkSaveName(bad), { error: "Invalid file name." }, bad);
+    }
+    assert.deepEqual(checkSaveName("console"), { name: "console.json" });
+    assert.deepEqual(checkSaveName("com10"), { name: "com10.json" });
+    assert.deepEqual(checkSaveName("my.con"), { name: "my.con.json" });
+});
+
+test("SelectMod : dossier d'ouverture de l'explorateur", () => {
+    assert.equal(explorerStart(" G:\\p\\02.Models ", "D:\\x"), "G:\\p\\02.Models");
+    assert.equal(explorerStart("", "D:\\x"), "D:\\x");
+    assert.equal(explorerStart("", ""), "");
+    assert.equal(explorerStart("  ", "  "), "");
+});
