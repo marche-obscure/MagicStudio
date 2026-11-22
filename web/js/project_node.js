@@ -2802,7 +2802,8 @@ function buildArchiveDialog(container, ctx) {
             project = path;
             mode = "archive";
             how = "trash";
-            scope = "whole";
+            // Sous-projet ("<groupe>/<projet>") : « This sub-project » par defaut, le plus prudent (choix utilisateur, 22/11/2026).
+            scope = String(displayName || "").includes("/") ? "sub" : "whole";
             info = null;
             sub.textContent = displayName;
             sub.title = path;
