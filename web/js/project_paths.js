@@ -1045,3 +1045,37 @@ export function splitNumber(name) {
 export function numberedName(number, name) {
     return number + "-" + name;
 }
+
+// Archive d'un projet (22/11/2026) : textes des fenetres Archive / Restore.
+const SIZE_UNITS = ["B", "KB", "MB", "GB", "TB"];
+
+/** Taille lisible : "1.4 GB", "420 MB", "12 KB" (une decimale sous 10) ; "" si invalide. */
+export function archiveSizeText(bytes) {
+    if (bytes === null || bytes === undefined || bytes === "") return "";
+    let v = Number(bytes);
+    if (!Number.isFinite(v) || v < 0) return "";
+    let i = 0;
+    while (i < SIZE_UNITS.length - 1 && v >= 1024) {
+        v /= 1024;
+        i++;
+    }
+    if (i === 0) return Math.round(v) + " B";
+    // 1023.96 KB arrondi a "1024 KB" : on passe a l'unite suivante.
+    if (Math.round(v) >= 1024 && i < SIZE_UNITS.length - 1) {
+        v /= 1024;
+        i++;
+    }
+    const text = v < 9.95 ? v.toFixed(1) : String(Math.round(v));
+    return text + " " + SIZE_UNITS[i];
+}
+
+/** Type d'une archive : "Whole project" (kind "project"), "Sub-project" (kind "sub"), sinon "". */
+export function archiveKindText(kind) {
+    return kind === "project" ? "Whole project" : kind === "sub" ? "Sub-project" : "";
+}
+
+/** Date d'une archive (created ISO local "yyyy-mm-ddTHH:MM:SS") -> "dd/mm/yyyy" ; autre texte rendu tel quel. */
+export function archiveDateText(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+    return m ? m[3] + "/" + m[2] + "/" + m[1] : String(iso || "");
+}

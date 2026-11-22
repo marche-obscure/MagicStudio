@@ -15,6 +15,7 @@ import {
     folderMax, hiddenFolderItems, rowFolder, withoutFolderPaths, withoutReferences,
     frameAt, timeOf, frameText, EXTRACT_CHOICES, extractHeaderState, runSourcePaths, PICKUP_DIR, PICKUP_SUBS, pickupPath,
     orderOutputs, postLabel, postTags, postHint, splitNumber, numberedName,
+    archiveSizeText, archiveKindText, archiveDateText,
 } from "../web/js/project_paths.js";
 
 test("Fenetres 02 / 06 : ensembles, prompts identiques, autre registre", () => {
@@ -773,4 +774,27 @@ test("numéro des sous-projets : découpe et nom", () => {
     assert.deepEqual(splitNumber("03-"), { number: null, rest: "03-" });
     assert.deepEqual(splitNumber(""), { number: null, rest: "" });
     assert.equal(numberedName("03", "Danse"), "03-Danse");
+});
+
+test("archive de projet : taille, type et date (22/11/2026)", () => {
+    assert.equal(archiveSizeText(0), "0 B");
+    assert.equal(archiveSizeText(512), "512 B");
+    assert.equal(archiveSizeText(12 * 1024), "12 KB");
+    assert.equal(archiveSizeText(1536), "1.5 KB");
+    assert.equal(archiveSizeText(420 * 1024 * 1024), "420 MB");
+    assert.equal(archiveSizeText(1.4 * 1024 ** 3), "1.4 GB");
+    assert.equal(archiveSizeText(3 * 1024 ** 3), "3.0 GB");
+    assert.equal(archiveSizeText(15.6 * 1024 ** 3), "16 GB");
+    assert.equal(archiveSizeText(1023.9 * 1024), "1.0 MB");
+    assert.equal(archiveSizeText(2 * 1024 ** 4), "2.0 TB");
+    assert.equal(archiveSizeText(null), "");
+    assert.equal(archiveSizeText(-1), "");
+    assert.equal(archiveKindText("project"), "Whole project");
+    assert.equal(archiveKindText("sub"), "Sub-project");
+    assert.equal(archiveKindText("other"), "");
+    assert.equal(archiveDateText("2026-11-22T14:05:09"), "22/11/2026");
+    assert.equal(archiveDateText("2026-11-22"), "22/11/2026");
+    assert.equal(archiveDateText(""), "");
+    assert.equal(archiveDateText(null), "");
+    assert.equal(archiveDateText("hier"), "hier");
 });

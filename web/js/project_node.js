@@ -20,7 +20,8 @@ import {
     REGISTRY_FOLDERS, OTHER_REGISTRY, setsWithRuns, promptGroups, NO_PROMPT, promptMissing, setsOfRuns, setSummary, runTabName,
     switchSourceInput, withoutPaths, inDateOrder, orderSetCards, orderByMtime, DOT_FILTER, filterByDot, dotCounts, groupByDot, rushKey,
     EXTRACT_FRAME_DIR, EXTRACT_CHOICES, frameAt, timeOf, frameText, extractHeaderState,
-    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint, numberedName,
+    PICKUP_DIR, PICKUP_SUBS, pickupPath, orderOutputs, postLabel, postTags, postHint, numberedName, splitNumber,
+    archiveSizeText, archiveKindText, archiveDateText,
 } from "./project_paths.js";
 import { STAR_GOLD, STAR_TIP, releaseComparePlayers, releaseComparePlayersOf } from "./compare_pure.js";
 import { DROP_TARGETS, dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
@@ -79,6 +80,9 @@ const DUP_ICON = svg('<rect x="8" y="8" width="13" height="13" rx="2"></rect>' +
     '<path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path>', 12);
 const ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path>' +
     '<line x1="10" y1="12" x2="14" y2="12"></line>', 12);
+// Meme boite, plus grande : bouton Archive / Backup du projet (22/11/2026).
+const PROJECT_ARCHIVE_ICON = svg('<rect x="2" y="3" width="20" height="5" rx="1"></rect>' +
+    '<path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><line x1="10" y1="12" x2="14" y2="12"></line>', 15);
 // Archives : 5 au plus par projet (comme projects.MAX_ARCHIVES) ; rouge = suppression.
 const TRASH_RED = "#d32f2f";
 const MAX_ARCHIVES = 5;
@@ -2310,6 +2314,747 @@ function buildRenameMoveDialog(container, ctx) {
 }
 
 // --------------------------------------------------------------------
+// Archive d'un projet (22/11/2026, solution A choisie par l'utilisateur) : bouton boite
+// a droite du +, fenetre "Archive or back up the project" (zip dans le dossier des archives,
+// puis retrait du projet pour Archive) et fenetre "Restore an archive" (zip -> nouveau dossier).
+// Routes /mmproject/archive/* ; chaque requete porte la racine des projets du noeud (root).
+// --------------------------------------------------------------------
+const ARCHIVE_BROWN = "#a0703a";
+const ARCHIVE_PROGRESS_MS = 250;
+
+/** Texte de la progression d'un travail d'archive ({step, done, total, name}). */
+function archiveProgressText(p) {
+    if (!p) return "";
+    const count = p.total ? " " + p.done + " / " + p.total : "";
+    const name = p.name ? " · " + p.name : "";
+    if (p.step === "zip") return "Zipping…" + count + name;
+    if (p.step === "verify") return "Checking the zip…";
+    if (p.step === "remove") return "Removing the project…";
+    if (p.step === "restore") return "Restoring…" + count + name;
+    return "Working…";
+}
+
+/** Lit /mmproject/archive/progress toutes les 250 ms ; onStep(p) ; renvoie la fonction d'arret. */
+function pollArchiveProgress(onStep) {
+    let on = true;
+    (async () => {
+        while (on) {
+            await new Promise((res) => setTimeout(res, ARCHIVE_PROGRESS_MS));
+            if (!on) break;
+            try {
+                const p = await apiGet("/mmproject/archive/progress");
+                if (on && p) onStep(p);
+            } catch (e) {
+                // progression indisponible : le travail continue
+            }
+        }
+    })();
+    return () => {
+        on = false;
+    };
+}
+
+/** Pilule a plusieurs choix : items [[valeur, texte, couleur, infobulle]] ; onPick(valeur). */
+function makeArchivePill(items, onPick) {
+    const el = document.createElement("div");
+    Object.assign(el.style, {
+        display: "flex", borderRadius: "999px", overflow: "hidden", border: "1px solid #0c3833", height: "24px",
+        marginBottom: "8px",
+    });
+    const buttons = items.map(([value, text, color, tip]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = text;
+        b.title = tip || "";
+        b.dataset.color = color;
+        Object.assign(b.style, {
+            flex: "1", minWidth: "0", border: "none", borderRadius: "0", cursor: "pointer", fontWeight: "bold",
+            fontSize: "11px", padding: "0 6px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        });
+        b.addEventListener("click", () => onPick(value));
+        el.appendChild(b);
+        return { value, b };
+    });
+    return {
+        el,
+        paint(value) {
+            for (const { value: v, b } of buttons) {
+                b.style.background = v === value ? b.dataset.color : INACTIVE_BG;
+                b.style.color = v === value ? "white" : "#888";
+            }
+        },
+        label(value, text, tip) {
+            const it = buttons.find((x) => x.value === value);
+            if (!it) return;
+            it.b.textContent = text;
+            if (tip !== undefined) it.b.title = tip;
+        },
+    };
+}
+
+/**
+ * Ligne "Archives folder:" (texte en lecture seule) + Browse : le dossier choisi est enregistre
+ * par le serveur (POST /mmproject/archive/settings, refuse dans le dossier des projets).
+ * ctx = {root(), busy(), onChanged(folder), onError(texte)}.
+ */
+function makeArchiveFolderRow(ctx) {
+    const row = document.createElement("div");
+    Object.assign(row.style, { display: "flex", gap: "6px", alignItems: "center", margin: "2px 0 8px" });
+    const lab = document.createElement("span");
+    lab.textContent = "Archives folder:";
+    Object.assign(lab.style, { color: "#9fd6cf", fontWeight: "bold", whiteSpace: "nowrap" });
+    const field = document.createElement("input");
+    field.type = "text";
+    field.readOnly = true;
+    Object.assign(field.style, {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "8px",
+        padding: "4px 8px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+    });
+    field.placeholder = "No folder chosen yet";
+    const browse = makeTextButton("Browse", VIOLET);
+    Object.assign(browse.style, { height: "24px", padding: "0 10px", fontSize: "11px", flex: "0 0 auto" });
+    browse.title = "Choose the folder of the archives (kept for every workflow; never inside the projects folder)";
+    row.append(lab, field, browse);
+    let folder = "";
+    const set = (f) => {
+        folder = f || "";
+        field.value = folder;
+        field.title = folder;
+    };
+    browse.addEventListener("click", async () => {
+        if (ctx.busy()) return;
+        browse.disabled = true;
+        try {
+            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(folder));
+            if (data && data.path) {
+                const saved = await apiPost("/mmproject/archive/settings", { folder: data.path, root: ctx.root() });
+                set(saved.folder);
+                ctx.onError("");
+                ctx.onChanged(saved.folder);
+            }
+        } catch (e) {
+            ctx.onError(e.message);
+        } finally {
+            browse.disabled = false;
+        }
+    });
+    return { el: row, set, get: () => folder, browse };
+}
+
+/** Barre de progression + texte (cachee hors travail). */
+function makeArchiveProgress() {
+    const el = document.createElement("div");
+    Object.assign(el.style, { display: "none", margin: "8px 0 0" });
+    const track = document.createElement("div");
+    Object.assign(track.style, { height: "6px", background: "#111", borderRadius: "3px", overflow: "hidden" });
+    const bar = document.createElement("div");
+    Object.assign(bar.style, { height: "100%", width: "0%", background: GREEN, transition: "width 0.2s" });
+    track.appendChild(bar);
+    const text = document.createElement("div");
+    Object.assign(text.style, { color: "#9fd6cf", marginTop: "4px", fontSize: "11px", wordBreak: "break-all" });
+    el.append(track, text);
+    return {
+        el,
+        show(p) {
+            el.style.display = p ? "block" : "none";
+            if (!p) return;
+            // Etapes sans compteur (relecture, retrait) : barre pleine.
+            const pct = p.total ? Math.min(100, Math.round((100 * p.done) / p.total)) : p.step === "verify" ||
+                p.step === "remove" ? 100 : 0;
+            bar.style.width = pct + "%";
+            text.textContent = archiveProgressText(p);
+        },
+    };
+}
+
+/**
+ * Fenetre "Archive or back up the project".
+ * ctx = {root(), confirm, wordDialog, beforeWork(), afterWork(mode, res, plan, texte), openRestore()}.
+ * open(project, displayName) : project = chemin du projet choisi.
+ */
+function buildArchiveDialog(container, ctx) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, { width: "min(540px, 92vw)", padding: "12px 14px", borderColor: ARCHIVE_BROWN });
+    const title = document.createElement("div");
+    title.textContent = "Archive or back up the project";
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "2px" });
+    const sub = document.createElement("div");
+    Object.assign(sub.style, { color: "#999", marginBottom: "8px", wordBreak: "break-all" });
+
+    let mode = "archive";
+    let scope = "whole";
+    let how = "trash";
+    let project = "";
+    let info = null;     // reponse de /mmproject/archive/plan
+    let loading = false;
+    let busy = false;
+    let reqId = 0;
+
+    const modePill = makeArchivePill([
+        ["archive", "Archive", ORANGE, "Zip the project, check the zip, then remove the project from the list"],
+        ["backup", "Backup", GREEN, "Zip the project and keep it in the list"],
+    ], (v) => {
+        if (busy) return;
+        mode = v;
+        paint();
+    });
+    const scopePill = makeArchivePill([
+        ["whole", "Whole project", GREEN, ""],
+        ["sub", "This sub-project", GREEN, ""],
+    ], (v) => {
+        if (busy || v === scope) return;
+        scope = v;
+        refresh();
+    });
+    const howPill = makeArchivePill([
+        ["trash", "Recycle Bin", GREEN, "The project goes to the Recycle Bin after the zip is checked"],
+        ["permanent", "Delete permanently", RESET_RED, "The project is deleted for good after the zip is checked " +
+            "(you will type CONFIRMER)"],
+    ], (v) => {
+        if (busy) return;
+        how = v;
+        paint();
+    });
+    const msg = document.createElement("div");
+    const folderRow = makeArchiveFolderRow({
+        root: () => ctx.root(), busy: () => busy,
+        onChanged: () => refresh(),
+        onError: (t) => setMessage(t, false),
+    });
+    const lines = document.createElement("div");
+    Object.assign(lines.style, {
+        padding: "8px 10px", background: "#161616", border: "1px solid #2c2c2c", borderRadius: "8px", lineHeight: "1.6",
+        wordBreak: "break-all", minHeight: "40px",
+    });
+    const progress = makeArchiveProgress();
+    Object.assign(msg.style, { minHeight: "14px", margin: "6px 0 0", wordBreak: "break-word" });
+
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", alignItems: "center", gap: "8px", marginTop: "10px" });
+    const restoreBtn = makeTextButton("Restore an archive…", INACTIVE_BG);
+    restoreBtn.title = "Open the list of the archives to restore one";
+    const spacer = document.createElement("div");
+    spacer.style.flex = "1";
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const goBtn = makeTextButton("Archive", ORANGE);
+    footer.append(restoreBtn, spacer, cancelBtn, goBtn);
+    card.append(title, sub, modePill.el, scopePill.el, howPill.el, folderRow.el, lines, progress.el, msg, footer);
+
+    function setMessage(text, ok) {
+        msg.textContent = text || "";
+        msg.style.color = ok ? "#9fd6cf" : ORANGE;
+    }
+
+    const lacksSpace = () => !!info && info.free !== null && info.free !== undefined && info.free < info.size;
+
+    function paint() {
+        modePill.paint(mode);
+        const archive = mode === "archive";
+        scopePill.el.style.display = info && info.sub ? "flex" : "none";
+        scopePill.paint(scope);
+        howPill.el.style.display = archive ? "flex" : "none";
+        howPill.paint(how);
+        const out = [];
+        const grey = (t) => '<span style="color:#888">' + t + "</span>";
+        if (loading) out.push(grey("Computing the size…"));
+        else if (info) {
+            const size = "about " + archiveSizeText(info.size) + " (" + info.files + " file(s))";
+            if (info.zip) out.push(grey("Will be saved as:") + ' <b style="color:#9fd6cf">' +
+                escapeHtml(baseOf(info.zip)) + "</b> — " + size);
+            else out.push(grey("Size:") + " " + size + '<br><span style="color:' + ORANGE +
+                '">Choose the archives folder first (Browse).</span>');
+            if (lacksSpace()) out.push('<span style="color:' + ORANGE + '">Not enough free space on the disk of the ' +
+                "archives folder (" + archiveSizeText(info.free) + " free).</span>");
+            // Sous-projet + Whole project : tout le dossier de projets part.
+            const what = info.target && info.target.kind === "project" && info.sub ? "The whole folder of projects <b>" +
+                escapeHtml(info.target.name) + "</b> (all its sub-projects)" : "The project";
+            if (archive) {
+                out.push(what + " will leave the list after the zip is checked.");
+                if (how === "trash") out.push(grey("Recycle Bin: the space is freed only when you empty it."));
+                else out.push('<span style="color:' + RESET_RED + '">It will be deleted permanently: this cannot be ' +
+                    "undone.</span>");
+            } else {
+                out.push(what + " stays in the list: the zip is a copy.");
+            }
+        }
+        lines.innerHTML = out.join("<br>");
+        goBtn.textContent = archive ? "Archive" : "Backup";
+        const can = !busy && !loading && !!info && !!info.zip && !lacksSpace();
+        goBtn.disabled = !can;
+        goBtn.style.background = can ? (archive ? ORANGE : GREEN) : INACTIVE_BG;
+        goBtn.style.opacity = can ? "1" : "0.45";
+        goBtn.style.cursor = can ? "pointer" : "default";
+        goBtn.title = info && !info.zip ? "Choose the archives folder first" : "";
+        for (const b of [restoreBtn, cancelBtn, folderRow.browse]) {
+            b.disabled = busy;
+            b.style.opacity = busy ? "0.45" : "1";
+        }
+    }
+
+    /** Relit le plan (taille, nom du zip, sous-projet) pour la portee choisie. */
+    async function refresh() {
+        const id = ++reqId;
+        loading = true;
+        info = null;
+        paint();
+        try {
+            const data = await apiGet("/mmproject/archive/plan?project=" + encodeURIComponent(project) + "&scope=" +
+                scope + "&root=" + encodeURIComponent(ctx.root()));
+            if (id !== reqId) return;
+            info = data;
+            if (data.folder) folderRow.set(data.folder);
+        } catch (e) {
+            if (id !== reqId) return;
+            setMessage(e.message, false);
+        }
+        loading = false;
+        paint();
+    }
+
+    async function go() {
+        if (goBtn.disabled || !info) return;
+        const plan = info;
+        const archive = mode === "archive";
+        const name = plan.target ? plan.target.name : baseOf(project);
+        if (archive) {
+            const ok = await ctx.confirm.ask({
+                title: "Archive " + name + "?",
+                html: "The project will leave the list: it is zipped into <b>" + escapeHtml(baseOf(plan.zip)) +
+                    "</b>, the zip is read again in full, and only then the project " +
+                    (how === "trash" ? "goes to the <b>Recycle Bin</b>." : '<b style="color:' + RESET_RED +
+                        '">is deleted permanently</b>.') +
+                    '<div style="color:#999;margin-top:8px">Players are closed first. Restore it later with ' +
+                    "<b>Restore an archive…</b>.</div>",
+                okLabel: "Archive", okColor: ORANGE,
+            });
+            if (!ok) return;
+            if (how === "permanent") {
+                const sure = await ctx.wordDialog.ask({
+                    name: "CONFIRMER", title: "Delete " + name + " permanently after the check?",
+                    okLabel: "Delete permanently",
+                    html: '<span style="color:' + RESET_RED + ';font-weight:bold">After the zip is checked, the project ' +
+                        "folder is destroyed: this cannot be undone.</span>",
+                });
+                if (!sure) return;
+            }
+        }
+        busy = true;
+        setMessage("", true);
+        progress.show({ step: "zip", done: 0, total: 0, name });
+        paint();
+        ctx.beforeWork();
+        const stop = pollArchiveProgress((p) => busy && progress.show(p));
+        let res;
+        try {
+            res = await apiPost("/mmproject/archive/make", { project, scope, mode, how, root: ctx.root() });
+        } catch (e) {
+            stop();
+            busy = false;
+            progress.show(null);
+            setMessage(e.message, false);
+            paint();
+            return;
+        }
+        stop();
+        busy = false;
+        progress.show(null);
+        const text = (archive ? "Archived: " : "Backup saved: ") + baseOf(res.zip) + " (" + res.files +
+            " file(s), " + archiveSizeText(res.size) + ")" + (archive ? "; " + name + " left the list." : ".");
+        if (archive) close();
+        else {
+            refresh();
+            setMessage(text, true);
+        }
+        await ctx.afterWork(mode, res, plan, text);
+    }
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (!busy) close();
+        }
+    };
+    function close() {
+        if (busy) return;
+        reqId++;
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+    restoreBtn.addEventListener("click", () => {
+        if (busy) return;
+        close();
+        ctx.openRestore();
+    });
+    cancelBtn.addEventListener("click", close);
+    goBtn.addEventListener("click", go);
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        open(path, displayName) {
+            if (busy) return;
+            project = path;
+            mode = "archive";
+            how = "trash";
+            scope = "whole";
+            info = null;
+            sub.textContent = displayName;
+            sub.title = path;
+            folderRow.set("");
+            setMessage("", true);
+            progress.show(null);
+            const n = baseOf(path);
+            scopePill.label("sub", "This sub-project: " + n, "Only the folder " + n + " (the Final Cut stays in the " +
+                "mother project)");
+            scopePill.label("whole", "Whole project", "The whole folder of projects, with all its sub-projects and " +
+                "its Final Cut");
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            paint();
+            positionCardNextToNode(card, container, 540);
+            // Dossier enregistre affiche meme si le plan echoue (dossier devenu invalide : Browse le corrige).
+            apiGet("/mmproject/archive/settings").then((s) => {
+                if (!folderRow.get() && s && s.folder) folderRow.set(s.folder);
+            }).catch(() => {});
+            refresh();
+        },
+        close,
+        isBusy: () => busy,
+        remove() {
+            busy = false;
+            close();
+            overlay.remove();
+        },
+    };
+}
+
+/**
+ * Fenetre "Restore an archive" : zips MagicStudio du dossier des archives, destination lue par
+ * /mmproject/archive/restore_target (nom pris -> nouveau nom ; projet mere absent ou numero pris ->
+ * projet independant), puis POST /mmproject/archive/restore. Le zip reste toujours en place.
+ * ctx = {root(), confirm, beforeWork(), afterRestore(item, res, independent)}.
+ */
+function buildRestoreDialog(container, ctx) {
+    const { overlay, card } = makeOverlay();
+    Object.assign(card.style, { width: "min(580px, 92vw)", padding: "12px 14px", borderColor: ARCHIVE_BROWN });
+    const title = document.createElement("div");
+    title.textContent = "Restore an archive";
+    Object.assign(title.style, { fontWeight: "bold", fontSize: "13px", color: TITLE_COLOR, marginBottom: "8px" });
+
+    let items = [];
+    let picked = null;   // archive choisie (element de /mmproject/archive/list)
+    let target = null;   // {dest, needs} pour picked
+    let independent = false;
+    let busy = false;
+    let listId = 0;
+    let targetId = 0;
+    let nameTimer = 0;
+    let prefix = "";     // "02-" fixe d'un sous-projet numerote
+
+    const msg = document.createElement("div");
+    const folderRow = makeArchiveFolderRow({
+        root: () => ctx.root(), busy: () => busy,
+        onChanged: () => loadList(),
+        onError: (t) => setMessage(t, false),
+    });
+    const list = document.createElement("div");
+    Object.assign(list.style, {
+        maxHeight: "240px", minHeight: "60px", overflowY: "auto", border: "1px solid #2c2c2c", borderRadius: "8px",
+        background: "#161616",
+    });
+    const nameRow = document.createElement("div");
+    Object.assign(nameRow.style, { display: "none", gap: "6px", alignItems: "center", marginTop: "8px" });
+    const nameLab = document.createElement("span");
+    nameLab.textContent = "New name:";
+    Object.assign(nameLab.style, { color: "#9fd6cf", fontWeight: "bold", whiteSpace: "nowrap" });
+    const prefixLab = document.createElement("span");
+    Object.assign(prefixLab.style, {
+        display: "none", color: "#9fd6cf", fontWeight: "bold", whiteSpace: "nowrap", background: "#161616",
+        border: "1px solid #2c2c2c", borderRadius: "10px", padding: "4px 8px", fontSize: "12px",
+    });
+    prefixLab.title = "The number of the sub-project cannot be changed";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    Object.assign(nameInput.style, {
+        flex: "1", minWidth: "0", background: "#111", color: "#ddd", border: "1px solid #0c3833", borderRadius: "10px",
+        padding: "4px 10px", fontSize: "12px", outline: "none", boxSizing: "border-box",
+    });
+    nameRow.append(nameLab, prefixLab, nameInput);
+    const where = document.createElement("div");
+    Object.assign(where.style, { color: "#999", marginTop: "8px", lineHeight: "1.5", wordBreak: "break-all", minHeight: "18px" });
+    const progress = makeArchiveProgress();
+    Object.assign(msg.style, { minHeight: "14px", margin: "6px 0 0", wordBreak: "break-word" });
+    const footer = document.createElement("div");
+    Object.assign(footer.style, { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" });
+    const cancelBtn = makeTextButton("Cancel", INACTIVE_BG);
+    const goBtn = makeTextButton("Restore", GREEN);
+    footer.append(cancelBtn, goBtn);
+    card.append(title, folderRow.el, list, nameRow, where, progress.el, msg, footer);
+
+    function setMessage(text, ok) {
+        msg.textContent = text || "";
+        msg.style.color = ok ? "#9fd6cf" : ORANGE;
+    }
+    const nameShown = () => nameRow.style.display !== "none";
+
+    function paint() {
+        const can = !busy && !!picked && !!target && (target.needs === null || target.needs === "independent");
+        goBtn.disabled = !can;
+        goBtn.style.background = can ? GREEN : INACTIVE_BG;
+        goBtn.style.opacity = can ? "1" : "0.45";
+        goBtn.style.cursor = can ? "pointer" : "default";
+        for (const b of [cancelBtn, folderRow.browse]) {
+            b.disabled = busy;
+            b.style.opacity = busy ? "0.45" : "1";
+        }
+        nameInput.disabled = busy;
+        for (const row of list.children) {
+            const on = !!picked && row.dataset.zip === picked.zip;
+            row.style.background = on ? "#3a4a5a" : "transparent";
+        }
+    }
+
+    function paintWhere() {
+        if (!picked) {
+            where.textContent = "";
+            return;
+        }
+        if (!target) {
+            where.innerHTML = '<span style="color:#888">Reading the archive…</span>';
+            return;
+        }
+        const dest = '<b style="color:#9fd6cf">' + escapeHtml(target.dest) + "</b>";
+        if (target.needs === "name") {
+            where.innerHTML = '<span style="color:' + ORANGE + '">' + escapeHtml(target.dest) + " already exists: " +
+                "type a new name (nothing is ever overwritten).</span>";
+        } else if (target.needs === "independent") {
+            where.innerHTML = '<span style="color:' + ORANGE + '">The mother project is missing, or its number is ' +
+                "taken.</span> Restore will offer to put it back as an independent project in " + dest + ".";
+        } else {
+            where.innerHTML = '<span style="color:#888">Will be restored in:</span> ' + dest +
+                " — the zip stays in the archives folder.";
+        }
+    }
+
+    /** Destination de l'archive choisie (avec le nom tape et le choix independant). */
+    async function loadTarget() {
+        const id = ++targetId;
+        target = null;
+        paintWhere();
+        paint();
+        if (!picked) return;
+        let name = "";
+        if (nameShown()) {
+            name = nameInput.value.trim();
+            const err = !name ? "Type a new name." : projectNameError(prefix + name);
+            if (err) {
+                target = { dest: "", needs: "name" };
+                where.innerHTML = '<span style="color:' + ORANGE + '">' + escapeHtml(err) + "</span>";
+                paint();
+                return;
+            }
+        }
+        try {
+            const data = await apiGet("/mmproject/archive/restore_target?zip=" + encodeURIComponent(picked.zip) +
+                "&root=" + encodeURIComponent(ctx.root()) + (name ? "&name=" + encodeURIComponent(name) : "") +
+                (independent ? "&independent=1" : ""));
+            if (id !== targetId) return;
+            target = data;
+            if (data.needs === "name" && !nameShown()) showName();
+        } catch (e) {
+            if (id !== targetId) return;
+            target = null;
+            where.textContent = "";
+            setMessage(e.message, false);
+            paint();
+            return;
+        }
+        paintWhere();
+        paint();
+    }
+
+    /** Champ "New name" : un sous-projet numerote garde son "NN-" fige (comme Rename). */
+    function showName() {
+        const split = picked.kind === "sub" && picked.number ? splitNumber(picked.name)
+            : { number: null, rest: picked.name };
+        prefix = split.number ? split.number + "-" : "";
+        prefixLab.textContent = prefix;
+        prefixLab.style.display = prefix ? "inline-block" : "none";
+        nameInput.value = split.rest;
+        nameRow.style.display = "flex";
+        setTimeout(() => {
+            nameInput.focus();
+            nameInput.select();
+        }, 0);
+    }
+
+    function pick(item) {
+        if (busy) return;
+        picked = item;
+        independent = false;
+        prefix = "";
+        nameRow.style.display = "none";
+        setMessage("", true);
+        loadTarget();
+    }
+
+    function renderList() {
+        list.innerHTML = "";
+        if (!items.length) {
+            const empty = document.createElement("div");
+            Object.assign(empty.style, { color: "#888", padding: "10px" });
+            empty.textContent = folderRow.get() ? "No MagicStudio archive in this folder."
+                : "Choose the archives folder first (Browse).";
+            list.appendChild(empty);
+            return;
+        }
+        for (const a of items) {
+            const row = document.createElement("div");
+            row.dataset.zip = a.zip;
+            Object.assign(row.style, {
+                display: "flex", justifyContent: "space-between", gap: "10px", padding: "5px 8px",
+                borderBottom: "1px solid #2c2c2c", cursor: "pointer",
+            });
+            const file = document.createElement("span");
+            file.textContent = a.file;
+            Object.assign(file.style, { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: "0" });
+            file.title = a.zip;
+            const meta = document.createElement("span");
+            meta.textContent = [archiveKindText(a.kind), archiveDateText(a.created), archiveSizeText(a.size)]
+                .filter(Boolean).join(" · ");
+            Object.assign(meta.style, { color: "#999", fontSize: "11px", whiteSpace: "nowrap", flex: "0 0 auto" });
+            row.append(file, meta);
+            row.addEventListener("click", () => pick(a));
+            list.appendChild(row);
+        }
+    }
+
+    async function loadList() {
+        const id = ++listId;
+        picked = null;
+        target = null;
+        nameRow.style.display = "none";
+        paintWhere();
+        list.innerHTML = '<div style="color:#888;padding:10px">Reading the archives…</div>';
+        paint();
+        try {
+            const s = await apiGet("/mmproject/archive/settings");
+            if (id !== listId) return;
+            folderRow.set(s.folder);
+            items = s.folder ? await apiGet("/mmproject/archive/list") : [];
+            if (id !== listId) return;
+        } catch (e) {
+            if (id !== listId) return;
+            items = [];
+            setMessage(e.message, false);
+        }
+        renderList();
+        paint();
+    }
+
+    async function go() {
+        if (goBtn.disabled || !picked || !target) return;
+        if (target.needs === "independent") {
+            const ok = await ctx.confirm.ask({
+                title: "Restore as an independent project",
+                html: "The mother project is missing, or its number is taken. Restore as an independent project?" +
+                    '<div style="color:#999;margin-top:8px">It goes to the projects folder under its own name; you can ' +
+                    "rename it later.</div>",
+                okLabel: "Restore", okColor: GREEN,
+            });
+            if (!ok) return;
+            independent = true;
+            await loadTarget();
+            if (!target || target.needs !== null) return; // nom pris : le champ New name s'affiche
+        }
+        const item = picked;
+        const name = nameShown() ? nameInput.value.trim() : "";
+        const indep = independent;
+        busy = true;
+        setMessage("", true);
+        progress.show({ step: "restore", done: 0, total: 0, name: item.name });
+        paint();
+        ctx.beforeWork();
+        const stop = pollArchiveProgress((p) => busy && progress.show(p));
+        let res;
+        try {
+            res = await apiPost("/mmproject/archive/restore", {
+                zip: item.zip, root: ctx.root(), name: name || null, independent: indep,
+            });
+        } catch (e) {
+            stop();
+            busy = false;
+            progress.show(null);
+            setMessage(e.message, false);
+            paint();
+            return;
+        }
+        stop();
+        busy = false;
+        progress.show(null);
+        close();
+        await ctx.afterRestore(item, res, indep);
+    }
+
+    const onKey = (e) => {
+        if (overlay.style.display === "none") return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (!busy) close();
+            return;
+        }
+        if (e.target === nameInput) {
+            e.stopImmediatePropagation();
+            if (e.key === "Enter") {
+                e.preventDefault();
+                clearTimeout(nameTimer);
+                loadTarget();
+            }
+        }
+    };
+    function close() {
+        if (busy) return;
+        listId++;
+        targetId++;
+        clearTimeout(nameTimer);
+        overlay.style.display = "none";
+        window.removeEventListener("keydown", onKey, true);
+    }
+    nameInput.addEventListener("input", () => {
+        clearTimeout(nameTimer);
+        targetId++;
+        target = null;
+        paint();
+        nameTimer = setTimeout(loadTarget, 250);
+    });
+    cancelBtn.addEventListener("click", close);
+    goBtn.addEventListener("click", go);
+    overlay.addEventListener("mousedown", close);
+
+    return {
+        open() {
+            if (busy) return;
+            items = [];
+            setMessage("", true);
+            progress.show(null);
+            overlay.style.display = "block";
+            window.addEventListener("keydown", onKey, true);
+            positionCardNextToNode(card, container, 580);
+            loadList();
+        },
+        close,
+        isBusy: () => busy,
+        remove() {
+            busy = false;
+            close();
+            overlay.remove();
+        },
+    };
+}
+
+// --------------------------------------------------------------------
 // Fenetre "Save the workflow" (cloche de 00.Workflows)
 // --------------------------------------------------------------------
 /**
@@ -3268,6 +4013,7 @@ function buildFolderViewer(container) {
             window.addEventListener("keydown", onKey, true);
             positionCardNextToNode(card, container, 860);
         },
+        close,
         remove() {
             close();
             preview.remove();
@@ -6026,7 +6772,10 @@ app.registerExtension({
             editBtn.style.width = editBtn.style.height = "26px";
             const newBtn = makeIconButton(PINK, PLUS_ICON, "New project");
             newBtn.style.width = newBtn.style.height = "26px";
-            pickRow.append(nameLabel, select, editBtn, newBtn);
+            // Archive / Backup / Restore d'un projet (22/11/2026, solution A) : a droite du +.
+            const archiveBtn = makeIconButton(ARCHIVE_BROWN, PROJECT_ARCHIVE_ICON, "Archive or back up the project");
+            archiveBtn.style.width = archiveBtn.style.height = "26px";
+            pickRow.append(nameLabel, select, editBtn, newBtn, archiveBtn);
 
             // Ligne du bas : Copy, Reset, Purge, Load, Save, Relire, aide (a droite).
             const bottom = document.createElement("div");
@@ -6222,8 +6971,26 @@ app.registerExtension({
             };
             const runViewer = buildRunViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run), rushOps);
             const setViewer = buildSetViewer(container, (run, out, key) => sortOutput(run, out, key), (run) => openRunWorkflow(run), rushOps);
+            // Archive / Backup / Restore (22/11/2026) : lecteurs et fenetres du noeud fermes avant
+            // de toucher aux fichiers (verrou Windows) ; racine = celle de la liste des projets.
+            const archiveWork = () => {
+                releaseComparePlayersOf(app.graph); // lecteurs Compare fermes avant de deplacer (verrou Windows)
+                for (const w of [runViewer, setViewer, folderViewer, extractWindow, duplicatesDialog]) {
+                    if (w && typeof w.close === "function") w.close();
+                }
+            };
+            const restoreDialog = buildRestoreDialog(container, {
+                root: () => requestedRoot().root, confirm, beforeWork: archiveWork,
+                afterRestore: (item, res, independent) => afterRestore(item, res, independent),
+            });
+            const archiveDialog = buildArchiveDialog(container, {
+                root: () => requestedRoot().root, confirm, wordDialog: resetDialog, beforeWork: archiveWork,
+                afterWork: (mode, res, plan, text) => afterArchive(mode, res, plan, text),
+                openRestore: () => restoreDialog.open(),
+            });
             node.__mmprojectOverlays = [createDialog, help, confirm, resetDialog, copyDialog, renameDialog, workflowDialog, archiveMenu, deleteDialog,
-                loadDialog, duplicatesDialog, folderViewer, runViewer, setViewer, rushDeleteChoice, extractWindow, extractConfirm];
+                loadDialog, duplicatesDialog, folderViewer, runViewer, setViewer, rushDeleteChoice, extractWindow, extractConfirm,
+                archiveDialog, restoreDialog];
             const wfRow = folderRows.find((f) => f.name === WORKFLOWS);
 
             /**
@@ -6322,6 +7089,11 @@ app.registerExtension({
                 setOn(editBtn, current, VIOLET, current ? "Rename or move the project" : !wired() ? WIRE_PROJECT
                     : "Pick a project first");
                 setOn(newBtn, wired(), PINK, wired() ? "New project" : WIRE_PROJECT);
+                // Sans projet choisi, le bouton ouvre directement "Restore an archive" (un projet archive
+                // n'est plus dans la liste : il faut pouvoir le rouvrir).
+                setOn(archiveBtn, wired() && !locked, ARCHIVE_BROWN, !wired() ? WIRE_PROJECT
+                    : locked ? "Run in progress: Archive and Restore are locked"
+                        : current ? "Archive or back up the project" : "Restore an archive");
                 setOn(saveBtn, canSave && !locked, PINK, !current ? "Pick a project first"
                     : !canSave ? "Wire the project output of the MagicStudio RefLoader first" : locked ? LOCKED
                         : "Save: copy the files of the MagicStudio RefLoader into the project, save the workflow and " +
@@ -8060,6 +8832,45 @@ app.registerExtension({
                     exists: folder.exists, fixed: folder.linked, fallback: fallbackRoot,
                 });
             });
+            archiveBtn.addEventListener("click", () => {
+                if (!wired() || runLock.size > 0) return;
+                const s = getState();
+                if (inProject(s.name)) archiveDialog.open(s.path, s.name);
+                else restoreDialog.open();
+            });
+
+            /** Apres Archive : liste relue, le projet archive n'est plus choisi ; apres Backup : message. */
+            async function afterArchive(mode, res, plan, text) {
+                if (mode !== "archive") {
+                    say(text, true);
+                    return;
+                }
+                await loadProjects();
+                const s = getState();
+                // Le projet choisi faisait partie de ce qui est archive (lui-meme ou son dossier de projets).
+                if (s.name && !inProject(s.name)) await openProject("");
+                notifyFinalCut();
+                say(text, true);
+            }
+
+            /** Apres Restore : liste relue, puis le projet rouvert est choisi (comme un choix dans la liste). */
+            async function afterRestore(item, res, independent) {
+                await loadProjects();
+                const base = baseOf(res.dest);
+                const name = item.kind === "sub" && !independent && item.group ? item.group + GROUP_SEP + base : base;
+                const text = "Restored: " + shortName(name) + " (" + res.files + " file(s)) in " + res.dest + ".";
+                notifyFinalCut();
+                const prev = getState();
+                if (!inProject(name) || prev.name === name || !(await guardUnsaved())) {
+                    say(text, true);
+                    return;
+                }
+                // Meme suite qu'un choix dans la liste : projet ouvert, puis Load depuis un autre projet.
+                await openProject(name);
+                say(text, true);
+                if (prev.name && inProject(name)) await loadProject({ root: prev.root, name: prev.name, path: prev.path });
+            }
+
             reloadBtn.addEventListener("click", () => loadProjects());
             helpBtn.addEventListener("click", () => help.open());
 
