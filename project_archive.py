@@ -345,23 +345,27 @@ def remove_target(t, how, input_dir, trash_fn, fits_fn=trash_fits):
     if how not in ("trash", "permanent"):
         raise ValueError("Unknown removal: %s" % how)
     folder = t["folder"]
-    result = {"removed": True, "how": how}
+    kept = "The project could not be deleted (%s). Its verified zip is kept."
     if how == "trash":
-        fits = fits_fn(folder, walk(folder)[2])
+        try:
+            fits = fits_fn(folder, walk(folder)[2])
+        except Exception as e:
+            raise ValueError(kept % e)
         if fits is False:
             raise ValueError("The Recycle Bin cannot hold this project: nothing was deleted. "
-                             "Choose Delete permanently to free the space.")
-        if fits is None:
-            result["unknown_bin"] = True
+                             "Empty the Recycle Bin or choose Delete permanently.")
+        if fits is None:  # Windows supprimerait pour de bon, sans le dire : on refuse
+            raise ValueError("Windows does not tell whether the Recycle Bin can hold this project: "
+                             "nothing was deleted. Choose Delete permanently to free the space.")
     try:
-        from . import final_cut
-    except ImportError:
-        import final_cut
-    if t["kind"] == "project":
-        link = os.path.join(input_dir, "Final-Cut_" + t["name"])
-        if os.path.lexists(link) and final_cut._is_link(link):
-            final_cut.remove_link(link)
-    try:
+        try:
+            from . import final_cut
+        except ImportError:
+            import final_cut
+        if t["kind"] == "project":
+            link = os.path.join(input_dir, "Final-Cut_" + t["name"])
+            if os.path.lexists(link) and final_cut._is_link(link):
+                final_cut.remove_link(link)
         if how == "trash":
             trash_fn([folder])
             if os.path.exists(folder):
@@ -369,8 +373,8 @@ def remove_target(t, how, input_dir, trash_fn, fits_fn=trash_fits):
         else:
             shutil.rmtree(folder, onerror=_writable_then_retry)
     except Exception as e:
-        raise ValueError("The project could not be deleted (%s). Its verified zip is kept." % e)
-    return result
+        raise ValueError(kept % e)
+    return {"removed": True, "how": how}
 
 
 def archive(project, scope, how, folder, input_dir, trash_fn, now=None, fits_fn=trash_fits):
@@ -387,11 +391,8 @@ def archive(project, scope, how, folder, input_dir, trash_fn, now=None, fits_fn=
                 raise
             raise ValueError("The zip could not be checked (%s): nothing was deleted." % e)
         _report("remove", 0, 0, t["name"])
-        res = remove_target(t, how, input_dir, trash_fn, fits_fn)
-    out = {"zip": made["zip"], "size": made["size"], "files": made["files"], "removed": True}
-    if res.get("unknown_bin"):
-        out["unknown_bin"] = True
-    return out
+        remove_target(t, how, input_dir, trash_fn, fits_fn)
+    return {"zip": made["zip"], "size": made["size"], "files": made["files"], "removed": True}
 
 
 # ---- liste des archives ------------------------------------------------------------

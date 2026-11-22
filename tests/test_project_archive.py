@@ -318,13 +318,32 @@ class RemoveTest(ArchiveBase):
                          lambda f, s: seen.append((f, s)) or True)
         self.assertEqual(seen, [(self.simple, 5)])
 
-    def test_unknown_bin_flagged(self):
-        res = pa.remove_target(pa.target_of(self.simple, "whole"), "trash", self.input,
-                               fake_trash(), lambda f, s: None)
-        self.assertTrue(res["unknown_bin"])
-        res = pa.remove_target(pa.target_of(self.sub, "sub"), "trash", self.input,
-                               fake_trash(), lambda f, s: True)
-        self.assertNotIn("unknown_bin", res)
+    def test_unknown_bin_refuses(self):
+        called = []
+        with self.assertRaises(ValueError) as cm:
+            pa.archive(self.simple, "whole", "trash", self.arch, self.input, fake_trash(called),
+                       now=NOW, fits_fn=lambda f, s: None)
+        self.assertIn("does not tell", str(cm.exception))
+        self.assertTrue(os.path.isdir(self.simple))
+        self.assertEqual(called, [])
+        self.assertEqual(len(pa.list_archives(self.arch)), 1)
+
+    def test_remove_link_failure_keeps_zip_message(self):
+        self.make_link("P", self.simple)
+        with mock.patch("final_cut.remove_link", side_effect=OSError("busy")):
+            with self.assertRaises(ValueError) as cm:
+                pa.archive(self.simple, "whole", "permanent", self.arch, self.input,
+                           fake_trash(), now=NOW)
+        self.assertIn("verified zip is kept", str(cm.exception))
+        self.assertTrue(os.path.isdir(self.simple))
+
+    def test_fits_failure_keeps_zip_message(self):
+        def boom(f, s):
+            raise OSError("walk")
+        with self.assertRaises(ValueError) as cm:
+            pa.archive(self.simple, "whole", "trash", self.arch, self.input, fake_trash(),
+                       now=NOW, fits_fn=boom)
+        self.assertIn("verified zip is kept", str(cm.exception))
 
     def test_archive_trash_failure_keeps_everything(self):
         def boom(paths):
