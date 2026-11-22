@@ -589,6 +589,7 @@ class RestoreTest(ArchiveBase):
         stale = self.simple + ".part"
         os.makedirs(stale)
         self.put(stale, "junk.txt")
+        self.put(stale, pa.PART_MARK, b"x")
         pa.restore(z, self.root)
         self.assertFalse(os.path.exists(stale))
         shutil.rmtree(self.simple)
@@ -611,3 +612,27 @@ class RestoreTest(ArchiveBase):
             pa.restore(z, self.root)
         self.assertIn("restore", seen)
         self.assertIsNone(pa.progress())
+
+    def test_restore_never_deletes_real_folder_named_part(self):
+        self.put(self.simple, "08.Images/a.png")
+        z = self.zap(self.simple, "whole")
+        real = projects.create_project(self.root, "P.part")
+        keep = self.put(real, "08.Images/mine.png", b"precious")
+        with self.assertRaises(ValueError):
+            pa.restore(z, self.root)
+        with open(keep, "rb") as fh:
+            self.assertEqual(fh.read(), b"precious")
+        self.assertFalse(os.path.exists(self.simple))
+
+    def test_restore_sub_other_name_same_number_needs_independent(self):
+        sub = projects.create_project(self.root, "B", group="G")
+        base = os.path.basename(sub)
+        z = pa.make_zip(sub, "sub", "backup", self.arch, now=NOW)["zip"]
+        t = pa.restore_target(z, self.root, name="Other")
+        self.assertEqual(t["needs"], "independent")
+        with self.assertRaises(ValueError):
+            pa.restore(z, self.root, name="Other")
+        res = pa.restore(z, self.root, name="Other", independent=True)
+        self.assertEqual(res["dest"], os.path.join(self.root, base.split("-")[0] + "-Other"))
+        self.assertTrue(os.path.isdir(res["dest"]))
+        self.assertEqual(pa.restore_target(z, self.root)["needs"], "name")

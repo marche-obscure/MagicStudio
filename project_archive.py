@@ -398,6 +398,7 @@ def archive(project, scope, how, folder, input_dir, trash_fn, now=None, fits_fn=
 # ---- liste des archives ------------------------------------------------------------
 
 STALE_PART_SECONDS = 3600
+PART_MARK = ".mmrestore-part"
 
 
 def list_archives(folder):
@@ -448,6 +449,15 @@ def read_manifest(zip_path):
     return m
 
 
+def _number_taken(mother, number):
+    try:
+        names = os.listdir(mother)
+    except OSError:
+        return False
+    return any(projects.split_number(n)[0] == number and os.path.isdir(os.path.join(mother, n))
+               for n in names)
+
+
 def restore_target(zip_path, root, name=None, independent=False):
     """Destination de la restauration et ce qui manque : needs = None | "name" | "independent"."""
     m = read_manifest(zip_path)
@@ -467,8 +477,14 @@ def restore_target(zip_path, root, name=None, independent=False):
         else:
             final = base
         mother = os.path.join(root, group)
+        dest = os.path.join(mother, final)
         if projects.is_group(mother):
-            dest = os.path.join(mother, final)
+            if independent and number is not None and _number_taken(mother, number)                     and not os.path.lexists(dest):
+                dest = os.path.join(root, final)
+            elif (not os.path.lexists(dest) and number is not None and not independent
+                    and _number_taken(mother, number)):
+                # Un autre sous-projet porte deja ce numero : pas deux fois le meme (Final Cut _NN_).
+                return {"dest": dest, "needs": "independent"}
         elif independent:
             dest = os.path.join(root, final)
         else:
@@ -508,10 +524,17 @@ def restore(zip_path, root, name=None, independent=False):
                     raise ValueError("Unsafe path in the archive: %s" % zi.filename)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             if os.path.lexists(part):
+                # Seul un reste de restauration (repere pose a la creation) est efface ;
+                # un vrai dossier du meme nom n'est jamais touche.
+                if not os.path.isfile(os.path.join(part, PART_MARK)):
+                    raise ValueError("A folder named %s already exists: nothing was restored."
+                                     % os.path.basename(part))
                 shutil.rmtree(part, onerror=_writable_then_retry)
             count = 0
             try:
                 os.makedirs(part)
+                with open(os.path.join(part, PART_MARK), "w", encoding="utf-8") as f:
+                    f.write("MagicStudio restore in progress.\n")
                 _report("restore", 0, len(members), top)
                 for i, zi in enumerate(members, 1):
                     rel = zi.filename.replace("\\", "/")[len(top) + 1:]
@@ -535,6 +558,7 @@ def restore(zip_path, root, name=None, independent=False):
                 kids = projects.project_children(part)
                 for p in ([os.path.join(part, k) for k in kids] if kids else [part]):
                     projects.ensure_project(p)
+                os.remove(os.path.join(part, PART_MARK))
                 os.rename(part, dest)
             except BaseException:
                 shutil.rmtree(part, onerror=_writable_then_retry)
