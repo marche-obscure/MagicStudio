@@ -246,3 +246,183 @@ def list_files(origin, subdir, roots_):
     """Noms des fichiers visibles de <origin>/<subdir> (dossier permis seulement)."""
     folder = _check(os.path.join(origin or "", subdir or "") if subdir else origin, roots_)
     return sorted(_visible_files(folder), key=str.lower)
+
+
+# ---------------------------------------------------------------------------
+# Explorateur de fichiers de champs (22/11/2026) : fonctions pures, sans racine
+# imposee (les champs sont de petits .json / .txt choisis par l'utilisateur).
+# ---------------------------------------------------------------------------
+
+FIELDS_MAX_BYTES = 1024 * 1024
+FIELDS_FORMATS = ("MagicStudio SelectMod", "MultiFiles Select")
+_HIDDEN_DIR_NAMES = ("$recycle.bin", "system volume information")
+_RESERVED_NAMES = {"con", "prn", "aux", "nul"} | {"com%d" % i for i in range(1, 10)} | {"lpt%d" % i for i in range(1, 10)}
+_KIND_EXTS = {"save": (".json",), "folder": (".json",), "open": (".json", ".txt")}
+
+
+def is_local_address(remote):
+    """Vrai pour une adresse de la machine (127.x, ::1, ::ffff:127.x, localhost)."""
+    import ipaddress
+    text = str(remote or "").strip().split("%")[0]
+    if not text:
+        return False
+    if text.lower() == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    if getattr(ip, "ipv4_mapped", None) is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback
+
+
+def drives():
+    """Windows : lettres presentes ("C:\\") ; ailleurs ["/"]."""
+    if os.name != "nt":
+        return ["/"]
+    try:
+        import ctypes
+        mask = ctypes.windll.kernel32.GetLogicalDrives()
+    except Exception:
+        return []
+    return ["%s:\\" % chr(65 + i) for i in range(26) if mask & (1 << i)]
+
+
+def clean_name(name):
+    """Nom de fichier final avec .json ; ValueError("Invalid file name.") si inutilisable."""
+    base = str(name or "").strip()
+    if base.lower().endswith(".json"):
+        base = base[:-5]
+    bad = (not base or base != base.strip() or base.endswith(".")
+           or any(c in '\\/:*?"<>|' or ord(c) < 32 for c in base)
+           or base.split(".")[0].lower() in _RESERVED_NAMES)
+    if bad:
+        raise ValueError("Invalid file name.")
+    return base + ".json"
+
+
+def is_fields_file(path):
+    """Vrai si c'est un .json (<= 1 Mo) de champs SelectMod / MultiFiles Select ; faux sinon."""
+    import json
+    try:
+        if os.path.splitext(path)[1].lower() != ".json" or os.path.getsize(path) > FIELDS_MAX_BYTES:
+            return False
+        with open(path, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("format") in FIELDS_FORMATS and isinstance(data.get("fields"), list)
+
+
+def _hidden_dir(entry):
+    name = entry.name
+    if name.startswith(".") or name.lower() in _HIDDEN_DIR_NAMES:
+        return True
+    try:
+        import stat
+        attrs = getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0)
+    except OSError:
+        return False
+    return bool(attrs & (stat.FILE_ATTRIBUTE_HIDDEN | stat.FILE_ATTRIBUTE_SYSTEM))
+
+
+def _scan_sub(path, exts):
+    """(has_dirs, count) d'un sous-dossier, ou None s'il est illisible."""
+    has_dirs, count = False, 0
+    try:
+        with os.scandir(path) as it:
+            for e in it:
+                try:
+                    if e.is_dir():
+                        if not has_dirs and not _hidden_dir(e):
+                            has_dirs = True
+                    elif e.is_file() and os.path.splitext(e.name)[1].lower() in exts:
+                        count += 1
+                except OSError:
+                    continue
+    except OSError:
+        return None
+    return has_dirs, count
+
+
+def list_dir(path, kind):
+    """Contenu d'un dossier pour la fenetre d'exploration : sous-dossiers visibles et fichiers du kind."""
+    exts = _KIND_EXTS.get(kind, _KIND_EXTS["save"])
+    folder = os.path.abspath(str(path or ""))
+    if not os.path.isdir(folder):
+        raise FileNotFoundError("Folder not found: %s" % folder)
+    dirs, found = [], []
+    try:
+        with os.scandir(folder) as it:
+            entries = list(it)
+    except PermissionError:
+        raise PermissionError("Access denied: %s" % folder)
+    except OSError:
+        raise FileNotFoundError("Folder not found: %s" % folder)
+    for e in entries:
+        try:
+            is_dir, is_file = e.is_dir(), e.is_file()
+        except OSError:
+            continue
+        if is_dir:
+            if _hidden_dir(e):
+                continue
+            scan = _scan_sub(e.path, exts)
+            if scan is None:
+                continue
+            dirs.append({"name": e.name, "path": e.path, "has_dirs": scan[0], "count": scan[1]})
+        elif is_file and os.path.splitext(e.name)[1].lower() in exts:
+            try:
+                st = e.stat()
+            except OSError:
+                continue
+            found.append({"name": e.name, "path": e.path, "size": st.st_size, "mtime": st.st_mtime})
+    dirs.sort(key=lambda d: d["name"].lower())
+    found.sort(key=lambda f: f["name"].lower())
+    parent = os.path.dirname(folder)
+    return {"path": folder, "parent": parent if parent != folder else None, "dirs": dirs, "files": found}
+
+
+def read_fields(path):
+    """Texte d'un .json / .txt de champs (<= 1 Mo)."""
+    if os.path.splitext(str(path))[1].lower() not in (".json", ".txt"):
+        raise ValueError("Only .json and .txt files can be imported.")
+    if not os.path.isfile(path):
+        raise FileNotFoundError("File not found: %s" % path)
+    if os.path.getsize(path) > FIELDS_MAX_BYTES:
+        raise ValueError("File too large.")
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+        return f.read()
+
+
+def write_fields(folder, name, content, replace=False):
+    """Ecrit un fichier de champs SelectMod ; ne remplace jamais un autre .json. Renvoie le chemin ecrit."""
+    import json
+    folder = str(folder or "").strip()
+    if not folder or not os.path.isdir(folder):
+        raise FileNotFoundError("Folder not found: %s" % folder)
+    try:
+        data = json.loads(content)
+    except (TypeError, ValueError):
+        data = None
+    if not isinstance(data, dict) or data.get("format") != FIELDS_FORMATS[0]:
+        raise ValueError("The export is not a SelectMod fields file.")
+    path = os.path.join(folder, clean_name(name))
+    if os.path.exists(path):
+        if not is_fields_file(path):
+            raise ValueError("This file is not a fields file: choose another name.")
+        if not replace:
+            raise FileExistsError(path)
+    part = path + ".part"
+    try:
+        with open(part, "w", encoding="utf-8", newline="\n") as f:
+            f.write(content)
+        os.replace(part, path)
+    except BaseException:
+        try:
+            os.remove(part)
+        except OSError:
+            pass
+        raise
+    return path
