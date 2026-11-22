@@ -687,17 +687,13 @@ try:
             raise ValueError("Choose the archives folder first.")
         return pa.check_folder(folder, root)
 
-    def _archive_zip(zip_path, folder):
-        """Un zip a restaurer doit etre dans le dossier des archives (realpath : pas de .. ni de jonction)."""
-        real = os.path.normcase(os.path.realpath(str(zip_path or "")))
-        base = os.path.normcase(os.path.realpath(folder)) if folder else ""
-        if not base or os.path.dirname(real) != base or not real.lower().endswith(".zip"):
-            raise ValueError("The archive must be in the archives folder.")
-        return os.path.realpath(str(zip_path))
-
     @routes.get("/mmproject/archive/settings")
     async def mmproject_archive_settings(request):
-        return web.json_response(_archive_mod().load_settings())
+        try:
+            data = _archive_mod().load_settings()
+        except Exception as e:
+            return _archive_error(e)
+        return web.json_response(data)
 
     @routes.post("/mmproject/archive/settings")
     async def mmproject_archive_settings_save(request):
@@ -716,7 +712,8 @@ try:
             project = q.get("project", "")
             projects.require_project(project)
             root = await _in_executor(_archive_root, q.get("root", ""))
-            folder = await _in_executor(_archive_folder, root)
+            # Sans dossier enregistre, la fenetre s'ouvre quand meme : taille seulement, zip null.
+            folder = await _in_executor(_archive_folder, root) if _archive_mod().load_settings()["folder"] else ""
             data = await _in_executor(_archive_mod().plan, project, q.get("scope", ""), folder)
             data["sub"] = projects.is_group(os.path.dirname(os.path.abspath(project).rstrip("\\/")))
         except Exception as e:
@@ -778,7 +775,7 @@ try:
         q = request.rel_url.query
         try:
             pa = _archive_mod()
-            zip_path = _archive_zip(q.get("zip", ""), pa.load_settings()["folder"])  # realpath dans le dossier
+            zip_path = pa.zip_in_folder(q.get("zip", ""), pa.load_settings()["folder"])  # zip du dossier des archives
             root = await _in_executor(_archive_root, q.get("root", ""))
             data = await _in_executor(pa.restore_target, zip_path, root, q.get("name") or None,
                                       q.get("independent") in ("1", "true"))
@@ -794,7 +791,7 @@ try:
             if _comfy_busy():
                 return web.json_response({"error": "Wait for the end of the run."}, status=409)
             pa = _archive_mod()
-            zip_path = _archive_zip(body.get("zip", ""), pa.load_settings()["folder"])  # realpath dans le dossier
+            zip_path = pa.zip_in_folder(body.get("zip", ""), pa.load_settings()["folder"])  # zip du dossier des archives
             root = await _in_executor(_archive_root, body.get("root", ""))
             data = await _in_executor(pa.restore, zip_path, root, body.get("name") or None,
                                       bool(body.get("independent")))

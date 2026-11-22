@@ -162,6 +162,26 @@ class ZipTest(ArchiveBase):
         self.assertEqual(p["zip"], os.path.join(self.arch, "P_20261122-090507.zip"))
         self.assertGreater(p["free"], 0)
 
+    def test_plan_without_folder(self):
+        self.put(self.simple, "a.json", b"1234")
+        p = pa.plan(self.simple, "whole", "", now=NOW)
+        self.assertIsNone(p["zip"])
+        self.assertEqual(p["folder"], "")
+        self.assertEqual((p["size"], p["files"]), (4, 1))
+
+    def test_zip_in_folder(self):
+        good = self.put(self.arch, "a.zip")
+        self.assertEqual(pa.zip_in_folder(good, self.arch), os.path.realpath(good))
+        for bad in (os.path.join(self.arch, "..", "x.zip"),
+                    self.put(self.arch, "a.txt"),
+                    self.put(self.tmp, "out.zip"),
+                    self.put(self.arch, "sub/b.zip"),
+                    ""):
+            with self.assertRaisesRegex(ValueError, "must be in the archives folder"):
+                pa.zip_in_folder(bad, self.arch)
+        with self.assertRaisesRegex(ValueError, "Choose the archives folder first"):
+            pa.zip_in_folder(good, "")
+
     def test_walk_skips_junctions(self):
         other = os.path.join(self.tmp, "Other")
         self.put(other, "secret.txt")

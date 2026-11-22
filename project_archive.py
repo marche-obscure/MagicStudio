@@ -193,8 +193,21 @@ def plan(project, scope, folder, now=None):
     now = now or datetime.now()
     t = target_of(project, scope)
     files, _dirs, size = walk(t["folder"])
-    return {"target": t, "zip": _free_zip(folder, zip_name(t, now)), "size": size,
+    if not folder:  # pas encore de dossier choisi : la fenetre s'ouvre quand meme (taille seulement)
+        return {"target": t, "zip": None, "folder": "", "size": size, "files": len(files), "free": None}
+    return {"target": t, "zip": _free_zip(folder, zip_name(t, now)), "folder": folder, "size": size,
             "files": len(files), "free": shutil.disk_usage(folder).free}
+
+
+def zip_in_folder(zip_path, folder):
+    """Chemin reel d'un .zip place directement dans le dossier des archives ; ValueError sinon."""
+    if not folder or not str(folder).strip():
+        raise ValueError("Choose the archives folder first.")
+    real = os.path.normcase(os.path.realpath(str(zip_path or "")))
+    base = os.path.normcase(os.path.realpath(folder))
+    if os.path.dirname(real) != base or not real.lower().endswith(".zip"):
+        raise ValueError("The archive must be in the archives folder.")
+    return os.path.realpath(str(zip_path))
 
 
 # ---- zip et relecture --------------------------------------------------------------

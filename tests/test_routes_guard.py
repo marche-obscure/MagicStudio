@@ -94,7 +94,7 @@ class RoutesGuardTest(unittest.TestCase):
         for route in ("/mmproject/archive/make", "/mmproject/archive/restore"):
             self.assertIn("_comfy_busy()", bodies[route], route)
         for route in ("/mmproject/archive/restore", "/mmproject/archive/restore_target"):
-            self.assertIn("realpath", bodies[route], route)
+            self.assertIn("pa.zip_in_folder(", bodies[route], route)
 
     def test_copy_source_checked(self):
         # Copy lit un projet ou un dossier de projets (MultiProject), jamais un dossier ordinaire (30/10/2026).
