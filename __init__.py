@@ -259,7 +259,8 @@ try:
             if not isinstance(data, dict):
                 raise ValueError("Invalid request.")
             path = await _in_executor(select_mod.write_fields, data.get("folder", ""), data.get("name", ""),
-                                      data.get("content", ""), bool(data.get("replace", False)))
+                                      data.get("content", ""), bool(data.get("replace", False)),
+                                      str(data.get("kind") or "fields"))
         except FileExistsError as e:
             return web.json_response({"error": "A file with this name already exists.", "exists": True,
                                       "path": str(e)}, status=409)
