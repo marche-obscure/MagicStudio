@@ -308,11 +308,11 @@ The **Model** list at the top left of the **MagicStudio RefLoader** chooses the 
 
 Works with the classic node design and with **Modern Node Design (Nodes 2.0)**: in both, output names can be renamed by double-click (or the right-click menu) and paired outputs share their colour.
 
-Tested on Windows only. On Linux and macOS the Browse button is not available (type the folder path instead); everything else should work but is untested.
+Tested on Windows only. On Linux and macOS everything should work (the folder explorer starts at `/`) but is untested.
 
 ## Install
 
-Copy this folder into `ComfyUI/custom_nodes/` and restart ComfyUI. No extra dependency (uses PyAV, Pillow and torch shipped with ComfyUI). The **Browse** button opens the Windows folder dialog; on other systems type or paste the folder path.
+Copy this folder into `ComfyUI/custom_nodes/` and restart ComfyUI. No extra dependency (uses PyAV, Pillow and torch shipped with ComfyUI). The **Browse** buttons (folder icon) open the folder explorer of the node: open a folder in the tree, then click **Select folder**. It works on the computer running ComfyUI only; from another device, type or paste the folder path.
 
 <details>
 <summary><b>Tests</b></summary>
@@ -326,7 +326,7 @@ node --test tests/*.mjs
 
 ## Credits
 
-- Thanks to **pixaroma** for [ComfyUI-Pixaroma](https://github.com/pixaroma/ComfyUI-Pixaroma): the interface of this node (buttons on the left, thumbnail gallery) is inspired by its *Load Images Folder* node, and the Windows folder dialog script is adapted from it (MIT License, see [LICENSE](LICENSE)).
+- Thanks to **pixaroma** for [ComfyUI-Pixaroma](https://github.com/pixaroma/ComfyUI-Pixaroma): the interface of this node (buttons on the left, thumbnail gallery) is inspired by its *Load Images Folder* node.
 - Built for the native **MiniMax H3** nodes of ComfyUI.
 
 ## License
