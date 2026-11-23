@@ -19,7 +19,8 @@ const GREEN = "#43a047";
 const INACTIVE_BG = "#2a2a2a";
 const INACTIVE_FG = "#888";
 // Fond des boutons ronds discrets (aide "?", roue du dossier par defaut).
-const SETTINGS_BG = "#0c3833";
+// Roue crantee en violet, comme celle du RefLoader (harmonisation du 23/11/2026).
+const SETTINGS_BG = VIOLET;
 
 // 5 champs de base + 2 champs optionnels ajoutes a la demande (bouton
 // "+"), un par un, chacun avec sa propre sortie ("Option 1", "Option 2").
@@ -146,16 +147,16 @@ const CLOSE_ICON = helpSvg('<line x1="18" y1="6" x2="6" y2="18"></line><line x1=
 
 // Badges des boutons du noeud, tels qu'ils apparaissent a l'ecran.
 const B_FOLDER = iconBadge(FOLDER_ICON, VIOLET);
-const B_GEAR = iconBadge(GEAR_ICON, SETTINGS_BG, true);
+const B_GEAR = iconBadge(GEAR_ICON, SETTINGS_BG);
 const B_DIRS = iconBadge(SEARCH_ICON, VIOLET);
 const B_FILES = iconBadge(SEARCH_ICON, PINK);
-const B_DOWNLOAD = iconBadge(DOWNLOAD_ICON, PINK, true);
-const B_UPLOAD = iconBadge(UPLOAD_ICON, PINK, true);
+const B_DOWNLOAD = iconBadge(DOWNLOAD_ICON, PINK);
+const B_UPLOAD = iconBadge(UPLOAD_ICON, PINK);
 const B_TRASH = iconBadge(TRASH_ICON, "#6b2b2b");
 const B_PLUS = iconBadge(PLUS_ICON, PINK, true);
 const B_MINUS = iconBadge(MINUS_ICON, "#6b2b2b", true);
 const B_C = iconBadge('<b style="color:#f0c98a;font-size:10px;">C</b>', "#5a3d1a", true);
-const B_HELP = iconBadge('<b style="color:#bfe9e3;font-size:11px;">?</b>', "#0c3833", true);
+const B_HELP = iconBadge('<b style="color:#fff;font-size:11px;">?</b>', PINK, true);
 const B_FIELD = (n) => iconBadge('<b style="color:#fff;font-size:10px;">' + n + "</b>", PINK);
 
 const hList = (items) =>
@@ -2294,9 +2295,11 @@ app.registerExtension({
             saveBtn.innerHTML = DOWNLOAD_ICON;
             saveBtn.title = "Export the filled fields (.json)";
             saveBtn.style.flex = "0 0 auto";
-            saveBtn.style.width = "26px";
-            saveBtn.style.height = "26px";
-            saveBtn.style.borderRadius = "50%";
+            saveBtn.style.width = "22px";
+            saveBtn.style.height = "22px";
+            saveBtn.style.padding = "0";
+            saveBtn.style.alignSelf = "center";
+            saveBtn.style.borderRadius = "4px";
             saveBtn.style.border = "none";
             saveBtn.style.background = PINK;
             saveBtn.style.color = "#fff";
@@ -2380,9 +2383,11 @@ app.registerExtension({
             uploadBtn.innerHTML = UPLOAD_ICON;
             uploadBtn.title = "Import a fields file (.json, or an old .txt)";
             uploadBtn.style.flex = "0 0 auto";
-            uploadBtn.style.width = "26px";
-            uploadBtn.style.height = "26px";
-            uploadBtn.style.borderRadius = "50%";
+            uploadBtn.style.width = "22px";
+            uploadBtn.style.height = "22px";
+            uploadBtn.style.padding = "0";
+            uploadBtn.style.alignSelf = "center";
+            uploadBtn.style.borderRadius = "4px";
             uploadBtn.style.border = "none";
             uploadBtn.style.background = PINK;
             uploadBtn.style.color = "#fff";
@@ -2413,7 +2418,8 @@ app.registerExtension({
             settingsBtn.type = "button";
             settingsBtn.innerHTML = GEAR_ICON;
             Object.assign(settingsBtn.style, {
-                flex: "0 0 auto", width: "26px", height: "26px", borderRadius: "50%", border: "none",
+                flex: "0 0 auto", width: "22px", height: "22px", borderRadius: "4px", border: "none",
+                alignSelf: "center",
                 background: SETTINGS_BG, cursor: "pointer", display: "flex", alignItems: "center",
                 justifyContent: "center", padding: "0",
             });
@@ -2446,12 +2452,14 @@ app.registerExtension({
             helpBtn.textContent = "?";
             helpBtn.title = "Help";
             helpBtn.style.flex = "0 0 auto";
-            helpBtn.style.width = "26px";
-            helpBtn.style.height = "26px";
+            helpBtn.style.width = "22px";
+            helpBtn.style.height = "22px";
+            helpBtn.style.padding = "0";
+            helpBtn.style.alignSelf = "center";
             helpBtn.style.borderRadius = "50%";
             helpBtn.style.border = "none";
-            helpBtn.style.background = "#0c3833";
-            helpBtn.style.color = "#bfe9e3";
+            helpBtn.style.background = PINK;
+            helpBtn.style.color = "white";
             helpBtn.style.fontWeight = "700";
             helpBtn.style.fontSize = "13px";
             helpBtn.style.cursor = "pointer";
