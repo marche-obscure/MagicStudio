@@ -336,9 +336,9 @@ const HELP_SECTIONS = [
             [iconBadge(EYE_ICON, VIOLET), "View, reorder, delete and trim the files of a row"],
             [iconBadge(TRASH_ICON, MARK_RED), "Clear all the files of a row"],
             [iconBadge(OVERVIEW_ICON, VIOLET), "Overview of the whole selection"],
-            [iconBadge(GEAR_ICON, VIOLET), "Root folder of your rushes"],
             [iconBadge(DOWNLOAD_ICON, PINK), "Save the configuration (.json)"],
             [iconBadge(UPLOAD_ICON, PINK), "Load a configuration (.json)"],
+            [iconBadge(GEAR_ICON, VIOLET), "Root folder of your rushes"],
         ]) +
         hTip("With MiniMax H3 Ref2VA, <b>ref_image_0</b> is <b>&lt;Picture 1&gt;</b> in the prompt."),
     },
@@ -619,9 +619,8 @@ const HELP_SECTIONS = [
                 "<b>LTX23_magicstudio_config_...json</b>, <b>LTX25_magicstudio_config_...json</b> or " +
                 "<b>IMAGE_magicstudio_config_...json</b>. Greyed out " +
                 "while the variant has no reference (the root folder alone does not count)."],
-            [iconBadge(UPLOAD_ICON, PINK), "Loads a .json file of the variant shown. It turns " +
-                iconBadge(UPLOAD_ICON, ORANGE) + " when the variant already has references, and then asks a " +
-                "confirmation."],
+            [iconBadge(UPLOAD_ICON, PINK), "Loads a .json file of the variant shown. When the variant already has references, it " +
+                "asks a confirmation first."],
         ]) +
         hCard("Folder explorer", [
             ["Save", "opens the folder explorer: open a folder in the tree, keep or change the <b>Name</b>, " +
@@ -714,9 +713,9 @@ const HELP_SECTIONS_FR = [
             [iconBadge(EYE_ICON, VIOLET), "Voir, réordonner, supprimer et rogner les fichiers d'une ligne"],
             [iconBadge(TRASH_ICON, MARK_RED), "Vider tous les fichiers d'une ligne"],
             [iconBadge(OVERVIEW_ICON, VIOLET), "Vue d'ensemble de toute la sélection"],
-            [iconBadge(GEAR_ICON, VIOLET), "Dossier racine de vos rushs"],
             [iconBadge(DOWNLOAD_ICON, PINK), "Sauvegarder la configuration (.json)"],
             [iconBadge(UPLOAD_ICON, PINK), "Charger une configuration (.json)"],
+            [iconBadge(GEAR_ICON, VIOLET), "Dossier racine de vos rushs"],
         ]) +
         hTip("Avec MiniMax H3 Ref2VA, <b>ref_image_0</b> correspond à <b>&lt;Picture 1&gt;</b> dans le prompt.", TIP_FR),
     },
@@ -1009,9 +1008,8 @@ const HELP_SECTIONS_FR = [
                 "<b>LTX23_magicstudio_config_...json</b>, <b>LTX25_magicstudio_config_...json</b> ou " +
                 "<b>IMAGE_magicstudio_config_...json</b>. Grisé tant " +
                 "que la variante n'a aucune référence (le dossier racine seul ne compte pas)."],
-            [iconBadge(UPLOAD_ICON, PINK), "Charge un fichier .json de la variante affichée. Il devient " +
-                iconBadge(UPLOAD_ICON, ORANGE) + " quand la variante a déjà des références, et demande alors une " +
-                "confirmation."],
+            [iconBadge(UPLOAD_ICON, PINK), "Charge un fichier .json de la variante affichée. Quand la variante a déjà des références, " +
+                "il demande d'abord une confirmation."],
         ]) +
         hCard("Explorateur de dossiers", [
             ["Save", "ouvre l'explorateur de dossiers : ouvrez un dossier dans l'arbre, gardez ou changez le " +
@@ -5192,7 +5190,8 @@ app.registerExtension({
             const CONFIG_DIR_KEY = "mmrefloader.configDir";
             const configStart = () => storedDir(CONFIG_DIR_KEY) || getState().root || "";
 
-            bottom.append(summary, overviewBtn, rootBtn, downloadBtn, uploadBtn, helpBtn);
+            // Ordre commun aux noeuds MagicStudio (23/11/2026, choix utilisateur) : ⬇, ⬆, roue, ?.
+            bottom.append(summary, overviewBtn, downloadBtn, uploadBtn, rootBtn, helpBtn);
             container.appendChild(bottom);
 
             let lastRoot = null;
@@ -5491,8 +5490,9 @@ app.registerExtension({
                 summary.style.color = notice ? ((noticeColorFor === notice && noticeColor) || ORANGE) : "#9fd6cf";
                 summary.title = notice ? noticeTitle : "";
 
-                // Upload orange s'il ecrasera des references, couleur standard sinon.
-                uploadBtn.style.background = hasConfig(s) ? ORANGE : PINK;
+                // Upload toujours rose (harmonisation du 23/11/2026, choix utilisateur) ; la
+                // confirmation reste demandee s'il ecrasera des references.
+                uploadBtn.style.background = PINK;
                 // Download grise et inactif si la variante affichee n'a aucune reference
                 // (le dossier racine seul ne compte pas).
                 const canSave = hasConfig(s);
