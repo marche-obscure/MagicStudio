@@ -11,7 +11,7 @@ import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { buildImageLists } from "./image_lists.js";
 import { ARCHIVE_ICON_BODY, LISTS_ICON_BODY } from "./image_lists_pure.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
-import { pickFolder } from "./fields_explorer.js";
+import { pickFolder, buildFieldsExplorer, storedDir } from "./fields_explorer.js";
 import { gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
     relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, anchoredSubs,
     subfolderLabel } from "./project_paths.js";
@@ -623,6 +623,13 @@ const HELP_SECTIONS = [
                 iconBadge(UPLOAD_ICON, ORANGE) + " when the variant already has references, and then asks a " +
                 "confirmation."],
         ]) +
+        hCard("Folder explorer", [
+            ["Save", "opens the folder explorer: open a folder in the tree, keep or change the <b>Name</b>, " +
+                "click <b>Save</b> (<b>Replace</b> asks first if the file exists)."],
+            ["Load", "opens the folder explorer: click a .json file, then <b>Load</b> (or double-click it). A file " +
+                "that is not a configuration is refused in the window."],
+            ["Start", "the last folder used for Save / Load, otherwise the root folder of the node."],
+        ]) +
         hCard("Good to know", [
             ["Other variant", "a file of another variant is refused (<b>Wrong configuration file</b>); nothing is " +
                 "changed. Switch to its variant first."],
@@ -1005,6 +1012,13 @@ const HELP_SECTIONS_FR = [
             [iconBadge(UPLOAD_ICON, PINK), "Charge un fichier .json de la variante affichée. Il devient " +
                 iconBadge(UPLOAD_ICON, ORANGE) + " quand la variante a déjà des références, et demande alors une " +
                 "confirmation."],
+        ]) +
+        hCard("Explorateur de dossiers", [
+            ["Save", "ouvre l'explorateur de dossiers : ouvrez un dossier dans l'arbre, gardez ou changez le " +
+                "<b>Name</b>, cliquez sur <b>Save</b> (<b>Replace</b> demande d'abord si le fichier existe)."],
+            ["Load", "ouvre l'explorateur de dossiers : cliquez sur un fichier .json, puis sur <b>Load</b> (ou " +
+                "double-cliquez dessus). Un fichier qui n'est pas une configuration est refusé dans la fenêtre."],
+            ["Départ", "le dernier dossier utilisé pour Save / Load, sinon le dossier racine du nœud."],
         ]) +
         hCard("Bon à savoir", [
             ["Autre variante", "un fichier d'une autre variante est refusé (<b>Wrong configuration file</b>) ; rien " +
@@ -5172,13 +5186,13 @@ app.registerExtension({
                 b.style.width = "22px";
                 b.style.height = "22px";
             });
-            const fileInput = document.createElement("input");
-            fileInput.type = "file";
-            // Configurations JSON uniquement (les anciens .txt ne sont plus lus).
-            fileInput.accept = ".json,application/json";
-            fileInput.style.display = "none";
+            // Save / Load par l'explorateur de SelectMod (23/11/2026, choix utilisateur) a la place du
+            // telechargement et de la fenetre "Ouvrir" : configurations JSON uniquement (.txt plus lus).
+            const configExplorer = buildFieldsExplorer();
+            const CONFIG_DIR_KEY = "mmrefloader.configDir";
+            const configStart = () => storedDir(CONFIG_DIR_KEY) || getState().root || "";
 
-            bottom.append(summary, overviewBtn, rootBtn, downloadBtn, uploadBtn, helpBtn, fileInput);
+            bottom.append(summary, overviewBtn, rootBtn, downloadBtn, uploadBtn, helpBtn);
             container.appendChild(bottom);
 
             let lastRoot = null;
@@ -5290,7 +5304,7 @@ app.registerExtension({
                 return res;
             };
             node.__mmrefOverlays = [gallery, viewer, clearConfirm, rootDialog, help, overview, orderWarning, limitsDialog,
-                imageLists];
+                imageLists, configExplorer];
 
             // Une configuration "existe" des qu'une reference est selectionnee dans la variante
             // affichee ; le dossier racine seul ne compte pas.
@@ -5320,25 +5334,32 @@ app.registerExtension({
             downloadBtn.addEventListener("click", () => {
                 const s = getState();
                 if (!hasConfig(s)) return; // mode vide : rien a sauvegarder (bouton grise)
-                const blob = new Blob([formatVariantConfig(s, variantDesc)], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                // Nom prefixe par la variante (variantConfigPrefix) et suffixe par la date / heure
+                // Nom propose prefixe par la variante (variantConfigPrefix) et suffixe par la date / heure
                 // locales (yyyyMMdd-HHmmss) : une nouvelle sauvegarde n'ecrase pas la precedente.
-                a.download = variantConfigPrefix(s, variantDesc) + timestamp() + ".json";
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                configExplorer.open({
+                    mode: "save", kind: "save", writeKind: "refloader", storeKey: CONFIG_DIR_KEY,
+                    start: configStart(), saveName: variantConfigPrefix(s, variantDesc) + timestamp(),
+                    content: formatVariantConfig(s, variantDesc),
+                    saveTip: "Save the configuration in the open folder (.json added)",
+                    emptyText: "No configuration file in this folder.",
+                });
             });
+
+            function openConfig() {
+                configExplorer.open({
+                    mode: "open", kind: "save", storeKey: CONFIG_DIR_KEY, start: configStart(),
+                    emptyText: "No configuration file in this folder.",
+                    // Erreur de lecture (autre format) : message dans la fenetre, qui reste ouverte.
+                    onDone: (data) => applyConfigText(data.text, data.name),
+                });
+            }
 
             // Upload : ne remplace que la variante affichee (et le dossier racine). Confirmation
             // seulement si elle a deja des references (bouton orange).
             uploadBtn.addEventListener("click", () => {
                 const s = getState();
                 if (!hasConfig(s)) {
-                    fileInput.click();
+                    openConfig();
                     return;
                 }
                 const what = variantDesc.variants[variantOfState(s)].label;
@@ -5348,66 +5369,53 @@ app.registerExtension({
                     " of " + escapeHtml(what) + " and the root folder; the other variants are not changed." +
                     '<div style="color:#999;margin-top:8px">Save it first with the download button ' +
                     "if you want to keep it.</div>",
-                    "Overwrite", () => fileInput.click());
+                    "Overwrite", () => openConfig());
             });
 
-            fileInput.addEventListener("change", () => {
-                const file = fileInput.files && fileInput.files[0];
-                fileInput.value = "";
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = async () => {
-                    let conf;
-                    try {
-                        conf = parseVariantConfig(String(reader.result || ""), variantDesc);
-                    } catch (e) {
-                        notice = "⚠ " + e.message;
-                        refresh();
-                        return;
-                    }
-                    // Fichier d'une autre variante : refuse, rien n'est modifie.
-                    const s = getState();
-                    const v = variantOfState(s);
-                    if (conf.variant !== v) {
-                        const name = (x) => variantDesc.variants[x].label;
-                        notice = "⚠ " + name(conf.variant) + " file: switch to " + name(conf.variant) + " to load it";
-                        noticeTitle = "This configuration file was saved for " + name(conf.variant) +
-                            "; the node is on " + name(v) + ". Nothing was changed.";
-                        refresh();
-                        clearConfirm.ask(
-                            "<b>Wrong configuration file</b><br>" + escapeHtml(file.name) + " is a <b>" +
-                            escapeHtml(name(conf.variant)) + "</b> configuration, but the node is on <b>" +
-                            escapeHtml(name(v)) + "</b>." +
-                            '<div style="color:#999;margin-top:8px">Nothing was changed. Switch the node to ' +
-                            escapeHtml(name(conf.variant)) + " first, or load a " + escapeHtml(name(v)) + " file.</div>",
-                            "OK", () => {}, null, true);
-                        return;
-                    }
-                    // Seule la variante affichee est remplacee ; le dossier racine (commun) est repris.
-                    const before = getState();
-                    if (s.root !== conf.root) resetRootSubs(s);
-                    s.root = conf.root;
-                    const sel = selOf(s);
-                    sel.rows = conf.rows;
-                    sel.trims = conf.trims;
-                    sel.moments = conf.moments;
-                    const paths = Object.values(conf.rows).flat();
-                    setState(s);
-                    orderWarning.check(before, getState());
-                    // Fichiers absents du disque : charges quand meme, signales.
-                    const missing = [];
-                    await Promise.all(paths.map(async (p) => {
-                        const res = await fetch("/mmrefloader/info?file=" + encodeURIComponent(p)).catch(() => null);
-                        if (!res || res.status === 404) missing.push(baseName(p));
-                    }));
-                    if (missing.length) {
-                        notice = "⚠ " + missing.length + " missing file" + (missing.length > 1 ? "s" : "");
-                        noticeTitle = "Not found on disk:\n" + missing.join("\n");
-                        refresh();
-                    }
-                };
-                reader.readAsText(file);
-            });
+            /** Fichier lu par l'explorateur : une erreur de format est levee (affichee dans la fenetre). */
+            async function applyConfigText(text, fileName) {
+                const conf = parseVariantConfig(String(text || ""), variantDesc);
+                // Fichier d'une autre variante : refuse, rien n'est modifie.
+                const s = getState();
+                const v = variantOfState(s);
+                if (conf.variant !== v) {
+                    const name = (x) => variantDesc.variants[x].label;
+                    notice = "⚠ " + name(conf.variant) + " file: switch to " + name(conf.variant) + " to load it";
+                    noticeTitle = "This configuration file was saved for " + name(conf.variant) +
+                        "; the node is on " + name(v) + ". Nothing was changed.";
+                    refresh();
+                    clearConfirm.ask(
+                        "<b>Wrong configuration file</b><br>" + escapeHtml(fileName) + " is a <b>" +
+                        escapeHtml(name(conf.variant)) + "</b> configuration, but the node is on <b>" +
+                        escapeHtml(name(v)) + "</b>." +
+                        '<div style="color:#999;margin-top:8px">Nothing was changed. Switch the node to ' +
+                        escapeHtml(name(conf.variant)) + " first, or load a " + escapeHtml(name(v)) + " file.</div>",
+                        "OK", () => {}, null, true);
+                    return;
+                }
+                // Seule la variante affichee est remplacee ; le dossier racine (commun) est repris.
+                const before = getState();
+                if (s.root !== conf.root) resetRootSubs(s);
+                s.root = conf.root;
+                const sel = selOf(s);
+                sel.rows = conf.rows;
+                sel.trims = conf.trims;
+                sel.moments = conf.moments;
+                const paths = Object.values(conf.rows).flat();
+                setState(s);
+                orderWarning.check(before, getState());
+                // Fichiers absents du disque : charges quand meme, signales.
+                const missing = [];
+                await Promise.all(paths.map(async (p) => {
+                    const res = await fetch("/mmrefloader/info?file=" + encodeURIComponent(p)).catch(() => null);
+                    if (!res || res.status === 404) missing.push(baseName(p));
+                }));
+                if (missing.length) {
+                    notice = "⚠ " + missing.length + " missing file" + (missing.length > 1 ? "s" : "");
+                    noticeTitle = "Not found on disk:\n" + missing.join("\n");
+                    refresh();
+                }
+            }
 
             // ---- Rafraichissement (compteurs, info-bulles, sorties) ----
             function listTitle(paths, kind, s) {

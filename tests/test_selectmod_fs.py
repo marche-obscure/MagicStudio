@@ -177,6 +177,40 @@ class SelectModFsTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             sm.write_fields(os.path.join(self.root, "absent"), "x", CONTENT)
 
+    # Save / Load du RefLoader par l'explorateur (23/11/2026) : configurations "MiniMax H3 Reference Loader".
+    REF = '{"format": "MiniMax H3 Reference Loader", "version": 3, "variant": "ref2va", "root": null, "rows": {}}'
+
+    def test_write_refloader_config_new_then_replace(self):
+        p = sm.write_fields(self.root, "REF2VA_minimax_config_20261123-150000", self.REF, kind="refloader")
+        self.assertEqual(os.path.basename(p), "REF2VA_minimax_config_20261123-150000.json")
+        with self.assertRaises(FileExistsError):
+            sm.write_fields(self.root, "REF2VA_minimax_config_20261123-150000", self.REF, kind="refloader")
+        self.assertEqual(sm.write_fields(self.root, "REF2VA_minimax_config_20261123-150000", self.REF,
+                                         replace=True, kind="refloader"), p)
+
+    def test_refloader_and_fields_never_replace_each_other(self):
+        sm.write_fields(self.root, "conf", self.REF, kind="refloader")
+        sm.write_fields(self.root, "champs", CONTENT)
+        with self.assertRaises(ValueError):
+            sm.write_fields(self.root, "conf", CONTENT, replace=True)
+        with self.assertRaises(ValueError):
+            sm.write_fields(self.root, "champs", self.REF, replace=True, kind="refloader")
+        with open(self.p("conf.json"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.REF)
+
+    def test_write_refloader_refuses_other_content_and_kind(self):
+        with self.assertRaises(ValueError):
+            sm.write_fields(self.root, "x", CONTENT, kind="refloader")
+        with self.assertRaises(ValueError):
+            sm.write_fields(self.root, "x", self.REF)
+        with self.assertRaises(ValueError):
+            sm.write_fields(self.root, "x", self.REF, kind="bogus")
+        registry = self.p("reg.json")
+        write(registry, b'{"IndiceMODELS": []}')
+        with self.assertRaises(ValueError):
+            sm.write_fields(self.root, "reg", self.REF, replace=True, kind="refloader")
+        self.assertEqual(sorted(os.listdir(self.root)), ["reg.json"])
+
     def test_write_fields_keeps_old_file_on_error(self):
         p = sm.write_fields(self.root, "keep", CONTENT)
         new = '{"format": "MagicStudio SelectMod", "version": 1, "fields": [1]}'

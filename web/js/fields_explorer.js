@@ -31,6 +31,11 @@ export function lastExplorerDir() {
     return readStore(EXPLORER_DIR_KEY, "");
 }
 
+/** Dernier dossier retenu sous une autre cle (storeKey d'un autre noeud), "" si aucun. */
+export function storedDir(key) {
+    return readStore(key, "");
+}
+
 /**
  * Appel des routes /mmselectmod/fs/* : renvoie le JSON, sinon Error avec status, data et
  * remote (403 {remote: true} : ComfyUI ouvert au reseau, explorateur refuse).
@@ -73,6 +78,8 @@ function joinPath(folder, name) {
  * Options pour les autres noeuds (23/11/2026, choix d'un dossier dans RefLoader / Project, a la place
  * de la boite Windows) : kind = fichiers listes ("media" : images, videos, sons montres pour
  * information) ; storeKey = cle localStorage du dernier dossier (defaut EXPLORER_DIR_KEY, celle de SelectMod).
+ * Save / Load du RefLoader (23/11/2026) : saveName = nom propose, writeKind = type ecrit par /fs/write
+ * ("refloader" ; defaut "fields"), saveTip = infobulle de Save, emptyText = message d'un dossier sans fichier.
  */
 export function buildFieldsExplorer() {
     const { overlay, card } = makeOverlay();
@@ -395,6 +402,7 @@ export function buildFieldsExplorer() {
             const d = document.createElement("div");
             d.textContent = !current ? "Choose a folder in the tree."
                 : q ? "No file matches the search."
+                : opts && opts.emptyText ? opts.emptyText
                 : opts && opts.kind === "media" ? "No image, video or audio file in this folder." : "No fields file in this folder.";
             Object.assign(d.style, { color: "#888", padding: "16px 8px" });
             table.appendChild(d);
@@ -555,7 +563,8 @@ export function buildFieldsExplorer() {
             for (;;) {
                 try {
                     const data = await fsCall("/mmselectmod/fs/write",
-                        { folder, name: c.name, content: (opts && opts.content) || "", replace });
+                        { folder, name: c.name, content: (opts && opts.content) || "", replace,
+                          kind: (opts && opts.writeKind) || "fields" });
                     writeStore(dirKey(), folder);
                     if (seq !== openSeq) {
                         if (done) done({ path: data.path });
@@ -710,9 +719,9 @@ export function buildFieldsExplorer() {
             if (mode === "save") {
                 label.textContent = "Name :";
                 field.placeholder = "Name of the file";
-                field.value = defaultSaveName(new Date());
+                field.value = opts.saveName || defaultSaveName(new Date());
                 mainBtn.textContent = "Save";
-                mainBtn.title = "Save the fields in the open folder (.json added)";
+                mainBtn.title = opts.saveTip || "Save the fields in the open folder (.json added)";
             } else {
                 label.textContent = "Search file :";
                 field.placeholder = "Search in this folder...";

@@ -221,6 +221,8 @@ def list_files(origin, subdir, roots_):
 
 FIELDS_MAX_BYTES = 1024 * 1024
 FIELDS_FORMATS = ("MagicStudio SelectMod", "MultiFiles Select")
+# Save / Load du RefLoader par l'explorateur (23/11/2026) : meme format que config_format.js (JSON_FORMAT).
+REFLOADER_FORMAT = "MiniMax H3 Reference Loader"
 _HIDDEN_DIR_NAMES = ("$recycle.bin", "system volume information")
 _RESERVED_NAMES = {"con", "prn", "aux", "nul"} | {"com%d" % i for i in range(1, 10)} | {"lpt%d" % i for i in range(1, 10)}
 # "media" (23/11/2026) : choix d'un dossier dans RefLoader / Project, images, videos et sons montres
@@ -329,17 +331,33 @@ def clean_name(name):
     return base + ".json"
 
 
-def is_fields_file(path):
-    """Vrai si c'est un .json (<= 1 Mo) de champs SelectMod / MultiFiles Select ; faux sinon."""
+def _doc_kind(data):
+    """Type d'un document JSON deja lu : "fields" (SelectMod / MultiFiles Select), "refloader", sinon None."""
+    if not isinstance(data, dict):
+        return None
+    if data.get("format") in FIELDS_FORMATS and isinstance(data.get("fields"), list):
+        return "fields"
+    if data.get("format") == REFLOADER_FORMAT:
+        return "refloader"
+    return None
+
+
+def _file_kind(path):
+    """Type d'un .json (<= 1 Mo) sur le disque (voir _doc_kind), None s'il est illisible ou d'un autre type."""
     import json
     try:
         if os.path.splitext(path)[1].lower() != ".json" or os.path.getsize(path) > FIELDS_MAX_BYTES:
-            return False
+            return None
         with open(path, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
     except (OSError, ValueError, RecursionError):
-        return False
-    return isinstance(data, dict) and data.get("format") in FIELDS_FORMATS and isinstance(data.get("fields"), list)
+        return None
+    return _doc_kind(data)
+
+
+def is_fields_file(path):
+    """Vrai si c'est un .json (<= 1 Mo) de champs SelectMod / MultiFiles Select ; faux sinon."""
+    return _file_kind(path) == "fields"
 
 
 def _hidden_dir(entry):
@@ -435,9 +453,14 @@ def read_fields(path):
         return f.read()
 
 
-def write_fields(folder, name, content, replace=False):
-    """Ecrit un fichier de champs SelectMod ; ne remplace jamais un autre .json. Renvoie le chemin ecrit."""
+def write_fields(folder, name, content, replace=False, kind="fields"):
+    """
+    Ecrit un fichier de champs SelectMod (kind "fields") ou une configuration du RefLoader
+    (kind "refloader", 23/11/2026) ; ne remplace jamais un .json d'un autre type. Renvoie le chemin ecrit.
+    """
     import json
+    if kind not in ("fields", "refloader"):
+        raise ValueError("Unknown kind.")
     folder = str(folder or "").strip()
     if not folder or not os.path.isdir(folder):
         raise FileNotFoundError("Folder not found: %s" % folder)
@@ -445,15 +468,17 @@ def write_fields(folder, name, content, replace=False):
         data = json.loads(content)
     except (TypeError, ValueError, RecursionError):
         data = None
-    if (not isinstance(data, dict) or data.get("format") != FIELDS_FORMATS[0]
-            or not isinstance(data.get("fields"), list)):
+    if kind == "fields" and (_doc_kind(data) != "fields" or data.get("format") != FIELDS_FORMATS[0]):
         raise ValueError("The export is not a SelectMod fields file.")
+    if kind == "refloader" and _doc_kind(data) != "refloader":
+        raise ValueError("The content is not a RefLoader configuration.")
     if len(content.encode("utf-8")) > FIELDS_MAX_BYTES:
         raise ValueError("File too large.")
     path = os.path.join(folder, clean_name(name))
     if os.path.exists(path):
-        if not is_fields_file(path):
-            raise ValueError("This file is not a fields file: choose another name.")
+        if _file_kind(path) != kind:
+            raise ValueError("This file is not a %s file: choose another name."
+                             % ("fields" if kind == "fields" else "RefLoader configuration"))
         if not replace:
             raise FileExistsError(path)
     # Fichier temporaire unique dans le meme dossier : jamais un "<nom>.json.part" deja present.
