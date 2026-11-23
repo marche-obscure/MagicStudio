@@ -8,9 +8,7 @@ qui fixe le dossier racine de ces galeries.
 """
 
 import os
-import sys
 import asyncio
-import subprocess
 import traceback
 
 from . import media
@@ -215,7 +213,7 @@ try:
 
     @routes.get("/mmselectmod/fs/list")
     async def mmselectmod_fs_list(request):
-        """Sous-dossiers et fichiers de champs d'un dossier (kind : save / folder / open)."""
+        """Sous-dossiers et fichiers d'un dossier (kind : save / folder / open ; media = choix d'un dossier RefLoader / Project)."""
         refused = _selectmod_local(request)
         if refused:
             return refused
@@ -367,60 +365,6 @@ try:
         except ValueError as e:
             return web.json_response({"error": str(e)}, status=400)
         return web.json_response({"path": path, "kind": kind})
-
-    @routes.get("/mmrefloader/browse_dir")
-    async def mmrefloader_browse_dir(request):
-        """Ouvre l'explorateur de dossiers Windows (cote serveur) et renvoie le chemin choisi."""
-        if sys.platform != "win32":
-            return web.json_response(
-                {"error": "This feature is only available on Windows."}, status=400)
-
-        initial = request.rel_url.query.get("initial", "").strip()
-
-        # Lancee seule, la boite de dialogue s'ouvre derriere le navigateur :
-        # on affiche d'abord une fenetre invisible "toujours au premier plan"
-        # et on ouvre la boite dans son evenement Shown, avec elle comme
-        # proprietaire, pour qu'elle herite du premier plan. Le dossier de
-        # depart passe par une variable
-        # d'environnement (pas de probleme de guillemets) et la sortie est
-        # forcee en UTF-8 (chemins avec accents).
-        # Script adapte de ComfyUI-Pixaroma (https://github.com/pixaroma/ComfyUI-Pixaroma),
-        # Copyright (c) 2026 pixaroma, licence MIT (voir LICENSE, "Third-party code").
-        script = (
-            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
-            "Add-Type -AssemblyName System.Windows.Forms;"
-            "$r='';"
-            "$o=New-Object System.Windows.Forms.Form;"
-            "$o.TopMost=$true;$o.ShowInTaskbar=$false;$o.FormBorderStyle='None';"
-            "$o.Width=1;$o.Height=1;$o.Opacity=0;$o.StartPosition='CenterScreen';"
-            "$o.Add_Shown({"
-            "$o.Activate();"
-            "$d=New-Object System.Windows.Forms.FolderBrowserDialog;"
-            "$d.Description='Select a folder';$d.ShowNewFolderButton=$false;"
-            "if($env:MMREF_START){try{$d.SelectedPath=$env:MMREF_START}catch{}};"
-            "if($d.ShowDialog($o) -eq [System.Windows.Forms.DialogResult]::OK){$script:r=$d.SelectedPath};"
-            "$o.Close()"
-            "});"
-            "[void]$o.ShowDialog();"
-            "[Console]::Out.Write($r)"
-        )
-
-        def run_dialog():
-            env = dict(os.environ)
-            env["MMREF_START"] = initial if initial and os.path.isdir(initial) else ""
-            proc = subprocess.run(
-                ["powershell", "-NoProfile", "-STA", "-Command", script],
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=300, env=env,
-                creationflags=0x08000000,  # CREATE_NO_WINDOW : pas de console qui clignote
-            )
-            return (proc.stdout or "").strip()
-
-        try:
-            path = await _in_executor(run_dialog)
-        except Exception as e:
-            return web.json_response({"error": str(e)}, status=500)
-        return web.json_response({"path": path or ""})
 
     # ------ Noeud Projet : racine des projets, liste, creation, ouverture ------
 

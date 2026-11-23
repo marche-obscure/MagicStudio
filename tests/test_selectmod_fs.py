@@ -88,6 +88,23 @@ class SelectModFsTest(unittest.TestCase):
         info = save["files"][0]
         self.assertEqual(set(info), {"name", "path", "size", "mtime"})
 
+    def test_list_dir_media_kind(self):
+        # Choix d'un dossier dans RefLoader / Project (23/11/2026) : medias montres pour information.
+        write(self.p("a.png"))
+        write(self.p("b.MP4"))
+        write(self.p("c.wav"))
+        write(self.p("d.json"))
+        write(self.p("sub", "e.jpg"))
+        write(self.p("sub", "f.txt"))
+        got = sm.list_dir(self.root, "media")
+        self.assertEqual([f["name"] for f in got["files"]], ["a.png", "b.MP4", "c.wav"])
+        self.assertEqual({d["name"]: d["count"] for d in got["dirs"]}, {"sub": 1})
+
+    def test_media_exts_match_media_module(self):
+        # Meme liste que media.KIND_EXTS (select_mod n'importe rien du paquet).
+        import media
+        self.assertEqual(set(sm._KIND_EXTS["media"]), {e for exts in media.KIND_EXTS.values() for e in exts})
+
     def test_list_dir_has_dirs(self):
         os.makedirs(self.p("a", "inner"))
         os.makedirs(self.p("b", ".hidden"))

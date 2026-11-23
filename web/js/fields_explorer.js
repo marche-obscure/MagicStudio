@@ -70,6 +70,9 @@ function joinPath(folder, name) {
  *            si onDone leve une erreur (fichier d'un autre format), son message s'affiche et la fenetre reste ;
  *   folder : bandeau = recherche, Select folder -> onDone({path}) (dossier ouvert).
  * start vide : dossier par defaut, sinon dernier dossier (explorerStart), sinon les disques.
+ * Options pour les autres noeuds (23/11/2026, choix d'un dossier dans RefLoader / Project, a la place
+ * de la boite Windows) : kind = fichiers listes ("media" : images, videos, sons montres pour
+ * information) ; storeKey = cle localStorage du dernier dossier (defaut EXPLORER_DIR_KEY, celle de SelectMod).
  */
 export function buildFieldsExplorer() {
     const { overlay, card } = makeOverlay();
@@ -187,6 +190,8 @@ export function buildFieldsExplorer() {
     let askResolve = null;
     const listings = new Map(); // normKey(dossier) -> reponse de /fs/list
     const expanded = new Set();
+    // Dernier dossier : cle propre a l'appelant, pour ne pas changer celui de SelectMod.
+    const dirKey = () => (opts && opts.storeKey) || EXPLORER_DIR_KEY;
     let [sortKey, sortDir] = readStore(SORT_KEY, "name:asc").split(":");
     if (!SORT_COLUMNS.includes(sortKey)) sortKey = "name";
     if (sortDir !== "desc") sortDir = "asc";
@@ -214,7 +219,7 @@ export function buildFieldsExplorer() {
     async function listing(path) {
         const key = normKey(path);
         if (!listings.has(key)) {
-            const data = await fsCall("/mmselectmod/fs/list?path=" + encodeURIComponent(path) + "&kind=" + mode);
+            const data = await fsCall("/mmselectmod/fs/list?path=" + encodeURIComponent(path) + "&kind=" + ((opts && opts.kind) || mode));
             listings.set(key, data);
             if (normKey(data.path) !== key) listings.set(normKey(data.path), data);
         }
@@ -360,6 +365,8 @@ export function buildFieldsExplorer() {
             const name = document.createElement("div");
             name.textContent = f.name;
             name.title = f.name;
+            // Choix d'un dossier : fichiers montres pour information seulement (plus pales).
+            if (mode === "folder") name.style.color = "#aaa";
             Object.assign(name.style, { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
             const size = document.createElement("div");
             size.textContent = sizeText(f.size);
@@ -387,7 +394,8 @@ export function buildFieldsExplorer() {
         if (!shown.length) {
             const d = document.createElement("div");
             d.textContent = !current ? "Choose a folder in the tree."
-                : q ? "No file matches the search." : "No fields file in this folder.";
+                : q ? "No file matches the search."
+                : opts && opts.kind === "media" ? "No image, video or audio file in this folder." : "No fields file in this folder.";
             Object.assign(d.style, { color: "#888", padding: "16px 8px" });
             table.appendChild(d);
         }
@@ -494,11 +502,11 @@ export function buildFieldsExplorer() {
         }
         const def = String(opts.defaultFolder || "").trim();
         if (def) expanded.add(normKey(def));
-        const start = String(opts.start || "").trim() || explorerStart(def, lastExplorerDir());
+        const start = String(opts.start || "").trim() || explorerStart(def, readStore(dirKey(), ""));
         if (start && (await openAt(start))) return;
         if (seq !== openSeq || remoteBox.style.display !== "none") return;
         if (start) setMsg("Folder not found: " + start);
-        const last = lastExplorerDir().trim();
+        const last = readStore(dirKey(), "").trim();
         if (last && normKey(last) !== normKey(start) && (await openAt(last))) return;
         if (seq !== openSeq || remoteBox.style.display !== "none") return;
         current = "";
@@ -548,7 +556,7 @@ export function buildFieldsExplorer() {
                 try {
                     const data = await fsCall("/mmselectmod/fs/write",
                         { folder, name: c.name, content: (opts && opts.content) || "", replace });
-                    writeStore(EXPLORER_DIR_KEY, folder);
+                    writeStore(dirKey(), folder);
                     if (seq !== openSeq) {
                         if (done) done({ path: data.path });
                         return;
@@ -595,7 +603,7 @@ export function buildFieldsExplorer() {
                 if (seq === openSeq) setMsg(e.message);
                 return;
             }
-            writeStore(EXPLORER_DIR_KEY, folder);
+            writeStore(dirKey(), folder);
             if (seq === openSeq) close();
         } catch (e) {
             if (seq === openSeq) report(e);
@@ -612,7 +620,7 @@ export function buildFieldsExplorer() {
         if (busy) return;
         setMsg("");
         if (!current) return setMsg("Choose a folder first.");
-        writeStore(EXPLORER_DIR_KEY, current);
+        writeStore(dirKey(), current);
         finish({ path: current });
     }
 
@@ -675,6 +683,7 @@ export function buildFieldsExplorer() {
     }
 
     return {
+        overlay,
         isOpen,
         close,
         /** Detruit la fenetre (couche dans document.body) : a appeler quand le noeud est supprime. */
@@ -731,4 +740,28 @@ export function buildFieldsExplorer() {
             load(true);
         },
     };
+}
+
+// --------------------------------------------------------------------
+// Choix d'un dossier dans RefLoader et Project (23/11/2026, choix utilisateur) : remplace la boite
+// Windows « Rechercher un dossier » (route /mmrefloader/browse_dir retiree). Meme fenetre que
+// l'Import de SelectMod, en mode dossier, images / videos / sons montres pour information.
+// --------------------------------------------------------------------
+export const PICK_DIR_KEY = "mmrefloader.pickDir";
+let folderPicker = null;
+
+/**
+ * Ouvre l'explorateur sur start (sinon le dernier dossier choisi, sinon les disques) ;
+ * onPick(chemin) quand l'utilisateur clique Select folder (rien si la fenetre est fermee).
+ */
+export function pickFolder(start, onPick) {
+    if (!folderPicker) {
+        folderPicker = buildFieldsExplorer();
+        // Au-dessus des fenetres qui ont un bouton dossier (jusqu'a 10004).
+        folderPicker.overlay.style.zIndex = "10010";
+    }
+    folderPicker.open({
+        mode: "folder", kind: "media", start: String(start || "").trim(), storeKey: PICK_DIR_KEY,
+        onDone: (r) => r && r.path && onPick(r.path),
+    });
 }

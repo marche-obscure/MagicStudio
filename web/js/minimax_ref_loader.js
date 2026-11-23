@@ -11,6 +11,7 @@ import { orderChanges, orderWarningNeeded } from "./ref_order.js";
 import { buildImageLists } from "./image_lists.js";
 import { ARCHIVE_ICON_BODY, LISTS_ICON_BODY } from "./image_lists_pure.js";
 import { filterSections, findMatches, queryWords, pickLanguage, HELP_LANGUAGES } from "./help_search.js";
+import { pickFolder } from "./fields_explorer.js";
 import { gallerySession, replaceSelection, unusedProjectFiles, duplicateColors, remapState,
     relinkCandidates, withoutPaths, filterSubfolders, inProjectFilter, isMediaSubfolder, anchoredSubs,
     subfolderLabel } from "./project_paths.js";
@@ -462,7 +463,7 @@ const HELP_SECTIONS = [
                 ["Root folder", "prefilled with " + iconBadge(GEAR_ICON, VIOLET) + "; type another folder (Enter) to " +
                     "look elsewhere."],
                 [iconBadge(SEARCH_ICON, VIOLET), "finds the subfolders again (greyed out without a root folder)."],
-                ["Browse / Reload", "Windows folder dialog / back to the root folder."],
+                ["Browse / Reload", "folder explorer (tree, files, <b>Select folder</b>) / back to the root folder."],
                 ["Subfolder", "the subfolders, with the number of files of the type after each name; the choice is " +
                     "kept per type."],
                 ["Project", "wired to a MagicStudio Project node: <b>All</b>, each " + iconBadge(FOLDER_OPEN_ICON, SIMPLE_COLOR) +
@@ -671,7 +672,7 @@ const HELP_SECTIONS = [
                 "reduce them anyway); audio cut to 15 s."],
             ["LTX 2.3 / 2.5", "videos read at 24 fps, cut to 20 s, reduced to 768×1344 pixels at most, with sides " +
                 "that are multiples of 32; audio cut to 20 s."],
-            ["Browse", "Windows folder dialog; on other systems type or paste the folder path."],
+            ["Browse", "opens the folder explorer: open a folder in the tree, then click <b>Select folder</b>. You can also type or paste the folder path."],
             ["Nodes 2.0", "works with the classic node design and with <b>Modern Node Design (Nodes 2.0)</b>."],
             ["Windows", "drag them by their <b>title bar</b> (✥); they stay on the screen and open next to the node " +
                 "again the next time."],
@@ -836,7 +837,7 @@ const HELP_SECTIONS_FR = [
                 ["Root folder", "prérempli avec " + iconBadge(GEAR_ICON, VIOLET) + " ; tapez un autre dossier " +
                     "(Entrée) pour chercher ailleurs."],
                 [iconBadge(SEARCH_ICON, VIOLET), "retrouve les sous-dossiers (grisée sans dossier racine)."],
-                ["Browse / Reload", "fenêtre de dossiers de Windows / retour au dossier racine."],
+                ["Browse / Reload", "explorateur de dossiers (arbre, fichiers, <b>Select folder</b>) / retour au dossier racine."],
                 ["Subfolder", "les sous-dossiers, avec le nombre de fichiers du type après chaque nom ; le choix est " +
                     "gardé par type."],
                 ["Project", "relié à un nœud MagicStudio Project : <b>All</b>, chaque projet " +
@@ -1054,7 +1055,7 @@ const HELP_SECTIONS_FR = [
                 "réduirait de toute façon) ; audio coupé à 15 s."],
             ["LTX 2.3 / 2.5", "vidéos lues à 24 i/s, coupées à 20 s, réduites à 768×1344 pixels au plus, avec des " +
                 "côtés multiples de 32 ; audio coupé à 20 s."],
-            ["Browse", "fenêtre de dossiers de Windows ; sur un autre système, tapez ou collez le chemin du dossier."],
+            ["Browse", "ouvre l'explorateur de dossiers : ouvrez un dossier dans l'arbre, puis cliquez sur <b>Select folder</b>. Vous pouvez aussi taper ou coller le chemin du dossier."],
             ["Nodes 2.0", "fonctionne avec le design classique et avec <b>Modern Node Design (Nodes 2.0)</b>."],
             ["Fenêtres", "déplaçables par leur <b>barre de titre</b> (✥) ; elles restent dans l'écran et se " +
                 "rouvrent à côté du nœud la fois suivante."],
@@ -3470,23 +3471,9 @@ function buildGallery(container, ctx) {
         scanSubfolders();
     }
 
-    async function browse() {
-        const prev = browseBtn.innerHTML;
-        browseBtn.disabled = true;
-        status.textContent = "Opening the folder dialog...";
-        try {
-            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(baseInput.value.trim()));
-            if (data.path) {
-                setBase(data.path);
-            } else {
-                status.textContent = "";
-            }
-        } catch (e) {
-            status.textContent = e.message;
-        } finally {
-            browseBtn.disabled = false;
-            browseBtn.innerHTML = prev;
-        }
+    // Explorateur de dossiers (23/11/2026) a la place de la boite Windows.
+    function browse() {
+        pickFolder(baseInput.value.trim(), (path) => setBase(path));
     }
 
     // Clavier : tant que la galerie est ouverte, les touches tapees dans le
@@ -3933,18 +3920,12 @@ function buildRootDialog(container, ctx) {
         close();
     }
 
-    async function browse() {
-        browseBtn.disabled = true;
-        status.textContent = "Opening the folder dialog...";
-        try {
-            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(input.value.trim()));
-            if (data.path) input.value = data.path;
+    // Explorateur de dossiers (23/11/2026) a la place de la boite Windows.
+    function browse() {
+        pickFolder(input.value.trim(), (path) => {
+            input.value = path;
             status.textContent = "";
-        } catch (e) {
-            status.textContent = e.message;
-        } finally {
-            browseBtn.disabled = false;
-        }
+        });
     }
 
     // Les touches tapees dans le champ ne doivent pas atteindre le canvas.

@@ -223,7 +223,11 @@ FIELDS_MAX_BYTES = 1024 * 1024
 FIELDS_FORMATS = ("MagicStudio SelectMod", "MultiFiles Select")
 _HIDDEN_DIR_NAMES = ("$recycle.bin", "system volume information")
 _RESERVED_NAMES = {"con", "prn", "aux", "nul"} | {"com%d" % i for i in range(1, 10)} | {"lpt%d" % i for i in range(1, 10)}
-_KIND_EXTS = {"save": (".json",), "folder": (".json",), "open": (".json", ".txt")}
+# "media" (23/11/2026) : choix d'un dossier dans RefLoader / Project, images, videos et sons montres
+# pour information ; meme liste que media.KIND_EXTS (verifiee par tests/test_selectmod_fs.py).
+_MEDIA_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v",
+               ".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".opus")
+_KIND_EXTS = {"save": (".json",), "folder": (".json",), "open": (".json", ".txt"), "media": _MEDIA_EXTS}
 
 
 def is_local_address(remote):

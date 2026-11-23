@@ -27,6 +27,7 @@ import { STAR_GOLD, STAR_TIP, releaseComparePlayers, releaseComparePlayersOf } f
 import { DROP_TARGETS, dragPath, dragLink, postTree, treeLayout, pruneGone, treeFiles, isFiltered } from "./post_tree.js";
 import { diffWorkflows, workflowSignature, formatLastSave, shortValue } from "./workflow_diff.js";
 import { PROJECT_USED, renameLegacySlots, LEGACY_PROJECT_LINKS, promptSource, PROMPT_UNWIRED } from "./graph_links.js";
+import { pickFolder } from "./fields_explorer.js";
 
 /** Description des variantes du RefLoader (route lue par son setup, sinon la copie de secours). */
 const desc = () => getVariantDesc();
@@ -1646,19 +1647,13 @@ function buildCreateDialog(container, ctx) {
         }
     }
 
-    async function browse() {
-        browseBtn.disabled = true;
-        error.textContent = "Opening the folder dialog...";
-        try {
-            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(folderInput.value.trim()));
-            if (data.path) folderInput.value = data.path;
+    // Explorateur de dossiers (23/11/2026) a la place de la boite Windows.
+    function browse() {
+        pickFolder(folderInput.value.trim(), (path) => {
+            folderInput.value = path;
             error.textContent = "";
             checkFolder();
-        } catch (e) {
-            error.textContent = e.message;
-        } finally {
-            browseBtn.disabled = false;
-        }
+        });
     }
 
     // Les touches tapees ne partent pas vers le canvas ; Entree cree, Echap annule.
@@ -2328,21 +2323,14 @@ function buildRenameMoveDialog(container, ctx) {
         }
     }
 
-    async function browse() {
-        browseBtn.disabled = true;
-        error.textContent = "Opening the folder dialog...";
-        try {
-            const start = input.value.trim() || parentOf(current);
-            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(start));
-            if (data.path) input.value = data.path;
+    // Explorateur de dossiers (23/11/2026) a la place de la boite Windows.
+    function browse() {
+        pickFolder(input.value.trim() || parentOf(current), (path) => {
+            input.value = path;
             error.textContent = "";
             update();
             loadBecome();
-        } catch (e) {
-            error.textContent = e.message;
-        } finally {
-            browseBtn.disabled = false;
-        }
+        });
     }
 
     const onKey = (e) => {
@@ -2528,22 +2516,23 @@ function makeArchiveFolderRow(ctx) {
         field.value = folder;
         field.title = folder;
     };
-    browse.addEventListener("click", async () => {
+    // Explorateur de dossiers (23/11/2026) a la place de la boite Windows.
+    browse.addEventListener("click", () => {
         if (ctx.busy()) return;
-        browse.disabled = true;
-        try {
-            const data = await apiGet("/mmrefloader/browse_dir?initial=" + encodeURIComponent(folder));
-            if (data && data.path) {
-                const saved = await apiPost("/mmproject/archive/settings", { folder: data.path, root: ctx.root() });
+        pickFolder(folder, async (path) => {
+            if (ctx.busy()) return;
+            browse.disabled = true;
+            try {
+                const saved = await apiPost("/mmproject/archive/settings", { folder: path, root: ctx.root() });
                 set(saved.folder);
                 ctx.onError("");
                 ctx.onChanged(saved.folder);
+            } catch (e) {
+                ctx.onError(e.message);
+            } finally {
+                browse.disabled = false;
             }
-        } catch (e) {
-            ctx.onError(e.message);
-        } finally {
-            browse.disabled = false;
-        }
+        });
     });
     return { el: row, set, get: () => folder, browse };
 }
